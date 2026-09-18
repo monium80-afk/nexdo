@@ -21,6 +21,11 @@ export async function uploadAttachment(localUri: string, userId: string, fileNam
   return path;
 }
 
+/** True for a path uploadAttachment() returned — a local uri always starts with a scheme like file://. */
+export function isStoragePath(uri: string): boolean {
+  return !/^[a-z][a-z0-9+.-]*:/i.test(uri);
+}
+
 export async function getAttachmentSignedUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) throw error;

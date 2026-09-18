@@ -6,7 +6,10 @@ import { getLanguage, translate } from "@/lib/i18n";
 import type { Category } from "@/types/category";
 import type { Task } from "@/types/task";
 
-/** A short, bold takeaway plus the reasoning behind it — shown as two lines of different weight. */
+/**
+ * A short, bold takeaway. The AI gives just that one recommendation; only the
+ * offline fallback below adds a lighter second line (detail).
+ */
 export type TaskAdvice = { headline: string; detail: string };
 
 /** Plain text for places that don't render highlights (the chat) — drops the **markers**. */
@@ -35,7 +38,7 @@ export async function generateAdvice(task: Task, categories: Category[], availab
       language: getLanguage(),
     };
     const result = await apiPost<NextResponseBody>("/api/next", body);
-    return { headline: result.advice.trim(), detail: result.explanation.trim() };
+    return { headline: result.advice.trim(), detail: "" };
   } catch (error) {
     console.warn("[generateAdvice] falling back to heuristic", error);
     return generateAdviceHeuristic(task);

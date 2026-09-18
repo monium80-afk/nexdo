@@ -4,11 +4,14 @@ import { Text, View } from "react-native";
 export function MetaPill({
   icon,
   label,
+  labelClassName = "font-grotesk-medium text-ink-cream",
   surface = "raised",
   tint,
 }: {
   icon?: ReactNode;
   label: string;
+  /** The label's font weight and color classes — the deadline tag is bold and colored by urgency. */
+  labelClassName?: string;
   surface?: "raised" | "recessed";
   /** A category swatch — same pill, filled with that category's own colors. */
   tint?: { 500: string; 100: string };
@@ -25,7 +28,7 @@ export function MetaPill({
       style={tint ? { backgroundColor: tint[100], borderColor: `${tint[500]}40` } : undefined}
     >
       {icon}
-      <Text className="font-grotesk-medium text-xs text-ink-cream">{label}</Text>
+      <Text className={`text-xs ${labelClassName}`}>{label}</Text>
     </View>
   );
 }

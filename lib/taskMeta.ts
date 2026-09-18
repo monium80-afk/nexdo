@@ -72,3 +72,15 @@ export function getDueInfo(task: Task, now: Date = new Date()): DueInfo {
   const dateLabel = due.toLocaleDateString(t.locale, { month: "short", day: "numeric" });
   return { label: t.due.inDays(dayDiff), tone: "upcoming", pillLabel: t.due.dueOnAt(dateLabel, time) };
 }
+
+// Colors the task list's deadline tag: red / yellow / green.
+export type DeadlineUrgency = "close" | "normal" | "far";
+
+/** 2 days or less (overdue included) is close, 3-7 days is normal, anything later — or no deadline — is far. */
+export function getDeadlineUrgency(task: Task, now: Date = new Date()): DeadlineUrgency {
+  if (!task.dueDate) return "far";
+  const dayDiff = Math.round((startOfDay(new Date(task.dueDate)).getTime() - startOfDay(now).getTime()) / DAY_MS);
+  if (dayDiff <= 2) return "close";
+  if (dayDiff <= 7) return "normal";
+  return "far";
+}

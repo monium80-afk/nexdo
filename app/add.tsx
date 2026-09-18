@@ -269,7 +269,7 @@ export default function Add() {
                   label={t.form.category}
                   action={{ label: newCategoryOpen ? t.common.cancel : `+ ${t.form.newCategory}`, onPress: handleToggleNewCategory }}
                 />
-                <CategoryPicker selectedId={category} onSelect={setCategory} />
+                <CategoryPicker selectedId={category} onSelect={setCategory} compact />
                 {newCategoryOpen ? (
                   <View className="gap-3 rounded-2xl border border-cream-300 bg-cream-100 p-4">
                     <TextInput

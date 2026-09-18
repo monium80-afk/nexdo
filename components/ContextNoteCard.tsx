@@ -1,24 +1,36 @@
 import { Feather } from "@expo/vector-icons";
-import { useState } from "react";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 
+/** Lets Task Details' "Save Changes" button pick up an edit that wasn't saved on the card. */
+export type ContextNoteCardHandle = {
+  /** The edited text while the card is open for editing, otherwise null. */
+  pendingNote: () => string | null;
+};
+
 /** One note the AI reads when it advises on or breaks down this task. */
 export function ContextNoteCard({
   note,
   onSave,
   onDelete,
+  ref,
 }: {
   note: string;
   onSave: (note: string) => void;
   onDelete: () => void;
+  ref?: Ref<ContextNoteCardHandle>;
 }) {
   const t = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note);
+
+  useImperativeHandle(ref, () => ({
+    pendingNote: () => (editing && draft.trim() ? draft.trim() : null),
+  }));
 
   const handleStartEdit = () => {
     setDraft(note);

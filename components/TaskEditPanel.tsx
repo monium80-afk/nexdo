@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useState } from "react";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -8,9 +8,9 @@ import {
   computeDeadlineDate,
   DEADLINE_OPTIONS,
   DeadlineChip,
+  DeadlineDatePicker,
   DURATION_OPTIONS,
   DurationChip,
-  parseCustomDeadline,
   SectionHeader,
   type DeadlineValue,
 } from "@/components/TaskFormFields";
@@ -21,8 +21,21 @@ import type { Task } from "@/types/task";
 
 export type TaskEditChanges = Partial<Pick<Task, "title" | "category" | "estimatedMinutes" | "dueDate">>;
 
+/** Lets Task Details' "Save Changes" button save these drafts too. */
+export type TaskEditPanelHandle = {
+  /** Saves the drafts — false when a field needs fixing first. */
+  save: () => boolean;
+};
+
 // "keep" leaves the deadline untouched until the user picks something else.
 type DeadlineChoice = DeadlineValue | "keep" | "custom";
+
+// The calendar opens on the task's own deadline while it's still ahead, otherwise tomorrow evening.
+function initialCustomDeadline(dueDate: string | undefined): Date {
+  const current = dueDate ? new Date(dueDate) : undefined;
+  if (current && current.getTime() > Date.now()) return current;
+  return computeDeadlineDate("tomorrow") ?? new Date();
+}
 
 /**
  * Everything the pen icon on Task Details can change. Edits stay local
@@ -32,10 +45,12 @@ export function TaskEditPanel({
   task,
   onSave,
   onCancel,
+  ref,
 }: {
   task: Task;
   onSave: (changes: TaskEditChanges) => void;
   onCancel: () => void;
+  ref?: Ref<TaskEditPanelHandle>;
 }) {
   const t = useTranslation();
   const isPresetDuration = DURATION_OPTIONS.includes(task.estimatedMinutes);
@@ -50,8 +65,7 @@ export function TaskEditPanel({
   const [durationError, setDurationError] = useState(false);
 
   const [deadline, setDeadline] = useState<DeadlineChoice>("keep");
-  const [customDeadlineText, setCustomDeadlineText] = useState("");
-  const [deadlineError, setDeadlineError] = useState(false);
+  const [customDeadline, setCustomDeadline] = useState(() => initialCustomDeadline(task.dueDate));
 
   // Previewed as if pending, so a completed task shows a date instead of "Completed".
   const describeDeadline = (dueDate: string | undefined) =>
@@ -61,40 +75,38 @@ export function TaskEditPanel({
     deadline === "keep"
       ? t.form.editCurrentDeadline(describeDeadline(task.dueDate))
       : deadline === "custom"
-        ? t.form.dateExample
+        ? t.form.newDeadline(describeDeadline(customDeadline.toISOString()))
         : deadline === "none"
           ? t.form.deadlineRemoved
           : t.form.newDeadline(describeDeadline(computeDeadlineDate(deadline)?.toISOString()));
 
-  const handleSave = () => {
+  const handleSave = (): boolean => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setTitleError(true);
-      return;
+      return false;
     }
 
     const estimatedMinutes = customDurationOpen ? Number.parseInt(customDurationText.trim(), 10) : durationMinutes;
     if (customDurationOpen && (!/^\d+$/.test(customDurationText.trim()) || estimatedMinutes <= 0)) {
       setDurationError(true);
-      return;
+      return false;
     }
 
     const changes: TaskEditChanges = { title: trimmedTitle, category, estimatedMinutes };
 
     if (deadline === "custom") {
-      const customDate = parseCustomDeadline(customDeadlineText);
-      if (!customDate) {
-        setDeadlineError(true);
-        return;
-      }
-      changes.dueDate = customDate.toISOString();
+      changes.dueDate = customDeadline.toISOString();
     } else if (deadline !== "keep") {
       // "No deadline" deliberately sets dueDate to undefined, clearing it.
       changes.dueDate = computeDeadlineDate(deadline)?.toISOString();
     }
 
     onSave(changes);
+    return true;
   };
+
+  useImperativeHandle(ref, () => ({ save: handleSave }));
 
   return (
     <View className="gap-6 rounded-2xl border border-cream-300 bg-cream-50 p-4">
@@ -186,31 +198,12 @@ export function TaskEditPanel({
               key={value}
               label={t.form.deadlines[value]}
               selected={deadline === value}
-              onPress={() => {
-                setDeadline(value);
-                setDeadlineError(false);
-              }}
+              onPress={() => setDeadline(value)}
             />
           ))}
         </View>
-        {deadline === "custom" ? (
-          <View className="rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3">
-            <TextInput
-              value={customDeadlineText}
-              onChangeText={(text) => {
-                setCustomDeadlineText(text);
-                setDeadlineError(false);
-              }}
-              placeholder={t.form.dateFormat}
-              placeholderTextColor={colors.ink.creamMuted}
-              className="font-grotesk-regular text-sm text-ink-cream"
-            />
-          </View>
-        ) : null}
+        {deadline === "custom" ? <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} /> : null}
         <Text className="font-grotesk-medium text-xs text-ink-cream-muted">{deadlineCaption}</Text>
-        {deadlineError ? (
-          <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.dateError}</Text>
-        ) : null}
       </View>
 
       <View className="flex-row items-center justify-end gap-4">

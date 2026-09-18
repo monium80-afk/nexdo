@@ -1,5 +1,5 @@
 import { useUser } from "@clerk/expo";
-import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
@@ -20,7 +20,7 @@ import { readFileAsBase64, resolveMimeType } from "@/lib/ai/media";
 import { apiPost } from "@/lib/api";
 import { translate } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
-import { uploadAttachment } from "@/lib/supabaseStorage";
+import { getAttachmentSignedUrl, isStoragePath, uploadAttachment } from "@/lib/supabaseStorage";
 import { useCategoryStore } from "@/store/useCategoryStore";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -28,6 +28,10 @@ import { useTaskStore } from "@/store/useTaskStore";
 import type { ChatAttachment, ChatMessage } from "@/types/chat";
 
 const QUICK_ACTION_ICON_SIZE = 18;
+
+// Tall phone shots and wide screenshots are cropped to stay a sensible size in the bubble.
+const MIN_IMAGE_RATIO = 3 / 4;
+const MAX_IMAGE_RATIO = 16 / 9;
 
 // Each quick-action chip gets its own colored icon, keyed by INBOX_QUICK_ACTIONS id.
 const QUICK_ACTION_ICONS: Record<string, ReactNode> = {
@@ -64,6 +68,50 @@ function AccountAvatar({ size }: { size: "sm" | "md" }) {
   );
 }
 
+// A camera photo, or an image file picked with the paperclip.
+function isImageAttachment(attachment: ChatAttachment | undefined): attachment is ChatAttachment {
+  return attachment?.kind === "photo" || Boolean(attachment?.mimeType?.startsWith("image/"));
+}
+
+/** An image the user sent, shown inside their bubble like a regular chat attachment. */
+function ChatImage({ attachment }: { attachment: ChatAttachment }) {
+  // Once the upload lands, the message's uri is swapped for a storage path. This
+  // bubble keeps showing the local file it started with instead of downloading it again.
+  const [localUri] = useState(isStoragePath(attachment.uri) ? null : attachment.uri);
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const storagePath = localUri ? null : attachment.uri;
+
+  useEffect(() => {
+    if (!storagePath) return;
+    let cancelled = false;
+    getAttachmentSignedUrl(storagePath)
+      .then((url) => {
+        if (!cancelled) setSignedUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storagePath]);
+
+  if (failed) return null;
+
+  const uri = localUri ?? signedUrl;
+  const ratio = attachment.width && attachment.height ? attachment.width / attachment.height : 4 / 3;
+  const aspectRatio = Math.min(Math.max(ratio, MIN_IMAGE_RATIO), MAX_IMAGE_RATIO);
+
+  return (
+    <View className="mb-2.5 overflow-hidden rounded-xl bg-white/10" style={{ aspectRatio }}>
+      {uri ? (
+        <Image source={{ uri }} resizeMode="cover" onError={() => setFailed(true)} className="h-full w-full" />
+      ) : null}
+    </View>
+  );
+}
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const t = useTranslation();
 
@@ -87,6 +135,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   return (
     <Animated.View entering={FadeInDown.duration(220)} className="flex-row items-center justify-end gap-2 pl-1">
       <View className="flex-1 rounded-2xl bg-charcoal-900 px-4 py-3">
+        {isImageAttachment(message.attachment) ? <ChatImage attachment={message.attachment} /> : null}
         <Text className="font-grotesk-medium text-sm text-ink-charcoal">{message.text}</Text>
         <Text className="mt-1 self-end font-grotesk-medium text-xs text-ink-charcoal-muted">
           {formatTime(message.createdAt, t.locale)}
@@ -232,9 +281,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
       <View className="flex-row items-center gap-3 border-b border-cream-300 bg-cream-100 px-6 pb-4 pt-2">
-        <View className="h-11 w-11 items-center justify-center rounded-full bg-orange-500">
-          <Ionicons name="chatbubbles" size={21} color={colors.cream[50]} />
-        </View>
+        <GemLogo size={44} />
         <View className="flex-1">
           <Text className="text-card-title text-ink-cream">
             {contextTask ? contextTask.title : t.chat.inboxTitle}
@@ -250,7 +297,6 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
             )}
           </Text>
         </View>
-        <AccountAvatar size="md" />
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>

@@ -17,7 +17,6 @@ export type NextResponseBody = {
   advice: string;
   plan: { id: string; title: string; estimatedMinutes: number; status: "pending" | "current" | "completed" }[];
   currentStepId: string | null;
-  explanation: string;
 };
 
 const RESPONSE_SCHEMA: GeminiJsonSchema = {
@@ -39,9 +38,8 @@ const RESPONSE_SCHEMA: GeminiJsonSchema = {
       },
     },
     currentStepId: { type: "STRING", nullable: true },
-    explanation: { type: "STRING" },
   },
-  required: ["complexity", "advice", "plan", "explanation"],
+  required: ["complexity", "advice", "plan"],
 };
 
 function fallbackResponse(language: AppLanguage | undefined): NextResponseBody {
@@ -50,7 +48,6 @@ function fallbackResponse(language: AppLanguage | undefined): NextResponseBody {
     advice: aiUnavailableMessage(language),
     plan: [],
     currentStepId: null,
-    explanation: "",
   };
 }
 

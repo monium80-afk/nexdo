@@ -62,12 +62,6 @@ export function computeDeadlineDate(value: DeadlineValue): Date | undefined {
   }
 }
 
-export function parseCustomDeadline(text: string): Date | undefined {
-  if (!text.trim()) return undefined;
-  const date = new Date(text.trim().replace(" ", "T"));
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
 export function SectionHeader({
   icon,
   label,
@@ -95,10 +89,13 @@ export function SectionHeader({
 export function CategoryOption({
   category,
   selected,
+  compact = false,
   onPress,
 }: {
   category: Category;
   selected: boolean;
+  /** The slightly smaller size the Add Task page uses. */
+  compact?: boolean;
   onPress: () => void;
 }) {
   const tint = getCategoryTint(category.color);
@@ -108,7 +105,11 @@ export function CategoryOption({
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      className="flex-1 flex-row items-center gap-2.5 rounded-2xl border px-4 py-3.5"
+      className={
+        compact
+          ? "flex-1 flex-row items-center gap-2 rounded-2xl border px-3.5 py-2.5"
+          : "flex-1 flex-row items-center gap-2.5 rounded-2xl border px-4 py-3.5"
+      }
       style={{
         borderColor: selected ? tint[500] : colors.cream[300],
         backgroundColor: selected ? tint[100] : colors.cream[50],
@@ -123,7 +124,15 @@ export function CategoryOption({
 }
 
 /** Every category — built-in and the user's own from Settings — two to a row. */
-export function CategoryPicker({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
+export function CategoryPicker({
+  selectedId,
+  onSelect,
+  compact = false,
+}: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+  compact?: boolean;
+}) {
   const categories = useCategoryStore((state) => state.categories);
 
   const rows: Category[][] = [];
@@ -138,6 +147,7 @@ export function CategoryPicker({ selectedId, onSelect }: { selectedId: string; o
               key={category.id}
               category={category}
               selected={selectedId === category.id}
+              compact={compact}
               onPress={() => onSelect(category.id)}
             />
           ))}

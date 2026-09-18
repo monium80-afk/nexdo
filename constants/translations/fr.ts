@@ -216,8 +216,7 @@ export const fr: Translations = {
     contextBody: "L'IA lit ces notes lorsqu'elle donne des conseils sur cette tâche ou la découpe.",
     contextPlaceholder: "ex. J'ai déjà terminé les recherches.",
     deleteTask: "Supprimer la tâche",
-    reopen: "Rouvrir la tâche",
-    markComplete: "Marquer terminée",
+    saveChanges: "Enregistrer",
     deleteConfirmTitle: "Supprimer cette tâche ?",
     deleteConfirmBody: "Cette action est irréversible.",
     notePlaceholder: "Que doit savoir l'IA sur cette tâche ?",
@@ -242,9 +241,6 @@ export const fr: Translations = {
     specificDate: "Date / heure précise",
     pickDate: "Choisir dans le calendrier",
     changeDate: "Modifier",
-    dateFormat: "AAAA-MM-JJ HH:mm",
-    dateExample: "ex. 2026-09-15 14:30",
-    dateError: "Saisissez une date et une heure valides.",
     priority: "NIVEAU DE PRIORITÉ",
     priorities: { high: "Priorité haute", medium: "Priorité moyenne", low: "Priorité basse" },
     planSteps: (count: number) => `Étapes du plan (${count})`,
@@ -413,8 +409,6 @@ export const fr: Translations = {
     title: "Gérer les catégories",
     subtitle: "Personnalisez les catégories et les couleurs de vos tâches",
     activeHeading: (count: number) => `CATÉGORIES ACTIVES (${count})`,
-    resetDefaults: "Réinitialiser",
-    activeCount: (count: number) => `${count} ${plural(count, "active", "actives")}`,
     defaultBadge: "Par défaut",
     isDefault: (label: string) => `${label} est la catégorie par défaut`,
     makeDefault: (label: string) => `Définir ${label} par défaut`,
@@ -430,11 +424,6 @@ export const fr: Translations = {
     deleteBodyTasks: (count: number, fallback: string) =>
       `${count} ${plural(count, "tâche sera déplacée", "tâches seront déplacées")} vers ${fallback}.`,
     deleteBodyEmpty: "Aucune tâche n'utilise cette catégorie.",
-    resetTitle: "Réinitialiser les catégories ?",
-    resetBody: (defaults: string, fallback: string) =>
-      `Cela restaure ${defaults} avec leurs noms et couleurs d'origine. Les tâches des catégories que vous avez créées iront dans ${fallback}.`,
-    and: "et",
-    reset: "Réinitialiser",
   },
 
   onboarding: {

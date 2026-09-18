@@ -219,8 +219,7 @@ export const en = {
     contextBody: "The AI reads these notes when it gives advice on this task or breaks it down.",
     contextPlaceholder: "e.g. I already finished the research.",
     deleteTask: "Delete Task",
-    reopen: "Reopen task",
-    markComplete: "Mark Complete",
+    saveChanges: "Save Changes",
     deleteConfirmTitle: "Delete this task?",
     deleteConfirmBody: "This can't be undone.",
     notePlaceholder: "What should the AI know about this task?",
@@ -245,9 +244,6 @@ export const en = {
     specificDate: "Specific date / time",
     pickDate: "Pick on calendar",
     changeDate: "Change",
-    dateFormat: "YYYY-MM-DD HH:mm",
-    dateExample: "e.g. 2026-09-15 14:30",
-    dateError: "Enter a valid date and time.",
     priority: "PRIORITY LEVEL",
     priorities: { high: "High Priority", medium: "Medium Priority", low: "Low Priority" },
     planSteps: (count: number) => `Plan Steps (${count})`,
@@ -416,8 +412,6 @@ export const en = {
     title: "Manage Categories",
     subtitle: "Customize categories and colors for your tasks",
     activeHeading: (count: number) => `ACTIVE CATEGORIES (${count})`,
-    resetDefaults: "Reset defaults",
-    activeCount: (count: number) => `${count} active`,
     defaultBadge: "Default",
     isDefault: (label: string) => `${label} is the default`,
     makeDefault: (label: string) => `Make ${label} the default`,
@@ -433,11 +427,6 @@ export const en = {
     deleteBodyTasks: (count: number, fallback: string) =>
       `${count} ${plural(count, "task", "tasks")} in it will move to ${fallback}.`,
     deleteBodyEmpty: "No tasks use this category.",
-    resetTitle: "Reset categories?",
-    resetBody: (defaults: string, fallback: string) =>
-      `This restores ${defaults} with their original names and colors. Tasks in categories you created move to ${fallback}.`,
-    and: "and",
-    reset: "Reset",
   },
 
   onboarding: {

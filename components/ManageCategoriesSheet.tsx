@@ -4,7 +4,12 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Te
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { ColorSwatchPicker } from "@/components/ColorSwatchPicker";
-import { CATEGORY_COLOR_OPTIONS, getCategoryTint, isBuiltInCategoryId } from "@/constants/categories";
+import {
+  CATEGORY_COLOR_OPTIONS,
+  getCategoryTint,
+  isBuiltInCategoryId,
+  isEditableCategoryId,
+} from "@/constants/categories";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useCategoryStore } from "@/store/useCategoryStore";
@@ -79,22 +84,20 @@ function CategoryForm({
   );
 }
 
-/** Settings → Task categories: rename, recolor, add, delete, reset. */
+/** Settings → Task categories: rename, recolor, add, delete. */
 export function ManageCategoriesSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const t = useTranslation();
   const categories = useCategoryStore((state) => state.categories);
   const addCategory = useCategoryStore((state) => state.addCategory);
   const updateCategory = useCategoryStore((state) => state.updateCategory);
   const deleteCategory = useCategoryStore((state) => state.deleteCategory);
-  const resetDefaults = useCategoryStore((state) => state.resetDefaults);
   const tasks = useTaskStore((state) => state.tasks);
+  // Only the listed rows skip "Other" — name and color checks below still see every category.
+  const editableCategories = categories.filter((category) => isEditableCategoryId(category.id));
 
   const [editingId, setEditingId] = useState<string | null>(null);
   // Remounts the add form after a successful add so it starts fresh.
   const [addFormKey, setAddFormKey] = useState(0);
-
-  const activeCount = (categoryId: string) =>
-    tasks.filter((task) => task.category === categoryId && task.status === "pending").length;
 
   const validate = (label: string, exceptId?: string): string | null => {
     const trimmed = label.trim();
@@ -138,36 +141,19 @@ export function ManageCategoriesSheet({ visible, onClose }: { visible: boolean; 
     );
   };
 
-  const handleReset = () => {
-    const { school, work, personal, other } = t.categories.defaults;
-    Alert.alert(
-      t.manageCategories.resetTitle,
-      t.manageCategories.resetBody(`${school}, ${work}, ${personal} ${t.manageCategories.and} ${other}`, other),
-      [
-        { text: t.common.cancel, style: "cancel" },
-        {
-          text: t.manageCategories.reset,
-          style: "destructive",
-          onPress: () => {
-            resetDefaults();
-            setEditingId(null);
-          },
-        },
-      ],
-    );
-  };
-
   const usedColors = categories.map((category) => category.color);
   const suggestedColor = CATEGORY_COLOR_OPTIONS.find((option) => !usedColors.includes(option.value))?.value ?? "terracotta";
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable className="scrim flex-1 justify-center px-4 py-10" onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        {/* flexShrink (not a % maxHeight) is what caps the sheet at the screen's
+            height — the list below can only scroll once the sheet can't outgrow it. */}
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flexShrink: 1 }}>
           <Pressable
             onPress={() => {}}
             className="overflow-hidden rounded-3xl border border-cream-300 bg-cream-50"
-            style={{ maxHeight: "100%" }}
+            style={{ flexShrink: 1 }}
           >
           <View className="flex-row items-start gap-4 px-6 pt-7">
             <View className="flex-1 gap-1.5">
@@ -193,19 +179,12 @@ export function ManageCategoriesSheet({ visible, onClose }: { visible: boolean; 
             contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 28 }}
             keyboardShouldPersistTaps="handled"
           >
-            <View className="flex-row items-center justify-between gap-3">
-              <Text className="font-grotesk-bold text-[15px] tracking-[0.04em] text-ink-cream">
-                {t.manageCategories.activeHeading(categories.length)}
-              </Text>
-              <AnimatedPressable onPress={handleReset} hitSlop={8} accessibilityRole="button">
-                <Text className="font-grotesk-medium text-[15px] text-ink-cream-muted underline">
-                  {t.manageCategories.resetDefaults}
-                </Text>
-              </AnimatedPressable>
-            </View>
+            <Text className="font-grotesk-bold text-[15px] tracking-[0.04em] text-ink-cream">
+              {t.manageCategories.activeHeading(editableCategories.length)}
+            </Text>
 
             <View className="mt-4 gap-3">
-              {categories.map((category) => {
+              {editableCategories.map((category) => {
                 const tint = getCategoryTint(category.color);
                 const canDelete = categories.length > 1 && !isBuiltInCategoryId(category.id);
 
@@ -238,11 +217,8 @@ export function ManageCategoriesSheet({ visible, onClose }: { visible: boolean; 
                       </Text>
                     </View>
 
-                    <View className="flex-1 items-start gap-1">
-                      <Text numberOfLines={1} className="font-grotesk-regular text-[15px] text-ink-cream-muted">
-                        {t.manageCategories.activeCount(activeCount(category.id))}
-                      </Text>
-                    </View>
+                    {/* Keeps the edit/delete buttons pinned to the right. */}
+                    <View className="flex-1" />
 
                     <View className="flex-row items-center">
                       <AnimatedPressable

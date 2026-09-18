@@ -251,11 +251,12 @@ export function NextTaskCard({
           up as that card becomes the top one. */}
       <View className="gap-4">
         <View className="gap-2">
+          <View className="flex-row items-center gap-1.5 self-start rounded-full bg-orange-500 px-3 py-1.5">
+            <Ionicons name="flame" size={14} color={colors.cream[50]} />
+            <Text className="font-grotesk-bold text-sm text-cream-50">{t.next.priorityRank(rank)}</Text>
+          </View>
+
           <View className="flex-row flex-wrap gap-2">
-            <View className="flex-row items-center gap-1.5 rounded-full bg-orange-500 px-3 py-1.5">
-              <Ionicons name="flame" size={14} color={colors.cream[50]} />
-              <Text className="font-grotesk-bold text-sm text-cream-50">{t.next.priorityRank(rank)}</Text>
-            </View>
             <View className="flex-row items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-3 py-1.5">
               <GemLogo size={13} onDark />
               <Text className="font-grotesk-bold text-sm text-ink-charcoal">{t.tasks.score(task.priorityScore)}</Text>

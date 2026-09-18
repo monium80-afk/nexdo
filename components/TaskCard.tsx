@@ -8,9 +8,16 @@ import { getCategoryTint } from "@/constants/categories";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
-import { getDueInfo } from "@/lib/taskMeta";
+import { getDeadlineUrgency, getDueInfo, type DeadlineUrgency } from "@/lib/taskMeta";
 import { useCategory } from "@/store/useCategoryStore";
 import type { Task } from "@/types/task";
+
+// The deadline tag's icon and text: red when it's close, yellow within the week, green after that.
+const DEADLINE_TAG_COLORS: Record<DeadlineUrgency, { icon: string; label: string }> = {
+  close: { icon: colors.overdue[500], label: "text-overdue-500" },
+  normal: { icon: colors.amber[500], label: "text-amber-500" },
+  far: { icon: colors.olive[500], label: "text-olive-500" },
+};
 
 type TaskCardProps = {
   task: Task;
@@ -25,6 +32,8 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
   const due = getDueInfo(task);
   const isCompleted = task.status === "completed";
   const isOverdue = due.tone === "overdue";
+  // A finished task's tag reads "Completed" rather than a deadline, so it stays neutral.
+  const deadlineColors = isCompleted ? undefined : DEADLINE_TAG_COLORS[getDeadlineUrgency(task)];
 
   const cardVariant = isOverdue ? "card--overdue" : isCompleted ? "card--cream-muted" : "card--cream";
 
@@ -75,8 +84,9 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
       <View className="flex-row flex-wrap gap-2">
         <MetaPill icon={<GemLogo size={13} />} label={t.tasks.score(task.priorityScore)} />
         <MetaPill
-          icon={<Feather name="calendar" size={13} color={colors.ink.creamMuted} />}
+          icon={<Feather name="calendar" size={13} color={deadlineColors?.icon ?? colors.ink.creamMuted} />}
           label={isOverdue ? due.pillLabel : due.label}
+          labelClassName={`font-grotesk-bold ${deadlineColors?.label ?? "text-ink-cream"}`}
         />
         <MetaPill
           icon={<Feather name="clock" size={13} color={colors.ink.creamMuted} />}

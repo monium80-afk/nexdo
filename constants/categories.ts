@@ -38,6 +38,11 @@ export function isBuiltInCategoryId(id: string): id is BuiltInCategoryId {
   return DEFAULT_CATEGORIES.some((category) => category.id === id);
 }
 
+/** "Other" always exists and can't be renamed or recolored, so Settings leaves it out. */
+export function isEditableCategoryId(id: string): boolean {
+  return id !== FALLBACK_CATEGORY_ID;
+}
+
 /**
  * The id a task should use for `id`: itself if that category still exists,
  * otherwise "Other", otherwise the first category left.

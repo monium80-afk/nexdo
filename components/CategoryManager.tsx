@@ -4,7 +4,7 @@ import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { ManageCategoriesSheet } from "@/components/ManageCategoriesSheet";
-import { getCategoryTint } from "@/constants/categories";
+import { getCategoryTint, isEditableCategoryId } from "@/constants/categories";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useCategoryStore } from "@/store/useCategoryStore";
@@ -13,6 +13,7 @@ import { useCategoryStore } from "@/store/useCategoryStore";
 export function CategoryManager() {
   const t = useTranslation();
   const categories = useCategoryStore((state) => state.categories);
+  const editableCategories = categories.filter((category) => isEditableCategoryId(category.id));
   const [open, setOpen] = useState(false);
 
   return (
@@ -30,7 +31,7 @@ export function CategoryManager() {
           <Text className="font-grotesk-semibold text-base text-ink-charcoal">{t.categories.managerTitle}</Text>
           <View className="flex-row items-center gap-2">
             <View className="flex-row gap-1">
-              {categories.slice(0, 6).map((category) => (
+              {editableCategories.slice(0, 6).map((category) => (
                 <View
                   key={category.id}
                   className="h-2 w-2 rounded-full"
@@ -39,7 +40,7 @@ export function CategoryManager() {
               ))}
             </View>
             <Text className="font-grotesk-regular text-xs text-ink-charcoal-muted">
-              {t.categories.count(categories.length)}
+              {t.categories.count(editableCategories.length)}
             </Text>
           </View>
         </View>

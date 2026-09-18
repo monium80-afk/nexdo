@@ -7,6 +7,7 @@ import {
     DEFAULT_CATEGORY_ID,
     findCategory,
     isBuiltInCategoryId,
+    isEditableCategoryId,
     resolveCategoryId,
 } from "@/constants/categories";
 import { ALL_TRANSLATIONS, getTranslations, translate } from "@/lib/i18n";
@@ -38,6 +39,7 @@ type CategoryStore = {
   defaultCategoryId: string;
   /** Returns the new category's id, or undefined when the label is empty. */
   addCategory: (label: string, color: CategoryColor) => string | undefined;
+  /** "Other" can't be renamed or recolored. */
   updateCategory: (id: string, changes: Pick<Category, "label" | "color">) => void;
   /** The last remaining category can't be deleted; a deleted category's tasks move to "Other". */
   deleteCategory: (id: string) => void;
@@ -63,7 +65,7 @@ export const useCategoryStore = create<CategoryStore>()(
 
       updateCategory: (id, changes) => {
         const label = changes.label.trim();
-        if (!label) return;
+        if (!label || !isEditableCategoryId(id)) return;
         set((state) => ({
           categories: state.categories.map((category) =>
             category.id === id ? { ...category, label, color: changes.color } : category,

@@ -1,15 +1,15 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { ContextNoteCard } from "@/components/ContextNoteCard";
+import { ContextNoteCard, type ContextNoteCardHandle } from "@/components/ContextNoteCard";
 import { GemLogo } from "@/components/GemLogo";
-import { TaskEditPanel, type TaskEditChanges } from "@/components/TaskEditPanel";
-import { DeadlineChip, parseCustomDeadline } from "@/components/TaskFormFields";
+import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@/components/TaskEditPanel";
+import { DeadlineChip, DeadlineDatePicker } from "@/components/TaskFormFields";
 import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -44,17 +44,18 @@ export default function TaskDetail() {
   const updateSubtask = useTaskStore((state) => state.updateSubtask);
   const deleteSubtask = useTaskStore((state) => state.deleteSubtask);
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
-  const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const category = useCategory(task?.category ?? "");
   const enterStyle = useScreenEnterAnimation();
 
   const [note, setNote] = useState("");
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [editing, setEditing] = useState(false);
-  const [customPostponeOpen, setCustomPostponeOpen] = useState(false);
-  const [customPostponeText, setCustomPostponeText] = useState("");
+  // The date picked on the "Custom Date..." calendar — null while that calendar is closed.
+  const [customPostponeDate, setCustomPostponeDate] = useState<Date | null>(null);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [editingSubtaskText, setEditingSubtaskText] = useState("");
+  const editPanelRef = useRef<TaskEditPanelHandle>(null);
+  const noteCardRefs = useRef<(ContextNoteCardHandle | null)[]>([]);
 
   if (!task) {
     return (
@@ -71,7 +72,6 @@ export default function TaskDetail() {
   }
 
   const due = getDueInfo(task);
-  const isCompleted = task.status === "completed";
   const contextNotes = task.aiContext.notes;
   const orderedSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const completedSubtaskCount = orderedSubtasks.filter((subtask) => subtask.status === "completed").length;
@@ -79,15 +79,18 @@ export default function TaskDetail() {
   const handlePostpone = (days: number) => {
     const nextDate = computePostponeDate(task.dueDate, days, new Date());
     updateTask(task.id, { dueDate: nextDate.toISOString() });
-    setCustomPostponeOpen(false);
+    setCustomPostponeDate(null);
+  };
+
+  const handleToggleCustomPostpone = () => {
+    // The calendar opens on the day after the current deadline, same as "+1 Day".
+    setCustomPostponeDate(customPostponeDate ? null : computePostponeDate(task.dueDate, 1, new Date()));
   };
 
   const handleCustomPostpone = () => {
-    const parsed = parseCustomDeadline(customPostponeText);
-    if (!parsed) return;
-    updateTask(task.id, { dueDate: parsed.toISOString() });
-    setCustomPostponeOpen(false);
-    setCustomPostponeText("");
+    if (!customPostponeDate) return;
+    updateTask(task.id, { dueDate: customPostponeDate.toISOString() });
+    setCustomPostponeDate(null);
   };
 
   const handleSaveEdit = (changes: TaskEditChanges) => {
@@ -132,6 +135,22 @@ export default function TaskDetail() {
       task.id,
       contextNotes.filter((_, entryIndex) => entryIndex !== index),
     );
+  };
+
+  // Most edits on this page apply right away. This also saves anything still
+  // being typed — the edit panel, a subtask, a note — then closes the page.
+  const handleSaveChanges = () => {
+    // A missing title or a bad duration keeps the page open so the panel can show the error.
+    if (editPanelRef.current && !editPanelRef.current.save()) return;
+
+    if (editingSubtaskId && editingSubtaskText.trim()) updateSubtask(task.id, editingSubtaskId, editingSubtaskText);
+    if (subtaskDraft.trim()) addSubtask(task.id, subtaskDraft);
+
+    const savedNotes = contextNotes.map((entry, index) => noteCardRefs.current[index]?.pendingNote() ?? entry);
+    if (note.trim()) savedNotes.push(note.trim());
+    if (savedNotes.some((entry, index) => entry !== contextNotes[index])) setContextNotes(task.id, savedNotes);
+
+    router.back();
   };
 
   const handleDelete = () => {
@@ -202,22 +221,15 @@ export default function TaskDetail() {
               ))}
               <DeadlineChip
                 label={t.taskDetail.customDate}
-                selected={customPostponeOpen}
-                onPress={() => setCustomPostponeOpen((open) => !open)}
+                selected={customPostponeDate !== null}
+                onPress={handleToggleCustomPostpone}
               />
             </View>
-            {customPostponeOpen ? (
-              <View className="gap-2 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3">
-                <TextInput
-                  value={customPostponeText}
-                  onChangeText={setCustomPostponeText}
-                  placeholder={t.form.dateFormat}
-                  placeholderTextColor={colors.ink.creamMuted}
-                  className="font-grotesk-regular text-sm text-ink-cream"
-                />
+            {customPostponeDate ? (
+              <View className="gap-2">
+                <DeadlineDatePicker value={customPostponeDate} onChange={setCustomPostponeDate} />
                 <AnimatedPressable
                   onPress={handleCustomPostpone}
-                  disabled={!customPostponeText.trim()}
                   className="self-start rounded-2xl bg-orange-500 px-4 py-1.5"
                 >
                   <Text className="font-grotesk-semibold text-xs text-cream-50">{t.taskDetail.setDate}</Text>
@@ -227,7 +239,12 @@ export default function TaskDetail() {
           </View>
 
           {editing ? (
-            <TaskEditPanel task={task} onSave={handleSaveEdit} onCancel={() => setEditing(false)} />
+            <TaskEditPanel
+              ref={editPanelRef}
+              task={task}
+              onSave={handleSaveEdit}
+              onCancel={() => setEditing(false)}
+            />
           ) : (
             <>
               <View className="flex-row items-start justify-between gap-3">
@@ -403,6 +420,9 @@ export default function TaskDetail() {
             {contextNotes.map((entry, index) => (
               <ContextNoteCard
                 key={`${index}-${entry}`}
+                ref={(card) => {
+                  noteCardRefs.current[index] = card;
+                }}
                 note={entry}
                 onSave={(text) => handleUpdateNote(index, text)}
                 onDelete={() => handleDeleteNote(index)}
@@ -435,18 +455,9 @@ export default function TaskDetail() {
             <Feather name="trash-2" size={17} color={colors.overdue[500]} />
             <Text className="font-grotesk-semibold text-sm text-overdue-500">{t.taskDetail.deleteTask}</Text>
           </AnimatedPressable>
-          <AnimatedPressable
-            onPress={() => toggleTaskStatus(task.id)}
-            className={isCompleted ? "btn btn--secondary-cream flex-row gap-2 px-6 py-3" : "btn btn--primary flex-row gap-2 px-6 py-3"}
-          >
-            <Feather name={isCompleted ? "rotate-ccw" : "check"} size={16} color={isCompleted ? colors.ink.cream : colors.cream[50]} />
-            <Text
-              className={
-                isCompleted ? "font-grotesk-bold text-sm text-ink-cream" : "font-grotesk-bold text-sm text-cream-50"
-              }
-            >
-              {isCompleted ? t.taskDetail.reopen : t.taskDetail.markComplete}
-            </Text>
+          <AnimatedPressable onPress={handleSaveChanges} className="btn btn--primary flex-row gap-2 px-6 py-3">
+            <Feather name="check" size={16} color={colors.cream[50]} />
+            <Text className="font-grotesk-bold text-sm text-cream-50">{t.taskDetail.saveChanges}</Text>
           </AnimatedPressable>
         </View>
       </KeyboardAvoidingView>
