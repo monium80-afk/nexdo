@@ -4,6 +4,7 @@ import { Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 
 /** Lets Task Details' "Save Changes" button pick up an edit that wasn't saved on the card. */
@@ -25,6 +26,7 @@ export function ContextNoteCard({
   ref?: Ref<ContextNoteCardHandle>;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note);
 
@@ -54,7 +56,7 @@ export function ContextNoteCard({
           placeholderTextColor={colors.ink.creamMuted}
           multiline
           autoFocus
-          style={{ textAlignVertical: "top", maxHeight: 140 }}
+          style={[{ textAlignVertical: "top", maxHeight: 140 }, rtl]}
           className="font-grotesk-regular text-sm text-ink-cream"
         />
         <View className="flex-row items-center justify-end gap-4">
@@ -67,7 +69,7 @@ export function ContextNoteCard({
             accessibilityRole="button"
             className="rounded-full bg-orange-500 px-3.5 py-1.5"
           >
-            <Text className="font-grotesk-semibold text-xs text-cream-50">{t.common.save}</Text>
+            <Text className="font-grotesk-semibold text-xs text-on-accent">{t.common.save}</Text>
           </AnimatedPressable>
         </View>
       </View>
@@ -76,7 +78,9 @@ export function ContextNoteCard({
 
   return (
     <View className="flex-row items-start gap-3 rounded-xl border border-cream-300 bg-cream-100 py-3 pl-3.5 pr-3">
-      <Text className="flex-1 text-body text-ink-cream">{note}</Text>
+      <Text className="flex-1 text-body text-ink-cream" style={rtl}>
+        {note}
+      </Text>
       <View className="flex-row items-center gap-3.5 pt-0.5">
         <AnimatedPressable onPress={handleStartEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.taskDetail.editNote}>
           <Feather name="edit-2" size={14} color={colors.ink.creamMuted} />

@@ -4,11 +4,8 @@ import { useState, type ReactNode } from "react";
 import { Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { getCategoryTint } from "@/constants/categories";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useCategoryStore } from "@/store/useCategoryStore";
-import type { Category } from "@/types/category";
 import type { TaskPriorityLevel } from "@/types/task";
 
 export type DeadlineValue = "today" | "tomorrow" | "friday" | "weekend" | "nextWeek" | "none";
@@ -82,79 +79,6 @@ export function SectionHeader({
           <Text className="font-grotesk-semibold text-sm text-orange-500">{action.label}</Text>
         </AnimatedPressable>
       ) : null}
-    </View>
-  );
-}
-
-export function CategoryOption({
-  category,
-  selected,
-  compact = false,
-  onPress,
-}: {
-  category: Category;
-  selected: boolean;
-  /** The slightly smaller size the Add Task page uses. */
-  compact?: boolean;
-  onPress: () => void;
-}) {
-  const tint = getCategoryTint(category.color);
-
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      className={
-        compact
-          ? "flex-1 flex-row items-center gap-2 rounded-2xl border px-3.5 py-2.5"
-          : "flex-1 flex-row items-center gap-2.5 rounded-2xl border px-4 py-3.5"
-      }
-      style={{
-        borderColor: selected ? tint[500] : colors.cream[300],
-        backgroundColor: selected ? tint[100] : colors.cream[50],
-      }}
-    >
-      <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tint[500] }} />
-      <Text numberOfLines={1} className="flex-1 font-grotesk-semibold text-sm text-ink-cream">
-        {category.label}
-      </Text>
-    </AnimatedPressable>
-  );
-}
-
-/** Every category — built-in and the user's own from Settings — two to a row. */
-export function CategoryPicker({
-  selectedId,
-  onSelect,
-  compact = false,
-}: {
-  selectedId: string;
-  onSelect: (id: string) => void;
-  compact?: boolean;
-}) {
-  const categories = useCategoryStore((state) => state.categories);
-
-  const rows: Category[][] = [];
-  for (let i = 0; i < categories.length; i += 2) rows.push(categories.slice(i, i + 2));
-
-  return (
-    <View className="gap-3">
-      {rows.map((row) => (
-        <View key={row.map((category) => category.id).join("-")} className="flex-row gap-3">
-          {row.map((category) => (
-            <CategoryOption
-              key={category.id}
-              category={category}
-              selected={selectedId === category.id}
-              compact={compact}
-              onPress={() => onSelect(category.id)}
-            />
-          ))}
-          {/* Keeps an odd one out at half width instead of stretching across the row. */}
-          {row.length === 1 ? <View className="flex-1" /> : null}
-        </View>
-      ))}
     </View>
   );
 }

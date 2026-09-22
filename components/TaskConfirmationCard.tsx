@@ -5,14 +5,13 @@ import { Platform, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
-import { findCategory, getCategoryTint } from "@/constants/categories";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
-import { useCategoryStore } from "@/store/useCategoryStore";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -71,14 +70,12 @@ export function TaskConfirmationCard({
   onChange: (patch: Partial<ExtractedTaskDraft>) => void;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const [isEditing, setIsEditing] = useState(false);
-  const [categoryOpen, setCategoryOpen] = useState(false);
   // "date" then "time" on Android, where the two pickers are separate dialogs.
   const [picker, setPicker] = useState<"date" | "time" | null>(null);
 
   const now = new Date();
-  const categories = useCategoryStore((state) => state.categories);
-  const category = findCategory(categories, draft.category);
   // Scored off the draft's own priority so this preview matches what
   // applyStructuredAction will actually save.
   const priorityScore = computePriorityScore(
@@ -128,20 +125,17 @@ export function TaskConfirmationCard({
             onChangeText={(text) => onChange?.({ title: text })}
             placeholder={t.chat.titlePlaceholder}
             placeholderTextColor={colors.ink.creamMuted}
-            style={{ flex: 1 }}
+            style={[{ flex: 1 }, rtl]}
             className="rounded-xl border border-cream-300 bg-cream-50 px-3 py-2 font-grotesk-bold text-sm text-ink-cream"
           />
         ) : (
-          <Text className="flex-1 font-grotesk-bold text-base text-ink-cream">{draft.title}</Text>
+          <Text className="flex-1 font-grotesk-bold text-base text-ink-cream" style={rtl}>
+            {draft.title}
+          </Text>
         )}
-        <View className="flex-row items-center gap-2">
-          <View className="badge" style={{ backgroundColor: getCategoryTint(category.color)[100] }}>
-            <Text className="font-grotesk-semibold text-xs text-ink-cream">{category.label}</Text>
-          </View>
-          <View className="flex-row items-center gap-1.5 rounded-full bg-charcoal-900 px-2.5 py-1.5">
-            <GemLogo size={14} onDark />
-            <Text className="font-grotesk-bold text-xs text-ink-charcoal">{priorityScore}</Text>
-          </View>
+        <View className="flex-row items-center gap-1.5 rounded-full bg-charcoal-900 px-2.5 py-1.5">
+          <GemLogo size={14} onDark />
+          <Text className="font-grotesk-bold text-xs text-ink-charcoal">{priorityScore}</Text>
         </View>
       </View>
 
@@ -171,21 +165,10 @@ export function TaskConfirmationCard({
             </AnimatedPressable>
           </View>
 
-          <View className="flex-row items-center justify-between gap-2.5">
-            <View className="flex-row items-center gap-2.5">
-              <Feather name="folder" size={14} color={colors.orange[500]} />
-              <AnimatedPressable
-                onPress={() => setCategoryOpen((open) => !open)}
-                className="flex-row items-center gap-2 rounded-xl border border-cream-300 bg-cream-50 px-3 py-2"
-              >
-                <Text className="font-grotesk-medium text-sm text-ink-cream-subtle">{category.label}</Text>
-                <Feather name="chevron-down" size={14} color={colors.ink.creamSubtle} />
-              </AnimatedPressable>
-            </View>
+          <View className="flex-row items-center justify-end">
             <AnimatedPressable
               onPress={() => {
                 setIsEditing(false);
-                setCategoryOpen(false);
                 setPicker(null);
               }}
               hitSlop={8}
@@ -193,32 +176,6 @@ export function TaskConfirmationCard({
               <Text className="font-grotesk-medium text-sm text-ink-cream-subtle underline">{t.chat.doneEditing}</Text>
             </AnimatedPressable>
           </View>
-
-          {categoryOpen ? (
-            <View className="flex-row flex-wrap gap-2 pl-6">
-              {categories.map((option) => {
-                const tint = getCategoryTint(option.color);
-                const selected = category.id === option.id;
-                return (
-                  <AnimatedPressable
-                    key={option.id}
-                    onPress={() => {
-                      onChange?.({ category: option.id });
-                      setCategoryOpen(false);
-                    }}
-                    className="flex-row items-center gap-2 rounded-xl border px-3 py-2"
-                    style={{
-                      borderColor: selected ? tint[500] : colors.cream[300],
-                      backgroundColor: selected ? tint[100] : colors.cream[50],
-                    }}
-                  >
-                    <View className="h-2 w-2 rounded-full" style={{ backgroundColor: tint[500] }} />
-                    <Text className="font-grotesk-medium text-sm text-ink-cream">{option.label}</Text>
-                  </AnimatedPressable>
-                );
-              })}
-            </View>
-          ) : null}
 
           {picker ? (
             <DateTimePicker

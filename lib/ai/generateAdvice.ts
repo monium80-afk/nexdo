@@ -3,7 +3,6 @@ import { taskToContext } from "@/lib/ai/context";
 import { apiPost } from "@/lib/api";
 import { formatDuration } from "@/lib/formatDuration";
 import { getLanguage, translate } from "@/lib/i18n";
-import type { Category } from "@/types/category";
 import type { Task } from "@/types/task";
 
 /**
@@ -23,7 +22,7 @@ function escapeAdviceText(text: string): string {
 
 // Layer B (Execution Coach) — see data/aiPrompts.ts and app/api/next+api.ts.
 // Falls back to the heuristic advice below on any network/parse failure.
-export async function generateAdvice(task: Task, categories: Category[], availableMinutes?: number): Promise<TaskAdvice> {
+export async function generateAdvice(task: Task, availableMinutes?: number): Promise<TaskAdvice> {
   try {
     const existingPlan = (task.subtasks ?? []).map((subtask) => ({
       id: subtask.id,
@@ -32,7 +31,7 @@ export async function generateAdvice(task: Task, categories: Category[], availab
       status: subtask.status,
     }));
     const body: NextRequestBody = {
-      task: taskToContext(task, categories),
+      task: taskToContext(task),
       existingPlan,
       availableMinutes,
       language: getLanguage(),

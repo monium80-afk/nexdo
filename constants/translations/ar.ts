@@ -1,0 +1,447 @@
+import type { Translations } from "@/lib/i18n";
+
+// Arabic copy — same shape as en.ts (TypeScript checks it against that file).
+
+/**
+ * Arabic counts a noun three ways: 2 has its own dual word that already carries
+ * the number, 3–10 take the plural ("3 مهام"), and everything else takes the
+ * singular ("1 مهمة", "11 مهمة").
+ */
+const counted = (count: number, one: string, few: string, two: string) => {
+  if (count === 2) return two;
+  const rest = count % 100;
+  return `${count} ${rest >= 3 && rest <= 10 ? few : one}`;
+};
+
+// Non-human plurals in Arabic take feminine singular agreement, so one form of
+// each adjective covers "مهمة مكتملة" and "مهام مكتملة" alike.
+const SCOPE_ADJECTIVES = { completed: "مكتملة", pending: "قيد الانتظار" } as const;
+
+export const ar: Translations = {
+  // Gregorian calendar and Western digits, so dates match the numbers the rest
+  // of the app prints. Plain "ar" would give Arabic-Indic digits (٢٥), and
+  // "ar-SA" would switch deadlines to the Hijri calendar.
+  locale: "ar-u-ca-gregory-nu-latn",
+
+  common: {
+    cancel: "إلغاء",
+    save: "حفظ",
+    delete: "حذف",
+    done: "تم",
+    close: "إغلاق",
+    tryAgain: "أعد المحاولة",
+    aiUnreachable: "تعذّر الوصول إلى الذكاء الاصطناعي. تحقق من اتصالك وأعد المحاولة.",
+  },
+
+  tabs: {
+    next: "الآن",
+    tasks: "المهام",
+    inbox: "المساعد",
+    settings: "الإعدادات",
+    addTask: "إضافة مهمة",
+  },
+
+  format: {
+    duration: (hours: number, mins: number) => {
+      const minsLabel = `${mins} دقيقة`;
+      const hoursLabel = counted(hours, "ساعة", "ساعات", "ساعتان");
+      if (hours === 0) return minsLabel;
+      if (mins === 0) return hoursLabel;
+      return `${hoursLabel} و${minsLabel}`;
+    },
+    budget: (hours: number, mins: number) => {
+      if (hours === 0) return `${mins} د`;
+      return mins === 0 ? `${hours} س` : `${hours} س ${mins} د`;
+    },
+    taskCount: (count: number) => counted(count, "مهمة", "مهام", "مهمتان"),
+    scopedTaskCount: (count, scope) => {
+      const label = counted(count, "مهمة", "مهام", "مهمتان");
+      return scope === "all" ? label : `${label} ${SCOPE_ADJECTIVES[scope]}`;
+    },
+  },
+
+  due: {
+    completed: "مكتملة",
+    noDeadline: "بلا موعد",
+    overdue: "متأخرة",
+    daysOverdue: (days: number) => `متأخرة ${counted(days, "يوم", "أيام", "يومين")}`,
+    dueAgo: (days: number, time: string) =>
+      days === 1
+        ? `كانت مستحقة أمس عند ${time}`
+        : `كانت مستحقة قبل ${counted(days, "يوم", "أيام", "يومين")} عند ${time}`,
+    dueToday: "مستحقة اليوم",
+    dueTodayBy: (time: string) => `مستحقة اليوم قبل ${time}`,
+    dueTomorrow: "مستحقة غدًا",
+    dueTomorrowAt: (time: string) => `مستحقة غدًا عند ${time}`,
+    inDays: (days: number) => `بعد ${counted(days, "يوم", "أيام", "يومين")}`,
+    dueOnAt: (day: string, time: string) => `مستحقة ${day} عند ${time}`,
+  },
+
+  planTemplate: ["اجمع ما تحتاجه", "أنجز العمل الأساسي", "أنهِ وراجع"],
+
+  next: {
+    allCaughtUp: "كل شيء مُنجز",
+    allCaughtUpBody: "أنجزت كل ما في قائمتك. أضف مهمة جديدة للمتابعة.",
+    addATask: "أضف مهمة",
+    eyebrow: "نكسدو الآن",
+    heading: "ما الذي يمكنك فعله الآن؟",
+    timeQuestion: "كم من الوقت لديك؟",
+    minutesOption: (minutes: number) => `${minutes} دقيقة`,
+    custom: "مدة أخرى...",
+    minutesPlaceholder: "الدقائق، مثلاً 50",
+    minutesUnit: "دقيقة",
+    energyLabel: "مستوى الطاقة والتركيز:",
+    energy: { ready: "جاهز", low: "طاقة منخفضة", procrastinating: "متعثر" },
+    sessionPlan: "خطة الجلسة",
+    total: (duration: string) => `${duration} إجمالاً`,
+    startSession: (duration: string) => `ابدأ الجلسة (${duration})`,
+    swapTasks: "بدّل المهام أو اختر غيرها",
+    stepsCompleted: (done: number, total: number) => `اكتملت ${done}/${total} خطوة`,
+    details: "التفاصيل",
+    rankOf: (rank: number, total: number) => `الأولوية رقم ${rank} من ${total}`,
+    priorityRank: (rank: number) => `الأولوية رقم ${rank}`,
+    startSessionFor: (duration: string) => `ابدأ الجلسة (${duration})`,
+    previous: "السابقة",
+    nextCard: "التالية",
+    pickTasks: "اختر مهامك",
+    useRecommended: "استخدم المقترح",
+  },
+
+  session: {
+    leave: "الخروج من الجلسة",
+    taskOf: (index: number, total: number) => `المهمة ${index} من ${total}`,
+    tasksHeading: "مهام الجلسة والمهام الفرعية",
+    timerTitle: "مؤقت الجلسة",
+    pause: "إيقاف مؤقت",
+    resume: "متابعة",
+    pauseA11y: "إيقاف مؤقت الجلسة",
+    resumeA11y: "متابعة مؤقت الجلسة",
+    restartA11y: "إعادة تشغيل مؤقت الجلسة",
+    remainingOf: (budget: string) => `متبقية من ${budget}`,
+    overBudget: (budget: string) => `تجاوزت ${budget}`,
+    of: (total: number) => `من ${total}`,
+    switchTo: (title: string) => `الانتقال إلى ${title}`,
+    aiAdvice: "نصيحة الذكاء الاصطناعي",
+    closeAdvice: "إغلاق نصيحة الذكاء الاصطناعي",
+    readingTask: "جارٍ قراءة هذه المهمة…",
+    finishSession: "تم — إنهاء الجلسة",
+    nextTask: "أنهيت هذه المهمة ← المهمة التالية",
+    aiBreakdown: "تقسيم بالذكاء الاصطناعي",
+    resetTimer: "إعادة تعيين",
+    pauseTimer: "إيقاف المؤقت",
+    resumeTimer: "متابعة المؤقت",
+    complete: "إكمال",
+    hideAdvice: "إخفاء النصيحة",
+    takeAdvice: "اطلب نصيحة الذكاء الاصطناعي",
+    stuck: "أنا متعثر",
+  },
+
+  breakdown: {
+    eyebrow: "تقسيم بالذكاء الاصطناعي",
+    close: "إغلاق التقسيم",
+    steps: (count: number) => counted(count, "خطوة", "خطوات", "خطوتان"),
+    generating: "جارٍ التوليد…",
+    regenerate: "إعادة التوليد",
+    breakingDown: "جارٍ تقسيم هذه المهمة…",
+    stepPlaceholder: "اكتب وصف الخطوة…",
+    addStep: "أضف خطوة",
+    confirm: "تأكيد هذه الخطوات",
+  },
+
+  stuck: {
+    title: "ما الذي يعيقك؟",
+    reasons: {
+      tooBig: "أكبر من أن أبدأ بها",
+      missing: "ينقصني شيء أحتاجه",
+      noFocus: "لا أستطيع التركيز عليها الآن",
+    },
+    parkNote: "سنؤجلها بضع ساعات وننقلك إلى المهمة التالية.",
+    talkToAi: "تحدّث عنها مع الذكاء الاصطناعي",
+  },
+
+  tasks: {
+    title: "المهام",
+    addTask: "أضف مهمة",
+    searchPlaceholder: "ابحث في المهام...",
+    pendingSuffix: " قيد الانتظار، ",
+    completedSuffix: " مكتملة",
+    overdueCount: (count: number) => `• ${count} متأخرة`,
+    showingPrefix: "عرض ",
+    showingSuffix: (shown: number, total: number) => ` من أصل ${total} مهمة`,
+    emptyTitle: "لا توجد مهام",
+    emptyBody: "جرّب عامل تصفية آخر أو كلمة بحث مختلفة.",
+    statusTitle: "الحالة",
+    sortTitle: "الترتيب حسب",
+    status: { all: "الكل", pending: "قيد الانتظار", completed: "مكتملة", overdue: "متأخرة" },
+    sort: { recent: "الأحدث إضافة", dueDate: "موعد الاستحقاق", priority: "درجة الأولوية" },
+    score: (score: number) => `الدرجة: ${score}`,
+    overdueBadge: "متأخرة",
+  },
+
+  taskDetail: {
+    notFound: "المهمة غير موجودة",
+    goBack: "رجوع",
+    eyebrow: "تفاصيل المهمة",
+    scoreLabel: "الدرجة: ",
+    postponeTitle: "تأجيل المهمة",
+    currentDeadline: (label: string) => `الموعد الحالي: «${label}». أجّله إلى تاريخ لاحق:`,
+    postpone: { oneDay: "+يوم واحد (غدًا)", threeDays: "+3 أيام", oneWeek: "+أسبوع واحد" },
+    customDate: "تاريخ آخر...",
+    setDate: "تأكيد التاريخ",
+    editTask: "تعديل المهمة",
+    due: (label: string) => `الموعد: ${label}`,
+    estimate: (duration: string) => `المدة: ${duration}`,
+    rationaleTitle: "تحليل الأولوية من الذكاء الاصطناعي",
+    generatingAdvice: "جارٍ توليد النصيحة...",
+    subtasks: (done: number, total: number) => `المهام الفرعية (${done}/${total})`,
+    aiPlan: "خطة الذكاء الاصطناعي",
+    addSubtask: "أضف مهمة فرعية...",
+    editSubtask: (label: string) => `تعديل ${label}`,
+    deleteSubtask: (label: string) => `حذف ${label}`,
+    notes: "ملاحظات",
+    contextTitle: "أضف سياقًا للذكاء الاصطناعي",
+    contextBody: "يقرأ الذكاء الاصطناعي هذه الملاحظات عندما ينصحك بشأن هذه المهمة أو يقسّمها.",
+    contextPlaceholder: "مثلاً: أنهيت البحث بالفعل.",
+    deleteTask: "حذف المهمة",
+    saveChanges: "حفظ التغييرات",
+    deleteConfirmTitle: "حذف هذه المهمة؟",
+    deleteConfirmBody: "لا يمكن التراجع عن هذا.",
+    notePlaceholder: "ما الذي يجب أن يعرفه الذكاء الاصطناعي عن هذه المهمة؟",
+    editNote: "تعديل الملاحظة",
+    deleteNote: "حذف الملاحظة",
+  },
+
+  form: {
+    eyebrow: "إدخال يدوي",
+    title: "مهمة جديدة",
+    taskTitle: "عنوان المهمة",
+    titlePlaceholder: "مثلاً: إنهاء تقرير مختبر الكيمياء العضوية",
+    titleRequired: "عنوان المهمة مطلوب.",
+    duration: "المدة المقدّرة",
+    customDuration: "مدة مخصصة",
+    minutesPlaceholder: "الدقائق، مثلاً 50",
+    minutesUnit: "دقيقة",
+    durationError: "أدخل عدد دقائق صحيحًا أكبر من صفر.",
+    deadline: "الموعد النهائي",
+    specificDate: "تاريخ / وقت محدد",
+    pickDate: "اختر من التقويم",
+    changeDate: "تغيير",
+    priority: "مستوى الأولوية",
+    priorities: { high: "أولوية عالية", medium: "أولوية متوسطة", low: "أولوية منخفضة" },
+    planSteps: (count: number) => `خطوات الخطة (${count})`,
+    optionalPlan: "خطة خطوات اختيارية",
+    stepPlaceholder: "مثلاً: الخطوة 1: كتابة المقدمة",
+    stepMinutes: (minutes: number) => `${minutes} د`,
+    notesTitle: "ملاحظات وسياق (اختياري)",
+    notesPlaceholder: "أضف المتطلبات الأساسية أو التعليمات أو الروابط...",
+    openAiChat: "افتح محادثة الذكاء الاصطناعي بدلاً من ذلك",
+    addTask: "أضف المهمة",
+    deadlines: {
+      today: "اليوم",
+      tomorrow: "غدًا",
+      friday: "الجمعة القادمة",
+      weekend: "عطلة نهاية الأسبوع",
+      nextWeek: "الأسبوع القادم",
+      none: "بلا موعد",
+    },
+    durationOptions: {
+      15: "15 د",
+      30: "30 د",
+      45: "45 د",
+      60: "ساعة",
+      90: "ساعة ونصف",
+      120: "ساعتان",
+      180: "3 ساعات+",
+    },
+    editEyebrow: "تعديل المهمة",
+    editTitlePlaceholder: "عنوان المهمة",
+    editCurrentDeadline: (label: string) => `الموعد الحالي: ${label}`,
+    deadlineRemoved: "سيُحذف الموعد النهائي.",
+    newDeadline: (label: string) => `الموعد الجديد: ${label}`,
+    saveChanges: "حفظ التغييرات",
+  },
+
+  chat: {
+    welcome:
+      "أهلاً بك في مساعد نكسدو. أفرغ هنا أفكارك ومهامك وملاحظاتك الصوتية وصورك. يمكنك أيضًا إدارة نظامك بالكامل من هنا — أخبرني بوضعك («لدي 30 دقيقة فقط» أو «لن أتمكن من إنهاء المشروع في عطلة نهاية الأسبوع» أو «موعد طبيب الأسنان أهم») وسأعدّل خطتك.",
+    inboxTitle: "مساعد نكسدو",
+    contextSubtitle: "اطلب مني تحليل هذه المهمة أو تعديلها أو تحديثها.",
+    activeTasksSuffix: " مهمة نشطة في قائمتك",
+    typing: "يكتب…",
+    addAll: (count: number) => `أضف ${counted(count, "المهمة", "المهام", "المهمتين")} كلها`,
+    yesDoIt: "نعم، تفضّل",
+    openNext: (minutes: number) => `افتح «الآن» (${minutes} دقيقة)`,
+    starterSuggestions: {
+      "capacity-20": "لدي 20 دقيقة فقط الآن",
+      "whats-next": "ما الذي يجب أن أفعله تاليًا؟",
+      "reschedule-overdue": "أعد جدولة كل ما هو متأخر",
+      "brain-dump": "يجب أن أنهي مقال التاريخ قبل الجمعة وأتصل بطبيب الأسنان غدًا",
+    },
+    quickActions: {
+      "whats-next": "إضافة",
+      "breakdown-top": "إتمام",
+      "quick-win": "حذف",
+      "overdue-catchup": "تعديل",
+      "break-down": "تقسيم",
+      prioritize: "ترتيب الأولويات",
+    },
+    attachmentReplies: {
+      photo: "لم أجد شيئًا مقروءًا في هذه الصورة — جرّب صورة أوضح، أو اكتبها بدلاً من ذلك.",
+      voice: "لم ألتقط هذا التسجيل جيدًا — أعد المحاولة في مكان أهدأ، أو اكتبها بدلاً من ذلك.",
+      document: "لم أتمكن من استخراج أي نص من هذا الملف — جرّب ملفًا آخر، أو اكتبها بدلاً من ذلك.",
+    },
+    couldntCatch: "لم أفهم ذلك",
+    couldntTranscribe: "تعذّر التفريغ النصي",
+    complexity: { simple: "بسيطة", medium: "متوسطة", complex: "معقدة" },
+    taskRead: (title: string, complexity: string, advice: string) =>
+      `إليك قراءتي لـ «${title}» — إنها مهمة ${complexity}. ${advice}`,
+    titlePlaceholder: "عنوان المهمة",
+    minutesPlaceholder: "الدقائق",
+    doneEditing: "انتهيت من التعديل",
+    editDetails: "تعديل تفاصيل المهمة",
+    dismiss: "تجاهل",
+    addTask: "أضف المهمة",
+    recordVoice: "تسجيل ملاحظة صوتية",
+    stopRecording: "إيقاف التسجيل",
+    takePhoto: "التقاط صورة",
+    attachDocument: "إرفاق مستند",
+    recording: (duration: string) => `جارٍ التسجيل… ${duration}`,
+    transcribing: "جارٍ التفريغ النصي…",
+    inputPlaceholder: "اكتب مهامك أو أملِها أو صوّرها...",
+    attachmentPlaceholder: "أضف تعليمات (اختياري)...",
+    removeAttachment: "إزالة المرفق",
+    documentLabel: "مستند",
+    send: "إرسال الرسالة",
+    micPermissionTitle: "مطلوب الوصول إلى الميكروفون",
+    micPermissionBody: "يحتاج نكسدو إلى الميكروفون لتسجيل الملاحظات الصوتية. يمكنك السماح بذلك من الإعدادات.",
+    cameraPermissionTitle: "مطلوب الوصول إلى الكاميرا",
+    cameraPermissionBody: "يحتاج نكسدو إلى الكاميرا لالتقاط الصور. يمكنك السماح بذلك من الإعدادات.",
+    voiceNoteLabel: (duration: string) => `ملاحظة صوتية (${duration})`,
+    photoLabel: "صورة مرفقة",
+  },
+
+  assistant: {
+    foundOne: (title: string) => `وجدت مهمة واحدة: «${title}». هل أضيفها؟`,
+    foundMany: (count: number, titles: string) =>
+      `وجدت ${counted(count, "مهمة", "مهام", "مهمتين")}: ${titles}. هل أضيفها؟`,
+    confirmBulkDelete: (countLabel: string, includesCompleted: boolean) =>
+      `سيؤدي هذا إلى حذف ${countLabel}${includesCompleted ? " (قيد الانتظار والمكتملة)" : ""}. هل أتابع؟`,
+    goAhead: "هل تريد مني أن أتابع؟",
+    noPendingToComplete: "ليس لديك أي مهام قيد الانتظار لتحديدها كمنجزة.",
+    noScopedToDelete: (scope: "completed" | "pending") =>
+      `ليس لديك أي مهام ${SCOPE_ADJECTIVES[scope]} لحذفها.`,
+    noTasksToDelete: "ليس لديك أي مهام لحذفها.",
+    done: "تم.",
+    wontChange: "لا مشكلة — لن أغيّر شيئًا.",
+    nothingToUndo: "لا يوجد ما يمكن التراجع عنه.",
+    undone: "تم التراجع.",
+    added: (title: string) => `أضفت «${title}» إلى مهامك.`,
+    addedMany: (count: number, titles: string) => `أضفت ${counted(count, "مهمة", "مهام", "مهمتين")}: ${titles}.`,
+    updated: (title: string) => `حدّثت «${title}».`,
+    markedDone: (title: string) => `حدّدت «${title}» كمنجزة.`,
+    markedAllDone: (countLabel: string) => `حدّدت ${countLabel} كمنجزة.`,
+    deleted: (title: string) => `حذفت «${title}».`,
+    deletedMany: (countLabel: string) => `حذفت ${countLabel}.`,
+    loggedContext: (title: string) => `فهمت — سجّلت ذلك على «${title}».`,
+    rescheduled: (title: string) => `أعدت جدولة «${title}».`,
+    skipped: (title: string) => `فهمت — لن أقترح «${title}» لبعض الوقت.`,
+    brokeDown: (title: string, count: number) => `قسّمت «${title}» إلى ${counted(count, "خطوة", "خطوات", "خطوتين")}.`,
+    redirectNext: (minutes: number) => `جهّزت صفحة «الآن» لمدة ${minutes} دقيقة.`,
+    fallbackTask: "المهمة",
+    fallbackYourTask: "مهمتك",
+    fallbackThat: "هذه",
+    whichOne: (titles: string) => `أيها تقصد: ${titles}؟`,
+    whichDelete: "أي مهمة أحذف؟",
+    overdueWorkflow: (text: string) => `سأساعدك في «${text}» دون تغيير أي مهمة الآن.`,
+    bestNext: (title: string, score: number) => `أفضل خطوة تالية لك هي «${title}» — درجة الأولوية ${score}.`,
+    allCaughtUp: "كل شيء مُنجز — لا يوجد شيء قيد الانتظار الآن.",
+    noTaskFound: "لم أجد مهمة في ذلك — جرّب أن تسمّي ما تريد فعله، مثل «تنظيف المنزل غدًا».",
+    adviceDoNow: (label: string, duration: string) => `افعل هذا الآن: ${label} (~${duration}).`,
+    adviceJustDo: (title: string, duration: string) => `ابدأ فحسب — «${title}» تستغرق حوالي ${duration}.`,
+    urgencyHigh: "هذه من أكثر مهامك إلحاحًا",
+    urgencyMedium: "من الجدير الشروع فيها قريبًا",
+    urgencyLow: "لا داعي للعجلة، لكنها على قائمتك",
+    adviceDetail: (score: number, urgency: string) => `درجة الأولوية ${score}/100 — ${urgency}.`,
+  },
+
+  settings: {
+    title: "الإعدادات",
+    preferences: "تفضيلات نكسدو",
+    aiChat: "محادثة الذكاء الاصطناعي",
+    autoMode: "الوضع التلقائي",
+    autoModeBody: "إضافة المهام وتحديثها فورًا، دون أن أطلب منك التأكيد أولاً.",
+    clearHistory: "مسح سجل المحادثة",
+    clearConfirmTitle: "مسح سجل المحادثة؟",
+    clearConfirmBody: "سيؤدي هذا إلى حذف كل رسائل محادثة الذكاء الاصطناعي. لن تتأثر مهامك.",
+    clear: "مسح",
+    historyCleared: "تم مسح سجل المحادثة.",
+    historyClearFailed: "تم المسح على هذا الجهاز، لكن تعذّر مسح النسخة المتزامنة. أعد المحاولة.",
+    appearance: "المظهر",
+    theme: "السمة",
+    themes: { light: "فاتح", dark: "داكن", system: "النظام" },
+    language: "اللغة",
+    signOut: "تسجيل الخروج",
+    signingOut: "جارٍ تسجيل الخروج…",
+    signOutCleanupError: "تم تسجيل الخروج، لكن تنظيف البيانات المحلية يحتاج إلى مراجعة.",
+    signOutError: "تعذّر تسجيل الخروج. أعد المحاولة.",
+  },
+
+  profile: {
+    addName: "أضف اسم مستخدم",
+    changePhoto: "تغيير صورة الملف الشخصي",
+    editName: "تعديل اسم المستخدم",
+    username: "اسم المستخدم",
+    saving: "جارٍ الحفظ…",
+    photoError: "تعذّر تحديث صورتك. أعد المحاولة.",
+    nameRequired: "أضف اسم مستخدم.",
+    nameError: "تعذّر حفظ اسم المستخدم. أعد المحاولة.",
+  },
+
+  onboarding: {
+    eyebrow: "لنبدأ",
+    next: "الخطوة التالية",
+    stickyNotes: ["موعد طبيب الأسنان؟", "امتحان الأسبوع القادم", "التسوّق", "الرد على البريد"],
+    headline: "كفى حيرة بشأن ما تفعله تاليًا.",
+    body: "أفرغ كل ما يشغل بالك. ينظّمه نكسدو ويكتشف المواعيد النهائية ويخبرك بما يستحق انتباهك.",
+    nextUp: "التالي",
+    sampleTask: "إنهاء تقرير مختبر الكيمياء",
+    dueTomorrow: "مستحقة غدًا",
+  },
+
+  onboardingSort: {
+    headline: "كل ما يدور في رأسك.\nاسحبه ليصبح مرتّبًا.",
+    body: "اسحب الخط إلى الأسفل — وشاهد الفوضى ترتّب نفسها في خطة.",
+    unsorted: "غير مرتّبة",
+    sorted: "مرتّبة",
+    priority: { high: "عالية", medium: "متوسطة", low: "منخفضة" },
+    dragHandle: "اسحب لترتيب مهامك",
+  },
+
+  auth: {
+    welcomeBack: "أهلاً بعودتك.",
+    signInSubtitle: "سجّل الدخول لتكمل من حيث توقفت.",
+    email: "البريد الإلكتروني",
+    password: "كلمة المرور",
+    logIn: "تسجيل الدخول",
+    continueWithEmail: "أو تابع بالبريد الإلكتروني",
+    noAccount: "ليس لديك حساب؟",
+    signUp: "إنشاء حساب",
+    signUpButton: "إنشاء حساب",
+    haveAccount: "لديك حساب بالفعل؟",
+    terms: "بالمتابعة فإنك توافق على شروط نكسدو وسياسة الخصوصية.",
+    invalidCode: "رمز غير صالح. أعد المحاولة.",
+    sendCodeError: "تعذّر إرسال رمز التحقق. أعد المحاولة.",
+    signUpTitle: "لا تفقد خطتك.",
+    signUpSubtitle: "3 مهام مرتبة وجاهزة. أنشئ حسابًا لحفظها والمتابعة.",
+    plannedTasks: [
+      { title: "شراء البقالة", when: "الليلة" },
+      { title: "إنهاء واجب الرياضيات", when: "الجمعة" },
+      { title: "الاتصال بطبيب الأسنان", when: "غدًا" },
+    ],
+    continueWithGoogle: "تابع باستخدام Google",
+    continueWithApple: "تابع باستخدام Apple",
+    checkEmail: "تحقق من بريدك الإلكتروني",
+    codeSentTo: "أرسلنا رمزًا من 6 أرقام إلى",
+    somethingWrong: "حدث خطأ ما. أعد المحاولة.",
+  },
+};

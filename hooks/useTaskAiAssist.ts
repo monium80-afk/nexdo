@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
-import { useCategoryStore } from "@/store/useCategoryStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
@@ -19,7 +18,6 @@ export type AiRequest<T> =
  *   steps stay checked off), and "Regenerate" asks for a different split.
  */
 export function useTaskAiAssist(task: Task, availableMinutes?: number) {
-  const categories = useCategoryStore((state) => state.categories);
   const replaceRemainingSteps = useTaskStore((state) => state.replaceRemainingSteps);
 
   const [advice, setAdvice] = useState<AiRequest<TaskAdvice>>({ status: "idle" });
@@ -43,7 +41,7 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
     const requestId = ++adviceRequestId.current;
     setAdvice({ status: "loading" });
     // generateAdvice never throws — it falls back to heuristic advice offline.
-    const result = await generateAdvice(task, categories, availableMinutes);
+    const result = await generateAdvice(task, availableMinutes);
     if (requestId !== adviceRequestId.current) return;
     setAdvice(result.headline || result.detail ? { status: "ready", data: result } : { status: "error" });
   };
@@ -59,7 +57,7 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
     try {
       // The task's current unfinished steps go along with the request, so the
       // AI proposes a different split rather than the same one again.
-      const steps = await suggestBreakdown(task, categories, { availableMinutes });
+      const steps = await suggestBreakdown(task, { availableMinutes });
       if (requestId !== breakdownRequestId.current) return;
       if (steps.length === 0) {
         setBreakdownStatus("error");

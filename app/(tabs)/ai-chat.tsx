@@ -12,16 +12,15 @@ import { InboxInput } from "@/components/InboxInput";
 import { SuggestionChip } from "@/components/SuggestionChip";
 import { TaskConfirmationCard } from "@/components/TaskConfirmationCard";
 import { colors } from "@/constants/theme";
-import type { ExtractTextRequestBody, ExtractTextResponseBody } from "@/app/api/extract-text+api";
 import { INBOX_QUICK_ACTIONS } from "@/data/aiPrompts";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { adviceToText, generateAdvice } from "@/lib/ai/generateAdvice";
-import { readFileAsBase64, resolveMimeType } from "@/lib/ai/media";
-import { apiPost } from "@/lib/api";
-import { translate } from "@/lib/i18n";
+import { extractAttachmentText } from "@/lib/ai/media";
+import { isImageAttachment, messageAttachments } from "@/lib/chatAttachments";
+import { getLanguage, translate } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
 import { getAttachmentSignedUrl, isStoragePath, uploadAttachment } from "@/lib/supabaseStorage";
-import { useCategoryStore } from "@/store/useCategoryStore";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -68,11 +67,6 @@ function AccountAvatar({ size }: { size: "sm" | "md" }) {
   );
 }
 
-// A camera photo, or an image file picked with the paperclip.
-function isImageAttachment(attachment: ChatAttachment | undefined): attachment is ChatAttachment {
-  return attachment?.kind === "photo" || Boolean(attachment?.mimeType?.startsWith("image/"));
-}
-
 /** An image the user sent, shown inside their bubble like a regular chat attachment. */
 function ChatImage({ attachment }: { attachment: ChatAttachment }) {
   // Once the upload lands, the message's uri is swapped for a storage path. This
@@ -112,8 +106,30 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
   );
 }
 
+/**
+ * A voice note or document the user sent. There's nothing to show for these
+ * the way there is for an image, so a small chip stands in — otherwise a
+ * message like "summarize this" would look like it was sent with nothing.
+ */
+function AttachmentChip({ attachment }: { attachment: ChatAttachment }) {
+  const t = useTranslation();
+  return (
+    <View className="mb-2 flex-row items-center gap-2 self-start rounded-lg bg-white/10 px-2.5 py-1.5">
+      <Feather
+        name={attachment.kind === "voice" ? "mic" : "paperclip"}
+        size={13}
+        color={colors.ink.charcoalMuted}
+      />
+      <Text numberOfLines={1} className="font-grotesk-medium text-xs text-ink-charcoal-muted">
+        {attachment.kind === "voice" ? attachment.label : (attachment.name ?? t.chat.documentLabel)}
+      </Text>
+    </View>
+  );
+}
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const t = useTranslation();
+  const rtl = useRtlText();
 
   if (message.role === "ai") {
     return (
@@ -123,7 +139,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         </View>
         <View className="card card--cream-elevated flex-1 gap-2.5 p-4">
           {/* The welcome message is app copy, so it follows the current language. */}
-          <Text className="text-quote text-ink-cream">{message.id === "welcome" ? t.chat.welcome : message.text}</Text>
+          <Text className="text-quote text-ink-cream" style={rtl}>
+            {message.id === "welcome" ? t.chat.welcome : message.text}
+          </Text>
           <Text className="self-end font-grotesk-medium text-xs text-ink-cream-muted">
             {formatTime(message.createdAt, t.locale)}
           </Text>
@@ -132,11 +150,25 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     );
   }
 
+  // Images render as themselves, everything else as a chip. Either way the
+  // user's own text is what's shown as text — never a file name.
+  const attachments = messageAttachments(message);
+
   return (
     <Animated.View entering={FadeInDown.duration(220)} className="flex-row items-center justify-end gap-2 pl-1">
       <View className="flex-1 rounded-2xl bg-charcoal-900 px-4 py-3">
-        {isImageAttachment(message.attachment) ? <ChatImage attachment={message.attachment} /> : null}
-        <Text className="font-grotesk-medium text-sm text-ink-charcoal">{message.text}</Text>
+        {attachments.map((attachment, index) =>
+          isImageAttachment(attachment) ? (
+            <ChatImage key={`${attachment.uri}-${index}`} attachment={attachment} />
+          ) : (
+            <AttachmentChip key={`${attachment.uri}-${index}`} attachment={attachment} />
+          ),
+        )}
+        {message.text ? (
+          <Text className="font-grotesk-medium text-sm text-ink-charcoal" style={rtl}>
+            {message.text}
+          </Text>
+        ) : null}
         <Text className="mt-1 self-end font-grotesk-medium text-xs text-ink-charcoal-muted">
           {formatTime(message.createdAt, t.locale)}
         </Text>
@@ -169,7 +201,6 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const isAiTyping = useChatStore((state) => state.isAiTyping);
   const sendMessage = useChatStore((state) => state.sendMessage);
   const seedMessage = useChatStore((state) => state.seedMessage);
-  const updateMessageAttachment = useChatStore((state) => state.updateMessageAttachment);
   const pendingActions = useChatStore((state) => state.pendingActions);
   const confirmPendingActions = useChatStore((state) => state.confirmPendingActions);
   const confirmPendingDraft = useChatStore((state) => state.confirmPendingDraft);
@@ -189,6 +220,10 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const contextTask = contextTaskId ? tasks.find((task) => task.id === contextTaskId) : undefined;
 
   const [draft, setDraft] = useState("");
+  // Photos/documents captured but not sent yet. They sit in the composer so
+  // the user can add instructions, attach more, or remove them again —
+  // nothing is uploaded or read until Send.
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const aiAutoMode = useSettingsStore((state) => state.aiAutoMode);
   const analysisSeededFor = useRef<string | null>(null);
@@ -199,7 +234,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     const task = useTaskStore.getState().tasks.find((candidate) => candidate.id === contextTaskId);
     if (!task) return;
     let cancelled = false;
-    generateAdvice(task, useCategoryStore.getState().categories, availableMinutes).then((advice) => {
+    generateAdvice(task, availableMinutes).then((advice) => {
       if (cancelled) return;
       const copy = translate().chat;
       seedMessage(copy.taskRead(task.title, copy.complexity[task.complexity], adviceToText(advice)), task.id);
@@ -210,10 +245,43 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     };
   }, [contextTaskId, availableMinutes, seedMessage]);
 
-  const handleSend = (text: string, attachment?: ChatAttachment) => {
-    if (!text.trim()) return;
-    sendMessage(text, attachment, contextTaskId);
+  // Local file:// uris don't survive a reinstall or another device — the
+  // Files are uploaded before the message is written so synced devices only
+  // receive storage paths. Failed uploads are left out of the sent message.
+  const uploadAttachments = async (attachments: ChatAttachment[]): Promise<ChatAttachment[]> => {
+    if (!user) return [];
+    const stored = await Promise.all(
+      attachments.map(async (attachment, index) => {
+        try {
+          const path = await uploadAttachment(
+            attachment.uri,
+            user.id,
+            attachment.name ?? `${attachment.kind}-${Date.now()}-${index}`,
+            attachment.mimeType,
+          );
+          return { ...attachment, uri: path };
+        } catch (error) {
+          console.warn("[ai-chat] attachment upload failed", error);
+          return null;
+        }
+      }),
+    );
+    return stored.filter((attachment): attachment is ChatAttachment => attachment !== null);
+  };
+
+  // The one place a message leaves this screen. Clearing the draft and the
+  // staged files here is also what stops the same files being sent twice:
+  // the send button goes disabled on the very next render.
+  const handleSend = async (text: string, attachments: ChatAttachment[]) => {
+    if (!text.trim() && attachments.length === 0) return;
     setDraft("");
+    setPendingAttachments([]);
+    const storedAttachments = attachments.length > 0 ? await uploadAttachments(attachments) : [];
+    sendMessage(text, storedAttachments, contextTaskId);
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setPendingAttachments((current) => current.filter((_, i) => i !== index));
   };
 
   // Quick-action chips (Add, Mark complete, Remove, Change, Break down, Prioritize) don't
@@ -229,22 +297,19 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     router.push({ pathname: "/(tabs)", params: minutes ? { minutes: String(minutes) } : undefined });
   };
 
-  const handleAttachment = async (attachment: ChatAttachment) => {
-    posthog.capture("inbox_attachment_captured", { kind: attachment.kind });
+  // A batch: the document picker can hand back several files at once.
+  const handleAttachment = async (attachments: ChatAttachment[]) => {
+    if (attachments.length === 0) return;
+    attachments.forEach((attachment) => posthog.capture("inbox_attachment_captured", { kind: attachment.kind }));
 
     // With auto mode off, a voice note isn't sent — its transcript lands in
     // the input box so the user can check/edit it and send it themselves.
+    // Recording only ever produces one file, so this branch is never a batch.
+    const [attachment] = attachments;
     if (attachment.kind === "voice" && !aiAutoMode) {
       setIsTranscribing(true);
       try {
-        const base64 = await readFileAsBase64(attachment.uri);
-        const request: ExtractTextRequestBody = {
-          mimeType: resolveMimeType(attachment),
-          base64,
-          kind: attachment.kind,
-        };
-        const { text } = await apiPost<ExtractTextResponseBody>("/api/extract-text", request);
-        const transcript = text.trim();
+        const transcript = await extractAttachmentText(attachment, { language: getLanguage() });
         if (transcript) {
           setDraft((current) => (current.trim() ? `${current.trimEnd()} ${transcript}` : transcript));
         } else {
@@ -259,23 +324,16 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
       return;
     }
 
-    const messageId = sendMessage(attachment.label, attachment, contextTaskId);
-
-    // Local file:// uris don't survive a reinstall or another device — push
-    // the file to Supabase Storage in the background and swap the message's
-    // attachment over to the storage path once it lands.
-    if (!user || !messageId) return;
-    try {
-      const path = await uploadAttachment(
-        attachment.uri,
-        user.id,
-        attachment.name ?? `${attachment.kind}-${Date.now()}`,
-        attachment.mimeType,
-      );
-      updateMessageAttachment(messageId, { ...attachment, uri: path });
-    } catch (error) {
-      console.warn("[ai-chat] attachment upload failed", error);
+    // Auto mode on means "don't make me confirm things" — so photos and
+    // documents fire straight away, carrying whatever is already typed.
+    if (aiAutoMode) {
+      handleSend(draft, [...pendingAttachments, ...attachments]);
+      return;
     }
+
+    // Auto mode off: stage them in the composer instead. Nothing is read or
+    // uploaded until Send, so removing one here costs nothing.
+    setPendingAttachments((current) => [...current, ...attachments]);
   };
 
   return (
@@ -379,8 +437,10 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           <InboxInput
             value={draft}
             onChangeText={setDraft}
-            onSend={() => handleSend(draft)}
+            onSend={() => handleSend(draft, pendingAttachments)}
             onAttachment={handleAttachment}
+            attachments={pendingAttachments}
+            onRemoveAttachment={handleRemoveAttachment}
             isTranscribing={isTranscribing}
           />
         </View>

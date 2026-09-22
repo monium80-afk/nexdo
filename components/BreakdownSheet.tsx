@@ -4,6 +4,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View 
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -29,6 +30,7 @@ export function BreakdownSheet({
   onClose: () => void;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const addSubtask = useTaskStore((state) => state.addSubtask);
   const deleteSubtask = useTaskStore((state) => state.deleteSubtask);
   const [addingStep, setAddingStep] = useState(false);
@@ -44,6 +46,14 @@ export function BreakdownSheet({
     setAddingStep(false);
   };
 
+  // The steps are already on the task as they're generated or added, so
+  // confirming just settles a step still being typed and closes the sheet —
+  // it's the "this is my plan" moment, not a save.
+  const handleConfirm = () => {
+    handleAddStep();
+    onClose();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-center bg-black/70 px-2.5 py-10" onPress={onClose}>
@@ -54,8 +64,12 @@ export function BreakdownSheet({
         >
           <View className="flex-row items-start justify-between gap-4">
             <View className="flex-1 gap-1.5">
-              <Text className="eyebrow text-orange-500">{t.breakdown.eyebrow}</Text>
-              <Text className="text-card-title text-ink-charcoal">{task.title}</Text>
+              <Text className="eyebrow text-orange-500" style={rtl}>
+                {t.breakdown.eyebrow}
+              </Text>
+              <Text className="text-card-title text-ink-charcoal" style={rtl}>
+                {task.title}
+              </Text>
             </View>
             <AnimatedPressable
               onPress={onClose}
@@ -79,11 +93,11 @@ export function BreakdownSheet({
               style={isLoading ? { opacity: 0.75 } : undefined}
             >
               {isLoading ? (
-                <ActivityIndicator size="small" color={colors.cream[50]} />
+                <ActivityIndicator size="small" color={colors.onAccent} />
               ) : (
-                <Feather name="refresh-cw" size={16} color={colors.cream[50]} />
+                <Feather name="refresh-cw" size={16} color={colors.onAccent} />
               )}
-              <Text className="font-grotesk-bold text-[15px] text-cream-50">
+              <Text className="font-grotesk-bold text-[15px] text-on-accent">
                 {isLoading ? t.breakdown.generating : t.breakdown.regenerate}
               </Text>
             </AnimatedPressable>
@@ -96,7 +110,9 @@ export function BreakdownSheet({
           <View className="mt-4 h-px bg-white/10" />
 
           <ScrollView
-            style={{ flexGrow: 0, marginTop: 20 }}
+            // Shrinks so a long list scrolls inside the sheet instead of
+            // pushing the confirm button past its bottom edge.
+            style={{ flexGrow: 0, flexShrink: 1, marginTop: 20 }}
             contentContainerStyle={{ gap: 10 }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -131,9 +147,10 @@ export function BreakdownSheet({
                           : "h-5 w-5 rounded-md border-2 border-white/25"
                       }
                     >
-                      {done ? <Feather name="check" size={12} color={colors.cream[50]} /> : null}
+                      {done ? <Feather name="check" size={12} color={colors.onAccent} /> : null}
                     </View>
                     <Text
+                      style={rtl}
                       className={
                         done
                           ? "flex-1 font-grotesk-medium text-[15px] leading-5 text-ink-charcoal-muted line-through"
@@ -166,6 +183,7 @@ export function BreakdownSheet({
                   placeholderTextColor={colors.ink.charcoalMuted}
                   returnKeyType="done"
                   autoFocus
+                  style={rtl}
                   className="py-1.5 font-grotesk-medium text-[15px] text-ink-charcoal"
                 />
               </View>
@@ -181,6 +199,17 @@ export function BreakdownSheet({
               </AnimatedPressable>
             )}
           </ScrollView>
+
+          <AnimatedPressable
+            onPress={handleConfirm}
+            disabled={isLoading || (steps.length === 0 && stepDraft.trim().length === 0)}
+            accessibilityRole="button"
+            className="mt-5 flex-row items-center justify-center gap-2.5 rounded-full bg-orange-500 px-5 py-4"
+            style={isLoading || (steps.length === 0 && stepDraft.trim().length === 0) ? { opacity: 0.4 } : undefined}
+          >
+            <Feather name="check" size={18} color={colors.onAccent} />
+            <Text className="font-grotesk-bold text-base text-on-accent">{t.breakdown.confirm}</Text>
+          </AnimatedPressable>
         </Pressable>
       </Pressable>
     </Modal>

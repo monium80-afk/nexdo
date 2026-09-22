@@ -12,10 +12,10 @@ import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@
 import { DeadlineChip, DeadlineDatePicker } from "@/components/TaskFormFields";
 import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
 import { getDueInfo } from "@/lib/taskMeta";
-import { useCategory } from "@/store/useCategoryStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 // Labels live in the translations (taskDetail.postpone).
@@ -34,6 +34,7 @@ function computePostponeDate(currentDueDate: string | undefined, days: number, n
 
 export default function TaskDetail() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useTaskStore((state) => state.tasks.find((t) => t.id === id));
@@ -44,7 +45,6 @@ export default function TaskDetail() {
   const updateSubtask = useTaskStore((state) => state.updateSubtask);
   const deleteSubtask = useTaskStore((state) => state.deleteSubtask);
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
-  const category = useCategory(task?.category ?? "");
   const enterStyle = useScreenEnterAnimation();
 
   const [note, setNote] = useState("");
@@ -204,8 +204,10 @@ export default function TaskDetail() {
                 <Feather name="calendar" size={18} color={colors.orange[500]} />
               </View>
               <View className="flex-1 gap-1">
-                <Text className="font-grotesk-bold text-sm text-ink-cream">{t.taskDetail.postponeTitle}</Text>
-                <Text className="font-grotesk-regular text-xs text-ink-cream-muted">
+                <Text className="font-grotesk-bold text-sm text-ink-cream" style={rtl}>
+                  {t.taskDetail.postponeTitle}
+                </Text>
+                <Text className="font-grotesk-regular text-xs text-ink-cream-muted" style={rtl}>
                   {t.taskDetail.currentDeadline(due.label)}
                 </Text>
               </View>
@@ -248,7 +250,9 @@ export default function TaskDetail() {
           ) : (
             <>
               <View className="flex-row items-start justify-between gap-3">
-                <Text className="flex-1 text-title text-ink-cream">{task.title}</Text>
+                <Text className="flex-1 text-title text-ink-cream" style={rtl}>
+                  {task.title}
+                </Text>
                 <AnimatedPressable
                   onPress={() => setEditing(true)}
                   hitSlop={8}
@@ -261,10 +265,6 @@ export default function TaskDetail() {
               </View>
 
               <View className="flex-row flex-wrap gap-2">
-                <View className="flex-row items-center gap-1.5 rounded-xl border border-cream-300 px-3 py-1.5">
-                  <Feather name="folder" size={13} color={colors.ink.creamMuted} />
-                  <Text className="font-grotesk-medium text-xs text-ink-cream">{category.label}</Text>
-                </View>
                 <View className="flex-row items-center gap-1.5 rounded-xl bg-cream-200 px-3 py-1.5">
                   <Feather name="calendar" size={13} color={colors.ink.creamMuted} />
                   <Text className="font-grotesk-medium text-xs text-ink-cream">{t.taskDetail.due(due.label)}</Text>
@@ -301,6 +301,7 @@ export default function TaskDetail() {
                           onSubmitEditing={handleSaveSubtask}
                           returnKeyType="done"
                           autoFocus
+                          style={rtl}
                           className="flex-1 py-2 font-grotesk-semibold text-sm text-ink-cream"
                         />
                         <AnimatedPressable
@@ -341,6 +342,7 @@ export default function TaskDetail() {
                           {done ? <Feather name="check" size={14} color={colors.cream[50]} /> : null}
                         </View>
                         <Text
+                          style={rtl}
                           className={
                             done
                               ? "flex-1 font-grotesk-medium text-sm text-ink-cream-muted line-through"
@@ -391,6 +393,7 @@ export default function TaskDetail() {
                 placeholder={t.taskDetail.addSubtask}
                 placeholderTextColor={colors.ink.creamMuted}
                 returnKeyType="done"
+                style={rtl}
                 className="flex-1 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3 font-grotesk-regular text-sm text-ink-cream"
               />
               <AnimatedPressable
@@ -406,8 +409,12 @@ export default function TaskDetail() {
 
           {task.notes ? (
             <View className="gap-2">
-              <Text className="eyebrow text-ink-cream">{t.taskDetail.notes}</Text>
-              <Text className="text-body text-ink-cream-muted">{task.notes}</Text>
+              <Text className="eyebrow text-ink-cream" style={rtl}>
+                {t.taskDetail.notes}
+              </Text>
+              <Text className="text-body text-ink-cream-muted" style={rtl}>
+                {task.notes}
+              </Text>
             </View>
           ) : null}
 
@@ -416,7 +423,9 @@ export default function TaskDetail() {
               <Ionicons name="sparkles" size={16} color={colors.orange[500]} />
               <Text className="eyebrow text-ink-cream">{t.taskDetail.contextTitle}</Text>
             </View>
-            <Text className="font-grotesk-regular text-xs text-ink-cream-muted">{t.taskDetail.contextBody}</Text>
+            <Text className="font-grotesk-regular text-xs text-ink-cream-muted" style={rtl}>
+              {t.taskDetail.contextBody}
+            </Text>
             {contextNotes.map((entry, index) => (
               <ContextNoteCard
                 key={`${index}-${entry}`}
@@ -435,7 +444,7 @@ export default function TaskDetail() {
                 placeholder={t.taskDetail.contextPlaceholder}
                 placeholderTextColor={colors.ink.creamMuted}
                 multiline
-                style={{ textAlignVertical: "top", maxHeight: 120 }}
+                style={[{ textAlignVertical: "top", maxHeight: 120 }, rtl]}
                 className="flex-1 font-grotesk-regular text-sm text-ink-cream"
               />
               <AnimatedPressable onPress={handleSendNote} hitSlop={8} disabled={!note.trim()}>

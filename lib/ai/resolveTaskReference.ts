@@ -1,16 +1,9 @@
-import type { BuiltInCategoryId, Task } from "@/types/task";
+import type { Task } from "@/types/task";
 
 export type TaskReferenceResult =
   | { status: "resolved"; taskId: string }
   | { status: "ambiguous"; candidates: Task[] }
   | { status: "none" };
-
-const CATEGORY_KEYWORDS: Record<BuiltInCategoryId, RegExp> = {
-  school: /\bschool\b/i,
-  work: /\bwork\b/i,
-  personal: /\bpersonal\b/i,
-  other: /\bother\b/i,
-};
 
 function titleMatches(text: string, task: Task): boolean {
   const lower = text.toLowerCase();
@@ -24,8 +17,7 @@ function findTitleWordOverlap(text: string, task: Task): boolean {
 }
 
 // Disambiguation order per spec: current task -> recently mentioned -> title
-// match -> category match (ambiguous) -> none (ask). Never silently edits a
-// random task.
+// match -> none (ask). Never silently edits a random task.
 export function resolveTaskReference(
   text: string,
   ctx: { currentTaskId?: string; recentTaskIds: string[]; tasks: Task[] },
@@ -50,14 +42,6 @@ export function resolveTaskReference(
   const wordMatches = pending.filter((task) => findTitleWordOverlap(text, task));
   if (wordMatches.length === 1) return { status: "resolved", taskId: wordMatches[0].id };
   if (wordMatches.length > 1) return { status: "ambiguous", candidates: wordMatches };
-
-  for (const [category, pattern] of Object.entries(CATEGORY_KEYWORDS) as [BuiltInCategoryId, RegExp][]) {
-    if (pattern.test(text)) {
-      const candidates = pending.filter((task) => task.category === category);
-      if (candidates.length === 1) return { status: "resolved", taskId: candidates[0].id };
-      if (candidates.length > 1) return { status: "ambiguous", candidates };
-    }
-  }
 
   return { status: "none" };
 }

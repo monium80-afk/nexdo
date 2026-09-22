@@ -63,28 +63,7 @@ export const fr: Translations = {
     dueOnAt: (day: string, time: string) => `Pour ${day} à ${time}`,
   },
 
-  categories: {
-    defaults: { school: "École", work: "Travail", personal: "Personnel", other: "Autre" },
-    colors: {
-      terracotta: "Terracotta",
-      ocean: "Océan",
-      sage: "Sauge",
-      warm: "Chaud",
-      indigo: "Indigo",
-      dusk: "Crépuscule",
-      teal: "Sarcelle",
-      slate: "Ardoise",
-    },
-    count: (count: number) => `${count} ${plural(count, "catégorie", "catégories")}`,
-    managerTitle: "Catégories de tâches",
-  },
-
-  planTemplates: {
-    school: ["Rassembler notes et documents", "Faire l'essentiel du travail", "Relire et finaliser"],
-    work: ["Rassembler le nécessaire", "Faire l'essentiel du travail", "Relire et envoyer"],
-    personal: ["Se préparer", "Faire l'essentiel du travail", "Terminer"],
-    other: ["Rassembler le nécessaire", "Faire l'essentiel du travail", "Terminer et vérifier"],
-  },
+  planTemplate: ["Rassembler le nécessaire", "Faire l'essentiel du travail", "Terminer et vérifier"],
 
   next: {
     allCaughtUp: "Tout est à jour",
@@ -134,11 +113,6 @@ export const fr: Translations = {
     finishSession: "Terminé — finir la session",
     nextTask: "Tâche terminée → Tâche suivante",
     aiBreakdown: "Découpage IA",
-    microSteps: "CHECKLIST DES MICRO-ÉTAPES",
-    stepsDone: (done: number, total: number) => `${done} / ${total} ${plural(done, "faite", "faites")}`,
-    moreSteps: (count: number) => `+${count} ${plural(count, "autre étape", "autres étapes")}`,
-    inProgress: "SESSION EN COURS",
-    addMinutes: (minutes: number) => `+${minutes} min`,
     resetTimer: "Réinitialiser",
     pauseTimer: "Mettre en pause",
     resumeTimer: "Reprendre",
@@ -157,6 +131,7 @@ export const fr: Translations = {
     breakingDown: "Découpage de la tâche…",
     stepPlaceholder: "Décrivez l'étape…",
     addStep: "Ajouter une étape",
+    confirm: "Valider ces étapes",
   },
 
   stuck: {
@@ -182,7 +157,6 @@ export const fr: Translations = {
       ` ${plural(shown, "tâche affichée", "tâches affichées")} sur ${total}`,
     emptyTitle: "Aucune tâche trouvée",
     emptyBody: "Essayez un autre filtre ou un autre terme de recherche.",
-    all: "Toutes",
     statusTitle: "STATUT",
     sortTitle: "TRIER PAR",
     status: { all: "Toutes", pending: "En attente", completed: "Terminées", overdue: "En retard" },
@@ -230,8 +204,6 @@ export const fr: Translations = {
     taskTitle: "TITRE DE LA TÂCHE",
     titlePlaceholder: "ex. Rédiger le compte rendu de TP de chimie",
     titleRequired: "Le titre de la tâche est obligatoire.",
-    category: "CATÉGORIE",
-    newCategory: "Nouvelle catégorie",
     duration: "DURÉE ESTIMÉE",
     customDuration: "Durée personnalisée",
     minutesPlaceholder: "Minutes, ex. 50",
@@ -315,6 +287,9 @@ export const fr: Translations = {
     recording: (duration: string) => `Enregistrement… ${duration}`,
     transcribing: "Transcription…",
     inputPlaceholder: "Écrivez, parlez ou photographiez vos tâches...",
+    attachmentPlaceholder: "Ajoutez des instructions (facultatif)...",
+    removeAttachment: "Retirer la pièce jointe",
+    documentLabel: "Document",
     send: "Envoyer le message",
     micPermissionTitle: "Accès au micro requis",
     micPermissionBody:
@@ -405,35 +380,24 @@ export const fr: Translations = {
     nameError: "Impossible d'enregistrer votre nom d'utilisateur. Réessayez.",
   },
 
-  manageCategories: {
-    title: "Gérer les catégories",
-    subtitle: "Personnalisez les catégories et les couleurs de vos tâches",
-    activeHeading: (count: number) => `CATÉGORIES ACTIVES (${count})`,
-    defaultBadge: "Par défaut",
-    isDefault: (label: string) => `${label} est la catégorie par défaut`,
-    makeDefault: (label: string) => `Définir ${label} par défaut`,
-    edit: (label: string) => `Modifier ${label}`,
-    delete: (label: string) => `Supprimer ${label}`,
-    addNew: "Nouvelle catégorie",
-    addCategory: "Ajouter la catégorie",
-    namePlaceholder: "ex. Sport, Santé, Clients, Projets perso",
-    colorTheme: "Couleur",
-    nameRequired: "Donnez un nom à la catégorie.",
-    duplicate: (label: string) => `Vous avez déjà une catégorie nommée « ${label} ».`,
-    deleteTitle: (label: string) => `Supprimer « ${label} » ?`,
-    deleteBodyTasks: (count: number, fallback: string) =>
-      `${count} ${plural(count, "tâche sera déplacée", "tâches seront déplacées")} vers ${fallback}.`,
-    deleteBodyEmpty: "Aucune tâche n'utilise cette catégorie.",
-  },
-
   onboarding: {
+    eyebrow: "POUR COMMENCER",
+    next: "Étape suivante",
     stickyNotes: ["rdv dentiste ?", "examen la semaine pro", "courses", "répondre au mail"],
     headline: "Arrêtez de vous demander quoi faire ensuite.",
     body: "Videz-vous la tête. Nexdo organise tout, détecte les échéances et vous dit ce qui mérite votre attention.",
     nextUp: "À SUIVRE",
     sampleTask: "Finir le compte rendu de TP de chimie",
     dueTomorrow: "Pour demain",
-    getStarted: "Commencer",
+  },
+
+  onboardingSort: {
+    headline: "Tout ce que vous avez en tête.\nGlissez pour le mettre en ordre.",
+    body: "Tirez la ligne vers le bas — le désordre s'organise en plan.",
+    unsorted: "EN VRAC",
+    sorted: "TRIÉ",
+    priority: { high: "HAUTE", medium: "MOY", low: "BASSE" },
+    dragHandle: "Glissez pour trier vos tâches",
   },
 
   auth: {

@@ -4,12 +4,11 @@ import { Text, View } from "react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
 import { MetaPill } from "@/components/MetaPill";
-import { getCategoryTint } from "@/constants/categories";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
 import { getDeadlineUrgency, getDueInfo, type DeadlineUrgency } from "@/lib/taskMeta";
-import { useCategory } from "@/store/useCategoryStore";
 import type { Task } from "@/types/task";
 
 // The deadline tag's icon and text: red when it's close, yellow within the week, green after that.
@@ -27,8 +26,7 @@ type TaskCardProps = {
 
 export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
   const t = useTranslation();
-  const category = useCategory(task.category);
-  const categoryTint = getCategoryTint(category.color);
+  const rtl = useRtlText();
   const due = getDueInfo(task);
   const isCompleted = task.status === "completed";
   const isOverdue = due.tone === "overdue";
@@ -56,7 +54,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
 
         <View className="flex-1 flex-row items-start justify-between gap-2">
           <Text
-            style={{ marginTop: -2 }}
+            style={[{ marginTop: -2 }, rtl]}
             className={
               isCompleted
                 ? "flex-1 font-grotesk-bold text-[17px] leading-[22px] text-ink-cream-muted line-through"
@@ -91,11 +89,6 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
         <MetaPill
           icon={<Feather name="clock" size={13} color={colors.ink.creamMuted} />}
           label={formatDuration(task.estimatedMinutes)}
-        />
-        <MetaPill
-          icon={<View className="h-2 w-2 rounded-full" style={{ backgroundColor: categoryTint[500] }} />}
-          label={category.label}
-          tint={categoryTint}
         />
       </View>
     </AnimatedPressable>

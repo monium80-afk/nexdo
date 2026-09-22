@@ -4,7 +4,6 @@ import { Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import {
-  CategoryPicker,
   computeDeadlineDate,
   DEADLINE_OPTIONS,
   DeadlineChip,
@@ -15,11 +14,12 @@ import {
   type DeadlineValue,
 } from "@/components/TaskFormFields";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 
-export type TaskEditChanges = Partial<Pick<Task, "title" | "category" | "estimatedMinutes" | "dueDate">>;
+export type TaskEditChanges = Partial<Pick<Task, "title" | "estimatedMinutes" | "dueDate">>;
 
 /** Lets Task Details' "Save Changes" button save these drafts too. */
 export type TaskEditPanelHandle = {
@@ -53,11 +53,11 @@ export function TaskEditPanel({
   ref?: Ref<TaskEditPanelHandle>;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const isPresetDuration = DURATION_OPTIONS.includes(task.estimatedMinutes);
 
   const [title, setTitle] = useState(task.title);
   const [titleError, setTitleError] = useState(false);
-  const [category, setCategory] = useState(task.category);
 
   const [durationMinutes, setDurationMinutes] = useState(task.estimatedMinutes);
   const [customDurationOpen, setCustomDurationOpen] = useState(!isPresetDuration);
@@ -93,7 +93,7 @@ export function TaskEditPanel({
       return false;
     }
 
-    const changes: TaskEditChanges = { title: trimmedTitle, category, estimatedMinutes };
+    const changes: TaskEditChanges = { title: trimmedTitle, estimatedMinutes };
 
     if (deadline === "custom") {
       changes.dueDate = customDeadline.toISOString();
@@ -126,6 +126,7 @@ export function TaskEditPanel({
           placeholder={t.form.editTitlePlaceholder}
           placeholderTextColor={colors.ink.creamMuted}
           returnKeyType="done"
+          style={rtl}
           className={
             titleError
               ? "rounded-2xl border border-overdue-500 bg-cream-50 px-4 py-3 font-grotesk-semibold text-base text-ink-cream"
@@ -135,11 +136,6 @@ export function TaskEditPanel({
         {titleError ? (
           <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.titleRequired}</Text>
         ) : null}
-      </View>
-
-      <View className="gap-3">
-        <Text className="eyebrow text-ink-cream">{t.form.category}</Text>
-        <CategoryPicker selectedId={category} onSelect={setCategory} />
       </View>
 
       <View className="gap-3">

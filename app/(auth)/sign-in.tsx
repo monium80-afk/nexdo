@@ -19,6 +19,7 @@ import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
 import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -26,6 +27,7 @@ const REVEAL_LAYOUT = LinearTransition.duration(250);
 
 export default function SignIn() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const enterStyle = useScreenEnterAnimation();
   const { signIn, errors, fetchStatus } = useSignIn();
@@ -88,8 +90,10 @@ export default function SignIn() {
         >
           <Animated.View style={enterStyle}>
             <View className="mt-16 gap-3">
-              <Text className="text-title text-ink-cream">{t.auth.welcomeBack}</Text>
-              <Text className="text-base font-grotesk-regular leading-relaxed text-ink-cream-muted">
+              <Text className="text-title text-ink-cream" style={rtl}>
+                {t.auth.welcomeBack}
+              </Text>
+              <Text className="text-base font-grotesk-regular leading-relaxed text-ink-cream-muted" style={rtl}>
                 {t.auth.signInSubtitle}
               </Text>
             </View>
@@ -131,7 +135,7 @@ export default function SignIn() {
                     className="btn btn--primary mt-1"
                     style={fetchStatus === "fetching" ? { opacity: 0.6 } : undefined}
                   >
-                    <Text className="font-grotesk-bold text-lg text-cream-50">
+                    <Text className="font-grotesk-bold text-lg text-on-accent">
                       {t.auth.logIn}
                     </Text>
                   </AnimatedPressable>

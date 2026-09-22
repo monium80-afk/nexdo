@@ -39,7 +39,7 @@ const RESPONSE_SCHEMA: GeminiJsonSchema = {
     },
     currentStepId: { type: "STRING", nullable: true },
   },
-  required: ["complexity", "advice", "plan"],
+  required: ["complexity", "advice", "plan", "currentStepId"],
 };
 
 function fallbackResponse(language: AppLanguage | undefined): NextResponseBody {

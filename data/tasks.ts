@@ -1,7 +1,7 @@
-import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
+﻿import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
 import { generatePlan } from "@/lib/ai/generatePlan";
 import { recalcTask } from "@/lib/scoring";
-import type { Task, TaskCategory } from "@/types/task";
+import type { Task } from "@/types/task";
 
 // Dates are generated relative to "now" (not hardcoded) so the list always
 // shows a realistic mix of overdue/today/upcoming tasks whenever the app runs.
@@ -21,7 +21,6 @@ function hoursAgo(hours: number): string {
 type SeedInput = {
   id: string;
   title: string;
-  category: TaskCategory;
   status: "pending" | "completed";
   importance: number;
   dueDate?: string;
@@ -39,7 +38,6 @@ function buildTask(input: SeedInput): Task {
     input.status === "pending"
       ? generatePlan({
           title: input.title,
-          category: input.category,
           estimatedMinutes: input.estimatedMinutes,
           complexity,
         })
@@ -48,7 +46,6 @@ function buildTask(input: SeedInput): Task {
   return recalcTask({
     id: input.id,
     title: input.title,
-    category: input.category,
     status: input.status,
     dueDate: input.dueDate,
     estimatedMinutes: input.estimatedMinutes,
@@ -70,7 +67,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "tax-documents",
     title: "Submit tax documents",
-    category: "other",
     status: "pending",
     importance: 75,
     dueDate: offsetDate(-5, 17),
@@ -80,7 +76,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "car-insurance",
     title: "Renew car insurance",
-    category: "personal",
     status: "pending",
     importance: 65,
     dueDate: offsetDate(-1, 9),
@@ -90,7 +85,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "quarterly-report",
     title: "Finish quarterly report",
-    category: "work",
     status: "pending",
     importance: 90,
     dueDate: offsetDate(0, 18),
@@ -101,7 +95,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "chemistry-test",
     title: "Study for chemistry test",
-    category: "school",
     status: "pending",
     importance: 85,
     dueDate: offsetDate(1, 9),
@@ -111,7 +104,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "weekly-groceries",
     title: "Buy weekly groceries",
-    category: "personal",
     status: "pending",
     importance: 45,
     dueDate: offsetDate(1, 19),
@@ -121,7 +113,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "email-professor",
     title: "Email professor about extension",
-    category: "school",
     status: "pending",
     importance: 55,
     dueDate: offsetDate(3, 12),
@@ -131,7 +122,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "client-proposal-slides",
     title: "Prep client proposal slides",
-    category: "work",
     status: "pending",
     importance: 70,
     dueDate: offsetDate(3, 15),
@@ -141,7 +131,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "clean-garage",
     title: "Clean out garage",
-    category: "other",
     status: "pending",
     importance: 20,
     dueDate: offsetDate(5, 10),
@@ -151,7 +140,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "weekend-trip",
     title: "Plan weekend trip",
-    category: "personal",
     status: "pending",
     importance: 30,
     dueDate: offsetDate(6, 20),
@@ -161,7 +149,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "reading-chapters",
     title: "Read assigned chapters 4-6",
-    category: "school",
     status: "pending",
     importance: 40,
     dueDate: offsetDate(9, 21),
@@ -171,7 +158,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "portfolio-website",
     title: "Update portfolio website",
-    category: "work",
     status: "pending",
     importance: 25,
     dueDate: offsetDate(14, 17),
@@ -181,7 +167,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "digital-photos",
     title: "Organize digital photos",
-    category: "other",
     status: "pending",
     importance: 15,
     dueDate: offsetDate(21, 12),
@@ -191,7 +176,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "morning-run",
     title: "Morning run",
-    category: "personal",
     status: "completed",
     importance: 35,
     dueDate: offsetDate(-1, 7),
@@ -201,7 +185,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "expense-report",
     title: "Submit expense report",
-    category: "work",
     status: "completed",
     importance: 70,
     dueDate: offsetDate(-2, 17),
@@ -211,7 +194,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "reading-assignment",
     title: "Finish reading assignment",
-    category: "school",
     status: "completed",
     importance: 50,
     dueDate: offsetDate(-3, 21),
@@ -221,7 +203,6 @@ export const tasks: Task[] = [
   buildTask({
     id: "water-plants",
     title: "Water the plants",
-    category: "other",
     status: "completed",
     importance: 10,
     dueDate: offsetDate(-4, 8),

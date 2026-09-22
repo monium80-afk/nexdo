@@ -3,7 +3,6 @@ import { taskToContext } from "@/lib/ai/context";
 import type { PlanStep } from "@/lib/ai/types";
 import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
-import type { Category } from "@/types/category";
 import type { Subtask, Task } from "@/types/task";
 
 function toPlanStep(subtask: Subtask): PlanStep {
@@ -17,13 +16,12 @@ function toPlanStep(subtask: Subtask): PlanStep {
 // retry instead.
 export async function suggestBreakdown(
   task: Task,
-  categories: Category[],
   options: { availableMinutes?: number; previousSuggestion?: PlanStep[] } = {},
 ): Promise<PlanStep[]> {
   const subtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
 
   const body: BreakdownRequestBody = {
-    task: taskToContext(task, categories),
+    task: taskToContext(task),
     completedSteps: subtasks.filter((subtask) => subtask.status === "completed").map(toPlanStep),
     currentSteps: subtasks.filter((subtask) => subtask.status !== "completed").map(toPlanStep),
     previousSuggestion: options.previousSuggestion ?? [],

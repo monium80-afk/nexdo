@@ -1,5 +1,5 @@
 import type { InboxAction, InboxRequestBody, InboxResponseBody } from "@/app/api/inbox+api";
-import { resolveCategoryId } from "@/constants/categories";
+import { stripAttachmentBlocks } from "@/lib/ai/attachmentMessage";
 import { taskToContext } from "@/lib/ai/context";
 import { extractTasks } from "@/lib/ai/extractTasks";
 import { parseDatePhrase } from "@/lib/ai/parseDate";
@@ -9,7 +9,6 @@ import { apiPost } from "@/lib/api";
 import { getLanguage, translate } from "@/lib/i18n";
 import { rankTasksForNext } from "@/lib/scoring";
 import type { TaskScope } from "@/lib/taskMeta";
-import type { Category } from "@/types/category";
 import type { Task, TaskPriorityLevel } from "@/types/task";
 
 export type ClassifyIntentInput = {
@@ -18,7 +17,6 @@ export type ClassifyIntentInput = {
   currentTaskId?: string;
   recentTaskIds: string[];
   tasks: Task[];
-  categories: Category[];
   history?: { role: "user" | "ai"; text: string }[];
 };
 
@@ -47,12 +45,8 @@ function tasksForPrompt(tasks: Task[]): Task[] {
 // case — the destructive/safe ones are fixed here regardless of what the
 // model returns, so a wrong model output can never skip a confirmation it
 // shouldn't.
-function mapSingleAction(action: InboxAction, fallbackNote: string, categories: Category[]): StructuredAction | null {
-  const isKnownCategory = (id: string | undefined): id is string =>
-    id !== undefined && categories.some((category) => category.id === id);
-
+function mapSingleAction(action: InboxAction, fallbackNote: string): StructuredAction | null {
   if (action.type === "CREATE_TASK" && action.fields.title) {
-    const category = resolveCategoryId(categories, action.fields.category);
     const priorityLevel = VALID_PRIORITIES.includes(action.fields.priority as TaskPriorityLevel)
       ? (action.fields.priority as TaskPriorityLevel)
       : "medium";
@@ -61,7 +55,6 @@ function mapSingleAction(action: InboxAction, fallbackNote: string, categories: 
       drafts: [
         {
           title: action.fields.title,
-          category,
           estimatedMinutes: action.fields.estimatedMinutes ?? 30,
           dueDate: action.fields.dueDate,
           dueHasTime: action.fields.dueHasTime,
@@ -74,11 +67,10 @@ function mapSingleAction(action: InboxAction, fallbackNote: string, categories: 
   }
 
   if (action.type === "UPDATE_TASK" && action.taskId) {
-    const changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes" | "category">> = {};
+    const changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes">> = {};
     if (action.fields.title) changes.title = action.fields.title;
     if (action.fields.dueDate) changes.dueDate = action.fields.dueDate;
     if (typeof action.fields.estimatedMinutes === "number") changes.estimatedMinutes = action.fields.estimatedMinutes;
-    if (isKnownCategory(action.fields.category)) changes.category = action.fields.category;
     return {
       type: "UPDATE_TASK",
       taskId: action.taskId,
@@ -133,9 +125,9 @@ function mapSingleAction(action: InboxAction, fallbackNote: string, categories: 
   return null;
 }
 
-function mapInboxResponse(response: InboxResponseBody, fallbackNote: string, categories: Category[]): StructuredAction[] {
+function mapInboxResponse(response: InboxResponseBody, fallbackNote: string): StructuredAction[] {
   const mapped = response.actions
-    .map((action) => mapSingleAction(action, fallbackNote, categories))
+    .map((action) => mapSingleAction(action, fallbackNote))
     .filter((a): a is StructuredAction => a !== null);
   return mapped.length > 0 ? mapped : [{ type: "UNKNOWN", reply: response.reply, confirmationTier: "safe" }];
 }
@@ -260,11 +252,7 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
   // runs BEFORE resolveTaskReference — a bare statement that merely shares
   // a word with an existing task ("clean the house" vs. "Clean the
   // kitchen") is a new task, not an edit to that one.
-  // The keyword guesser only knows the built-in ids, and those can be deleted.
-  const drafts = extractTasks(text, now).map((draft) => ({
-    ...draft,
-    category: resolveCategoryId(input.categories, draft.category),
-  }));
+  const drafts = extractTasks(text, now);
   if (drafts.length > 0) return { type: "CREATE_TASK", drafts, confirmationTier: "confirm-required" };
 
   const ref = resolveTaskReference(text, referenceCtx);
@@ -286,13 +274,12 @@ export async function classifyIntent(input: ClassifyIntentInput): Promise<Classi
       now: input.now.toISOString(),
       currentTaskId: input.currentTaskId,
       recentTaskIds: input.recentTaskIds,
-      tasks: tasksForPrompt(input.tasks).map((task) => taskToContext(task, input.categories)),
-      categories: input.categories.map(({ id, label }) => ({ id, label })),
+      tasks: tasksForPrompt(input.tasks).map(taskToContext),
       history: input.history ?? [],
       language: getLanguage(),
     };
     const response = await apiPost<InboxResponseBody>("/api/inbox", request);
-    const actions = mapInboxResponse(response, input.text, input.categories);
+    const actions = mapInboxResponse(response, input.text);
     // An empty/whitespace reply (this model occasionally emits one on a
     // compound turn) falls back to the per-action executed message instead
     // of showing a blank chat bubble — see handleClassifiedActions. A bulk
@@ -303,6 +290,8 @@ export async function classifyIntent(input: ClassifyIntentInput): Promise<Classi
     return { actions, reply };
   } catch (error) {
     console.warn("[classifyIntent] falling back to heuristic", error);
-    return { actions: [classifyIntentHeuristic(input)], reply: null };
+    // The heuristic reads raw words, so the "[Attached image]" labels a
+    // message with files is built from come back out first.
+    return { actions: [classifyIntentHeuristic({ ...input, text: stripAttachmentBlocks(input.text) })], reply: null };
   }
 }

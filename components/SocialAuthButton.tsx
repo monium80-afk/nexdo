@@ -23,13 +23,13 @@ export function SocialAuthButton({ provider, onPress }: SocialAuthButtonProps) {
       }`}
     >
       {isApple ? (
-        <FontAwesome name="apple" size={20} color={colors.cream[50]} />
+        <FontAwesome name="apple" size={20} color={colors.onAccent} />
       ) : (
         <GoogleIcon size={18} />
       )}
       <Text
         className={`font-grotesk-bold text-base ${
-          isApple ? "text-cream-50" : "text-ink-cream"
+          isApple ? "text-on-accent" : "text-ink-cream"
         }`}
       >
         {isApple ? t.auth.continueWithApple : t.auth.continueWithGoogle}

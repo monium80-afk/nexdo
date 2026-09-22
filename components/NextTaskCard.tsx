@@ -1,65 +1,46 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useState } from "react";
-import { ActivityIndicator, Platform, Text, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+import { ActivityIndicator, Platform, Text, View, type ViewProps } from "react-native";
+import Animated, { FadeIn, type AnimatedProps } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
-import { getCategoryTint } from "@/constants/categories";
 import { colors } from "@/constants/theme";
 import { useSessionCountdown } from "@/hooks/useSessionCountdown";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
 import { getDueInfo } from "@/lib/taskMeta";
-import { useCategory } from "@/store/useCategoryStore";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
 // A task with no estimate still needs a timer length.
 const FALLBACK_SESSION_MINUTES = 25;
-// How much of the plan the card shows while a session runs, and how much
-// time the "+5 min" button buys.
-const VISIBLE_STEPS = 3;
-const EXTEND_MINUTES = 5;
 
-// iOS only, deliberately. Android draws an elevation shadow as a hard grey
-// rectangle once the view it belongs to is partly transparent — and the card
-// fades as it slides under the returning one mid-swipe, so the shadow showed
-// as a box behind it and greyed its inside through it. The card's hairline
-// border carries the depth on Android instead.
-const CARD_SHADOW = Platform.select({
-  ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 18 }, shadowOpacity: 0.28, shadowRadius: 28 },
-});
+// The hairline the card draws above and below its content — the stack sizes
+// cards from the height their content reports, and this is what the card's own
+// box adds on top of it. Its shadow lives on the stack, not here: the card
+// clips itself to the height it is given, and a clipping view on iOS cuts off
+// its own shadow with it.
+const CARD_BORDERS = 2;
 
 const START_BUTTON_GLOW = Platform.select({
   ios: { shadowColor: colors.orange[500], shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 16 },
 });
 
-/** The task's plan while a session runs on it — the first few steps, tickable in order. */
+/** The task's plan while a session runs on it — every step, each one tickable. */
 function MicroStepsChecklist({ task }: { task: Task }) {
-  const t = useTranslation();
+  const rtl = useRtlText();
   const completeStep = useTaskStore((state) => state.completeStep);
   const steps = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const doneCount = steps.filter((step) => step.status === "completed").length;
-  const shown = steps.slice(0, VISIBLE_STEPS);
-  const hiddenCount = steps.length - shown.length;
 
   return (
     <View className="gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <View className="flex-row items-center justify-between gap-3">
-        <View className="flex-row items-center gap-2">
-          <MaterialCommunityIcons name="playlist-plus" size={16} color={colors.orange[500]} />
-          <Text className="eyebrow text-ink-charcoal-muted">{t.session.microSteps}</Text>
-        </View>
-        <Text className="font-grotesk-medium text-xs text-ink-charcoal-muted">
-          {t.session.stepsDone(doneCount, steps.length)}
-        </Text>
-      </View>
-
       {/* Flex ratios rather than a percentage width — RN takes fractional flex directly. */}
       <View className="h-1.5 flex-row overflow-hidden rounded-full bg-white/10">
         <View className="rounded-full bg-orange-500" style={{ flex: doneCount }} />
@@ -67,24 +48,21 @@ function MicroStepsChecklist({ task }: { task: Task }) {
       </View>
 
       <View className="gap-2.5">
-        {shown.map((step) => {
+        {steps.map((step) => {
           const done = step.status === "completed";
-          // Steps are worked in order, so only the current one can be ticked.
-          const interactive = step.status === "current";
           return (
             <AnimatedPressable
               key={step.id}
               onPress={() => completeStep(task.id, step.id)}
-              disabled={!interactive}
               accessibilityRole="checkbox"
-              accessibilityState={{ checked: done, disabled: !interactive }}
+              accessibilityState={{ checked: done }}
               className="flex-row items-center gap-3"
             >
               <View
                 className={
                   done
                     ? "h-5 w-5 items-center justify-center rounded-md bg-orange-500"
-                    : interactive
+                    : step.status === "current"
                       ? "h-5 w-5 rounded-md border-2 border-orange-500"
                       : "h-5 w-5 rounded-md border-2 border-white/20"
                 }
@@ -92,7 +70,8 @@ function MicroStepsChecklist({ task }: { task: Task }) {
                 {done ? <Feather name="check" size={12} color={colors.cream[50]} /> : null}
               </View>
               <Text
-                numberOfLines={1}
+                numberOfLines={2}
+                style={rtl}
                 className={
                   done
                     ? "flex-1 font-grotesk-medium text-sm text-ink-charcoal-muted line-through"
@@ -101,15 +80,9 @@ function MicroStepsChecklist({ task }: { task: Task }) {
               >
                 {step.label}
               </Text>
-              <Text className="font-grotesk-medium text-xs text-ink-charcoal-muted">
-                {formatDuration(step.estimatedMinutes)}
-              </Text>
             </AnimatedPressable>
           );
         })}
-        {hiddenCount > 0 ? (
-          <Text className="font-grotesk-medium text-xs text-ink-charcoal-muted">{t.session.moreSteps(hiddenCount)}</Text>
-        ) : null}
       </View>
     </View>
   );
@@ -121,35 +94,9 @@ function SessionPanel({ session, onComplete }: { session: ActiveSession; onCompl
   const countdown = useSessionCountdown(session);
   const pause = useSessionStore((state) => state.pause);
   const resume = useSessionStore((state) => state.resume);
-  const resetTimer = useSessionStore((state) => state.resetTimer);
-  const extendMinutes = useSessionStore((state) => state.extendMinutes);
 
   return (
     <View className="gap-3 rounded-2xl border border-white/10 bg-black/40 p-4">
-      <View className="flex-row items-center justify-between gap-2">
-        <View className="flex-row items-center gap-2">
-          <View className="h-2.5 w-2.5 rounded-full bg-success-500" />
-          <Text className="eyebrow text-orange-500">{t.session.inProgress}</Text>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <AnimatedPressable
-            onPress={() => extendMinutes(EXTEND_MINUTES)}
-            accessibilityRole="button"
-            className="rounded-full bg-white/10 px-3 py-1.5"
-          >
-            <Text className="font-grotesk-bold text-xs text-ink-charcoal">{t.session.addMinutes(EXTEND_MINUTES)}</Text>
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={resetTimer}
-            accessibilityRole="button"
-            accessibilityLabel={t.session.restartA11y}
-            className="rounded-full bg-white/10 px-3 py-1.5"
-          >
-            <Text className="font-grotesk-bold text-xs text-ink-charcoal-muted">{t.session.resetTimer}</Text>
-          </AnimatedPressable>
-        </View>
-      </View>
-
       <Text
         className="text-center font-grotesk-bold text-[44px] leading-[52px] tracking-tight"
         style={{ color: countdown.isOvertime ? colors.orange[500] : colors.ink.charcoal }}
@@ -192,19 +139,24 @@ export function NextTaskCard({
   task,
   rank,
   preview = false,
+  style,
+  onMeasure,
   onStart,
   onDetails,
 }: {
   task: Task;
   rank: number;
-  /** The card peeking behind the stack — dimmed and not interactive. */
+  /** A card waiting in the stack — dimmed and not interactive. */
   preview?: boolean;
+  /** The height the stack gives this card, as an animated style. */
+  style?: AnimatedProps<ViewProps>["style"];
+  /** The height this card's content wants, so the stack can size it. */
+  onMeasure?: (height: number) => void;
   onStart: (plannedMinutes: number) => void;
   onDetails: () => void;
 }) {
   const t = useTranslation();
-  const category = useCategory(task.category);
-  const categoryTint = getCategoryTint(category.color);
+  const rtl = useRtlText();
   const due = getDueInfo(task);
   const isOverdue = due.tone === "overdue";
   const plannedMinutes = task.estimatedMinutes > 0 ? task.estimatedMinutes : FALLBACK_SESSION_MINUTES;
@@ -238,18 +190,18 @@ export function NextTaskCard({
   };
 
   return (
-    <View
+    <Animated.View
       pointerEvents={preview ? "none" : "auto"}
-      className={
-        preview
-          ? "flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-charcoal-900 p-5"
-          : "rounded-[28px] border border-white/10 bg-charcoal-900 p-5"
-      }
-      style={preview ? undefined : CARD_SHADOW}
+      className="overflow-hidden rounded-[28px] border border-white/10 bg-charcoal-900"
+      style={style}
     >
-      {/* Dimming the card under the stack is the parent's job, so it can fade
-          up as that card becomes the top one. */}
-      <View className="gap-4">
+      {/* Dimming and sizing a waiting card is the parent's job, so both can
+          ease as that card moves up the stack. The content keeps the height it
+          asks for and is clipped to whatever the card is given. */}
+      <View
+        className="gap-4 p-5"
+        onLayout={(event) => onMeasure?.(event.nativeEvent.layout.height + CARD_BORDERS)}
+      >
         <View className="gap-2">
           <View className="flex-row items-center gap-1.5 self-start rounded-full bg-orange-500 px-3 py-1.5">
             <Ionicons name="flame" size={14} color={colors.cream[50]} />
@@ -260,10 +212,6 @@ export function NextTaskCard({
             <View className="flex-row items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-3 py-1.5">
               <GemLogo size={13} onDark />
               <Text className="font-grotesk-bold text-sm text-ink-charcoal">{t.tasks.score(task.priorityScore)}</Text>
-            </View>
-            <View className="flex-row items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-              <View className="h-2 w-2 rounded-full" style={{ backgroundColor: categoryTint[500] }} />
-              <Text className="font-grotesk-semibold text-sm text-ink-charcoal">{category.label}</Text>
             </View>
           </View>
 
@@ -294,7 +242,11 @@ export function NextTaskCard({
         </View>
 
         <AnimatedPressable onPress={onDetails} scaleTo={0.99} accessibilityRole="button">
-          <Text numberOfLines={3} className="font-grotesk-bold text-[26px] leading-[32px] tracking-tight text-ink-charcoal">
+          <Text
+            numberOfLines={3}
+            style={rtl}
+            className="font-grotesk-bold text-[26px] leading-[32px] tracking-tight text-ink-charcoal"
+          >
             {task.title}
           </Text>
         </AnimatedPressable>
@@ -354,7 +306,9 @@ export function NextTaskCard({
               </View>
             ) : null}
             {advice.status === "error" ? (
-              <Text className="font-grotesk-medium text-[15px] text-ink-charcoal-muted">{t.common.aiUnreachable}</Text>
+              <Text className="font-grotesk-medium text-[15px] text-ink-charcoal-muted" style={rtl}>
+                {t.common.aiUnreachable}
+              </Text>
             ) : null}
             {advice.status === "ready" ? (
               <>
@@ -390,6 +344,6 @@ export function NextTaskCard({
           onClose={() => setBreakdownOpen(false)}
         />
       ) : null}
-    </View>
+    </Animated.View>
   );
 }

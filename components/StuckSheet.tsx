@@ -3,6 +3,7 @@ import { Modal, Pressable, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 
 // Short, specific reasons — they're stored on the task's skip record, so
@@ -29,6 +30,7 @@ export function StuckSheet({
   onClose: () => void;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -53,11 +55,13 @@ export function StuckSheet({
             </AnimatedPressable>
           ))}
 
-          <Text className="pt-2 font-grotesk-regular text-xs text-ink-cream-subtle">{t.stuck.parkNote}</Text>
+          <Text className="pt-2 font-grotesk-regular text-xs text-ink-cream-subtle" style={rtl}>
+            {t.stuck.parkNote}
+          </Text>
 
           <AnimatedPressable onPress={onAskAi} className="btn btn--primary mt-4 gap-2">
-            <Ionicons name="bulb-outline" size={16} color={colors.cream[50]} />
-            <Text className="font-grotesk-bold text-base text-cream-50">{t.stuck.talkToAi}</Text>
+            <Ionicons name="bulb-outline" size={16} color={colors.onAccent} />
+            <Text className="font-grotesk-bold text-base text-on-accent">{t.stuck.talkToAi}</Text>
           </AnimatedPressable>
         </Pressable>
       </Pressable>

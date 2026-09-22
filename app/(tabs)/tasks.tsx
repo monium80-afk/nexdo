@@ -1,24 +1,17 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
-import Animated, {
-  Easing,
-  FadeInUp,
-  LinearTransition,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { Easing, FadeInUp, LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { FilterSheet } from "@/components/FilterSheet";
 import { TaskCard } from "@/components/TaskCard";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getDueInfo } from "@/lib/taskMeta";
-import { useCategoryStore } from "@/store/useCategoryStore";
 import { useTaskFilterStore, type TaskSortOption, type TaskStatusFilter } from "@/store/useTaskFilterStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -52,39 +45,15 @@ function sortTasks(list: Task[], sort: TaskSortOption): Task[] {
 
 export default function TasksListScreen() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const tasks = useTaskStore((state) => state.tasks);
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
-  const categories = useCategoryStore((state) => state.categories);
-  const { category: selectedCategory, status, sort, search, setCategory, setStatus, setSort, setSearch } =
-    useTaskFilterStore();
-
-  // A category deleted in Settings can't stay selected here.
-  const category = selectedCategory === "all" || categories.some((c) => c.id === selectedCategory)
-    ? selectedCategory
-    : "all";
-
-  const categoryTabs = useMemo(
-    () => [
-      { label: t.tasks.all, value: "all" },
-      ...categories.map((c) => ({ label: c.label, value: c.id })),
-    ],
-    [categories, t],
-  );
+  const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
-
-  const [categoryTabLayouts, setCategoryTabLayouts] = useState<
-    Record<string, { x: number; width: number }>
-  >({});
-  const categoryHighlightX = useSharedValue(0);
-  const categoryHighlightWidth = useSharedValue(0);
-  const categoryHighlightStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: categoryHighlightX.value }],
-    width: categoryHighlightWidth.value,
-  }));
 
   const pendingCount = tasks.filter((task) => task.status === "pending").length;
   const completedCount = tasks.filter((task) => task.status === "completed").length;
@@ -102,16 +71,9 @@ export default function TasksListScreen() {
 
   const sortOptions = SORT_VALUES.map((value) => ({ label: t.tasks.sort[value], value }));
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: tasks.length };
-    for (const task of tasks) counts[task.category] = (counts[task.category] ?? 0) + 1;
-    return counts;
-  }, [tasks]);
-
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = tasks.filter((task) => {
-      if (category !== "all" && task.category !== category) return false;
       if (status === "pending" && task.status !== "pending") return false;
       if (status === "completed" && task.status !== "completed") return false;
       if (status === "overdue" && getDueInfo(task).tone !== "overdue") return false;
@@ -119,23 +81,7 @@ export default function TasksListScreen() {
       return true;
     });
     return sortTasks(filtered, sort);
-  }, [tasks, category, status, sort, search]);
-
-  const hasPositionedInitialHighlight = useRef(false);
-  useEffect(() => {
-    const layout = categoryTabLayouts[category];
-    if (!layout) return;
-    if (!hasPositionedInitialHighlight.current) {
-      hasPositionedInitialHighlight.current = true;
-      // eslint-disable-next-line react-hooks/immutability
-      categoryHighlightX.value = layout.x;
-      // eslint-disable-next-line react-hooks/immutability
-      categoryHighlightWidth.value = layout.width;
-      return;
-    }
-    categoryHighlightX.value = withTiming(layout.x, { duration: 220 });
-    categoryHighlightWidth.value = withTiming(layout.width, { duration: 220 });
-  }, [category, categoryTabLayouts, categoryHighlightX, categoryHighlightWidth]);
+  }, [tasks, status, sort, search]);
 
   const statusLabel = t.tasks.status[status];
   const sortLabel = t.tasks.sort[sort];
@@ -176,6 +122,7 @@ export default function TasksListScreen() {
               placeholder={t.tasks.searchPlaceholder}
               placeholderTextColor={colors.ink.charcoalMuted}
               autoFocus
+              style={rtl}
               className="flex-1 font-grotesk-regular text-sm text-ink-charcoal"
             />
           </View>
@@ -201,53 +148,7 @@ export default function TasksListScreen() {
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* The pill stays inset from both screen edges; only its contents scroll. */}
-        <View className="mx-6 mt-5 overflow-hidden rounded-[20px] bg-cream-200">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 4, gap: 4, alignItems: "center" }}
-          >
-            <Animated.View
-              pointerEvents="none"
-              className="absolute bottom-1 left-0 top-1 rounded-2xl bg-cream-50"
-              style={categoryHighlightStyle}
-            />
-            {categoryTabs.map((tab) => {
-              const active = tab.value === category;
-              return (
-                <AnimatedPressable
-                  key={tab.value}
-                  onPress={() => setCategory(tab.value)}
-                  onLayout={(event) => {
-                    const { x, width } = event.nativeEvent.layout;
-                    setCategoryTabLayouts((current) => ({ ...current, [tab.value]: { x, width } }));
-                  }}
-                  className="flex-row items-center gap-1.5 rounded-2xl px-4 py-2.5"
-                >
-                  <Text
-                    className={
-                      active
-                        ? "font-grotesk-semibold text-sm text-orange-500"
-                        : "font-grotesk-medium text-sm text-ink-cream-muted"
-                    }
-                  >
-                    {tab.label}
-                  </Text>
-                  <View
-                    className={
-                      active ? "rounded-xl bg-orange-100 px-2 py-0.5" : "rounded-xl bg-cream-200 px-2 py-0.5"
-                    }
-                  >
-                    <Text className="font-grotesk-bold text-xs text-ink-cream">{categoryCounts[tab.value] ?? 0}</Text>
-                  </View>
-                </AnimatedPressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View className="flex-row gap-3 px-6 pt-4">
+        <View className="flex-row gap-3 px-6 pt-5">
           <AnimatedPressable
             onPress={() => setStatusSheetOpen(true)}
             className={
@@ -291,7 +192,7 @@ export default function TasksListScreen() {
           </AnimatedPressable>
         </View>
 
-        <Text className="px-6 pt-4 font-grotesk-medium text-sm text-ink-cream-muted">
+        <Text className="px-6 pt-4 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
           {t.tasks.showingPrefix}
           <Text className="font-grotesk-bold text-ink-cream">{filteredTasks.length}</Text>
           {t.tasks.showingSuffix(filteredTasks.length, tasks.length)}

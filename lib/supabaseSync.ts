@@ -1,8 +1,9 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
+import { messageAttachments } from "@/lib/chatAttachments";
 import { supabase } from "@/lib/supabase";
 import type { Task } from "@/types/task";
-import type { ChatMessage } from "@/types/chat";
+import type { ChatAttachment, ChatMessage } from "@/types/chat";
 
 // Background sync helpers used by useTaskStore/useChatStore. Every function
 // here is fire-and-forget from the caller's perspective — mutations stay
@@ -12,7 +13,6 @@ type TaskRow = {
   id: string;
   user_id: string;
   title: string;
-  category: Task["category"];
   status: Task["status"];
   due_date: string | null;
   estimated_minutes: number;
@@ -35,7 +35,6 @@ function toTaskRow(task: Task, userId: string): TaskRow {
     id: task.id,
     user_id: userId,
     title: task.title,
-    category: task.category,
     status: task.status,
     due_date: task.dueDate ?? null,
     estimated_minutes: task.estimatedMinutes,
@@ -58,7 +57,6 @@ function fromTaskRow(row: TaskRow): Task {
   return {
     id: row.id,
     title: row.title,
-    category: row.category,
     status: row.status,
     dueDate: row.due_date ?? undefined,
     estimatedMinutes: row.estimated_minutes,
@@ -116,29 +114,33 @@ type MessageRow = {
   role: ChatMessage["role"];
   text: string;
   created_at: string;
-  attachment: ChatMessage["attachment"] | null;
+  // jsonb: an array since one message can carry several files. Rows written
+  // before that hold a single object, which fromMessageRow() still reads.
+  attachment: ChatAttachment[] | ChatAttachment | null;
   related_task_id: string | null;
 };
 
 function toMessageRow(message: ChatMessage, userId: string): MessageRow {
+  const attachments = messageAttachments(message);
   return {
     id: message.id,
     user_id: userId,
     role: message.role,
     text: message.text,
     created_at: message.createdAt,
-    attachment: message.attachment ?? null,
+    attachment: attachments.length > 0 ? attachments : null,
     related_task_id: message.relatedTaskId ?? null,
   };
 }
 
 function fromMessageRow(row: MessageRow): ChatMessage {
+  const attachments = Array.isArray(row.attachment) ? row.attachment : row.attachment ? [row.attachment] : [];
   return {
     id: row.id,
     role: row.role,
     text: row.text,
     createdAt: row.created_at,
-    attachment: row.attachment ?? undefined,
+    attachments: attachments.length > 0 ? attachments : undefined,
     relatedTaskId: row.related_task_id ?? undefined,
   };
 }

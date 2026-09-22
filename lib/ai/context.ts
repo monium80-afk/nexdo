@@ -1,6 +1,4 @@
-import { findCategory } from "@/constants/categories";
 import { getDueInfo } from "@/lib/taskMeta";
-import type { Category } from "@/types/category";
 import type { Task } from "@/types/task";
 
 // Trims a Task down to the fields the AI prompts actually need — keeps the
@@ -9,9 +7,6 @@ import type { Task } from "@/types/task";
 export type TaskContext = {
   id: string;
   title: string;
-  category: Task["category"];
-  /** The category's name — a user-created category's id means nothing to the model. */
-  categoryLabel: string;
   status: Task["status"];
   dueDate?: string;
   /** The deadline already put into words ("Due tomorrow at 6:00 PM"), so the model never does date math. */
@@ -23,12 +18,10 @@ export type TaskContext = {
   contextNotes: string[];
 };
 
-export function taskToContext(task: Task, categories: Category[]): TaskContext {
+export function taskToContext(task: Task): TaskContext {
   return {
     id: task.id,
     title: task.title,
-    category: task.category,
-    categoryLabel: findCategory(categories, task.category).label,
     status: task.status,
     dueDate: task.dueDate,
     dueLabel: getDueInfo(task).pillLabel,

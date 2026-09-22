@@ -3,15 +3,14 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import type { ExtractTextRequestBody, ExtractTextResponseBody } from "@/app/api/extract-text+api";
+import { composeAttachmentMessage } from "@/lib/ai/attachmentMessage";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
-import { readFileAsBase64, resolveMimeType } from "@/lib/ai/media";
+import { extractAttachmentsText } from "@/lib/ai/media";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
-import { apiPost } from "@/lib/api";
+import { isImageAttachment } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
 import { deleteAllMessages, fetchMessages, subscribeToMessages, upsertMessageRow } from "@/lib/supabaseSync";
 import { describeTaskCount, tasksInScope } from "@/lib/taskMeta";
-import { useCategoryStore } from "@/store/useCategoryStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { ChatAttachment, ChatMessage } from "@/types/chat";
@@ -66,9 +65,9 @@ type ChatStore = {
   hydrateFromSupabase: (userId: string) => Promise<void>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
-  sendMessage: (text: string, attachment?: ChatAttachment, contextTaskId?: string) => string;
+  sendMessage: (text: string, attachments?: ChatAttachment[], contextTaskId?: string) => string;
   seedMessage: (text: string, relatedTaskId?: string) => void;
-  updateMessageAttachment: (messageId: string, attachment: ChatAttachment) => void;
+  updateMessageAttachments: (messageId: string, attachments: ChatAttachment[]) => void;
   updateMessageText: (messageId: string, text: string) => void;
   updatePendingDraft: (actionIndex: number, draftIndex: number, patch: Partial<ExtractedTaskDraft>) => void;
   confirmPendingActions: () => void;
@@ -300,9 +299,11 @@ export const useChatStore = create<ChatStore>()(
           realtimeChannel = null;
         },
 
-        updateMessageAttachment: (messageId, attachment) => {
+        updateMessageAttachments: (messageId, attachments) => {
           set((state) => ({
-            messages: state.messages.map((m) => (m.id === messageId ? { ...m, attachment } : m)),
+            messages: state.messages.map((m) =>
+              m.id === messageId ? { ...m, attachments, attachment: undefined } : m,
+            ),
           }));
           const updated = get().messages.find((m) => m.id === messageId);
           if (updated) syncUpsert(updated, get().syncUserId);
@@ -316,16 +317,19 @@ export const useChatStore = create<ChatStore>()(
           if (updated) syncUpsert(updated, get().syncUserId);
         },
 
-        sendMessage: (text, attachment, contextTaskId) => {
+        sendMessage: (text, attachments = [], contextTaskId) => {
           const trimmed = text.trim();
-          if (!trimmed && !attachment) return "";
+          if (!trimmed && attachments.length === 0) return "";
 
           const userMessage: ChatMessage = {
             id: createMessageId("user"),
             role: "user",
-            text: trimmed || attachment?.label || "",
+            // Only what the user typed. An attachment speaks for itself in the
+            // bubble (a thumbnail for an image), so no file name stands in for
+            // it — an image-only message is simply a bubble with no text.
+            text: trimmed,
             createdAt: new Date().toISOString(),
-            attachment,
+            attachments: attachments.length > 0 ? attachments : undefined,
             relatedTaskId: contextTaskId,
           };
           const historyBeforeThisMessage = get().messages;
@@ -335,33 +339,37 @@ export const useChatStore = create<ChatStore>()(
           const generation = signOutGeneration;
 
           (async () => {
-            // A photo/voice note/document is extracted to plain text first,
-            // then fed through the exact same pipeline as typed text — see
-            // CONTEXT YOU'LL RECEIVE in TASK_MANAGER_SYSTEM_PROMPT.
+            // Each photo/voice note/document is read to plain text first, then
+            // that text and whatever the user typed go through the exact same
+            // pipeline as a typed message — see ATTACHED FILES in
+            // TASK_MANAGER_SYSTEM_PROMPT, which is written against the shape
+            // composeAttachmentMessage() produces.
             let effectiveText = trimmed;
-            if (attachment) {
-              try {
-                const base64 = await readFileAsBase64(attachment.uri);
-                const request: ExtractTextRequestBody = {
-                  mimeType: resolveMimeType(attachment),
-                  base64,
-                  kind: attachment.kind,
-                  language: getLanguage(),
-                };
-                const extracted = await apiPost<ExtractTextResponseBody>("/api/extract-text", request);
-                if (generation !== signOutGeneration) return;
-                effectiveText = extracted.text.trim();
-                // Show what was actually heard/read instead of a generic
-                // "Voice note" / "Photo attached" label once it's known.
-                if (effectiveText) get().updateMessageText(userMessage.id, effectiveText);
-              } catch (error) {
-                console.warn("[useChatStore] media extraction failed", error);
-                effectiveText = "";
-              }
-              if (!effectiveText) {
-                set({ pendingActions: [] });
-                respondWith(translate().chat.attachmentReplies[attachment.kind]);
-                return;
+            if (attachments.length > 0) {
+              const extracted = await extractAttachmentsText(attachments, {
+                language: getLanguage(),
+                userInstruction: trimmed,
+              });
+              if (generation !== signOutGeneration) return;
+
+              if (extracted.length === 0) {
+                // Nothing readable came back. If they also wrote something,
+                // that message is still worth answering on its own.
+                if (!trimmed) {
+                  set({ pendingActions: [] });
+                  respondWith(translate().chat.attachmentReplies[attachments[0].kind]);
+                  return;
+                }
+              } else {
+                effectiveText = composeAttachmentMessage(extracted, trimmed);
+                // A voice note or document has nothing to show in a bubble, so
+                // what was heard/read stands in for it — but only when the user
+                // didn't write their own message, which is what the bubble
+                // should keep showing. An image always shows itself, so it
+                // never overwrites anything.
+                if (!trimmed && !attachments.some(isImageAttachment)) {
+                  get().updateMessageText(userMessage.id, extracted.map((item) => item.text).join("\n\n"));
+                }
               }
             }
 
@@ -394,7 +402,6 @@ export const useChatStore = create<ChatStore>()(
               currentTaskId: contextTaskId,
               recentTaskIds: get().recentlyMentionedTaskIds,
               tasks: useTaskStore.getState().tasks,
-              categories: useCategoryStore.getState().categories,
               history,
             });
 

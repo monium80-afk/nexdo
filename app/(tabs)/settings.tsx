@@ -5,12 +5,11 @@ import { Alert, ScrollView, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { CategoryManager } from "@/components/CategoryManager";
 import { ProfileCard } from "@/components/ProfileCard";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
-import { useCategoryStore } from "@/store/useCategoryStore";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -33,6 +32,7 @@ const LANGUAGE_OPTIONS: { value: AppLanguage; label: string }[] = [
 
 export default function Settings() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const { signOut } = useClerk();
   const handleChatSignOut = useChatStore((state) => state.handleSignOut);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
@@ -40,7 +40,6 @@ export default function Settings() {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
-  const relabelDefaultCategories = useCategoryStore((state) => state.relabelDefaults);
   const aiAutoMode = useSettingsStore((state) => state.aiAutoMode);
   const setAiAutoMode = useSettingsStore((state) => state.setAiAutoMode);
   const clearChatHistory = useChatStore((state) => state.clearHistory);
@@ -50,8 +49,6 @@ export default function Settings() {
 
   const handleSelectLanguage = (value: AppLanguage) => {
     setLanguage(value);
-    // "School", "Work"… are app-provided names, so they follow the language too.
-    relabelDefaultCategories(value);
     posthog.capture("language_changed", { language: value });
   };
 
@@ -102,22 +99,25 @@ export default function Settings() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text className="text-title text-ink-charcoal">{t.settings.title}</Text>
+        <Text className="text-title text-ink-charcoal" style={rtl}>
+          {t.settings.title}
+        </Text>
 
         <ProfileCard />
 
         <View className="gap-3">
-          <Text className="eyebrow text-ink-charcoal-muted">{t.settings.preferences}</Text>
-          <CategoryManager />
-        </View>
-
-        <View className="gap-3">
-          <Text className="eyebrow text-ink-charcoal-muted">{t.settings.aiChat}</Text>
+          <Text className="eyebrow text-ink-charcoal-muted" style={rtl}>
+            {t.settings.aiChat}
+          </Text>
           <View className="card card--charcoal gap-4 p-4">
             <View className="flex-row items-center gap-3">
               <View className="flex-1 gap-1">
-                <Text className="font-grotesk-semibold text-base text-ink-charcoal">{t.settings.autoMode}</Text>
-                <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">{t.settings.autoModeBody}</Text>
+                <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
+                  {t.settings.autoMode}
+                </Text>
+                <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted" style={rtl}>
+                  {t.settings.autoModeBody}
+                </Text>
               </View>
               <Switch
                 value={aiAutoMode}
@@ -137,16 +137,22 @@ export default function Settings() {
             </AnimatedPressable>
 
             {historyStatus ? (
-              <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">{historyStatus}</Text>
+              <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted" style={rtl}>
+                {historyStatus}
+              </Text>
             ) : null}
           </View>
         </View>
 
         <View className="gap-3">
-          <Text className="eyebrow text-ink-charcoal-muted">{t.settings.appearance}</Text>
+          <Text className="eyebrow text-ink-charcoal-muted" style={rtl}>
+            {t.settings.appearance}
+          </Text>
           <View className="card card--charcoal gap-4 p-4">
             <View className="gap-3">
-              <Text className="font-grotesk-semibold text-base text-ink-charcoal">{t.settings.theme}</Text>
+              <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
+                {t.settings.theme}
+              </Text>
               <View className="flex-row gap-2">
                 {THEME_OPTIONS.map((option) => {
                   const selected = theme === option.value;
@@ -185,7 +191,9 @@ export default function Settings() {
             <View className="h-px bg-white/10" />
 
             <View className="gap-3">
-              <Text className="font-grotesk-semibold text-base text-ink-charcoal">{t.settings.language}</Text>
+              <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
+                {t.settings.language}
+              </Text>
               <View className="flex-row flex-wrap gap-2">
                 {LANGUAGE_OPTIONS.map((option) => {
                   const selected = language === option.value;

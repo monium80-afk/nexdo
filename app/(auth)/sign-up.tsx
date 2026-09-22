@@ -20,6 +20,7 @@ import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
 import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -30,6 +31,7 @@ const PLANNED_TASK_DOTS = ["bg-orange-500", "bg-orange-500/70", "bg-orange-500/4
 
 export default function SignUp() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const enterStyle = useScreenEnterAnimation();
   const { signUp, errors, fetchStatus } = useSignUp();
@@ -106,10 +108,10 @@ export default function SignUp() {
             <SetupProgressBar percent={94} />
 
             <View className="mt-8 gap-3">
-              <Text className="text-title text-ink-cream">
+              <Text className="text-title text-ink-cream" style={rtl}>
                 {t.auth.signUpTitle}
               </Text>
-              <Text className="text-base font-grotesk-regular leading-relaxed text-ink-cream-muted">
+              <Text className="text-base font-grotesk-regular leading-relaxed text-ink-cream-muted" style={rtl}>
                 {t.auth.signUpSubtitle}
               </Text>
             </View>
@@ -183,7 +185,7 @@ export default function SignUp() {
                     className="btn btn--primary mt-1"
                     style={fetchStatus === "fetching" ? { opacity: 0.6 } : undefined}
                   >
-                    <Text className="font-grotesk-bold text-lg text-cream-50">
+                    <Text className="font-grotesk-bold text-lg text-on-accent">
                       {t.auth.signUpButton}
                     </Text>
                   </AnimatedPressable>

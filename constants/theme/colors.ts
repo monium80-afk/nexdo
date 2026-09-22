@@ -42,18 +42,6 @@ export const colors = {
   success: {
     500: "#3E9B5F",
   },
-  // Category swatches, keyed by color name rather than by category — users
-  // can rename categories and create their own (see constants/categories.ts).
-  category: {
-    terracotta: { 500: "#A85C3F", 100: "#F0DCD1" },
-    ocean: { 500: "#5F7A93", 100: "#DDE6EC" },
-    sage: { 500: "#6E8A6C", 100: "#E2E9DD" },
-    warm: { 500: "#C8912C", 100: "#F3E7CC" },
-    indigo: { 500: "#6E5BD8", 100: "#E6E2F8" },
-    dusk: { 500: "#BD4B3A", 100: "#F4DDD8" },
-    teal: { 500: "#2E9A8F", 100: "#D5EEEB" },
-    slate: { 500: "#7A7566", 100: "#E9E6DA" },
-  },
   ink: {
     cream: "#211E19",
     creamMuted: "#6B6656",
@@ -70,6 +58,9 @@ export const colors = {
     breakDown: "#4F6B4C",
     prioritize: "#2F7BD6",
   },
+  // Ink on a filled button (orange-500, charcoal-900, Apple black) — the
+  // `text-on-accent` utility, for icons and spinners that can't take a class.
+  onAccent: "#F7F4E8",
   scrim: "rgba(30, 28, 25, 0.5)",
   hairlineCharcoal: "rgba(255, 255, 255, 0.08)",
 } as const;

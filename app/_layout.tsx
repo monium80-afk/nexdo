@@ -102,7 +102,9 @@ export default function RootLayout() {
                 options={{
                   presentation: "modal",
                   animation: "slide_from_bottom",
-                  contentStyle: { backgroundColor: "transparent" },
+                  // Cream, not transparent: a transparent container let the
+                  // dark canvas behind show through during the slide-up.
+                  contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
             </Stack>

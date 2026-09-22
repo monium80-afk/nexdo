@@ -95,9 +95,9 @@ export function ProfileCard() {
           )}
           <View className="absolute -bottom-0.5 -right-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-charcoal-800 bg-orange-500">
             {uploadingPhoto ? (
-              <ActivityIndicator size="small" color={colors.cream[50]} />
+              <ActivityIndicator size="small" color={colors.onAccent} />
             ) : (
-              <Feather name="camera" size={11} color={colors.cream[50]} />
+              <Feather name="camera" size={11} color={colors.onAccent} />
             )}
           </View>
         </AnimatedPressable>
@@ -148,7 +148,7 @@ export function ProfileCard() {
               className="rounded-full bg-orange-500 px-4 py-2"
               style={savingName ? { opacity: 0.6 } : undefined}
             >
-              <Text className="font-grotesk-bold text-sm text-cream-50">{savingName ? t.profile.saving : t.common.save}</Text>
+              <Text className="font-grotesk-bold text-sm text-on-accent">{savingName ? t.profile.saving : t.common.save}</Text>
             </AnimatedPressable>
           </View>
         </View>

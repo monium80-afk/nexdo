@@ -8,6 +8,7 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
 import { colors } from "@/constants/theme";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -16,6 +17,7 @@ import type { Task } from "@/types/task";
 
 export default function Next() {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const tasks = useTaskStore((state) => state.tasks);
   // A session runs inside its own task's card (see NextTaskCard), so the
@@ -34,11 +36,6 @@ export default function Next() {
   const total = pendingTasks.length;
   const currentIndex = total === 0 ? 0 : Math.min(activeIndex, total - 1);
   const currentTask = pendingTasks[currentIndex];
-  // The list has ends: nothing sits before #1 or after the last task.
-  const hasPrevious = currentIndex > 0;
-  const hasNext = currentIndex + 1 < total;
-  const nextTask = hasNext ? pendingTasks[currentIndex + 1] : undefined;
-  const previousTask = hasPrevious ? pendingTasks[currentIndex - 1] : undefined;
 
   // The session's card is gone once its task is finished or deleted — nothing
   // is left to show the clock, so the session ends with it.
@@ -85,7 +82,7 @@ export default function Next() {
         </View>
         <View className="flex-row items-center gap-2.5">
           <GemLogo size={26} onDark />
-          <Text className="flex-1 font-grotesk-bold text-lg leading-[1.2] tracking-tight text-ink-charcoal">
+          <Text className="flex-1 font-grotesk-bold text-lg leading-[1.2] tracking-tight text-ink-charcoal" style={rtl}>
             {t.next.heading}
           </Text>
         </View>
@@ -102,11 +99,8 @@ export default function Next() {
         </View>
 
         <NextTaskCardStack
-          currentTask={currentTask}
-          nextTask={nextTask}
-          previousTask={previousTask}
+          tasks={pendingTasks}
           currentIndex={currentIndex}
-          total={total}
           onIndexChange={setActiveIndex}
           onStart={handleStartSession}
           onDetails={handleDetails}

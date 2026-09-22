@@ -13,17 +13,20 @@ import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask } from "@/lib/s
 import { deleteTaskRow, fetchTasks, subscribeToTasks, upsertTaskRow } from "@/lib/supabaseSync";
 import { describeTaskCount, tasksInScope } from "@/lib/taskMeta";
 import { recalcAll } from "@/lib/taskPipeline";
-import type { Subtask, Task, TaskCategory, TaskPriorityLevel, TaskStep } from "@/types/task";
+import type { Subtask, Task, TaskPriorityLevel, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
 // the change to Supabase fire-and-forget. Failures are logged, not surfaced
 // to the user — acceptable for a v1 teaching app.
 let realtimeChannel: RealtimeChannel | null = null;
+const confirmedUpsertIds = new Set<string>();
 
 function syncUpsert(task: Task, userId: string | null) {
   if (!userId) return;
-  upsertTaskRow(task, userId).catch((error) => console.warn("[useTaskStore] upsert failed", error));
+  upsertTaskRow(task, userId)
+    .then(() => confirmedUpsertIds.add(task.id))
+    .catch((error) => console.warn("[useTaskStore] upsert failed", error));
 }
 
 function syncDelete(taskId: string, userId: string | null) {
@@ -31,9 +34,18 @@ function syncDelete(taskId: string, userId: string | null) {
   deleteTaskRow(taskId).catch((error) => console.warn("[useTaskStore] delete failed", error));
 }
 
+// The AsyncStorage snapshot and the Supabase fetch both land asynchronously
+// on startup, and whichever finished last used to overwrite the other. The
+// local snapshot holds the newest edits, so hydrateFromSupabase waits for it
+// (resolved by onRehydrateStorage below, on success *and* on failure, so a
+// storage error can't leave this pending forever).
+let resolveRehydrated: () => void = () => {};
+const rehydrated = new Promise<void>((resolve) => {
+  resolveRehydrated = resolve;
+});
+
 export type NewTaskInput = {
   title: string;
-  category: TaskCategory;
   estimatedMinutes: number;
   dueDate?: string;
   priorityLevel: TaskPriorityLevel;
@@ -67,7 +79,6 @@ function buildTask(input: NewTaskInput, now: Date): Task {
       ? stepsToSubtasks(input.steps)
       : generatePlan({
           title: input.title,
-          category: input.category,
           estimatedMinutes: input.estimatedMinutes,
           complexity,
         });
@@ -77,7 +88,6 @@ function buildTask(input: NewTaskInput, now: Date): Task {
     {
       id: createTaskId(),
       title: input.title.trim(),
-      category: input.category,
       status: "pending",
       dueDate: input.dueDate,
       estimatedMinutes: input.estimatedMinutes,
@@ -131,6 +141,31 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
   });
 }
 
+/**
+ * Per-task last-write-wins — the same rule the realtime handler uses. A local
+ * edit whose background write never reached Supabase (offline, the app closed
+ * mid-request, a row the database rejected) must not be undone by the stale
+ * row it left behind. Supabase still decides which tasks *exist*, so a task
+ * deleted on another device stays deleted.
+ */
+function mergeRemoteTasks(remote: Task[], local: Task[]): { tasks: Task[]; localNewer: Task[] } {
+  const localById = new Map(local.map((task) => [task.id, task]));
+  const remoteIds = new Set(remote.map((task) => task.id));
+  const localNewer: Task[] = [];
+
+  const tasks = remote.map((remoteTask) => {
+    const localTask = localById.get(remoteTask.id);
+    if (localTask && Date.parse(localTask.updatedAt) > Date.parse(remoteTask.updatedAt)) {
+      localNewer.push(localTask);
+      return localTask;
+    }
+    return remoteTask;
+  });
+
+  const unconfirmedLocal = local.filter((task) => !remoteIds.has(task.id) && !confirmedUpsertIds.has(task.id));
+  return { tasks: [...unconfirmedLocal, ...tasks], localNewer };
+}
+
 type TaskStore = {
   tasks: Task[];
   syncUserId: string | null;
@@ -141,7 +176,7 @@ type TaskStore = {
   addTask: (input: NewTaskInput) => string;
   updateTask: (
     id: string,
-    changes: Partial<Pick<Task, "title" | "category" | "dueDate" | "estimatedMinutes" | "notes">>,
+    changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes" | "notes">>,
   ) => void;
   deleteTask: (id: string) => void;
   deleteTasks: (ids: string[]) => void;
@@ -173,17 +208,22 @@ export const useTaskStore = create<TaskStore>()(
       tasks: recalcAll(initialTasks),
       syncUserId: null,
 
-      // Supabase becomes the source of truth for a signed-in user: on
-      // success, remote tasks replace local state entirely (an empty
-      // result means this user has no synced tasks yet — the local seed
-      // data was never a real synced task, so it's fine for it to drop
-      // away once a real account takes over).
+      // Supabase decides which tasks a signed-in user has (an empty result
+      // means this user has no synced tasks yet — the local seed data was
+      // never a real synced task, so it's fine for it to drop away once a
+      // real account takes over), but a task the user edited more recently
+      // than the stored row keeps its local version. Anything local that
+      // Supabase is behind on gets pushed again right here, so the row
+      // repairs itself instead of reverting the user's edit on every launch.
       hydrateFromSupabase: async (userId) => {
         set({ syncUserId: userId });
         try {
           const remoteTasks = await fetchTasks(userId);
-            if (get().syncUserId !== userId) return;
-          set({ tasks: recalcAll(normalizePersistedTasks(remoteTasks)) });
+          await rehydrated;
+          if (get().syncUserId !== userId) return;
+          const { tasks, localNewer } = mergeRemoteTasks(normalizePersistedTasks(remoteTasks), get().tasks);
+          set({ tasks: recalcAll(tasks) });
+          localNewer.forEach((task) => syncUpsert(task, userId));
         } catch (error) {
           console.warn("[useTaskStore] hydrate failed", error);
         }
@@ -318,18 +358,24 @@ export const useTaskStore = create<TaskStore>()(
         const task = get().tasks.find((t) => t.id === taskId);
         if (!task?.subtasks) return;
         const target = task.subtasks.find((subtask) => subtask.id === stepId);
-        if (task.status !== "pending" || target?.status !== "current") return;
+        // Any step can be ticked, in any order — ticking a finished one puts it
+        // back. Only the task itself has to still be open.
+        if (task.status !== "pending" || !target) return;
 
         const updatedSubtasks: Subtask[] = task.subtasks.map((subtask) =>
-          subtask.id === stepId || subtask.status === "current"
-            ? { ...subtask, status: subtask.id === stepId ? ("completed" as const) : ("pending" as const) }
+          subtask.id === stepId
+            ? { ...subtask, status: target.status === "completed" ? ("pending" as const) : ("completed" as const) }
             : subtask,
         );
+        // "Current" is simply the first step still left, whatever order the
+        // user ticked them in.
         const nextPending = updatedSubtasks
-          .filter((subtask) => subtask.status === "pending")
+          .filter((subtask) => subtask.status !== "completed")
           .sort((a, b) => a.order - b.order)[0];
         const finalSubtasks: Subtask[] = updatedSubtasks.map((subtask) =>
-          subtask.id === nextPending?.id ? { ...subtask, status: "current" as const } : subtask,
+          subtask.status === "completed"
+            ? subtask
+            : { ...subtask, status: subtask.id === nextPending?.id ? ("current" as const) : ("pending" as const) },
         );
         const allDone = finalSubtasks.every((subtask) => subtask.status === "completed");
 
@@ -526,7 +572,6 @@ export const useTaskStore = create<TaskStore>()(
         // Explicit user request bypasses the "simple tasks get no plan" gate.
         const subtasks = generatePlan({
           title: task.title,
-          category: task.category,
           estimatedMinutes: task.estimatedMinutes,
           complexity: task.complexity === "simple" ? "medium" : task.complexity,
         });
@@ -644,7 +689,6 @@ export const useTaskStore = create<TaskStore>()(
             const ids = action.drafts.map((draft) =>
               get().addTask({
                 title: draft.title,
-                category: draft.category,
                 estimatedMinutes: draft.estimatedMinutes,
                 dueDate: draft.dueDate,
                 priorityLevel: draft.priorityLevel,
@@ -728,6 +772,10 @@ export const useTaskStore = create<TaskStore>()(
       name: "nexdo-tasks",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ tasks: state.tasks }),
+      // Runs with (state) on success and (undefined, error) on failure —
+      // either way the local snapshot is as loaded as it will get, which is
+      // what hydrateFromSupabase is waiting on.
+      onRehydrateStorage: () => () => resolveRehydrated(),
       merge: (persisted, current) => {
         const persistedState = persisted as Partial<TaskStore>;
         return {

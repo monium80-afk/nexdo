@@ -28,7 +28,7 @@
 
   /* Orange — the single primary accent. Reserved for CTAs, the AI's
      presence, and the single highest-priority signal on a screen.
-     Never used for categories or medium/low urgency. */
+     Never used for medium/low urgency. */
   --color-orange-500: #e2622e;
   --color-orange-600: #c74f20;
   --color-orange-100: #f7e1d2;
@@ -46,25 +46,6 @@
   /* Success — a finished step in a running session */
   --color-success-500: #3e9b5f;
 
-  /* Categories — the swatches a category can pick (see constants/categories.ts).
-     Categories are user data, so screens apply these as inline styles. */
-  --color-clay-500: #a85c3f; /* "Terracotta" — default for School */
-  --color-clay-100: #f0dcd1;
-  --color-dust-blue-500: #5f7a93; /* "Ocean" — default for Work */
-  --color-dust-blue-100: #dde6ec;
-  --color-sage-500: #6e8a6c; /* default for Personal */
-  --color-sage-100: #e2e9dd;
-  --color-warm-500: #c8912c;
-  --color-warm-100: #f3e7cc;
-  --color-cat-indigo-500: #6e5bd8;
-  --color-cat-indigo-100: #e6e2f8;
-  --color-dusk-500: #bd4b3a;
-  --color-dusk-100: #f4ddd8;
-  --color-cat-teal-500: #2e9a8f;
-  --color-cat-teal-100: #d5eeeb;
-  --color-stone-500: #7a7566; /* "Slate" — default for Other */
-  --color-stone-100: #e9e6da;
-
   /* Text — named "ink" to avoid a "text-text-*" utility name.
      ink-cream-* sits on cream surfaces, ink-charcoal-* on charcoal surfaces. */
   --color-ink-cream: #211e19;
@@ -74,6 +55,9 @@
   --color-ink-cream-subtle: #9a9382;
   --color-ink-charcoal: #f5f1e6;
   --color-ink-charcoal-muted: #a39d8a;
+  /* Ink on a filled button — orange-500, charcoal-900 or Apple black.
+     Named for the surface it sits on, not the palette it comes from. */
+  --color-on-accent: #f7f4e8;
 
   /* ---- Fonts -------------------------------------------------
    * Space Grotesk is the only typeface in the app. Variable fonts

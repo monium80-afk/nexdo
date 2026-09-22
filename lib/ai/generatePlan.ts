@@ -1,6 +1,5 @@
-import { FALLBACK_CATEGORY_ID, isBuiltInCategoryId } from "@/constants/categories";
 import { translate } from "@/lib/i18n";
-import type { Subtask, TaskCategory, TaskComplexity } from "@/types/task";
+import type { Subtask, TaskComplexity } from "@/types/task";
 
 const SPLIT_RATIOS = [0.2, 0.6, 0.2];
 
@@ -12,14 +11,13 @@ function createSubtaskId(): string {
 // subtasks, so the app doesn't produce a ridiculous plan for "take medication".
 export function generatePlan(input: {
   title: string;
-  category: TaskCategory;
   estimatedMinutes: number;
   complexity: TaskComplexity;
 }): Subtask[] | undefined {
   if (input.complexity === "simple") return undefined;
 
-  // The step names come from the app language; user-created categories use the "other" wording.
-  const labels = translate().planTemplates[isBuiltInCategoryId(input.category) ? input.category : FALLBACK_CATEGORY_ID];
+  // The step names come from the app language.
+  const labels = translate().planTemplate;
   const durations = SPLIT_RATIOS.map((ratio) => Math.round(input.estimatedMinutes * ratio));
   durations[durations.length - 1] += input.estimatedMinutes - durations.reduce((sum, duration) => sum + duration, 0);
 

@@ -1,14 +1,6 @@
 import { hasExplicitTime, parseDatePhrase } from "@/lib/ai/parseDate";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
-import type { BuiltInCategoryId, TaskPriorityLevel } from "@/types/task";
-
-const CATEGORY_KEYWORDS: Record<Exclude<BuiltInCategoryId, "other">, RegExp> = {
-  school:
-    /\b(study|studying|exam|midterm|finals?|class|homework|essay|assignment|professor|quiz|lecture|chapters?|revision|thesis|dissertation|course|semester|lab report|coursework|school)\b/i,
-  work: /\b(report|meeting|client|proposal|presentation|slides|boss|invoice|standup|stand-up|deploy|ticket|sprint|colleague|interview|onboarding|payroll|contract|work)\b/i,
-  personal:
-    /\b(gym|workout|run|groceries|grocery|shopping|call|dentist|doctor|appointment|clean|cleaning|tidy|vacuum|laundry|dishes|trash|garbage|bins|cook|dinner|lunch|house|home|apartment|room|kitchen|garden|car|bank|errand|family|mom|mum|dad|birthday|pet|dog|cat|haircut|pharmacy|rent|bills?)\b/i,
-};
+import type { TaskPriorityLevel } from "@/types/task";
 
 const LONG_TASK_KEYWORDS = /\b(write|study|prepare|build|plan|research|essay|report|presentation|thesis|revise|design)\b/i;
 const QUICK_TASK_KEYWORDS = /\b(call|email|text|book|order|pay|send|reply|buy|pick up|drop off|check|confirm)\b/i;
@@ -85,16 +77,6 @@ const QUESTION_PATTERN =
   /^\s*(what|when|where|why|how|who|which|is|are|am|do|does|did|can|could|should|would|will|has|have)\b/i;
 const EXPLICIT_ADD_PATTERN = /\b(add|create|remind me|new task|put)\b/i;
 const CHITCHAT_PATTERN = /^\s*(hi|hey|hello|yo|thanks|thank you|ok|okay|cool|nice|sure|yes|no|nope|yep|help)\b[\s!.?]*$/i;
-
-export function guessCategory(text: string): BuiltInCategoryId {
-  for (const [category, pattern] of Object.entries(CATEGORY_KEYWORDS) as [
-    Exclude<BuiltInCategoryId, "other">,
-    RegExp,
-  ][]) {
-    if (pattern.test(text)) return category;
-  }
-  return "other";
-}
 
 // Exported so app/api/inbox+api.ts can fill the same gaps when the model
 // leaves a field out.
@@ -177,7 +159,6 @@ export function extractTasks(text: string, now: Date = new Date()): ExtractedTas
       const title = cleanTitle(fragment);
       return {
         title,
-        category: guessCategory(fragment),
         estimatedMinutes: guessDuration(fragment),
         dueDate,
         dueHasTime,

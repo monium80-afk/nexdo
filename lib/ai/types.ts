@@ -1,5 +1,5 @@
 import type { TaskScope } from "@/lib/taskMeta";
-import type { Task, TaskCategory, TaskComplexity, TaskPriorityLevel } from "@/types/task";
+import type { Task, TaskComplexity, TaskPriorityLevel } from "@/types/task";
 
 // Every "AI" function in this directory is a heuristic today, but shaped
 // exactly like a real LLM call's input/output — swapping in a real backend
@@ -9,7 +9,6 @@ export type ConfirmationTier = "safe" | "immediate" | "confirm-required";
 
 export type ExtractedTaskDraft = {
   title: string;
-  category: TaskCategory;
   estimatedMinutes: number;
   dueDate?: string;
   // True only when the user said a clock time ("at 7 p.m.") — otherwise
@@ -36,7 +35,7 @@ export type StructuredAction =
   | {
       type: "UPDATE_TASK";
       taskId: string;
-      changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes" | "category">>;
+      changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes">>;
       confirmationTier: ConfirmationTier;
     }
   | { type: "COMPLETE_TASK"; taskId: string; confirmationTier: "immediate" }

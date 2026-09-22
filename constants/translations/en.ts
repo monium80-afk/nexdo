@@ -66,29 +66,8 @@ export const en = {
     dueOnAt: (day: string, time: string) => `Due ${day} at ${time}`,
   },
 
-  categories: {
-    defaults: { school: "School", work: "Work", personal: "Personal", other: "Other" },
-    colors: {
-      terracotta: "Terracotta",
-      ocean: "Ocean",
-      sage: "Sage",
-      warm: "Warm",
-      indigo: "Indigo",
-      dusk: "Dusk",
-      teal: "Teal",
-      slate: "Slate",
-    },
-    count: (count: number) => `${count} ${plural(count, "category", "categories")}`,
-    managerTitle: "Task categories",
-  },
-
   /** The generic 3-step plan a new medium/complex task starts with. */
-  planTemplates: {
-    school: ["Gather notes and materials", "Do the core work", "Review and finalize"],
-    work: ["Gather what you need", "Do the core work", "Review and send"],
-    personal: ["Get ready", "Do the core work", "Wrap up"],
-    other: ["Gather what you need", "Do the core work", "Wrap up and review"],
-  },
+  planTemplate: ["Gather what you need", "Do the core work", "Wrap up and review"],
 
   next: {
     allCaughtUp: "All caught up",
@@ -138,11 +117,6 @@ export const en = {
     finishSession: "Done — finish session",
     nextTask: "Done with this task → Next task",
     aiBreakdown: "AI Breakdown",
-    microSteps: "MICRO-STEPS CHECKLIST",
-    stepsDone: (done: number, total: number) => `${done} / ${total} done`,
-    moreSteps: (count: number) => `+${count} more ${plural(count, "step", "steps")}`,
-    inProgress: "SESSION IN PROGRESS",
-    addMinutes: (minutes: number) => `+${minutes} min`,
     resetTimer: "Reset",
     pauseTimer: "Pause Timer",
     resumeTimer: "Resume Timer",
@@ -161,6 +135,7 @@ export const en = {
     breakingDown: "Breaking this task down…",
     stepPlaceholder: "Describe the step…",
     addStep: "Add step",
+    confirm: "Confirm these steps",
   },
 
   stuck: {
@@ -185,7 +160,6 @@ export const en = {
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
-    all: "All",
     statusTitle: "STATUS",
     sortTitle: "SORT BY",
     status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue" },
@@ -233,8 +207,6 @@ export const en = {
     taskTitle: "TASK TITLE",
     titlePlaceholder: "e.g. Complete Organic Chemistry lab writeup",
     titleRequired: "Task title is required.",
-    category: "CATEGORY",
-    newCategory: "New category",
     duration: "ESTIMATED DURATION",
     customDuration: "Custom duration",
     minutesPlaceholder: "Minutes, e.g. 50",
@@ -323,6 +295,9 @@ export const en = {
     recording: (duration: string) => `Recording… ${duration}`,
     transcribing: "Transcribing…",
     inputPlaceholder: "Type, speak, or take a picture of tasks...",
+    attachmentPlaceholder: "Add instructions (optional)...",
+    removeAttachment: "Remove attachment",
+    documentLabel: "Document",
     send: "Send message",
     micPermissionTitle: "Microphone access needed",
     micPermissionBody: "Nexdo needs microphone access to record voice notes. You can enable it in Settings.",
@@ -408,35 +383,26 @@ export const en = {
     nameError: "Couldn't save your username. Try again.",
   },
 
-  manageCategories: {
-    title: "Manage Categories",
-    subtitle: "Customize categories and colors for your tasks",
-    activeHeading: (count: number) => `ACTIVE CATEGORIES (${count})`,
-    defaultBadge: "Default",
-    isDefault: (label: string) => `${label} is the default`,
-    makeDefault: (label: string) => `Make ${label} the default`,
-    edit: (label: string) => `Edit ${label}`,
-    delete: (label: string) => `Delete ${label}`,
-    addNew: "Add New Category",
-    addCategory: "Add Category",
-    namePlaceholder: "e.g. Fitness, Health, Client Work, Side Projects",
-    colorTheme: "Color Theme",
-    nameRequired: "Give the category a name.",
-    duplicate: (label: string) => `You already have a category called "${label}".`,
-    deleteTitle: (label: string) => `Delete "${label}"?`,
-    deleteBodyTasks: (count: number, fallback: string) =>
-      `${count} ${plural(count, "task", "tasks")} in it will move to ${fallback}.`,
-    deleteBodyEmpty: "No tasks use this category.",
-  },
-
+  /** The chrome every onboarding step shares, then step 1's own copy. */
   onboarding: {
+    eyebrow: "GETTING STARTED",
+    next: "Next step",
     stickyNotes: ["dentist appt?", "exam next week", "groceries", "reply to email"],
     headline: "Stop figuring out what to do next.",
     body: "Dump everything on your mind. Nexdo organizes it, detects deadlines, and tells you what deserves your attention.",
     nextUp: "NEXT UP",
     sampleTask: "Finish chemistry lab report",
     dueTomorrow: "Due tomorrow",
-    getStarted: "Get Started",
+  },
+
+  /** Onboarding step 2 — the drag-to-sort demo. */
+  onboardingSort: {
+    headline: "Everything in your head.\nDrag it into order.",
+    body: "Pull the line down — watch the mess sort itself into a plan.",
+    unsorted: "UNSORTED",
+    sorted: "SORTED",
+    priority: { high: "HIGH", medium: "MED", low: "LOW" },
+    dragHandle: "Drag to sort your tasks",
   },
 
   auth: {

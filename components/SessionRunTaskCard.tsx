@@ -8,6 +8,7 @@ import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { HighlightedText } from "@/components/HighlightedText";
 import { colors } from "@/constants/theme";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
+import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Subtask, Task } from "@/types/task";
 
@@ -92,7 +93,7 @@ function SubtaskRow({
   onPress,
 }: {
   subtask: Subtask;
-  /** Only the task's "current" step can be checked off — see completeStep(). */
+  /** Steps of a finished task are read-only — see completeStep(). */
   interactive: boolean;
   onPress: () => void;
 }) {
@@ -110,12 +111,12 @@ function SubtaskRow({
         className={
           done
             ? "h-5 w-5 items-center justify-center rounded-full bg-success-500"
-            : interactive
+            : subtask.status === "current"
               ? "h-5 w-5 rounded-full border-2 border-orange-500"
               : "h-5 w-5 rounded-full border-2 border-white/20"
         }
       >
-        {done ? <Feather name="check" size={12} color={colors.cream[50]} /> : null}
+        {done ? <Feather name="check" size={12} color={colors.onAccent} /> : null}
       </View>
       <Text
         numberOfLines={1}
@@ -157,6 +158,7 @@ export function SessionRunTaskCard({
   onToggleSubtask: (subtaskId: string) => void;
 }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const done = task.status === "completed";
   const subtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown } = useTaskAiAssist(
@@ -202,12 +204,12 @@ export function SessionRunTaskCard({
               }
             >
               {done ? (
-                <Feather name="check" size={14} color={colors.cream[50]} />
+                <Feather name="check" size={14} color={colors.onAccent} />
               ) : (
                 <Text
                   className={
                     isActive
-                      ? "font-grotesk-bold text-xs text-cream-50"
+                      ? "font-grotesk-bold text-xs text-on-accent"
                       : "font-grotesk-bold text-xs text-ink-charcoal-muted"
                   }
                 >
@@ -220,6 +222,7 @@ export function SessionRunTaskCard({
 
           <Text
             numberOfLines={2}
+            style={rtl}
             className={
               done
                 ? "text-card-title text-ink-charcoal-muted line-through"
@@ -296,8 +299,8 @@ export function SessionRunTaskCard({
             accessibilityRole="button"
             className="flex-row items-center justify-center gap-2.5 rounded-full bg-orange-500 px-5 py-4"
           >
-            <Feather name="check" size={18} color={colors.cream[50]} />
-            <Text className="font-grotesk-bold text-base text-cream-50">
+            <Feather name="check" size={18} color={colors.onAccent} />
+            <Text className="font-grotesk-bold text-base text-on-accent">
               {isLastTask ? t.session.finishSession : t.session.nextTask}
             </Text>
           </AnimatedPressable>
@@ -343,7 +346,7 @@ export function SessionRunTaskCard({
               ) : null}
               <SubtaskRow
                 subtask={subtask}
-                interactive={!done && subtask.status === "current"}
+                interactive={!done}
                 onPress={() => onToggleSubtask(subtask.id)}
               />
             </Fragment>

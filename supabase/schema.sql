@@ -10,7 +10,6 @@ create table if not exists public.tasks (
   id text primary key,
   user_id text not null,
   title text not null,
-  category text not null,
   status text not null,
   due_date timestamptz,
   estimated_minutes int not null,
@@ -27,6 +26,11 @@ create table if not exists public.tasks (
   skip jsonb,
   completed_at timestamptz
 );
+
+-- Categories were removed from the app. A database created before that still
+-- has a NOT NULL "category" column, which would reject every task the app
+-- writes — drop it. Safe to re-run on a fresh database.
+alter table public.tasks drop column if exists category;
 
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 
@@ -47,6 +51,9 @@ create table if not exists public.chat_messages (
   role text not null,
   text text not null,
   created_at timestamptz not null,
+  -- An array of attachments (one message can carry several files). Rows
+  -- written before multi-attachment support hold a single object instead,
+  -- which the client still reads — see fromMessageRow in lib/supabaseSync.ts.
   attachment jsonb,
   related_task_id text
 );
