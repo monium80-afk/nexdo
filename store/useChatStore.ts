@@ -407,7 +407,16 @@ export const useChatStore = create<ChatStore>()(
 
             if (generation !== signOutGeneration) return; // signed out / reset mid-request
             handleClassifiedActions(actions, reply);
-          })();
+          })().catch((error) => {
+            // Nothing above is expected to reject — classifyIntent and
+            // extractAttachmentsText both absorb their own failures — but this
+            // is fire-and-forget, so anything that did would surface as an
+            // unhandled rejection *and* leave isAiTyping stuck on, spinning the
+            // typing bubble for the rest of the session.
+            console.warn("[useChatStore] sendMessage failed", error);
+            if (generation !== signOutGeneration) return;
+            respondWith(translate().common.aiUnreachable);
+          });
 
           return userMessage.id;
         },

@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useState, type ReactNode } from "react";
-import { Platform, Text, View } from "react-native";
+import { Alert, Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors } from "@/constants/theme";
@@ -23,6 +23,9 @@ export function computeDeadlineDate(value: DeadlineValue): Date | undefined {
     case "today": {
       const date = new Date(now);
       date.setHours(18, 0, 0, 0);
+      // Chosen after 6pm, a flat 18:00 is already behind us and the task would
+      // be created overdue. The end of the day is still today, and isn't.
+      if (date.getTime() <= now.getTime()) date.setHours(23, 59, 0, 0);
       return date;
     }
     case "tomorrow": {
@@ -216,7 +219,10 @@ export function DeadlineDatePicker({ value, onChange }: { value: Date; onChange:
       const next = new Date(baseDate);
       next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
       if (next.getTime() < Date.now()) {
+        // Said out loud rather than swallowed: the dialog closing with the row
+        // unchanged reads as the app having ignored the tap.
         setPendingDate(null);
+        Alert.alert(t.form.deadlineInPast);
         return;
       }
 

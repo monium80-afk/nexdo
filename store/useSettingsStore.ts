@@ -12,9 +12,18 @@ type SettingsStore = {
   // Auto mode: the AI chat adds and updates tasks straight away instead of
   // showing a confirmation card first.
   aiAutoMode: boolean;
+  // Notification preferences. Saved here, but nothing schedules them yet —
+  // the reminders themselves land in a later lesson.
+  dailyNudgeEnabled: boolean;
+  /** 24-hour "HH:MM" — the time of day the daily nudge should arrive. */
+  dailyNudgeTime: string;
+  overdueAlertsEnabled: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;
   setAiAutoMode: (aiAutoMode: boolean) => void;
+  setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
+  setDailyNudgeTime: (dailyNudgeTime: string) => void;
+  setOverdueAlertsEnabled: (overdueAlertsEnabled: boolean) => void;
 };
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -23,16 +32,29 @@ export const useSettingsStore = create<SettingsStore>()(
       theme: "system",
       language: "en",
       aiAutoMode: false,
+      dailyNudgeEnabled: false,
+      dailyNudgeTime: "09:00",
+      overdueAlertsEnabled: false,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setAiAutoMode: (aiAutoMode) => set({ aiAutoMode }),
+      setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
+      setDailyNudgeTime: (dailyNudgeTime) => set({ dailyNudgeTime }),
+      setOverdueAlertsEnabled: (overdueAlertsEnabled) => set({ overdueAlertsEnabled }),
     }),
     {
       name: "nexdo-settings",
       storage: createJSONStorage(() => AsyncStorage),
       // Listing the keys also drops the retired "planningStyle" value that
       // older installs still have saved, the next time this store writes.
-      partialize: (state) => ({ theme: state.theme, language: state.language, aiAutoMode: state.aiAutoMode }),
+      partialize: (state) => ({
+        theme: state.theme,
+        language: state.language,
+        aiAutoMode: state.aiAutoMode,
+        dailyNudgeEnabled: state.dailyNudgeEnabled,
+        dailyNudgeTime: state.dailyNudgeTime,
+        overdueAlertsEnabled: state.overdueAlertsEnabled,
+      }),
     },
   ),
 );

@@ -31,7 +31,7 @@ function syncUpsert(task: Task, userId: string | null) {
 
 function syncDelete(taskId: string, userId: string | null) {
   if (!userId) return;
-  deleteTaskRow(taskId).catch((error) => console.warn("[useTaskStore] delete failed", error));
+  deleteTaskRow(taskId, userId).catch((error) => console.warn("[useTaskStore] delete failed", error));
 }
 
 // The AsyncStorage snapshot and the Supabase fetch both land asynchronously
@@ -67,7 +67,13 @@ function stepsToSubtasks(steps: TaskStep[]): Subtask[] {
   }));
 }
 
-function buildTask(input: NewTaskInput, now: Date): Task {
+/**
+ * Exported so onboarding can build a task without saving one: it has drafts to
+ * rank and explain before the user has an account to hang them on, and running
+ * them through anything other than this would score and rank them differently
+ * from how the app actually will.
+ */
+export function buildTask(input: NewTaskInput, now: Date): Task {
   const complexity = analyzeTaskComplexity({
     title: input.title,
     estimatedMinutes: input.estimatedMinutes,
@@ -255,6 +261,11 @@ export const useTaskStore = create<TaskStore>()(
       handleSignOut: async () => {
         realtimeChannel?.unsubscribe();
         realtimeChannel = null;
+        // Cleared with everything else: these ids belong to the account that
+        // is leaving, and mergeRemoteTasks uses them to decide which local
+        // tasks were never written. Left behind, the next account to sign in
+        // on this device inherits that judgement about ids it has never seen.
+        confirmedUpsertIds.clear();
         set({ tasks: recalcAll(initialTasks), syncUserId: null });
         await AsyncStorage.removeItem("nexdo-tasks");
       },

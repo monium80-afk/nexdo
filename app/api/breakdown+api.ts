@@ -3,6 +3,18 @@ import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { languageInstruction } from "@/lib/ai/language";
 import type { PlanStep } from "@/lib/ai/types";
+import { authenticate, unauthorized } from "@/lib/serverAuth";
+import {
+  asObject,
+  badRequest,
+  BadRequestError,
+  clampNumber,
+  LANGUAGES,
+  oneOf,
+  parsePlanSteps,
+  parseTaskContext,
+  readJsonBody,
+} from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
 
 export type BreakdownRequestBody = {
@@ -65,18 +77,37 @@ function normalizeSteps(raw: unknown): PlanStep[] {
     .slice(0, MAX_STEPS);
 }
 
+// One task plus three short step lists — a few KB in practice.
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(request: Request) {
-  const body = (await request.json()) as BreakdownRequestBody;
+  const auth = await authenticate(request);
+  if ("failed" in auth) return auth.failed;
+  if (!auth.userId) return unauthorized();
+
+  let raw: unknown;
+  try {
+    raw = await readJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BadRequestError) return badRequest();
+    throw error;
+  }
+
+  const parsed = asObject(raw);
+  const task = parseTaskContext(parsed.task);
+  if (!task) return badRequest();
+
+  const language = oneOf(parsed.language, LANGUAGES);
 
   try {
     const result = await generateStructuredJson({
-      systemPrompt: `${BREAKDOWN_SYSTEM_PROMPT}${languageInstruction(body.language)}`,
+      systemPrompt: `${BREAKDOWN_SYSTEM_PROMPT}${languageInstruction(language)}`,
       userContent: JSON.stringify({
-        task: body.task,
-        completedSteps: body.completedSteps ?? [],
-        currentSteps: body.currentSteps ?? [],
-        previousSuggestion: body.previousSuggestion ?? [],
-        availableMinutes: body.availableMinutes ?? null,
+        task,
+        completedSteps: parsePlanSteps(parsed.completedSteps),
+        currentSteps: parsePlanSteps(parsed.currentSteps),
+        previousSuggestion: parsePlanSteps(parsed.previousSuggestion),
+        availableMinutes: clampNumber(parsed.availableMinutes, 0, 10_000) ?? null,
       }),
       responseSchema: RESPONSE_SCHEMA,
     });

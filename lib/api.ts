@@ -15,6 +15,22 @@ function getBaseUrl(): string {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+// The API routes verify a Clerk session JWT (see lib/serverAuth.ts), so every
+// request needs a fresh one. Same indirection as lib/supabase.ts: Clerk's
+// getToken() only exists inside a component tree, so it's handed down once
+// from a component that has useAuth() (see hooks/useAuthSync.ts) rather than
+// making every caller of apiPost pass a token through.
+let getClerkToken: (() => Promise<string | null>) | null = null;
+
+export function setApiTokenGetter(fn: () => Promise<string | null>) {
+  getClerkToken = fn;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = getClerkToken ? await getClerkToken() : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function apiPost<T>(
   path: string,
   body: unknown,
@@ -33,12 +49,16 @@ export async function apiPost<T>(
   try {
     const response = await fetch(`${getBaseUrl()}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (!response.ok) {
-      throw new Error(`${path} failed: ${response.status}`);
+      // The body carries the route's own reason (see the `error` field on
+      // app/api/extract-text+api.ts). Without it a failure reaches the caller
+      // as a bare status code, which says that something broke but never what.
+      const detail = await response.text().catch(() => "");
+      throw new Error(`${path} failed: ${response.status}${detail ? ` ${detail.slice(0, 300)}` : ""}`);
     }
     return response.json();
   } finally {

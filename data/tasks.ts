@@ -1,4 +1,4 @@
-﻿import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
+import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
 import { generatePlan } from "@/lib/ai/generatePlan";
 import { recalcTask } from "@/lib/scoring";
 import type { Task } from "@/types/task";

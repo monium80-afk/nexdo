@@ -1,4 +1,4 @@
-import { translate } from "@/lib/i18n";
+import { translate, type Translations } from "@/lib/i18n";
 import type { Task } from "@/types/task";
 
 export type ScoreTier = "high" | "medium" | "low";
@@ -71,6 +71,30 @@ export function getDueInfo(task: Task, now: Date = new Date()): DueInfo {
 
   const dateLabel = due.toLocaleDateString(t.locale, { month: "short", day: "numeric" });
   return { label: t.due.inDays(dayDiff), tone: "upcoming", pillLabel: t.due.dueOnAt(dateLabel, time) };
+}
+
+// A lighter-weight cousin of getDueInfo above — that one takes a full Task,
+// but a draft the AI has just extracted hasn't been created yet and only has a
+// dueDate to go on (no status/id/etc. to fabricate just to satisfy the type).
+// No urgency tint: a draft is a preview, so the caller picks the colour.
+// The time is only shown when the user actually said one — otherwise the hour
+// on dueDate is just a default and would read as a time they never gave.
+export function previewDueLabel(
+  dueDate: string | undefined,
+  hasTime: boolean | undefined,
+  now: Date,
+  t: Translations,
+): string {
+  if (!dueDate) return t.due.noDeadline;
+  const due = new Date(dueDate);
+  const dayDiff = Math.round((startOfDay(due).getTime() - startOfDay(now).getTime()) / DAY_MS);
+  const time = hasTime ? `, ${due.toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" })}` : "";
+  if (dayDiff < 0) return `${t.due.overdue}${time}`;
+  if (dayDiff === 0) return `${t.due.dueToday}${time}`;
+  if (dayDiff === 1) return `${t.due.dueTomorrow}${time}`;
+  // Weekday plus date — a bare "Tuesday" read as the wrong day for "in six days".
+  if (dayDiff <= 6) return `${due.toLocaleDateString(t.locale, { weekday: "short", month: "short", day: "numeric" })}${time}`;
+  return `${due.toLocaleDateString(t.locale, { month: "short", day: "numeric" })}${time}`;
 }
 
 // Colors the task list's deadline tag: red / yellow / green.

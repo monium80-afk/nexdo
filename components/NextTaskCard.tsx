@@ -1,15 +1,16 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useState } from "react";
-import { ActivityIndicator, Platform, Text, View, type ViewProps } from "react-native";
-import Animated, { FadeIn, type AnimatedProps } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Text, View, type ViewProps } from "react-native";
+import Animated, { FadeIn, ZoomIn, type AnimatedProps } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
 import { colors } from "@/constants/theme";
-import { useSessionCountdown } from "@/hooks/useSessionCountdown";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useSessionCountdown } from "@/hooks/useSessionCountdown";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
@@ -28,14 +29,17 @@ const FALLBACK_SESSION_MINUTES = 25;
 // its own shadow with it.
 const CARD_BORDERS = 2;
 
+// How long the "task complete" overlay holds the card before the task is
+// actually marked done. Long enough to land, short enough not to be in the way.
+const CELEBRATION_MS = 1100;
+
 const START_BUTTON_GLOW = Platform.select({
   ios: { shadowColor: colors.orange[500], shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 16 },
 });
 
 /** The task's plan while a session runs on it — every step, each one tickable. */
-function MicroStepsChecklist({ task }: { task: Task }) {
+function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep: (stepId: string) => void }) {
   const rtl = useRtlText();
-  const completeStep = useTaskStore((state) => state.completeStep);
   const steps = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const doneCount = steps.filter((step) => step.status === "completed").length;
 
@@ -53,7 +57,7 @@ function MicroStepsChecklist({ task }: { task: Task }) {
           return (
             <AnimatedPressable
               key={step.id}
-              onPress={() => completeStep(task.id, step.id)}
+              onPress={() => onToggleStep(step.id)}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: done }}
               className="flex-row items-center gap-3"
@@ -89,7 +93,15 @@ function MicroStepsChecklist({ task }: { task: Task }) {
 }
 
 /** The running clock, in place of the "Start Session" button. */
-function SessionPanel({ session, onComplete }: { session: ActiveSession; onComplete: () => void }) {
+function SessionPanel({
+  session,
+  onComplete,
+  onCancel,
+}: {
+  session: ActiveSession;
+  onComplete: () => void;
+  onCancel: () => void;
+}) {
   const t = useTranslation();
   const countdown = useSessionCountdown(session);
   const pause = useSessionStore((state) => state.pause);
@@ -130,7 +142,58 @@ function SessionPanel({ session, onComplete }: { session: ActiveSession; onCompl
           <Text className="shrink font-grotesk-bold text-sm text-cream-50">{t.session.complete}</Text>
         </AnimatedPressable>
       </View>
+
+      {/* The way back out: a session you abandon leaves the task untouched, so
+          this is quieter than the two actions above it. */}
+      <AnimatedPressable
+        onPress={onCancel}
+        accessibilityRole="button"
+        className="flex-row items-center justify-center gap-2 rounded-[16px] border border-white/10 px-2.5 py-2.5"
+      >
+        <Feather name="x" size={14} color={colors.ink.charcoalMuted} />
+        <Text className="shrink font-grotesk-semibold text-sm text-ink-charcoal-muted">
+          {t.session.cancelSession}
+        </Text>
+      </AnimatedPressable>
     </View>
+  );
+}
+
+/**
+ * What the card becomes for a moment once its task is finished. A completed
+ * task drops straight out of the Next queue, so without this the card would
+ * simply vanish under the finger that finished it — this is the beat that
+ * says "that one's done" before the next task slides in.
+ */
+function CompletedOverlay({ title }: { title: string }) {
+  const t = useTranslation();
+  const rtl = useRtlText();
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(160)}
+      accessibilityLiveRegion="polite"
+      className="absolute bottom-0 left-0 right-0 top-0 items-center justify-center gap-4 bg-charcoal-900 px-8"
+    >
+      <Animated.View
+        entering={ZoomIn.springify().damping(11).stiffness(150)}
+        className="h-20 w-20 items-center justify-center rounded-full"
+        style={{ backgroundColor: colors.success[500] }}
+      >
+        <Feather name="check" size={38} color={colors.cream[50]} />
+      </Animated.View>
+
+      <Animated.View entering={FadeIn.delay(150).duration(260)} className="items-center gap-1.5">
+        <Text className="font-grotesk-bold text-[22px] tracking-tight text-ink-charcoal">{t.next.taskComplete}</Text>
+        <Text
+          numberOfLines={2}
+          style={rtl}
+          className="text-center font-grotesk-medium text-sm text-ink-charcoal-muted"
+        >
+          {title}
+        </Text>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
@@ -170,16 +233,70 @@ export function NextTaskCard({
   const runningSession = session?.taskIds.includes(task.id) ? session : undefined;
   const hasSteps = (task.subtasks?.length ?? 0) > 0;
 
-  const handleComplete = () => {
-    completeTask(task.id);
-    leaveSession();
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  // Which task is being celebrated, rather than a plain flag: the stack keeps
+  // a fixed set of cards mounted and rotates the tasks through them, so a card
+  // can be handed a different task mid-celebration. The overlay belongs to the
+  // task that earned it, not to this card.
+  const [celebratedTaskId, setCelebratedTaskId] = useState<string | null>(null);
+  const pendingCelebrationTaskIds = useRef(new Set<string>());
+  const celebrating = celebratedTaskId === task.id;
+
+  /**
+   * Plays the completion overlay, then applies the change. It has to be this
+   * way round: the moment the task counts as completed it leaves the Next
+   * queue and this card is gone with it. `finish` closes over the task it was
+   * created for, so a swipe mid-overlay can't redirect the write.
+   */
+  const celebrate = (finish: () => void) => {
+    if (celebrating || pendingCelebrationTaskIds.current.has(task.id)) return;
+    pendingCelebrationTaskIds.current.add(task.id);
+    setCelebratedTaskId(task.id);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setTimeout(() => {
+      try {
+        finish();
+        // Only this task's own session ends with it — by now the user could
+        // have swiped on and started another one.
+        if (useSessionStore.getState().session?.taskIds.includes(task.id)) leaveSession();
+      } finally {
+        pendingCelebrationTaskIds.current.delete(task.id);
+      }
+    }, CELEBRATION_MS);
+  };
+
+  const handleComplete = () => celebrate(() => completeTask(task.id));
+
+  // Ticking the last open step finishes the whole task (see completeStep), so
+  // that tap gets the same send-off as the Complete button — the step is
+  // written once the overlay has played, not before it. Ticked from inside the
+  // AI Breakdown sheet, the sheet gets out of the way so the card can show it.
+  const handleToggleStep = (stepId: string) => {
+    const steps = task.subtasks ?? [];
+    const finishesTask = steps.every((step) =>
+      step.id === stepId ? step.status !== "completed" : step.status === "completed",
+    );
+    if (!finishesTask) {
+      completeStep(task.id, stepId);
+      return;
+    }
+    setBreakdownOpen(false);
+    celebrate(() => completeStep(task.id, stepId));
+  };
+
+  // Confirmed, because the clock is thrown away with the session and a stray
+  // tap mid-focus would be the worst moment to lose it.
+  const handleCancelSession = () => {
+    Alert.alert(t.session.cancelTitle, t.session.cancelBody, [
+      { text: t.session.keepGoing, style: "cancel" },
+      { text: t.session.endSession, style: "destructive", onPress: leaveSession },
+    ]);
   };
 
   const { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown } = useTaskAiAssist(
     task,
     plannedMinutes,
   );
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const adviceShown = advice.status !== "idle";
 
   const handleOpenBreakdown = () => {
@@ -251,13 +368,13 @@ export function NextTaskCard({
           </Text>
         </AnimatedPressable>
 
-        {runningSession && hasSteps ? <MicroStepsChecklist task={task} /> : null}
+        {runningSession && hasSteps ? <MicroStepsChecklist task={task} onToggleStep={handleToggleStep} /> : null}
 
         <View className="h-px bg-white/10" />
 
         <View className="gap-2.5">
           {runningSession ? (
-            <SessionPanel session={runningSession} onComplete={handleComplete} />
+            <SessionPanel session={runningSession} onComplete={handleComplete} onCancel={handleCancelSession} />
           ) : (
             <AnimatedPressable
               onPress={() => onStart(plannedMinutes)}
@@ -332,6 +449,8 @@ export function NextTaskCard({
         ) : null}
       </View>
 
+      {celebrating ? <CompletedOverlay title={task.title} /> : null}
+
       {/* Mounted only while open — a Modal per card is expensive, and these
           cards are re-rendered on every swipe. */}
       {breakdownOpen && !preview ? (
@@ -340,7 +459,7 @@ export function NextTaskCard({
           task={task}
           status={breakdownStatus}
           onRegenerate={regenerateBreakdown}
-          onToggleStep={(subtaskId) => completeStep(task.id, subtaskId)}
+          onToggleStep={handleToggleStep}
           onClose={() => setBreakdownOpen(false)}
         />
       ) : null}

@@ -26,9 +26,15 @@ export function useSessionCountdown(session: ActiveSession | null): SessionCount
   const runningSince = session?.runningSince ?? null;
   const [now, setNow] = useState(() => Date.now());
 
+  // On resume, `now` still holds a reading from before the pause — earlier
+  // than runningSince — which would make the current span come out negative
+  // and the clock jump backwards until the first tick lands a second later.
+  // Clamping is the whole fix, and unlike re-reading the clock it is a pure
+  // derivation: before the first tick the current span is simply zero, which
+  // is exactly what it is.
+  const liveNow = runningSince === null ? now : Math.max(now, runningSince);
+
   useEffect(() => {
-    // Re-sync immediately on resume: `now` is stale from before the pause.
-    setNow(Date.now());
     if (runningSince === null) return;
 
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -36,7 +42,7 @@ export function useSessionCountdown(session: ActiveSession | null): SessionCount
   }, [runningSince]);
 
   const totalMs = (session?.plannedMinutes ?? 0) * 60_000;
-  const elapsedMs = session ? sessionElapsedMs(session, now) : 0;
+  const elapsedMs = session ? sessionElapsedMs(session, liveNow) : 0;
   const remainingMs = totalMs - elapsedMs;
   const isOvertime = remainingMs <= 0;
   // Deliberately terser than formatDuration()'s "45 mins": it sits next to a

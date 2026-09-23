@@ -1,53 +1,68 @@
 import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   Extrapolation,
   interpolate,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withDelay,
+  withRepeat,
+  withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
+import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
 import { colors } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
-// The card is split once and stays split: the fog on top, the filter bar
-// across the middle, the plan underneath. None of it moves — only what
-// travels through it does.
-// The plan side gets the slightly larger share: the fog only has to hold a
-// scatter, but the plan has to fit every task at full width on a small phone.
-const MESS_FLEX = 48;
-const PLAN_FLEX = 52;
-const FILTER_HEIGHT = 4;
+// Two cards of equal height stacked with the filter between them: what is
+// still loose in your head on top, the plan underneath, and the app itself
+// sitting in the line everything has to pass through. None of it moves — only
+// what travels through it does.
 
 // One task, drawn the same way on both sides of the filter. It is wider once
 // sorted: a loose idea becoming something you could actually pick up.
-const TASK_HEIGHT = 14;
+const TASK_HEIGHT = 18;
 const MESS_TASK_WIDTH = 0.3;
 const PLAN_TASK_WIDTH = 0.72;
 /** Where a loose task lines up as it is drawn down — the middle. */
 const MESS_CENTER_LEFT = (1 - MESS_TASK_WIDTH) / 2;
 
-// Tasks go through the filter one after another, in the order they end up in.
+// Tasks cross the filter one after another rather than as a block, each
+// starting LEAD_STEP of the drag behind the one before it.
 const LEAD_STEP = 0.13;
 const TRAVEL_SPAN = 0.42;
 
-// Five ideas, scattered. `slot` is where each one lands once sorted — the two
-// urgent ones first — so the order they come through is the sort itself.
+// The idle drift on the loose notes — a few pixels, slowly, so the pile reads
+// as unsettled rather than pinned down.
+const FLOAT_DISTANCE = 3.5;
+const FLOAT_DURATION = 2600;
+/** Each note starts its drift later than the last, so they never move as one. */
+const FLOAT_STAGGER = 420;
+
+// Five ideas, scattered, each carrying the two orders that matter. `lead` is
+// when it leaves the pile — lowest note first, so the drag feels like pulling
+// the heap down from the bottom. `slot` is its place in the plan, the two
+// urgent ones first, and also when it arrives: the plan fills top row down.
+// So the two sides run in opposite directions at once, which is the sort made
+// visible — chaos leaves from the bottom, order arrives from the top.
+// `lead` is kept by hand rather than derived from `top`, so it needs redoing
+// if these positions are ever moved around.
 const TASKS = [
-  { left: 0.52, top: 0.08, rotate: -9, urgent: true, slot: 0 },
-  { left: 0.12, top: 0.54, rotate: 8, urgent: true, slot: 1 },
-  { left: 0.14, top: 0.26, rotate: 6, urgent: false, slot: 2 },
-  { left: 0.56, top: 0.42, rotate: -7, urgent: false, slot: 3 },
-  { left: 0.3, top: 0.72, rotate: -11, urgent: false, slot: 4 },
+  { left: 0.52, top: 0.08, rotate: -9, urgent: true, slot: 0, lead: 4 },
+  { left: 0.12, top: 0.54, rotate: 8, urgent: true, slot: 1, lead: 1 },
+  { left: 0.14, top: 0.26, rotate: 6, urgent: false, slot: 2, lead: 3 },
+  { left: 0.56, top: 0.42, rotate: -7, urgent: false, slot: 3, lead: 2 },
+  { left: 0.3, top: 0.72, rotate: -11, urgent: false, slot: 4, lead: 0 },
 ] as const;
 
 const PLAN_ORDER = [...TASKS].sort((a, b) => a.slot - b.slot);
@@ -59,13 +74,13 @@ const GRIP_SIZE = 34;
 /** A transparent square around the grip, so it is thumb-sized. */
 const GRIP_TOUCH = 48;
 
-/** How far the task in `slot` has been drawn through the filter, 0–1. */
-function taskTravel(progress: number, slot: number) {
+/** How far the `lead`-th task to be drawn has come through the filter, 0–1. */
+function taskTravel(progress: number, lead: number) {
   "worklet";
-  return Math.min(Math.max((progress - slot * LEAD_STEP) / TRAVEL_SPAN, 0), 1);
+  return Math.min(Math.max((progress - lead * LEAD_STEP) / TRAVEL_SPAN, 0), 1);
 }
 
-/** The warm haze behind the fog — the chaos the app clears. */
+/** The warm haze behind the scatter — the chaos the app clears. */
 function MessGlow() {
   return (
     <Svg style={StyleSheet.absoluteFill}>
@@ -81,9 +96,9 @@ function MessGlow() {
 }
 
 /**
- * One loose idea. As the grip travels it slides down toward the filter,
- * pulling into the middle and straightening out on the way, then goes under
- * the bar.
+ * One loose idea, drifting in place until it is drawn down. As the grip travels
+ * it slides toward the filter, pulling into the middle and straightening out on
+ * the way, then passes through it.
  */
 function MessTask({
   task,
@@ -94,14 +109,27 @@ function MessTask({
   progress: SharedValue<number>;
   size: { width: number; height: number };
 }) {
+  // Runs 0 → 1 → 0 forever, offset per note so the five are never in step.
+  const float = useSharedValue(0);
+
+  useEffect(() => {
+    float.value = withDelay(
+      task.lead * FLOAT_STAGGER,
+      withRepeat(withTiming(1, { duration: FLOAT_DURATION, easing: Easing.inOut(Easing.quad) }), -1, true),
+    );
+  }, [float, task.lead]);
+
   const taskStyle = useAnimatedStyle(() => {
-    const travelled = taskTravel(progress.value, task.slot);
+    const travelled = taskTravel(progress.value, task.lead);
+    // The drift fades out as the note starts moving: something being pulled
+    // through the filter should not still be bobbing about.
+    const drift = (float.value - 0.5) * 2 * FLOAT_DISTANCE * (1 - travelled);
     return {
       opacity: 1 - interpolate(travelled, [0.8, 1], [0, 1], Extrapolation.CLAMP),
       transform: [
-        { translateY: travelled * (size.height * (1 - task.top) + TASK_HEIGHT) },
+        { translateY: travelled * (size.height * (1 - task.top) + TASK_HEIGHT) + drift },
         { translateX: travelled * (MESS_CENTER_LEFT - task.left) * size.width },
-        { rotate: `${task.rotate * (1 - travelled)}deg` },
+        { rotate: `${task.rotate * (1 - travelled) + drift * 0.4}deg` },
       ],
     };
   });
@@ -125,7 +153,8 @@ function MessTask({
 /** The same task once it is through — every one the same size, in order. */
 function PlanTask({ task, progress }: { task: (typeof TASKS)[number]; progress: SharedValue<number> }) {
   const taskStyle = useAnimatedStyle(() => {
-    // It lands exactly as its loose counterpart vanishes under the bar.
+    // Keyed to `slot`, not `lead`: rows arrive down the plan in order, however
+    // scattered the order they left the pile in.
     const landed = interpolate(taskTravel(progress.value, task.slot), [0.75, 1], [0, 1], Extrapolation.CLAMP);
     return { opacity: landed, transform: [{ translateY: (1 - landed) * 10 }] };
   });
@@ -195,7 +224,7 @@ export default function OnboardingSort() {
 
   const handleNext = () => {
     posthog.capture("onboarding_sort_continued");
-    router.push("/(auth)/sign-up");
+    router.push("/onboarding-goals");
   };
 
   return (
@@ -206,35 +235,48 @@ export default function OnboardingSort() {
       onNext={handleNext}
     >
       <View className="flex-1 flex-row gap-3">
-        <View className="flex-1" style={styles.cardShadow}>
-          <View
-            className="flex-1 overflow-hidden rounded-[22px] bg-cream-50"
-            style={{ borderCurve: "continuous" }}
-          >
-            {/* Everything loose, above the filter. */}
+        <View className="flex-1">
+          {/* Everything loose, above the filter. */}
+          <View className="flex-1" style={styles.cardShadow}>
             <GestureDetector gesture={pushMess}>
               <View
                 onLayout={handleMessLayout}
-                className="overflow-hidden bg-charcoal-900"
-                style={{ flex: MESS_FLEX }}
+                className="flex-1 overflow-hidden rounded-[22px] bg-charcoal-900"
+                style={{ borderCurve: "continuous" }}
               >
                 <MessGlow />
                 {TASKS.map((task) => (
                   <MessTask key={task.slot} task={task} progress={progress} size={messSize} />
                 ))}
                 <Text className="eyebrow absolute left-4 top-4 text-ink-charcoal-muted">
-                  {t.onboardingSort.unsorted}
+                  {t.onboardingSort.head}
                 </Text>
               </View>
             </GestureDetector>
+          </View>
 
-            {/* The filter bar — fixed. Everything passes through it. */}
-            <View className="bg-orange-500" style={[{ height: FILTER_HEIGHT }, styles.filterGlow]} />
+          {/* The filter — fixed, and the one thing between the two cards.
+              The app sits in the line, because the app is what does the
+              sorting: everything passes through it to get to the plan. */}
+          <View className="flex-row items-center gap-2.5 py-2">
+            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={styles.filterGlow} />
+            <View
+              className="h-8 w-8 items-center justify-center rounded-full border border-cream-300 bg-cream-50"
+              style={styles.filterBadge}
+            >
+              <GemLogo size={17} />
+            </View>
+            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={styles.filterGlow} />
+          </View>
 
-            {/* What comes out the other side. */}
-            <View className="gap-2 px-4 pb-3 pt-3.5" style={{ flex: PLAN_FLEX }}>
-              <Text className="eyebrow text-ink-cream-muted">{t.onboardingSort.sorted}</Text>
-              <View className="flex-1 items-center justify-center gap-2">
+          {/* What comes out the other side. */}
+          <View className="flex-1" style={styles.cardShadow}>
+            <View
+              className="flex-1 gap-1.5 overflow-hidden rounded-[22px] bg-cream-50 px-4 pb-2.5 pt-3"
+              style={{ borderCurve: "continuous" }}
+            >
+              <Text className="eyebrow text-ink-cream-muted">{t.onboardingSort.plan}</Text>
+              <View className="flex-1 items-center justify-center gap-1.5">
                 {PLAN_ORDER.map((task) => (
                   <PlanTask key={task.slot} task={task} progress={progress} />
                 ))}
@@ -294,6 +336,18 @@ const styles = StyleSheet.create({
       shadowRadius: 10,
     },
     android: { shadowColor: colors.orange[500], elevation: 8 },
+    default: {},
+  }),
+  // Lifted off the line it sits on, so the logo reads as sitting *in* the
+  // filter rather than being another dot on it.
+  filterBadge: Platform.select({
+    ios: {
+      shadowColor: colors.ink.cream,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.16,
+      shadowRadius: 6,
+    },
+    android: { shadowColor: colors.ink.cream, elevation: 10 },
     default: {},
   }),
   gripGlow: Platform.select({

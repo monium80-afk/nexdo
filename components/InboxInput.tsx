@@ -38,6 +38,17 @@ function formatDurationLabel(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+// The assistant works off text it can read out of an attachment — a photo, a
+// voice note, a document. There's nothing it can do with a video, and they're
+// large to upload, so they're turned away here. The camera never produces one
+// (it's locked to stills below); the file picker is the way one gets in.
+const VIDEO_EXTENSIONS = /\.(mp4|mov|m4v|avi|mkv|webm|3gp|wmv|flv|mpg|mpeg)$/i;
+
+function isVideoFile(asset: { mimeType?: string | null; name?: string | null }): boolean {
+  if (asset.mimeType?.startsWith("video/")) return true;
+  return Boolean(asset.name && VIDEO_EXTENSIONS.test(asset.name));
+}
+
 export function InboxInput({
   value,
   onChangeText,
@@ -61,12 +72,21 @@ export function InboxInput({
     if (isRecording) {
       const seconds = Math.max(1, Math.round(recorderState.durationMillis / 1000));
       await audioRecorder.stop();
-      if (audioRecorder.uri) {
+      const uri = audioRecorder.uri;
+      // Back out of record mode once the recorder is done with it. iOS
+      // otherwise leaves the input route active and keeps playback quiet for
+      // the rest of the session — which is why useSessionAlarm had to undo
+      // this before it could ring. Not allowed to cost us the recording, so
+      // it is fired off rather than awaited.
+      setAudioModeAsync({ allowsRecording: false }).catch((error) =>
+        console.warn("[InboxInput] couldn't leave recording mode", error),
+      );
+      if (uri) {
         onAttachment([
           {
             kind: "voice",
             label: t.chat.voiceNoteLabel(formatDurationLabel(seconds)),
-            uri: audioRecorder.uri,
+            uri,
             durationSeconds: seconds,
             mimeType: "audio/aac",
           },
@@ -111,8 +131,17 @@ export function InboxInput({
   const handleAttachPress = async () => {
     const result = await DocumentPicker.getDocumentAsync({ multiple: true });
     if (result.canceled) return;
+
+    // Videos are dropped rather than the whole batch refused: picking four
+    // files and one clip should still attach the four.
+    const files = result.assets.filter((asset) => !isVideoFile(asset));
+    if (files.length < result.assets.length) {
+      Alert.alert(t.chat.videoNotSupportedTitle, t.chat.videoNotSupportedBody);
+    }
+    if (files.length === 0) return;
+
     onAttachment(
-      result.assets.map((asset) => ({
+      files.map((asset) => ({
         kind: "document" as const,
         label: asset.name,
         uri: asset.uri,

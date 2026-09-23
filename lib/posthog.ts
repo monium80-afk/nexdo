@@ -12,14 +12,12 @@ const isPostHogConfigured =
 
 if (__DEV__) {
   if (!isPostHogConfigured) {
-    // eslint-disable-next-line no-console
     console.warn(
       'POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, ' +
         'this causes events to be silently missed. ' +
         'This error stops appearing once POSTHOG_PROJECT_TOKEN is configured.'
     )
   } else {
-    // eslint-disable-next-line no-console
     console.log('PostHog config:', {
       projectToken: 'SET',
       host,

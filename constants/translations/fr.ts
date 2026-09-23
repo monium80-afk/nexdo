@@ -71,6 +71,9 @@ export const fr: Translations = {
     addATask: "Ajouter une tâche",
     eyebrow: "NEXDO MAINTENANT",
     heading: "Que pouvez-vous faire maintenant ?",
+    timeFilter: (duration: string) => `Tient en ${duration}`,
+    timeFilterEmpty: (duration: string) => `Rien ne tient en ${duration}`,
+    timeFilterClear: "Tout afficher",
     timeQuestion: "DE COMBIEN DE TEMPS DISPOSEZ-VOUS ?",
     minutesOption: (minutes: number) => `${minutes} min`,
     custom: "Autre...",
@@ -89,6 +92,7 @@ export const fr: Translations = {
     startSessionFor: (duration: string) => `Démarrer la session (${duration})`,
     previous: "Précédente",
     nextCard: "Suivante",
+    taskComplete: "Tâche terminée",
     pickTasks: "CHOISISSEZ VOS TÂCHES",
     useRecommended: "Utiliser la recommandation",
   },
@@ -117,6 +121,12 @@ export const fr: Translations = {
     pauseTimer: "Mettre en pause",
     resumeTimer: "Reprendre",
     complete: "Terminer",
+    cancelSession: "Annuler la session",
+    cancelTitle: "Annuler cette session ?",
+    cancelBody:
+      "Le minuteur s'arrête et le temps écoulé ne sera pas conservé. La tâche, elle, reste telle quelle.",
+    keepGoing: "Continuer",
+    endSession: "Arrêter la session",
     hideAdvice: "Masquer le conseil",
     takeAdvice: "Demander conseil à l'IA",
     stuck: "Je bloque",
@@ -209,6 +219,7 @@ export const fr: Translations = {
     minutesPlaceholder: "Minutes, ex. 50",
     minutesUnit: "min",
     durationError: "Saisissez un nombre entier de minutes supérieur à zéro.",
+    deadlineInPast: "Cette heure est déjà passée — choisissez-en une plus tard.",
     deadline: "ÉCHÉANCE",
     specificDate: "Date / heure précise",
     pickDate: "Choisir dans le calendrier",
@@ -271,6 +282,13 @@ export const fr: Translations = {
     },
     couldntCatch: "Je n'ai pas compris",
     couldntTranscribe: "Transcription impossible",
+    uploadFailedTitle: "Pièce jointe impossible",
+    uploadFailedBody:
+      "Vos fichiers n'ont pas pu être envoyés, donc rien n'a été transmis. Ils sont toujours dans la zone de saisie — vérifiez votre connexion et réessayez.",
+    uploadPartialBody: (failed: number) =>
+      failed === 1
+        ? "Un fichier n'a pas pu être envoyé, il a donc été exclu de ce message."
+        : `${failed} fichiers n'ont pas pu être envoyés, ils ont donc été exclus de ce message.`,
     complexity: { simple: "simple", medium: "moyennement complexe", complex: "complexe" },
     taskRead: (title: string, complexity: string, advice: string) =>
       `Voici mon analyse de « ${title} » — c'est une tâche ${complexity}. ${advice}`,
@@ -299,6 +317,10 @@ export const fr: Translations = {
       "Nexdo a besoin d'accéder à l'appareil photo pour prendre des photos. Vous pouvez l'autoriser dans les Réglages.",
     voiceNoteLabel: (duration: string) => `Note vocale (${duration})`,
     photoLabel: "Photo jointe",
+    viewPhoto: "Voir la photo en plein écran",
+    videoNotSupportedTitle: "Les vidéos ne sont pas prises en charge",
+    videoNotSupportedBody:
+      "Nexdo lit les photos, les notes vocales et les documents. Envoyez plutôt une photo ou un fichier.",
   },
 
   assistant: {
@@ -350,7 +372,14 @@ export const fr: Translations = {
   settings: {
     title: "Réglages",
     preferences: "PRÉFÉRENCES NEXDO",
-    aiChat: "CHAT IA",
+
+    account: "COMPTE",
+    signOut: "Se déconnecter",
+    signingOut: "Déconnexion…",
+    signOutCleanupError: "Déconnexion réussie, mais le nettoyage des données locales a rencontré un problème.",
+    signOutError: "Impossible de se déconnecter. Réessayez.",
+
+    aiChat: "BOÎTE IA",
     autoMode: "Mode automatique",
     autoModeBody: "Ajoute et met à jour les tâches immédiatement, sans vous demander de confirmer.",
     clearHistory: "Effacer l'historique du chat",
@@ -359,30 +388,69 @@ export const fr: Translations = {
     clear: "Effacer",
     historyCleared: "Historique du chat effacé.",
     historyClearFailed: "Effacé sur cet appareil, mais la copie synchronisée n'a pas pu l'être. Réessayez.",
+
+    notifications: "NOTIFICATIONS",
+    dailyNudge: "Rappel quotidien « et maintenant ? »",
+    dailyNudgeBody: "Un rappel par jour avec la tâche à faire ensuite.",
+    nudgeTime: "Me rappeler à",
+    overdueAlerts: "Alertes de tâches en retard",
+    overdueAlertsBody: "Un signal dès qu'une tâche dépasse son échéance.",
+    notificationsNote: "Enregistré sur cet appareil. Les rappels arriveront dans une prochaine mise à jour.",
+
     appearance: "APPARENCE",
     theme: "Thème",
     themes: { light: "Clair", dark: "Sombre", system: "Système" },
     language: "Langue",
-    signOut: "Se déconnecter",
-    signingOut: "Déconnexion…",
-    signOutCleanupError: "Déconnexion réussie, mais le nettoyage des données locales a rencontré un problème.",
-    signOutError: "Impossible de se déconnecter. Réessayez.",
+
+    support: "ASSISTANCE",
+    help: "Aide et commentaires",
+    helpBody: "Dites-nous ce qui ne va pas ou ce que vous aimeriez voir.",
+    privacy: "Politique de confidentialité",
+    terms: "Conditions d'utilisation",
+    version: (version: string) => `Nexdo v${version}`,
+    linkError: "Impossible d'ouvrir ce lien. Réessayez.",
   },
 
   profile: {
-    addName: "Ajoutez un nom d'utilisateur",
+    addName: "Ajoutez votre nom",
+    editAccount: "Modifier votre compte",
+  },
+
+  account: {
+    title: "Compte",
+    close: "Fermer les réglages du compte",
     changePhoto: "Changer la photo de profil",
-    editName: "Modifier le nom d'utilisateur",
-    username: "Nom d'utilisateur",
-    saving: "Enregistrement…",
+    photoHint: "JPG ou PNG de moins de 5 Mo",
     photoError: "Impossible de mettre à jour votre photo. Réessayez.",
-    nameRequired: "Ajoutez un nom d'utilisateur.",
-    nameError: "Impossible d'enregistrer votre nom d'utilisateur. Réessayez.",
+    name: "Nom",
+    namePlaceholder: "Votre nom",
+    nameRequired: "Ajoutez votre nom.",
+    nameError: "Impossible d'enregistrer votre nom. Réessayez.",
+    saving: "Enregistrement…",
+    saved: "Enregistré",
+    email: "E-mail",
+    noEmail: "Aucun e-mail sur ce compte",
+    changePassword: "Changer le mot de passe",
+    currentPassword: "Mot de passe actuel",
+    newPassword: "Nouveau mot de passe",
+    confirmPassword: "Confirmer le nouveau mot de passe",
+    passwordHint: "Au moins 8 caractères.",
+    passwordMismatch: "Ces deux mots de passe ne correspondent pas.",
+    passwordUpdated: "Mot de passe mis à jour.",
+    passwordError: "Impossible de changer votre mot de passe. Vérifiez l'actuel et réessayez.",
+    savePassword: "Enregistrer le mot de passe",
+    deleteAccount: "Supprimer le compte",
+    deleteTitle: "Supprimer votre compte ?",
+    deleteBody:
+      "Cela supprime définitivement votre compte Nexdo et tout ce qu'il contient — tâches, conversations et réglages, sur tous vos appareils. C'est irréversible.",
+    deleteConfirm: "Supprimer le compte",
+    deleting: "Suppression…",
+    deleteError: "Impossible de supprimer votre compte. Réessayez.",
   },
 
   onboarding: {
-    eyebrow: "POUR COMMENCER",
     next: "Étape suivante",
+    getStarted: "Commencer",
     stickyNotes: ["rdv dentiste ?", "examen la semaine pro", "courses", "répondre au mail"],
     headline: "Arrêtez de vous demander quoi faire ensuite.",
     body: "Videz-vous la tête. Nexdo organise tout, détecte les échéances et vous dit ce qui mérite votre attention.",
@@ -394,10 +462,67 @@ export const fr: Translations = {
   onboardingSort: {
     headline: "Tout ce que vous avez en tête.\nGlissez pour le mettre en ordre.",
     body: "Tirez la ligne vers le bas — le désordre s'organise en plan.",
-    unsorted: "EN VRAC",
-    sorted: "TRIÉ",
+    head: "DANS VOTRE TÊTE",
+    plan: "DANS VOTRE PLAN",
     priority: { high: "HAUTE", medium: "MOY", low: "BASSE" },
     dragHandle: "Glissez pour trier vos tâches",
+  },
+
+  onboardingGoals: {
+    headline: "Avec quoi voulez-vous que Nexdo vous aide ?",
+    body: "Sélectionnez tout ce qui vous correspond en ce moment.",
+    options: [
+      "J'oublie ce que je dois faire",
+      "J'ai trop de choses en tête",
+      "J'ai du mal à prioriser",
+      "Je procrastine sur les grosses tâches",
+      "Je ne sais pas par où commencer",
+      "Je veux être mieux organisé",
+    ],
+    continue: "Continuer",
+  },
+
+  onboardingDump: {
+    eyebrow: "DÉMO INTERACTIVE",
+    headline: "Qu'avez-vous en tête en ce moment ?",
+    body: "Ne triez rien. Videz simplement vos pensées ici.",
+    placeholder: "ex. Demain je dois finir mes maths, écrire au prof, faire les courses…",
+    startRecording: "Commencer à parler",
+    stopRecording: "Arrêter et transcrire",
+    transcribing: "Transcription…",
+    organize: "Organiser avec Nexdo",
+  },
+
+  onboardingAnalyzing: {
+    headline: "On en fait un plan…",
+    body: "Nexdo analyse les dates, les durées, les dépendances et la charge mentale.",
+    steps: [
+      "Repérage des tâches distinctes",
+      "Détection des échéances et des créneaux",
+      "Estimation de l'effort réel",
+      "Calcul des scores de priorité et de la prochaine action",
+    ],
+  },
+
+  onboardingPlan: {
+    extracted: (count: number) => `${count} ${plural(count, "TÂCHE EXTRAITE", "TÂCHES EXTRAITES")}`,
+    headline: "Votre esprit est déjà plus clair.",
+    body: "Nexdo a extrait des tâches précises, identifié les échéances et calculé les durées.",
+    nothingFound: "Nexdo n'y a rien trouvé à faire. Vous pourrez ajouter des tâches vous-même une fois installé.",
+    score: (value: number) => `Score ${value}`,
+    next: "Par quoi commencer ?",
+  },
+
+  onboardingFocus: {
+    eyebrow: "LE MOTEUR DE DÉCISION",
+    headline: "Alors… par quoi commencer ?",
+    body: "Vous n'organisez pas vos tâches pour vous demander ensuite par où commencer. **Nexdo décide pour vous.**",
+    nextFocus: "À FAIRE MAINTENANT",
+    urgency: (score: number) => `Urgence ${score} / 100`,
+    why: "POURQUOI CELLE-CI MAINTENANT ?",
+    thinking: "Analyse en cours…",
+    nothing: "Il n'y a encore rien à décider. Ajoutez une tâche une fois installé et Nexdo choisira pour vous.",
+    next: "Logique",
   },
 
   auth: {

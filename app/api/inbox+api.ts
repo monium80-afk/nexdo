@@ -4,6 +4,20 @@ import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/a
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
 import { hasExplicitTime, parseDatePhrase } from "@/lib/ai/parseDate";
+import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
+import { authenticate } from "@/lib/serverAuth";
+import {
+    asObject,
+    badRequest,
+    BadRequestError,
+    clampArray,
+    clampString,
+    LANGUAGES,
+    MAX_ID_LENGTH,
+    oneOf,
+    parseTaskContext,
+    readJsonBody,
+} from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
 
 export type InboxRequestBody = {
@@ -380,15 +394,96 @@ async function classifyFragmentsIndependently(
   return { actions, replies, intent };
 }
 
+// This route is the most expensive one in the app: a single request can drive
+// up to MAX_TURNS sequential Gemini calls, plus a parallel fan-out over the
+// recovery fragments. These caps bound that from the outside, so the cost of
+// one request stays proportional to what a person can actually type.
+const MAX_BODY_BYTES = 256 * 1024;
+const MAX_MESSAGE_LENGTH = 4_000;
+const MAX_RECENT_IDS = 20;
+const MAX_TASKS = 20;
+const MAX_HISTORY = 20;
+const MAX_HISTORY_TEXT = 2_000;
+
+function parseBody(raw: unknown): InboxRequestBody | null {
+  const body = asObject(raw);
+  const message = clampString(body.message, MAX_MESSAGE_LENGTH);
+  if (!message) return null;
+
+  // "now" drives every date the model resolves, so a garbage value would
+  // silently date every task wrong — fall back to real now instead.
+  const nowCandidate = clampString(body.now, 40);
+  const now = nowCandidate && !Number.isNaN(Date.parse(nowCandidate)) ? nowCandidate : new Date().toISOString();
+
+  return {
+    message,
+    now,
+    currentTaskId: clampString(body.currentTaskId, MAX_ID_LENGTH),
+    recentTaskIds: clampArray(body.recentTaskIds, MAX_RECENT_IDS)
+      .map((id) => clampString(id, MAX_ID_LENGTH))
+      .filter((id): id is string => !!id),
+    tasks: clampArray(body.tasks, MAX_TASKS)
+      .map(parseTaskContext)
+      .filter((task): task is TaskContext => task !== null),
+    history: clampArray(body.history, MAX_HISTORY)
+      .map((entry) => {
+        const item = asObject(entry);
+        const text = clampString(item.text, MAX_HISTORY_TEXT);
+        const role = oneOf(item.role, ["user", "ai"] as const);
+        return text && role ? { role, text } : null;
+      })
+      .filter((entry): entry is { role: "user" | "ai"; text: string } => entry !== null),
+    language: oneOf(body.language, LANGUAGES),
+  };
+}
+
+// TODO(security): this route is deliberately still open to signed-out callers.
+// The onboarding brain-dump (app/onboarding-analyzing.tsx) classifies the
+// user's dump BEFORE they sign up, so requiring a Clerk token here would drop
+// that step to the offline heuristic (lib/ai/extractTasks.ts).
+//
+// Until that flow is resolved, this route is an unauthenticated entry point to
+// the project's Gemini quota, and one request can drive up to MAX_TURNS calls
+// plus the recovery fan-out. The caps below bound a single request, while the
+// shared anonymous limiter bounds repeated requests per IP.
+//
+// To close it, restore these two lines — lib/serverAuth.ts and the token
+// plumbing in lib/api.ts are already in place and working:
+//     const userId = await getUserId(request);
+//     if (!userId) return unauthorized();
+// and move onboarding's extraction to after sign-up.
 export async function POST(request: Request) {
-  const body = (await request.json()) as InboxRequestBody;
+  // A 503 rather than quietly treating the caller as anonymous: being waved
+  // through as anonymous here would only mean tighter rate limiting, but it
+  // would also hide a missing CLERK_SECRET_KEY behind mysterious 429s.
+  const auth = await authenticate(request);
+  if ("failed" in auth) return auth.failed;
+  if (!auth.userId) {
+    const rateLimitResponse = anonymousRateLimit(request, "inbox");
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  let raw: unknown;
+  try {
+    raw = await readJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BadRequestError) return badRequest();
+    throw error;
+  }
+
+  const body = parseBody(raw);
+  if (!body) return badRequest();
 
   const actions: InboxAction[] = [];
   const replies: string[] = [];
   let intent = "UNRELATED";
   let message = body.message;
   let firstTurnFailed = false;
-  let stoppedEarly = false;
+  // True only when the loop used up every turn and the model *still* handed
+  // back unresolved text — the one exit worth falling back to fragment
+  // recovery for. Every other way out (nothing left, the model echoing the
+  // same text back, an error) has already produced all it is going to.
+  let ranOutOfTurns = false;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     let result: SingleTurnResult;
@@ -405,7 +500,6 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("[api/inbox]", error);
       if (turn === 0) firstTurnFailed = true;
-      stoppedEarly = true;
       break; // keep whatever earlier turns already produced
     }
 
@@ -415,14 +509,12 @@ export async function POST(request: Request) {
 
     // No leftover, or the model just echoed the same text back (no real
     // progress) — either way, stop rather than loop pointlessly.
-    if (!result.remainingMessage || result.remainingMessage === message) {
-      stoppedEarly = true;
-      break;
-    }
+    if (!result.remainingMessage || result.remainingMessage === message) break;
     message = result.remainingMessage;
+    ranOutOfTurns = turn === MAX_TURNS - 1;
   }
 
-  if (message && actions.length > 0 && !firstTurnFailed && !stoppedEarly) {
+  if (ranOutOfTurns && message) {
     const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body);
     actions.push(...recovered.actions);
     replies.push(...recovered.replies);

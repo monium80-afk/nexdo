@@ -9,6 +9,7 @@ import { Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { colors } from "@/constants/theme";
+import { useSessionAlarm } from "@/hooks/useSessionAlarm";
 import { publishableKey, tokenCache } from "@/lib/clerk";
 import { posthog } from "@/lib/posthog";
 import "../global.css";
@@ -35,6 +36,10 @@ export default function RootLayout() {
   const pathname = usePathname()
   const params = useGlobalSearchParams()
   const previousPathname = useRef<string | undefined>(undefined)
+
+  // Lives here so a session's timer rings from any screen, not just the one
+  // the clock is on.
+  useSessionAlarm();
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -89,10 +94,13 @@ export default function RootLayout() {
               initialRouteName="(tabs)"
               screenOptions={{
                 headerShown: false,
-                // Left as "none": onboarding/sign-in/sign-up drive their own
-                // fade+rise entrance via useScreenEnterAnimation() for exact
-                // cross-platform timing — a native push transition on top of
-                // that would double-animate. See that hook's own comment.
+                // Left as "none": these screens drive their own fade+rise
+                // entrance for exact cross-platform timing — a native push
+                // transition on top of that would double-animate. sign-in,
+                // sign-up and task detail use useScreenEnterAnimation(); the
+                // onboarding steps run a longer down-then-up handoff from
+                // OnboardingLayout, which also needs the push held back until
+                // the outgoing step has faded away.
                 animation: "none",
                 contentStyle: { backgroundColor: colors.cream[100] },
               }}

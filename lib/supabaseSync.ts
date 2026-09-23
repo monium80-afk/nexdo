@@ -86,8 +86,17 @@ export async function upsertTaskRow(task: Task, userId: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function deleteTaskRow(taskId: string): Promise<void> {
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+// Scoped to the owner as well as the id. RLS already enforces this server
+// side, but every other query here says whose rows it means, and a delete is
+// the one that costs the most if a policy is ever loosened by accident.
+export async function deleteTaskRow(taskId: string, userId: string): Promise<void> {
+  const { error } = await supabase.from("tasks").delete().eq("id", taskId).eq("user_id", userId);
+  if (error) throw error;
+}
+
+/** Account deletion only — removes every task the account ever synced. */
+export async function deleteAllTasks(userId: string): Promise<void> {
+  const { error } = await supabase.from("tasks").delete().eq("user_id", userId);
   if (error) throw error;
 }
 

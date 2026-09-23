@@ -29,6 +29,11 @@ export async function extractAttachmentText(
   options: { language?: AppLanguage; userInstruction?: string } = {},
 ): Promise<string> {
   const base64 = await readFileAsBase64(attachment.uri);
+  // A recorder that captured nothing still hands back a valid file, just a
+  // tiny one — so the size is worth seeing next to the result. A few seconds
+  // of the HIGH_QUALITY preset is tens of KB; a few hundred bytes is a
+  // container header and no audio.
+  if (__DEV__) console.log(`[media] ${attachment.kind} ${Math.floor((base64.length * 3) / 4)}B`);
   const request: ExtractTextRequestBody = {
     mimeType: resolveMimeType(attachment),
     base64,

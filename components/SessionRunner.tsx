@@ -17,6 +17,19 @@ import { useSessionStore } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 /**
+ * NOT CURRENTLY RENDERED. Nothing imports this component, and the same is true
+ * of the three it is built from — SessionRunTaskCard, SessionTimerCard and
+ * StuckSheet. useSessionStore's resetTimer, focusTask and dropTask exist only
+ * for this screen and are dead with it. Kept deliberately, not by accident.
+ *
+ * What replaced it: a session now runs *inside* the card of the task it is for
+ * (SessionPanel in components/NextTaskCard.tsx), so the Next stack stays
+ * swipeable while the clock ticks. That path only ever runs one task, which is
+ * why the multi-task machinery here — the task list, "I'm stuck", moving the
+ * focus between tasks — has nowhere to live at the moment.
+ *
+ * ---
+ *
  * The running-session view of the Next tab. Everything on it is derived from
  * the snapshot the user set up before pressing "Start session" — the task
  * list, the countdown length and the ordering all come from that plan, so

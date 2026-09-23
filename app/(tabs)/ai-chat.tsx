@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
+import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { InboxInput } from "@/components/InboxInput";
 import { SuggestionChip } from "@/components/SuggestionChip";
 import { TaskConfirmationCard } from "@/components/TaskConfirmationCard";
@@ -69,11 +70,13 @@ function AccountAvatar({ size }: { size: "sm" | "md" }) {
 
 /** An image the user sent, shown inside their bubble like a regular chat attachment. */
 function ChatImage({ attachment }: { attachment: ChatAttachment }) {
+  const t = useTranslation();
   // Once the upload lands, the message's uri is swapped for a storage path. This
   // bubble keeps showing the local file it started with instead of downloading it again.
   const [localUri] = useState(isStoragePath(attachment.uri) ? null : attachment.uri);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const storagePath = localUri ? null : attachment.uri;
 
   useEffect(() => {
@@ -98,11 +101,27 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
   const aspectRatio = Math.min(Math.max(ratio, MIN_IMAGE_RATIO), MAX_IMAGE_RATIO);
 
   return (
-    <View className="mb-2.5 overflow-hidden rounded-xl bg-white/10" style={{ aspectRatio }}>
-      {uri ? (
-        <Image source={{ uri }} resizeMode="cover" onError={() => setFailed(true)} className="h-full w-full" />
-      ) : null}
-    </View>
+    <>
+      {/* Cropped to the bubble here, so a tap opens the whole frame full
+          screen — that's the only way to actually read a photo of a page. */}
+      <AnimatedPressable
+        onPress={() => setViewerOpen(true)}
+        disabled={!uri}
+        scaleTo={0.98}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={t.chat.viewPhoto}
+        className="mb-2.5 overflow-hidden rounded-xl bg-white/10"
+        style={{ aspectRatio }}
+      >
+        {uri ? (
+          <Image source={{ uri }} resizeMode="cover" onError={() => setFailed(true)} className="h-full w-full" />
+        ) : null}
+      </AnimatedPressable>
+
+      {/* Mounted only while open — every message in the thread renders one of
+          these, and a Modal each would be expensive. */}
+      {viewerOpen && uri ? <ImageViewerModal uri={uri} onClose={() => setViewerOpen(false)} /> : null}
+    </>
   );
 }
 
@@ -193,7 +212,7 @@ function TypingBubble() {
   );
 }
 
-function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: string; mode?: string; availableMinutes?: number }) {
+function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: string; availableMinutes?: number }) {
   const t = useTranslation();
   const router = useRouter();
   const { user } = useUser();
@@ -226,22 +245,48 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const aiAutoMode = useSettingsStore((state) => state.aiAutoMode);
+  // What this screen has already had the AI read out, as "<taskId>:<minutes>".
+  // The time budget is part of the key because advice for "I have 20 minutes"
+  // is different advice, but re-running the effect for the same pair (a store
+  // callback changing identity, say) must not send a second request or push a
+  // second bubble into the thread.
   const analysisSeededFor = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    if (!contextTaskId || analysisSeededFor.current === contextTaskId) return;
+    if (!contextTaskId) return;
+    const seedKey = `${contextTaskId}:${availableMinutes ?? ""}`;
+    if (analysisSeededFor.current === seedKey) return;
     const task = useTaskStore.getState().tasks.find((candidate) => candidate.id === contextTaskId);
     if (!task) return;
+
+    // Claimed before the request leaves, so a re-run while it is still in
+    // flight doesn't start a second one.
+    analysisSeededFor.current = seedKey;
+    let seeded = false;
     let cancelled = false;
-    generateAdvice(task, availableMinutes).then((advice) => {
-      if (cancelled) return;
-      const copy = translate().chat;
-      seedMessage(copy.taskRead(task.title, copy.complexity[task.complexity], adviceToText(advice)), task.id);
-    });
+    const release = () => {
+      if (analysisSeededFor.current === seedKey) analysisSeededFor.current = null;
+    };
+
+    generateAdvice(task, availableMinutes)
+      .then((advice) => {
+        if (cancelled) return;
+        const copy = translate().chat;
+        seedMessage(copy.taskRead(task.title, copy.complexity[task.complexity], adviceToText(advice)), task.id);
+        seeded = true;
+      })
+      .catch((error) => {
+        // generateAdvice falls back to its own heuristic, so this is only
+        // reached by something unexpected — let the next run try again.
+        console.warn("[ai-chat] task analysis failed", error);
+        release();
+      });
+
     return () => {
       cancelled = true;
-      if (analysisSeededFor.current === contextTaskId) analysisSeededFor.current = null;
+      // Nothing was ever said, so the claim goes back and a later run may retry.
+      if (!seeded) release();
     };
   }, [contextTaskId, availableMinutes, seedMessage]);
 
@@ -277,6 +322,22 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     setDraft("");
     setPendingAttachments([]);
     const storedAttachments = attachments.length > 0 ? await uploadAttachments(attachments) : [];
+
+    // Nothing reached storage. A message with no text has nothing left to say,
+    // and sendMessage would drop it on the floor — so the files go back in the
+    // composer with an explanation rather than simply disappearing.
+    if (attachments.length > 0 && storedAttachments.length === 0) {
+      setPendingAttachments(attachments);
+      setDraft(text);
+      Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadFailedBody);
+      return;
+    }
+    // Some made it. The message is still worth sending, but the ones that
+    // didn't are said out loud instead of quietly missing from it.
+    if (storedAttachments.length < attachments.length) {
+      Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadPartialBody(attachments.length - storedAttachments.length));
+    }
+
     sendMessage(text, storedAttachments, contextTaskId);
   };
 
@@ -450,7 +511,8 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
 }
 
 export default function AiChat() {
-  const { taskId, mode, minutes } = useLocalSearchParams<{ taskId?: string; mode?: string; minutes?: string }>();
-  const availableMinutes = minutes ? Number.parseInt(minutes, 10) : undefined;
-  return <InboxChatScreen contextTaskId={taskId} mode={mode} availableMinutes={availableMinutes} />;
+  const { taskId, minutes } = useLocalSearchParams<{ taskId?: string; minutes?: string }>();
+  const parsedMinutes = minutes ? Number.parseInt(minutes, 10) : Number.NaN;
+  const availableMinutes = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : undefined;
+  return <InboxChatScreen contextTaskId={taskId} availableMinutes={availableMinutes} />;
 }

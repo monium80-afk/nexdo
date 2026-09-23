@@ -5,10 +5,11 @@ const DURATION = 280;
 const RISE_DISTANCE = 14;
 
 /**
- * Fade + rise entrance used on every top-level screen, replacing the
- * platform's default push transition (which we disable via
+ * Fade + rise entrance for a screen that only needs to animate in, replacing
+ * the platform's default push transition (which we disable via
  * `animation: "none"` on the Stacks) so timing/easing stays exact and
- * consistent across iOS/Android/web.
+ * consistent across iOS/Android/web. The onboarding steps animate out as well
+ * as in, so they run their own version of this from OnboardingLayout.
  */
 export function useScreenEnterAnimation() {
   const progress = useSharedValue(0);

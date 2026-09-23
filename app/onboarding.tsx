@@ -32,19 +32,22 @@ export default function Onboarding() {
 
   return (
     <OnboardingLayout
-      percent={0}
-      headline={t.onboarding.headline}
-      body={t.onboarding.body}
-      onNext={handleNext}
-    >
-      <View className="flex-1 items-center justify-center gap-7">
+      centered
+      mark={
         <View
-          className="bg-cream-50 border border-cream-300 h-16 w-16 items-center justify-center rounded-[16px]"
+          className="h-16 w-16 items-center justify-center rounded-[16px] border border-cream-300 bg-cream-50"
           style={[{ borderCurve: "continuous" }, styles.logoShadow]}
         >
           <GemLogo size={40} />
         </View>
-
+      }
+      percent={0}
+      headline={t.onboarding.headline}
+      body={t.onboarding.body}
+      nextLabel={t.onboarding.getStarted}
+      onNext={handleNext}
+    >
+      <View className="flex-1 items-center justify-center">
         <View className="relative w-[84%] pb-[26px] pt-[26px]">
           {STICKY_NOTES.map((note, index) => (
             <View
@@ -61,8 +64,12 @@ export default function Onboarding() {
             </View>
           ))}
 
-          <View className="card--charcoal gap-2 rounded-2xl p-5" style={styles.cardGlow}>
-            <View className="badge bg-orange-500">
+          {/* mx-3 rather than a narrower wrapper: the sticky notes are placed
+              against the wrapper, so narrowing that would pull them in too. */}
+          <View className="card--charcoal mx-3 gap-2 rounded-[20px] p-5" style={styles.cardGlow}>
+            {/* The badge utility is a full pill; this one is squarer, so its
+                classes are spelled out rather than fighting that radius. */}
+            <View className="flex-row items-center self-start rounded-lg bg-orange-500 px-2.5 py-1">
               <Text className="text-xs font-grotesk-bold tracking-wide text-on-accent">
                 {t.onboarding.nextUp}
               </Text>
@@ -82,7 +89,7 @@ export default function Onboarding() {
               <Text className="font-grotesk-regular text-xs text-ink-charcoal-muted">~45m</Text>
             </View>
 
-            <View className="h-1.5 overflow-hidden rounded-full bg-charcoal-600">
+            <View className="h-2 overflow-hidden rounded-full bg-charcoal-600">
               <View className="h-full w-[65%] rounded-full bg-orange-500" />
             </View>
           </View>
@@ -100,10 +107,7 @@ const styles = StyleSheet.create({
       shadowOpacity: 0.08,
       shadowRadius: 8,
     },
-    android: {
-      shadowColor: colors.ink.cream,
-      elevation: 3,
-    },
+    android: { shadowColor: colors.ink.cream, elevation: 3 },
     default: {},
   }),
   cardGlow: Platform.select({

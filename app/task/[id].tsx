@@ -329,7 +329,16 @@ export default function TaskDetail() {
                   return (
                     <View key={subtask.id} className="flex-row items-center gap-1 rounded-2xl bg-cream-200 py-1.5 pl-4 pr-1.5">
                       <AnimatedPressable
-                        onPress={() => task.status === "pending" && subtask.status === "current" && completeStep(task.id, subtask.id)}
+                        // Any step, in any order, and ticking a finished one
+                        // puts it back — the same contract completeStep itself
+                        // documents, and what the session checklist and the AI
+                        // Breakdown sheet already allow. Only the task being
+                        // open still matters.
+                        onPress={() => {
+                          if (task.status === "pending") completeStep(task.id, subtask.id);
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: done, disabled: task.status !== "pending" }}
                         className="flex-1 flex-row items-center gap-3 py-2"
                       >
                         <View

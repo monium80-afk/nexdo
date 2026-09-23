@@ -12,31 +12,7 @@ import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-// A lighter-weight cousin of lib/taskMeta.ts's getDueInfo — that one takes a
-// full Task, but a draft here hasn't been created yet and only has a
-// dueDate to go on (no status/id/etc. to fabricate just to satisfy the type).
-// No urgency tint here: this card is a preview, so the icons stay brand orange.
-// The time is only shown when the user actually gave one — otherwise the
-// hour on dueDate is just a default and would read as a time they never said.
-function previewDueLabel(dueDate: string | undefined, hasTime: boolean | undefined, now: Date, t: Translations): string {
-  if (!dueDate) return t.due.noDeadline;
-  const due = new Date(dueDate);
-  const dayDiff = Math.round((startOfDay(due).getTime() - startOfDay(now).getTime()) / DAY_MS);
-  const time = hasTime ? `, ${due.toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" })}` : "";
-  if (dayDiff < 0) return `${t.due.overdue}${time}`;
-  if (dayDiff === 0) return `${t.due.dueToday}${time}`;
-  if (dayDiff === 1) return `${t.due.dueTomorrow}${time}`;
-  // Weekday plus date — a bare "Tuesday" read as the wrong day for "in six days".
-  if (dayDiff <= 6) return `${due.toLocaleDateString(t.locale, { weekday: "short", month: "short", day: "numeric" })}${time}`;
-  return `${due.toLocaleDateString(t.locale, { month: "short", day: "numeric" })}${time}`;
-}
+import { previewDueLabel } from "@/lib/taskMeta";
 
 function formatDueFieldValue(dueDate: string | undefined, hasTime: boolean | undefined, t: Translations): string {
   if (!dueDate) return t.due.noDeadline;

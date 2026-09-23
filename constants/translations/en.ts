@@ -75,6 +75,9 @@ export const en = {
     addATask: "Add a task",
     eyebrow: "NEXDO NOW",
     heading: "What can you do right now?",
+    timeFilter: (duration: string) => `Fits in ${duration}`,
+    timeFilterEmpty: (duration: string) => `Nothing fits in ${duration}`,
+    timeFilterClear: "Show all",
     timeQuestion: "HOW MUCH TIME HAVE YOU GOT?",
     minutesOption: (minutes: number) => `${minutes} min`,
     custom: "Custom...",
@@ -93,6 +96,7 @@ export const en = {
     startSessionFor: (duration: string) => `Start Session (${duration})`,
     previous: "Previous",
     nextCard: "Next",
+    taskComplete: "Task complete",
     pickTasks: "PICK YOUR TASKS",
     useRecommended: "Use recommended",
   },
@@ -121,6 +125,11 @@ export const en = {
     pauseTimer: "Pause Timer",
     resumeTimer: "Resume Timer",
     complete: "Complete",
+    cancelSession: "Cancel session",
+    cancelTitle: "Cancel this session?",
+    cancelBody: "The timer stops and the time you've spent won't be kept. The task itself stays exactly as it is.",
+    keepGoing: "Keep going",
+    endSession: "End session",
     hideAdvice: "Hide AI Advice",
     takeAdvice: "Take AI Advice",
     stuck: "I'm stuck",
@@ -212,6 +221,7 @@ export const en = {
     minutesPlaceholder: "Minutes, e.g. 50",
     minutesUnit: "min",
     durationError: "Enter a positive whole number of minutes.",
+    deadlineInPast: "That time has already passed — pick a later one.",
     deadline: "DEADLINE",
     specificDate: "Specific date / time",
     pickDate: "Pick on calendar",
@@ -277,6 +287,13 @@ export const en = {
     },
     couldntCatch: "Couldn't catch that",
     couldntTranscribe: "Couldn't transcribe",
+    uploadFailedTitle: "Couldn't attach that",
+    uploadFailedBody:
+      "Your files couldn't be uploaded, so nothing was sent. They're still in the box — check your connection and try again.",
+    uploadPartialBody: (failed: number) =>
+      failed === 1
+        ? "One file couldn't be uploaded, so it was left out of this message."
+        : `${failed} files couldn't be uploaded, so they were left out of this message.`,
     complexity: { simple: "simple", medium: "medium", complex: "complex" },
     taskRead: (title: string, complexity: string, advice: string) =>
       `Here's my read on "${title}" — it's a ${complexity} task. ${advice}`,
@@ -305,6 +322,9 @@ export const en = {
     cameraPermissionBody: "Nexdo needs camera access to capture photos. You can enable it in Settings.",
     voiceNoteLabel: (duration: string) => `Voice note (${duration})`,
     photoLabel: "Photo attached",
+    viewPhoto: "View photo full screen",
+    videoNotSupportedTitle: "Videos aren't supported",
+    videoNotSupportedBody: "Nexdo reads photos, voice notes and documents. Send a photo or a file instead.",
   },
 
   /** What the assistant says when the app itself (not the AI model) writes the reply. */
@@ -353,7 +373,14 @@ export const en = {
   settings: {
     title: "Settings",
     preferences: "NEXDO PREFERENCES",
-    aiChat: "AI CHAT",
+
+    account: "ACCOUNT",
+    signOut: "Sign out",
+    signingOut: "Signing out…",
+    signOutCleanupError: "Signed out, but local data cleanup needs attention.",
+    signOutError: "Couldn't sign out. Try again.",
+
+    aiChat: "AI INBOX",
     autoMode: "Auto mode",
     autoModeBody: "Add and update tasks right away, without asking you to confirm first.",
     clearHistory: "Clear chat history",
@@ -362,31 +389,71 @@ export const en = {
     clear: "Clear",
     historyCleared: "Chat history cleared.",
     historyClearFailed: "Cleared on this device, but couldn't clear the synced copy. Try again.",
+
+    notifications: "NOTIFICATIONS",
+    dailyNudge: 'Daily "what\'s next" nudge',
+    dailyNudgeBody: "One reminder a day with the task worth doing next.",
+    nudgeTime: "Remind me at",
+    overdueAlerts: "Overdue task alerts",
+    overdueAlertsBody: "A heads-up when a task passes its deadline.",
+    notificationsNote: "Saved on this device. Reminders start arriving in a later update.",
+
     appearance: "APPEARANCE",
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "System" },
     language: "Language",
-    signOut: "Sign out",
-    signingOut: "Signing out…",
-    signOutCleanupError: "Signed out, but local data cleanup needs attention.",
-    signOutError: "Couldn't sign out. Try again.",
+
+    support: "SUPPORT",
+    help: "Help & send feedback",
+    helpBody: "Tell us what's broken or what you'd like next.",
+    privacy: "Privacy policy",
+    terms: "Terms of service",
+    version: (version: string) => `Nexdo v${version}`,
+    linkError: "Couldn't open that link. Try again.",
   },
 
   profile: {
-    addName: "Add a username",
-    changePhoto: "Change profile photo",
-    editName: "Edit username",
-    username: "Username",
+    addName: "Add your name",
+    editAccount: "Edit your account",
+  },
+
+  /** The Account sheet — the one place profile details are edited. */
+  account: {
+    title: "Account",
+    close: "Close account settings",
+    changePhoto: "Change profile picture",
+    photoHint: "JPG or PNG under 5MB",
+    photoError: "Couldn't update your picture. Try again.",
+    name: "Name",
+    namePlaceholder: "Your name",
+    nameRequired: "Add your name.",
+    nameError: "Couldn't save your name. Try again.",
     saving: "Saving…",
-    photoError: "Couldn't update your photo. Try again.",
-    nameRequired: "Add a username.",
-    nameError: "Couldn't save your username. Try again.",
+    saved: "Saved",
+    email: "Email",
+    noEmail: "No email on this account",
+    changePassword: "Change password",
+    currentPassword: "Current password",
+    newPassword: "New password",
+    confirmPassword: "Confirm new password",
+    passwordHint: "Use at least 8 characters.",
+    passwordMismatch: "Those two passwords don't match.",
+    passwordUpdated: "Password updated.",
+    passwordError: "Couldn't change your password. Check the current one and try again.",
+    savePassword: "Save password",
+    deleteAccount: "Delete account",
+    deleteTitle: "Delete your account?",
+    deleteBody:
+      "This permanently deletes your Nexdo account and everything on it — every task, chat and setting, on every device. It can't be undone.",
+    deleteConfirm: "Delete account",
+    deleting: "Deleting…",
+    deleteError: "Couldn't delete your account. Try again.",
   },
 
   /** The chrome every onboarding step shares, then step 1's own copy. */
   onboarding: {
-    eyebrow: "GETTING STARTED",
     next: "Next step",
+    getStarted: "Get Started",
     stickyNotes: ["dentist appt?", "exam next week", "groceries", "reply to email"],
     headline: "Stop figuring out what to do next.",
     body: "Dump everything on your mind. Nexdo organizes it, detects deadlines, and tells you what deserves your attention.",
@@ -399,10 +466,73 @@ export const en = {
   onboardingSort: {
     headline: "Everything in your head.\nDrag it into order.",
     body: "Pull the line down — watch the mess sort itself into a plan.",
-    unsorted: "UNSORTED",
-    sorted: "SORTED",
+    head: "IN YOUR HEAD",
+    plan: "IN YOUR PLAN",
     priority: { high: "HIGH", medium: "MED", low: "LOW" },
     dragHandle: "Drag to sort your tasks",
+  },
+
+  /** Onboarding step 3 — what the user wants help with. Labels are in the same
+   *  order as the GOALS ids in app/onboarding-goals.tsx. */
+  onboardingGoals: {
+    headline: "What do you want Nexdo to help you with?",
+    body: "Select all that apply to you right now.",
+    options: [
+      "I forget what I need to do",
+      "I have too much on my mind",
+      "I struggle to prioritize",
+      "I procrastinate on big tasks",
+      "I don't know where to start",
+      "I want to be more organized",
+    ],
+    continue: "Continue",
+  },
+
+  /** Onboarding step 4 — the brain dump, typed or spoken. */
+  onboardingDump: {
+    eyebrow: "INTERACTIVE DEMO",
+    headline: "What's on your mind right now?",
+    body: "Don't organize it. Just dump your messy thoughts here.",
+    placeholder: "e.g. Tomorrow I need to finish my math homework, email my professor, buy groceries…",
+    startRecording: "Start speaking",
+    stopRecording: "Stop and write it down",
+    transcribing: "Writing it down…",
+    organize: "Organize with Nexdo",
+  },
+
+  /** Onboarding step 5 — the wait while the AI reads the dump. */
+  onboardingAnalyzing: {
+    headline: "Turning that into a plan…",
+    body: "Nexdo is analyzing dates, durations, dependencies, and cognitive load.",
+    steps: [
+      "Finding distinct tasks in raw text",
+      "Detecting deadlines & time windows",
+      "Estimating realistic effort",
+      "Calculating priority scores & next action",
+    ],
+  },
+
+  /** Onboarding step 6 — what the AI pulled out of the dump. */
+  onboardingPlan: {
+    extracted: (count: number) => `${count} ${plural(count, "TASK", "TASKS")} EXTRACTED`,
+    headline: "Your mind looks a little clearer.",
+    body: "Nexdo extracted specific tasks, identified deadlines, and calculated durations.",
+    nothingFound: "Nexdo couldn't find anything to do in that. You can add tasks yourself once you're set up.",
+    score: (value: number) => `Score ${value}`,
+    next: "What should I do first?",
+  },
+
+  /** Onboarding step 7 — the one task Nexdo picks, and why. */
+  onboardingFocus: {
+    eyebrow: "THE DECISION ENGINE",
+    headline: "So… what should you do first?",
+    body: "You don't organize your tasks and then still wonder where to start. **Nexdo makes the decision.**",
+    nextFocus: "NEXT FOCUS",
+    urgency: (score: number) => `Urgency ${score} / 100`,
+    why: "WHY THIS RIGHT NOW?",
+    thinking: "Working out why…",
+    nothing: "There's nothing to decide on yet. Add a task once you're set up and Nexdo will pick for you.",
+    next: "Makes sense",
   },
 
   auth: {

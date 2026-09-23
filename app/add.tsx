@@ -61,7 +61,10 @@ export default function Add() {
   const [customDeadlineOpen, setCustomDeadlineOpen] = useState(false);
   const [customDeadline, setCustomDeadline] = useState<Date>(defaultCustomDeadline);
 
-  const [priorityLevel, setPriorityLevel] = useState<TaskPriorityLevel>("high");
+  // Medium by default: most tasks aren't urgent, and starting on "High"
+  // pushed every new task to the top of the Next queue unless the user
+  // remembered to change it.
+  const [priorityLevel, setPriorityLevel] = useState<TaskPriorityLevel>("medium");
 
   const [steps, setSteps] = useState<StepDraft[]>([]);
   const [stepDraftLabel, setStepDraftLabel] = useState("");

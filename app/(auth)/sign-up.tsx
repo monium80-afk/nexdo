@@ -104,9 +104,12 @@ export default function SignUp() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View style={enterStyle}>
-            <SetupProgressBar percent={94} />
+          {/* Outside the entrance animation, as on the onboarding steps: the
+              setup bar is the one piece of chrome that holds still all the way
+              through the flow. */}
+          <SetupProgressBar percent={94} />
 
+          <Animated.View style={enterStyle}>
             <View className="mt-8 gap-3">
               <Text className="text-title text-ink-cream" style={rtl}>
                 {t.auth.signUpTitle}

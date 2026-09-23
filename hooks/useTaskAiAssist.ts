@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
@@ -11,6 +11,10 @@ export type AiRequest<T> =
   | { status: "ready"; data: T }
   | { status: "error" };
 
+const IDLE_ADVICE: AiRequest<TaskAdvice> = { status: "idle" };
+
+type BreakdownStatus = "idle" | "loading" | "error";
+
 /**
  * On-demand AI help for one task in a running session:
  * - advice: temporary UI state, shown under the task title;
@@ -20,60 +24,73 @@ export type AiRequest<T> =
 export function useTaskAiAssist(task: Task, availableMinutes?: number) {
   const replaceRemainingSteps = useTaskStore((state) => state.replaceRemainingSteps);
 
-  const [advice, setAdvice] = useState<AiRequest<TaskAdvice>>({ status: "idle" });
-  const [breakdownStatus, setBreakdownStatus] = useState<"idle" | "loading" | "error">("idle");
+  // Both pieces of state remember which task they describe, and the hook hands
+  // back nothing when that isn't the task on screen. The Next page's stack
+  // reuses its mounted cards as you swipe, so a card is handed a different task
+  // mid-life — and tagging the state is what keeps the previous task's advice
+  // from appearing under the new task's title. Doing it this way rather than
+  // clearing the state in a [task.id] effect also keeps the reset in the same
+  // render as the swap, instead of one frame and one extra render later.
+  const [adviceState, setAdviceState] = useState<{ taskId: string; request: AiRequest<TaskAdvice> }>({
+    taskId: task.id,
+    request: IDLE_ADVICE,
+  });
+  const [breakdownState, setBreakdownState] = useState<{ taskId: string; status: BreakdownStatus }>({
+    taskId: task.id,
+    status: "idle",
+  });
+
+  const advice = adviceState.taskId === task.id ? adviceState.request : IDLE_ADVICE;
+  const breakdownStatus: BreakdownStatus = breakdownState.taskId === task.id ? breakdownState.status : "idle";
 
   // Bumped by every new request and every dismiss, so a slow response for a
-  // request the user has already replaced or closed is simply dropped.
+  // request the user has already replaced or closed is simply dropped. This
+  // covers the same-task case; the taskId tags above cover the other one.
   const adviceRequestId = useRef(0);
   const breakdownRequestId = useRef(0);
 
-  // A card can be handed a different task (the Next page's stack reuses its
-  // cards as you swipe) — the previous task's advice must not carry over.
-  useEffect(() => {
-    adviceRequestId.current += 1;
-    breakdownRequestId.current += 1;
-    setAdvice({ status: "idle" });
-    setBreakdownStatus("idle");
-  }, [task.id]);
-
   const requestAdvice = async () => {
     const requestId = ++adviceRequestId.current;
-    setAdvice({ status: "loading" });
+    const taskId = task.id;
+    setAdviceState({ taskId, request: { status: "loading" } });
     // generateAdvice never throws — it falls back to heuristic advice offline.
     const result = await generateAdvice(task, availableMinutes);
     if (requestId !== adviceRequestId.current) return;
-    setAdvice(result.headline || result.detail ? { status: "ready", data: result } : { status: "error" });
+    setAdviceState({
+      taskId,
+      request: result.headline || result.detail ? { status: "ready", data: result } : { status: "error" },
+    });
   };
 
   const dismissAdvice = () => {
     adviceRequestId.current += 1;
-    setAdvice({ status: "idle" });
+    setAdviceState({ taskId: task.id, request: IDLE_ADVICE });
   };
 
   const regenerateBreakdown = async () => {
     const requestId = ++breakdownRequestId.current;
-    setBreakdownStatus("loading");
+    const taskId = task.id;
+    setBreakdownState({ taskId, status: "loading" });
     try {
       // The task's current unfinished steps go along with the request, so the
       // AI proposes a different split rather than the same one again.
       const steps = await suggestBreakdown(task, { availableMinutes });
       if (requestId !== breakdownRequestId.current) return;
       if (steps.length === 0) {
-        setBreakdownStatus("error");
+        setBreakdownState({ taskId, status: "error" });
         return;
       }
-      replaceRemainingSteps(task.id, steps);
-      setBreakdownStatus("idle");
+      replaceRemainingSteps(taskId, steps);
+      setBreakdownState({ taskId, status: "idle" });
     } catch (error) {
       console.warn("[useTaskAiAssist] breakdown failed", error);
-      if (requestId === breakdownRequestId.current) setBreakdownStatus("error");
+      if (requestId === breakdownRequestId.current) setBreakdownState({ taskId, status: "error" });
     }
   };
 
   const cancelBreakdown = () => {
     breakdownRequestId.current += 1;
-    setBreakdownStatus("idle");
+    setBreakdownState({ taskId: task.id, status: "idle" });
   };
 
   return { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown, cancelBreakdown };

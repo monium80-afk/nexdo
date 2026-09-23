@@ -1,4 +1,7 @@
 import { extractTextFromMedia } from "@/lib/ai/gemini";
+import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
+import { authenticate } from "@/lib/serverAuth";
+import { asObject, badRequest, BadRequestError, clampString, LANGUAGES, oneOf, readJsonBody } from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
 
 export type ExtractTextRequestBody = {
@@ -11,7 +14,11 @@ export type ExtractTextRequestBody = {
   userInstruction?: string;
 };
 
-export type ExtractTextResponseBody = { text: string };
+export type ExtractTextResponseBody = {
+  text: string;
+  /** Present only on a failure response. */
+  error?: string;
+};
 
 // This is a reading pass, not a task-extraction pass: whatever comes back is
 // fed through the exact same Task Manager pipeline as typed text (see
@@ -54,19 +61,94 @@ function focusNote(userInstruction: string | undefined): string {
   return `\n\nAlongside this file the user wrote: "${instruction}". Make sure everything it refers to is included in what you write out, and leave out clutter that clearly has nothing to do with it. Still only write what the file actually contains — do not answer the user, do not carry out the request, and do not add anything of your own.`;
 }
 
+const KINDS = ["photo", "voice", "document"] as const;
+
+// Only what the app itself captures, and only what Gemini can actually read
+// inline. An allowlist rather than a blocklist: an unknown type here is a
+// file this app never produces, so there is nothing to be permissive about.
+const ALLOWED_MIME_TYPES: Record<ExtractTextRequestBody["kind"], readonly string[]> = {
+  photo: ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"],
+  voice: ["audio/aac", "audio/mp4", "audio/m4a", "audio/mpeg", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm"],
+  document: ["application/pdf", "text/plain", "text/csv", "text/markdown"],
+};
+
+// Gemini reads the media inline, so the whole file rides in this one JSON
+// body as base64 (~4 bytes per 3 bytes of file). 9MB of body is roughly a
+// 6.5MB file — well above the compressed photos and short recordings the app
+// captures, and well under the point where one request ties up the runtime.
+const MAX_BODY_BYTES = 9 * 1024 * 1024;
+
+// The user's own words steer the read (see focusNote). A sentence or two is
+// the real use; anything longer is someone trying to use this as a general
+// prompt channel rather than a caption.
+const MAX_INSTRUCTION_LENGTH = 500;
+
+// TODO(security): deliberately still open to signed-out callers — see the same
+// note on app/api/inbox+api.ts. Onboarding transcribes a voice note before the
+// user signs up (app/onboarding-dump.tsx), which is the only reason this isn't
+// locked; there is no offline fallback for transcription, so locking it today
+// would leave that button permanently erroring.
+//
+// This is the sharpest of the two: the body is an arbitrary media file plus an
+// arbitrary instruction, which is the shape of a general-purpose LLM proxy. The
+// MIME allowlist and MAX_BODY_BYTES below limit what one request can be, while
+// the shared anonymous limiter bounds repeated requests per IP.
+//
+// To close it, restore:
+//     const userId = await getUserId(request);
+//     if (!userId) return unauthorized();
+// and move onboarding's transcription to after sign-up.
 export async function POST(request: Request) {
-  const body = (await request.json()) as ExtractTextRequestBody;
-  const languageNote = body.kind === "voice" || !body.language ? "" : (DESCRIPTION_LANGUAGE[body.language] ?? "");
+  // See the same call in app/api/inbox+api.ts for why this 503s rather than
+  // falling through to the anonymous path.
+  const auth = await authenticate(request);
+  if ("failed" in auth) return auth.failed;
+  if (!auth.userId) {
+    const rateLimitResponse = anonymousRateLimit(request, "extract-text");
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
+  let raw: unknown;
+  try {
+    raw = await readJsonBody(request, MAX_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof BadRequestError) return badRequest();
+    throw error;
+  }
+
+  const parsed = asObject(raw);
+  const kind = oneOf(parsed.kind, KINDS);
+  const mimeType = clampString(parsed.mimeType, 100);
+  const base64 = typeof parsed.base64 === "string" ? parsed.base64 : undefined;
+  if (!kind || !mimeType || !base64) return badRequest();
+  if (!ALLOWED_MIME_TYPES[kind].includes(mimeType.toLowerCase())) return badRequest();
+
+  const language = oneOf(parsed.language, LANGUAGES);
+  const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);
+  const languageNote = kind === "voice" || !language ? "" : (DESCRIPTION_LANGUAGE[language] ?? "");
+
+  // Base64 is 4 characters per 3 bytes. Logged on both paths below because
+  // it is the one number that separates "the model couldn't read it" from
+  // "the recorder handed us a file with nothing in it" — a silent emulator
+  // mic and a genuinely unreadable recording look identical from up here.
+  const bytes = Math.floor((base64.length * 3) / 4);
 
   try {
     const text = await extractTextFromMedia({
-      mimeType: body.mimeType,
-      base64: body.base64,
-      instruction: `${INSTRUCTIONS[body.kind] ?? INSTRUCTIONS.document}${languageNote}${focusNote(body.userInstruction)}`,
+      mimeType,
+      base64,
+      instruction: `${INSTRUCTIONS[kind]}${languageNote}${focusNote(userInstruction)}`,
     });
+    if (!text) console.warn(`[api/extract-text] ${kind} ${mimeType} ${bytes}B -> empty (model read nothing in it)`);
     return Response.json({ text } satisfies ExtractTextResponseBody);
   } catch (error) {
-    console.error("[api/extract-text]", error);
-    return Response.json({ text: "" } satisfies ExtractTextResponseBody, { status: 200 });
+    // Deliberately not a 200 with empty text any more. That made every key,
+    // quota, network and decode failure arrive at the client looking exactly
+    // like "your recording was silent" — the one explanation the user can act
+    // on, and the one it usually wasn't. A 5xx makes apiPost throw, so the
+    // caller's catch branch runs and says "couldn't transcribe" instead.
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`[api/extract-text] ${kind} ${mimeType} ${bytes}B failed:`, reason);
+    return Response.json({ text: "", error: "extraction_failed" } satisfies ExtractTextResponseBody, { status: 502 });
   }
 }
