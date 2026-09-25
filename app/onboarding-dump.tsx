@@ -1,21 +1,21 @@
 import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
+    RecordingPresets,
+    requestRecordingPermissionsAsync,
+    setAudioModeAsync,
+    useAudioRecorder,
+    useAudioRecorderState,
 } from "expo-audio";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TextInput, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+    type SharedValue,
 } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -31,13 +31,16 @@ import { useOnboardingStore } from "@/store/useOnboardingStore";
 // The control is a big circle to talk into, and stretches into a button the
 // width of the screen and the height of an ordinary call to action. Both ends
 // are fully rounded, so only the two measurements have to travel.
-const CIRCLE = 96;
+const CIRCLE = 108;
 const PILL_HEIGHT = 60;
 const MORPH_DURATION = 420;
 
 /** How tall the box is. Deliberately not flex-1 — a dump is a few lines, and
  *  the room is better spent on the thing you press to make one. */
 const BOX_HEIGHT = 208;
+/** As small as the box gets when the keyboard leaves no room — still a few
+ *  lines to type into, with the button kept in view right under it. */
+const BOX_MIN_HEIGHT = 96;
 
 // Metering arrives in dBFS: roughly -60 in a quiet room, 0 at the loudest the
 // mic can take. Anything below the floor is silence as far as the bars care.
@@ -55,7 +58,7 @@ function WaveBar({ level, gain }: { level: SharedValue<number>; gain: number }) 
     transform: [{ scaleY: 0.18 + level.value * gain }],
   }));
 
-  return <Animated.View className="h-11 w-1 rounded-full bg-cream-50" style={barStyle} />;
+  return <Animated.View className="h-12 w-1 rounded-full bg-cream-50" style={barStyle} />;
 }
 
 type DumpMode = "idle" | "recording" | "transcribing" | "ready";
@@ -134,7 +137,7 @@ function DumpControl({
             ) : mode === "transcribing" ? (
               <ActivityIndicator size="large" color={colors.onAccent} />
             ) : (
-              <Feather name="mic" size={36} color={colors.onAccent} />
+              <Feather name="mic" size={40} color={colors.onAccent} />
             )}
           </Animated.View>
 
@@ -183,30 +186,30 @@ export default function OnboardingDump() {
   if (isSignedIn) return <Redirect href="/" />;
 
   const startRecording = async () => {
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert(t.chat.micPermissionTitle, t.chat.micPermissionBody);
-      return;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t.chat.micPermissionTitle, t.chat.micPermissionBody);
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+    } catch (error) {
+      console.warn("[onboarding-dump] recording start failed", error);
+      Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
     }
-    await setAudioModeAsync({ allowsRecording: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
   };
 
   const stopAndTranscribe = async () => {
     const seconds = Math.max(1, Math.round(recorderState.durationMillis / 1000));
-    await recorder.stop();
-    const uri = recorder.uri;
-    // Same as components/InboxInput.tsx: leave record mode behind, without
-    // letting a failure here cost us the recording.
-    setAudioModeAsync({ allowsRecording: false }).catch((error) =>
-      console.warn("[onboarding-dump] couldn't leave recording mode", error),
-    );
-    if (!uri) return;
-
-    const durationLabel = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
     setIsTranscribing(true);
     try {
+      await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) return;
+
+      const durationLabel = `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
       const transcript = await extractAttachmentText(
         {
           kind: "voice",
@@ -227,6 +230,9 @@ export default function OnboardingDump() {
       Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
     } finally {
       setIsTranscribing(false);
+      setAudioModeAsync({ allowsRecording: false }).catch((error) =>
+        console.warn("[onboarding-dump] couldn't leave recording mode", error),
+      );
     }
   };
 
@@ -263,6 +269,10 @@ export default function OnboardingDump() {
       headline={t.onboardingDump.headline}
       body={t.onboardingDump.body}
       onNext={handleNext}
+      // Right under the box rather than at the foot of the screen: the mic is
+      // the other way to fill that box, and on a tall phone the bottom edge
+      // left it looking like a separate, far-off control.
+      inlineFooter
       footer={(next) => (
         <DumpControl
           mode={mode}
@@ -275,8 +285,8 @@ export default function OnboardingDump() {
       )}
     >
       <View
-        className="rounded-[20px] border border-orange-500 bg-cream-50 p-5"
-        style={{ height: BOX_HEIGHT }}
+        className="shrink rounded-[20px] border border-orange-500 bg-cream-50 p-5"
+        style={{ height: BOX_HEIGHT, minHeight: BOX_MIN_HEIGHT }}
       >
         <TextInput
           value={dump}

@@ -41,6 +41,7 @@ export function OnboardingLayout({
   mark,
   nextLabel,
   footer,
+  inlineFooter = false,
   leaving = false,
   children,
 }: {
@@ -68,6 +69,12 @@ export function OnboardingLayout({
    * step" callback the standard button uses, so the exit still runs.
    */
   footer?: (next: () => void) => ReactNode;
+  /**
+   * Draws the footer straight under the step's content instead of pinned to
+   * the bottom of the screen — for a control that belongs to the thing above
+   * it, which on a tall phone would otherwise end up a long way from it.
+   */
+  inlineFooter?: boolean;
   /**
    * Flip to true for a step that finishes on its own: the exit runs and
    * `onNext` is called without anyone having pressed anything.
@@ -171,10 +178,14 @@ export function OnboardingLayout({
             />
           </View>
 
-          <View className="mt-5 flex-1">{children}</View>
+          {/* Inline, the content only takes the room it needs, so the footer
+              follows right after it and the spare height collects below. It
+              can still shrink: with the keyboard up there may not be room for
+              both, and the footer is the part that has to stay reachable. */}
+          <View className={inlineFooter ? "mt-5 shrink" : "mt-5 flex-1"}>{children}</View>
 
           {footer ? (
-            <View className="pt-4">{footer(() => setPressed(true))}</View>
+            <View className={inlineFooter ? "pt-6" : "pt-4"}>{footer(() => setPressed(true))}</View>
           ) : nextLabel ? (
             <AnimatedPressable
               onPress={() => setPressed(true)}

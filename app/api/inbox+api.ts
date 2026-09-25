@@ -283,7 +283,7 @@ function looksMultiItem(text: string): boolean {
 // dueDatePhrase), which saved every task with no deadline, medium priority
 // and 30 minutes — and therefore the same score. Read whatever it left out
 // straight off the user's own words instead.
-function fillMissingTaskFields(action: InboxAction, text: string, now: Date) {
+function fillMissingTaskFields(action: InboxAction, text: string, now: Date, language: AppLanguage | undefined) {
   if (looksMultiItem(text)) {
     if (!["high", "medium", "low"].includes(action.fields.priority ?? "")) action.fields.priority = "medium";
     // No deadline is deliberate here: the model saw which line this task came
@@ -294,16 +294,16 @@ function fillMissingTaskFields(action: InboxAction, text: string, now: Date) {
 
   // The model sometimes copies only the date part ("25th September") and
   // drops the time the user said ("at 7 p.m.") — re-read both off the text.
-  if (hasExplicitTime(text) && !action.fields.dueHasTime) {
-    const withTime = parseDatePhrase(text, now);
+  if (hasExplicitTime(text, language) && !action.fields.dueHasTime) {
+    const withTime = parseDatePhrase(text, now, language);
     if (withTime) {
       action.fields.dueDate = withTime;
       action.fields.dueHasTime = true;
     }
   }
   if (!action.fields.dueDate) {
-    action.fields.dueDate = parseDatePhrase(text, now);
-    action.fields.dueHasTime = action.fields.dueDate ? hasExplicitTime(text) : undefined;
+    action.fields.dueDate = parseDatePhrase(text, now, language);
+    action.fields.dueHasTime = action.fields.dueDate ? hasExplicitTime(text, language) : undefined;
   }
   // Importance the user stated outright ("it's really important", "no
   // rush") beats the model's own judgement.
@@ -336,7 +336,7 @@ async function classifyOneInstruction(params: {
     typeof raw.remainingMessage === "string" && raw.remainingMessage.trim().length > 0 ? raw.remainingMessage.trim() : null;
 
   if (action.type === "CREATE_TASK") {
-    fillMissingTaskFields(action, instructionText(params.message, remainingMessage), new Date(params.now));
+    fillMissingTaskFields(action, instructionText(params.message, remainingMessage), new Date(params.now), language);
   }
 
   return {
@@ -479,6 +479,7 @@ export async function POST(request: Request) {
   let intent = "UNRELATED";
   let message = body.message;
   let firstTurnFailed = false;
+  let laterTurnFailed = false;
   // True only when the loop used up every turn and the model *still* handed
   // back unresolved text — the one exit worth falling back to fragment
   // recovery for. Every other way out (nothing left, the model echoing the
@@ -500,6 +501,7 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("[api/inbox]", error);
       if (turn === 0) firstTurnFailed = true;
+      else laterTurnFailed = true;
       break; // keep whatever earlier turns already produced
     }
 
@@ -514,7 +516,7 @@ export async function POST(request: Request) {
     ranOutOfTurns = turn === MAX_TURNS - 1;
   }
 
-  if (ranOutOfTurns && message) {
+  if ((ranOutOfTurns || laterTurnFailed) && message) {
     const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body);
     actions.push(...recovered.actions);
     replies.push(...recovered.replies);

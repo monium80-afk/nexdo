@@ -20,6 +20,15 @@
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// Google answers "503: this model is currently experiencing high demand" in
+// bursts — at busy times a third or more of requests, in testing — and it
+// clears within a second or two. Retried here so one blip doesn't reach the
+// user as a failed transcription or reply. Anything else (a 400 for an
+// unreadable file, a 429 for a used-up quota, a bad key) fails the same way
+// every time, so retrying it would only make the user wait longer for it.
+const RETRYABLE_STATUSES = [500, 503, 504];
+const RETRY_DELAYS_MS = [1000, 2500];
+
 export type GeminiJsonSchema = Record<string, unknown>;
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
@@ -34,7 +43,7 @@ async function callGemini(params: {
     throw new Error("Add GEMINI_API_KEY to your .env file");
   }
 
-  const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+  const request: RequestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -56,7 +65,15 @@ async function callGemini(params: {
         ...(params.responseSchema ? { responseMimeType: "application/json", responseSchema: params.responseSchema } : {}),
       },
     }),
-  });
+  };
+
+  let response = await fetch(`${GEMINI_URL}?key=${apiKey}`, request);
+  for (const delay of RETRY_DELAYS_MS) {
+    if (!RETRYABLE_STATUSES.includes(response.status)) break;
+    console.warn(`[gemini] ${response.status}, retrying in ${delay}ms`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    response = await fetch(`${GEMINI_URL}?key=${apiKey}`, request);
+  }
 
   if (!response.ok) {
     throw new Error(`Gemini request failed: ${response.status} ${await response.text()}`);

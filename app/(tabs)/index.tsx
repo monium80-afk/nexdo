@@ -57,7 +57,10 @@ export default function Next() {
           ),
     [allPendingTasks, activeBudget, activeSession],
   );
-  const budgetHasMatches = fittingTasks.length > 0;
+  const budgetHasMatches =
+    activeBudget === undefined || allPendingTasks.some(
+      (task) => task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget,
+    );
   const pendingTasks = budgetHasMatches ? fittingTasks : allPendingTasks;
   const total = pendingTasks.length;
   const currentIndex = total === 0 ? 0 : Math.min(activeIndex, total - 1);

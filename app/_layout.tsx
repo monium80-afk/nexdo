@@ -11,11 +11,13 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { colors } from "@/constants/theme";
 import { useSessionAlarm } from "@/hooks/useSessionAlarm";
 import { publishableKey, tokenCache } from "@/lib/clerk";
+import { configureNotifications } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
 import "../global.css";
 
 SystemUI.setBackgroundColorAsync(colors.cream[100]);
 SplashScreen.preventAutoHideAsync();
+configureNotifications();
 
 // Mobile-first app: on web, RN Web's flex containers stretch full-bleed to
 // fill the browser window, which reads as a desktop site rather than the

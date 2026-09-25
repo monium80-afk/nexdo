@@ -7,6 +7,8 @@
 // ("last week") that should land as overdue, not as no deadline at all.
 // Returns undefined only when the text names no deadline whatsoever.
 
+import type { AppLanguage } from "@/types/settings";
+
 const DEFAULT_HOUR = 18;
 
 const COUNT_WORDS: Record<string, number> = {
@@ -69,9 +71,9 @@ type TimeOfDay = { hour: number; minute: number };
 // rather than maintaining a second parser. The AI is asked to send English
 // phrases already — this covers the user's own words, which the inbox route
 // re-reads when the model leaves a deadline out.
-const LETTER = "a-zà-ÿœæ";
+const LETTER = "a-zß-ÿœæ";
 
-function frenchWord(pattern: string): RegExp {
+function wholeWord(pattern: string): RegExp {
   // \b doesn't treat accented letters as word characters, so the boundary is spelled out.
   return new RegExp(`(^|[^${LETTER}])(?:${pattern})(?![${LETTER}])`, "g");
 }
@@ -149,7 +151,7 @@ function normalizeFrenchDatePhrase(lower: string): string {
   let text = lower;
 
   for (const [word, digits] of Object.entries(FRENCH_NUMBERS)) {
-    text = text.replace(frenchWord(word), `$1${digits}`);
+    text = text.replace(wholeWord(word), `$1${digits}`);
   }
   // "à 19h", "vers 7h30", "à 18 h 45" — always with minutes, so "at 7:00"
   // stays 7am instead of being read as a bare evening "at 7".
@@ -167,19 +169,315 @@ function normalizeFrenchDatePhrase(lower: string): string {
   );
 
   for (const [french, english] of FRENCH_PHRASES) {
-    text = text.replace(frenchWord(french), `$1${english}`);
+    text = text.replace(wholeWord(french), `$1${english}`);
   }
   for (const [french, english] of Object.entries(FRENCH_WEEKDAYS)) {
     text = text
-      .replace(frenchWord(`${french} prochain`), `$1next ${english}`)
-      .replace(frenchWord(`${french} dernier`), `$1last ${english}`)
-      .replace(frenchWord(french), `$1${english}`);
+      .replace(wholeWord(`${french} prochain`), `$1next ${english}`)
+      .replace(wholeWord(`${french} dernier`), `$1last ${english}`)
+      .replace(wholeWord(french), `$1${english}`);
   }
   for (const [french, english] of Object.entries(FRENCH_MONTHS)) {
-    text = text.replace(frenchWord(french), `$1${english}`);
+    text = text.replace(wholeWord(french), `$1${english}`);
   }
 
   return text;
+}
+
+// Spanish gets the same treatment ("el viernes a las 7 de la tarde", "dentro
+// de tres días").
+const SPANISH_UNITS: Record<string, string> = {
+  día: "day",
+  dia: "day",
+  semana: "week",
+  mes: "month",
+  hora: "hour",
+  minuto: "minute",
+};
+const SPANISH_UNIT_PATTERN = "(d[íi]a|semana|mes|hora|minuto)(?:e?s)?";
+
+const SPANISH_WEEKDAYS: Record<string, string> = {
+  lunes: "monday",
+  martes: "tuesday",
+  "mi[ée]rcoles": "wednesday",
+  jueves: "thursday",
+  viernes: "friday",
+  "s[áa]bado": "saturday",
+  domingo: "sunday",
+};
+
+// Only read right after "<day> de" ("25 de mayo") — on its own "mayo" is as
+// likely to be mayonnaise on a shopping list as the month.
+const SPANISH_MONTHS: Record<string, string> = {
+  enero: "january",
+  febrero: "february",
+  marzo: "march",
+  abril: "april",
+  mayo: "may",
+  junio: "june",
+  julio: "july",
+  agosto: "august",
+  "sep?tiembre": "september",
+  octubre: "october",
+  noviembre: "november",
+  diciembre: "december",
+};
+
+// "once" is left out on purpose — it's also the English "once".
+const SPANISH_NUMBERS: Record<string, string> = {
+  una: "1",
+  un: "1",
+  dos: "2",
+  tres: "3",
+  cuatro: "4",
+  cinco: "5",
+  seis: "6",
+  siete: "7",
+  ocho: "8",
+  nueve: "9",
+  diez: "10",
+  doce: "12",
+};
+
+const SPANISH_PHRASES: [string, string][] = [
+  ["pasado ma[ñn]ana", "day after tomorrow"],
+  ["anteayer|antier|antes de ayer", "2 days ago"],
+  ["ayer", "yesterday"],
+  ["hoy", "today"],
+  ["esta noche", "tonight"],
+  ["esta ma[ñn]ana", "this morning"],
+  ["esta tarde", "this afternoon"],
+  // Before plain "mañana" — "mañana por la mañana" is tomorrow morning.
+  ["(?:por|en) la ma[ñn]ana", "morning"],
+  ["(?:por|en) la tarde", "afternoon"],
+  ["(?:por|en) la noche", "evening"],
+  ["ma[ñn]ana", "tomorrow"],
+  ["lo antes posible|cuanto antes|de inmediato|inmediatamente|ahora mismo", "asap"],
+  // "fin de semana" is the weekend; the end of the week is "final de la semana".
+  ["(?:a |al )?final(?:es)? de (?:la )?semana", "end of week"],
+  ["(?:a |al )?(?:fin|final(?:es)?) del? mes", "end of month"],
+  ["(?:el )?pr[óo]ximo fin de semana|(?:el )?fin de semana que viene", "next weekend"],
+  ["(?:este |el )?(?:fin de semana|finde)", "weekend"],
+  ["(?:la )?(?:pr[óo]xima semana|semana que viene|semana pr[óo]xima)", "next week"],
+  ["(?:la )?semana pasada", "last week"],
+  ["esta semana", "this week"],
+  ["(?:el )?(?:pr[óo]ximo mes|mes que viene|mes pr[óo]ximo)", "next month"],
+  ["(?:el )?mes pasado", "last month"],
+  ["mediod[íi]a", "noon"],
+  ["medianoche", "midnight"],
+];
+
+function normalizeSpanishDatePhrase(lower: string): string {
+  let text = lower;
+
+  for (const [word, digits] of Object.entries(SPANISH_NUMBERS)) {
+    text = text.replace(wholeWord(word), `$1${digits}`);
+  }
+  // "a las 7 de la tarde" → "at 19:00", "a la 1:30" → "at 1:30". Runs before
+  // the phrases so "de la mañana" is never read as "tomorrow". A bare "a las 7"
+  // stays bare, so it gets the same evening reading as "at 7".
+  text = text.replace(
+    /(^|\s)(?:a|hacia|sobre|para|antes de|hasta)\s+las?\s+(\d{1,2})(?::(\d{2}))?(?:\s*h)?(?:\s+de\s+la\s+(ma[ñn]ana|madrugada|tarde|noche))?(?![0-9a-zà-ÿ])/g,
+    (_, lead: string, hour: string, minute: string | undefined, period: string | undefined) => {
+      if (!period) return `${lead}at ${hour}${minute ? `:${minute}` : ""}`;
+      const hour24 = (Number(hour) % 12) + (period === "tarde" || period === "noche" ? 12 : 0);
+      return `${lead}at ${hour24}:${minute ?? "00"}`;
+    },
+  );
+  text = text.replace(
+    wholeWord(`(?:en|dentro de)\\s+(\\d+)\\s+${SPANISH_UNIT_PATTERN}`),
+    (_, lead: string, count: string, unit: string) => `${lead}in ${count} ${SPANISH_UNITS[unit]}s`,
+  );
+  text = text.replace(
+    wholeWord(`hace\\s+(\\d+)\\s+${SPANISH_UNIT_PATTERN}`),
+    (_, lead: string, count: string, unit: string) => `${lead}${count} ${SPANISH_UNITS[unit]}s ago`,
+  );
+
+  for (const [spanish, english] of SPANISH_PHRASES) {
+    text = text.replace(wholeWord(spanish), `$1${english}`);
+  }
+  for (const [spanish, english] of Object.entries(SPANISH_WEEKDAYS)) {
+    // "Domingo" is also a first name, so a bare Sunday needs "el"/"este" in front.
+    const bare = spanish === "domingo" ? "(?:el|este) domingo" : spanish;
+    text = text
+      .replace(wholeWord(`(?:el )?pr[óo]ximo ${spanish}|${spanish} (?:que viene|pr[óo]ximo)`), `$1next ${english}`)
+      .replace(wholeWord(`${spanish} pasado`), `$1last ${english}`)
+      .replace(wholeWord(bare), `$1${english}`);
+  }
+  for (const [spanish, english] of Object.entries(SPANISH_MONTHS)) {
+    text = text.replace(new RegExp(`(\\d{1,2})º?\\s+de\\s+${spanish}(?![${LETTER}])`, "g"), `$1 ${english}`);
+  }
+
+  return text;
+}
+
+// And German ("am Freitag um 15 Uhr", "in drei Tagen", "bis 25.9."). German
+// "am" sits right after a clock time as often as the English "am" does —
+// "15:00 am freitag" would read as 3 a.m. — so it's always consumed together
+// with the word it belongs to ("am freitag" → "friday").
+const GERMAN_UNITS: Record<string, string> = {
+  tag: "day",
+  woche: "week",
+  monat: "month",
+  stunde: "hour",
+  minute: "minute",
+};
+const GERMAN_UNIT_PATTERN = "(tag|woche|monat|stunde|minute)(?:en|n|e)?";
+const GERMAN_PERIOD = "(abends|nachmittags|morgens|vormittags|fr[üu]h|nachts)";
+
+const GERMAN_WEEKDAYS: Record<string, string> = {
+  montag: "monday",
+  dienstag: "tuesday",
+  mittwoch: "wednesday",
+  donnerstag: "thursday",
+  freitag: "friday",
+  "samstag|sonnabend": "saturday",
+  sonntag: "sunday",
+};
+
+// Only the names that differ from English.
+const GERMAN_MONTHS: Record<string, string> = {
+  "januar|j[äa]nner": "january",
+  februar: "february",
+  "m[äa]rz": "march",
+  mai: "may",
+  juni: "june",
+  juli: "july",
+  oktober: "october",
+  dezember: "december",
+};
+
+// "elf" is left out on purpose — it's also the English "elf".
+const GERMAN_NUMBERS: Record<string, string> = {
+  "eins|eine[mnrs]?|ein": "1",
+  zwei: "2",
+  drei: "3",
+  vier: "4",
+  "f[üu]nf": "5",
+  sechs: "6",
+  sieben: "7",
+  acht: "8",
+  neun: "9",
+  zehn: "10",
+  "zw[öo]lf": "12",
+};
+
+const GERMAN_PHRASES: [string, string][] = [
+  // A greeting, not a deadline — cleared before "morgen" (tomorrow) sees it.
+  ["guten morgen", ""],
+  ["[üu]bermorgen", "day after tomorrow"],
+  ["vorgestern", "2 days ago"],
+  ["gestern", "yesterday"],
+  ["heute (?:abend|nacht)", "tonight"],
+  ["heute (?:morgen|fr[üu]h|vormittag)", "this morning"],
+  ["heute nachmittag", "this afternoon"],
+  ["heute", "today"],
+  ["am (?:n[äa]chsten|folgenden) tag", "tomorrow"],
+  ["morgen fr[üu]h", "tomorrow morning"],
+  // Before plain "morgen" (tomorrow) — "am Morgen" is the morning.
+  ["am morgen|morgens|am vormittag|vormittags?", "morning"],
+  ["morgen", "tomorrow"],
+  ["am nachmittag|nachmittags?", "afternoon"],
+  ["am abend|abends?", "evening"],
+  ["(?:am|gegen|um) mittag|mittags", "noon"],
+  ["mitternacht", "midnight"],
+  ["so schnell wie m[öo]glich|schnellstm[öo]glich|m[öo]glichst bald|sofort|umgehend", "asap"],
+  ["(?:bis |zum |am )?ende (?:der|dieser) woche", "end of week"],
+  ["(?:bis |zum |am )?(?:ende (?:des|dieses) monats|monatsende)", "end of month"],
+  ["(?:am )?(?:n[äa]chste[nms]?|kommende[nms]?) wochenende", "next weekend"],
+  ["(?:am |dieses |[üu]bers )?wochenende", "weekend"],
+  ["(?:in der )?(?:n[äa]chste[nr]?|kommende[nr]?) woche", "next week"],
+  ["(?:in der )?(?:letzte[nr]?|vergangene[nr]?) woche", "last week"],
+  ["(?:in )?diese[nr]? woche", "this week"],
+  ["(?:im )?(?:n[äa]chste[nr]?|kommende[nr]?) monat", "next month"],
+  ["(?:im )?(?:letzte[nr]?|vergangene[nr]?) monat", "last month"],
+];
+
+/** "7 abends" → 19, "11 nachts" → 23, "2 nachts" → 2 — no period keeps the hour as said. */
+function germanHour(hour: string, period: string | undefined): number {
+  const value = Number(hour);
+  if (period === "abends" || period === "nachmittags") return value < 12 ? value + 12 : value;
+  if (period === "nachts") return value >= 6 && value < 12 ? value + 12 : value;
+  return value;
+}
+
+function normalizeGermanDatePhrase(lower: string): string {
+  let text = lower;
+
+  for (const [word, digits] of Object.entries(GERMAN_NUMBERS)) {
+    text = text.replace(wholeWord(word), `$1${digits}`);
+  }
+  // "bis 25.9.", "am 03.10.2026". Without a lead-in word or a year it's left
+  // alone, so "takes 1.5." at the end of a sentence doesn't become May 1st.
+  // Runs before the clock times so "bis 25.10." isn't read as 25:10.
+  text = text.replace(
+    wholeWord(String.raw`(?:(am|bis(?: zum)?|zum|ab|vom|den)\s+)?(\d{1,2})\.(\d{1,2})\.(\d{4})?`),
+    (match: string, lead: string, leadIn?: string, day?: string, month?: string, year?: string) => {
+      const name = MONTHS[Number(month) - 1];
+      return name && (leadIn || year) ? `${lead}${day} ${name}` : match;
+    },
+  );
+  // "um halb 8" is half past seven.
+  text = text.replace(wholeWord(String.raw`um\s+halb\s+(\d{1,2})`), (_, lead: string, hour: string) => {
+    const previous = Number(hour) - 1;
+    return `${lead}at ${previous === 0 ? 12 : previous}:30`;
+  });
+  // "um 15 Uhr", "gegen 7 Uhr abends", "18.30 Uhr" — "Uhr" is a 24-hour clock.
+  text = text.replace(
+    wholeWord(String.raw`(?:(?:um|gegen|bis|ab|vor)\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*uhr(?:\s+${GERMAN_PERIOD})?`),
+    (_, lead: string, hour: string, minute?: string, period?: string) =>
+      `${lead}at ${germanHour(hour, period)}:${minute ?? "00"}`,
+  );
+  text = text.replace(
+    wholeWord(String.raw`(?:um|gegen|bis|ab|vor)\s+(\d{1,2})[:.](\d{2})(?:\s+${GERMAN_PERIOD})?`),
+    (_, lead: string, hour: string, minute: string, period?: string) =>
+      `${lead}at ${germanHour(hour, period)}:${minute}`,
+  );
+  // A bare "um 7" stays bare, so it gets the same evening reading as "at 7".
+  text = text.replace(
+    wholeWord(String.raw`um\s+(\d{1,2})(?:\s+${GERMAN_PERIOD})?`),
+    (_, lead: string, hour: string, period?: string) =>
+      period ? `${lead}at ${germanHour(hour, period)}:00` : `${lead}at ${hour}`,
+  );
+  text = text.replace(
+    wholeWord(String.raw`(?:in|innerhalb von)\s+(\d+)\s+${GERMAN_UNIT_PATTERN}`),
+    (_, lead: string, count: string, unit: string) => `${lead}in ${count} ${GERMAN_UNITS[unit]}s`,
+  );
+  text = text.replace(
+    wholeWord(String.raw`vor\s+(\d+)\s+${GERMAN_UNIT_PATTERN}`),
+    (_, lead: string, count: string, unit: string) => `${lead}${count} ${GERMAN_UNITS[unit]}s ago`,
+  );
+
+  for (const [german, english] of GERMAN_PHRASES) {
+    text = text.replace(wholeWord(german), `$1${english}`);
+  }
+  for (const [german, english] of Object.entries(GERMAN_WEEKDAYS)) {
+    text = text
+      .replace(wholeWord(`(?:am )?(?:n[äa]chste[nr]?|kommende[nr]?) (?:${german})`), `$1next ${english}`)
+      .replace(wholeWord(`(?:am )?(?:letzte[nr]?|vergangene[nr]?) (?:${german})`), `$1last ${english}`)
+      .replace(wholeWord(`(?:am |diese[nm]? )?(?:${german})`), `$1${english}`);
+  }
+  for (const [german, english] of Object.entries(GERMAN_MONTHS)) {
+    text = text.replace(wholeWord(german), `$1${english}`);
+  }
+  // "am 5. march" → "5 march": the ordinal dot goes, and so does the "am".
+  text = text.replace(new RegExp(String.raw`(?:\bam\s+)?(\d{1,2})\.\s*(${MONTHS.join("|")})`, "g"), "$1 $2");
+
+  return text;
+}
+
+// Each language's deadline words, rewritten into English. When the app
+// language is known only its rules run (English always works): read all at
+// once, French "hier" (yesterday) turns German "hier" (here) into a deadline.
+const NORMALIZERS: Partial<Record<AppLanguage, (lower: string) => string>> = {
+  fr: normalizeFrenchDatePhrase,
+  es: normalizeSpanishDatePhrase,
+  de: normalizeGermanDatePhrase,
+};
+
+function normalizeDatePhrase(lower: string, language?: AppLanguage): string {
+  if (language) return NORMALIZERS[language]?.(lower) ?? lower;
+  return Object.values(NORMALIZERS).reduce((text, normalize) => normalize(text), lower);
 }
 
 // "7pm", "7 pm", "7 p.m.", "7:30am" — voice transcription writes the dotted form.
@@ -189,8 +487,8 @@ const EXPLICIT_TIME_PATTERN = /\b(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?
 // Whether the user gave an actual clock time ("7 p.m.", "at 9", "noon") —
 // used so a deadline only shows a time when one was really said, rather
 // than the DEFAULT_HOUR filled in for a bare date.
-export function hasExplicitTime(text: string): boolean {
-  return EXPLICIT_TIME_PATTERN.test(normalizeFrenchDatePhrase(text.toLowerCase()));
+export function hasExplicitTime(text: string, language?: AppLanguage): boolean {
+  return EXPLICIT_TIME_PATTERN.test(normalizeDatePhrase(text.toLowerCase(), language));
 }
 
 function toCount(word: string | undefined): number | undefined {
@@ -221,6 +519,8 @@ function extractTimeOfDay(lower: string): TimeOfDay | undefined {
     const hour = Number.parseInt(clock[1], 10);
     const minute = clock[2] ? Number.parseInt(clock[2], 10) : 0;
     if (hour <= 23 && minute <= 59) {
+      // "tomorrow evening at 8" is 20:00, not 8am.
+      if (hour < 12 && /\b(afternoon|evening|tonight)\b/.test(lower)) return { hour: hour + 12, minute };
       // A bare "at 7" means the evening far more often than 7am; hours that
       // can only be one thing on a 24h clock are left alone.
       return { hour: clock[2] === undefined && hour >= 1 && hour <= 7 ? hour + 12 : hour, minute };
@@ -233,8 +533,8 @@ function extractTimeOfDay(lower: string): TimeOfDay | undefined {
   return undefined;
 }
 
-export function parseDatePhrase(text: string, now: Date = new Date()): string | undefined {
-  const lower = normalizeFrenchDatePhrase(text.toLowerCase());
+export function parseDatePhrase(text: string, now: Date = new Date(), language?: AppLanguage): string | undefined {
+  const lower = normalizeDatePhrase(text.toLowerCase(), language);
   const time = extractTimeOfDay(lower);
 
   const resolve = (date: Date, fallbackHour = DEFAULT_HOUR): string | undefined => {
@@ -354,7 +654,7 @@ export function parseDatePhrase(text: string, now: Date = new Date()): string | 
   // A bare clock time with no day ("gym at 6pm") means today, or tomorrow
   // if that hour has already passed. Only explicit clock times qualify —
   // "morning"/"evening" alone are too weak to invent a deadline from.
-  if (time && hasExplicitTime(lower)) {
+  if (time && EXPLICIT_TIME_PATTERN.test(lower)) {
     const today = resolve(new Date(now));
     if (today && new Date(today).getTime() >= now.getTime()) return today;
     return resolve(byDays(1));

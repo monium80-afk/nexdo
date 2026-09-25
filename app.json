@@ -72,7 +72,13 @@
           "microphonePermission": "Allow Nexdo to access your microphone to record voice notes for your inbox."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "color": "#E2622E"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

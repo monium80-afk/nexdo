@@ -10,10 +10,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AccountSheet } from "@/components/AccountSheet";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { ProfileCard } from "@/components/ProfileCard";
-import { FEEDBACK_SUBJECT, SUPPORT_LINKS } from "@/constants/support";
+import { SUPPORT_LINKS } from "@/constants/support";
 import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
+import { requestNotificationPermission } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -193,6 +194,23 @@ export default function Settings() {
     setDailyNudgeTime(dateToTime(selected));
   };
 
+  const handleOverdueAlertsChange = async (enabled: boolean) => {
+    if (!enabled) {
+      setOverdueAlertsEnabled(false);
+      return;
+    }
+    // Asked right as the user turns alerts on, while it's obvious why Nexdo
+    // wants to notify them. The switch stays off until the phone says yes.
+    if (await requestNotificationPermission()) {
+      setOverdueAlertsEnabled(true);
+      return;
+    }
+    Alert.alert(t.settings.notificationsBlockedTitle, t.settings.notificationsBlockedBody, [
+      { text: t.common.cancel, style: "cancel" },
+      { text: t.settings.openPhoneSettings, onPress: () => Linking.openSettings() },
+    ]);
+  };
+
   const handleClearHistory = () => {
     Alert.alert(t.settings.clearConfirmTitle, t.settings.clearConfirmBody, [
       { text: t.common.cancel, style: "cancel" },
@@ -213,8 +231,7 @@ export default function Settings() {
 
   const handleOpenLink = async (url: string) => {
     try {
-      if (url.startsWith("mailto:")) await Linking.openURL(url);
-      else await WebBrowser.openBrowserAsync(url);
+      await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.warn("[Settings] couldn't open link", error);
       Alert.alert(t.settings.linkError);
@@ -343,7 +360,7 @@ export default function Settings() {
               label={t.settings.overdueAlerts}
               body={t.settings.overdueAlertsBody}
               value={overdueAlertsEnabled}
-              onValueChange={setOverdueAlertsEnabled}
+              onValueChange={handleOverdueAlertsChange}
             />
 
             <Text className="font-grotesk-regular text-xs text-ink-charcoal-muted" style={rtl}>
@@ -438,9 +455,7 @@ export default function Settings() {
               icon="help-circle"
               label={t.settings.help}
               body={t.settings.helpBody}
-              onPress={() =>
-                handleOpenLink(`mailto:${SUPPORT_LINKS.feedbackEmail}?subject=${encodeURIComponent(FEEDBACK_SUBJECT)}`)
-              }
+              onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
             />
 
             <Divider />

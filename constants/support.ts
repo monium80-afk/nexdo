@@ -1,15 +1,13 @@
 /**
  * Where the Support section in Settings points.
  *
- * TODO: these are placeholders — swap in the real feedback address and the
- * live legal pages before shipping. Everything lives here so it's a one-file
- * change, not a hunt through the screens.
+ * TODO: swap WEBSITE_URL for https://nexdo.app once the custom domain is live.
+ * Everything lives here so it's a one-file change, not a hunt through the screens.
  */
-export const SUPPORT_LINKS = {
-  feedbackEmail: "support@nexdo.app",
-  privacyPolicy: "https://nexdo.app/privacy",
-  termsOfService: "https://nexdo.app/terms",
-} as const;
+const WEBSITE_URL = "https://nexdo.moumoubi938.workers.dev";
 
-/** Subject line on the feedback email, so support can triage at a glance. */
-export const FEEDBACK_SUBJECT = "Nexdo feedback";
+export const SUPPORT_LINKS = {
+  helpCenter: `${WEBSITE_URL}/support/`,
+  privacyPolicy: `${WEBSITE_URL}/privacy/`,
+  termsOfService: `${WEBSITE_URL}/terms/`,
+} as const;

@@ -75,10 +75,30 @@ function fromTaskRow(row: TaskRow): Task {
   };
 }
 
+// Clerk stamps the token's time claims on its servers and Supabase checks them
+// against its own clock. Hydration fires the moment a user signs in, with a
+// token Clerk minted milliseconds earlier, and Supabase can briefly see it as
+// issued "in the future" — PGRST303 "JWT not yet valid". The same token is
+// accepted a moment later, so the launch fetch waits and tries once more
+// instead of skipping the whole sync until the next app start.
+const JWT_RETRY_DELAY_MS = 2_000;
+
+async function retryOnJwtTiming<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code !== "PGRST303") throw error;
+    await new Promise((resolve) => setTimeout(resolve, JWT_RETRY_DELAY_MS));
+    return run();
+  }
+}
+
 export async function fetchTasks(userId: string): Promise<Task[]> {
-  const { data, error } = await supabase.from("tasks").select("*").eq("user_id", userId);
-  if (error) throw error;
-  return (data as TaskRow[]).map(fromTaskRow);
+  return retryOnJwtTiming(async () => {
+    const { data, error } = await supabase.from("tasks").select("*").eq("user_id", userId);
+    if (error) throw error;
+    return (data as TaskRow[]).map(fromTaskRow);
+  });
 }
 
 export async function upsertTaskRow(task: Task, userId: string): Promise<void> {
@@ -155,13 +175,15 @@ function fromMessageRow(row: MessageRow): ChatMessage {
 }
 
 export async function fetchMessages(userId: string): Promise<ChatMessage[]> {
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data as MessageRow[]).map(fromMessageRow);
+  return retryOnJwtTiming(async () => {
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return (data as MessageRow[]).map(fromMessageRow);
+  });
 }
 
 export async function upsertMessageRow(message: ChatMessage, userId: string): Promise<void> {

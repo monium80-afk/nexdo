@@ -1,9 +1,20 @@
 import { useAuth } from "@clerk/expo";
-import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import Animated, {
+    Easing,
+    interpolateColor,
+    useAnimatedProps,
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withRepeat,
+    withSpring,
+    withTiming,
+} from "react-native-reanimated";
+import Svg, { Path } from "react-native-svg";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
@@ -12,6 +23,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
 import { extractTasks } from "@/lib/ai/extractTasks";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
@@ -29,6 +41,17 @@ const DISC_SIZE = 92;
  * to the disc rather than to the widest the ring ever gets.
  */
 const MARK_HEIGHT = 116;
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+/** The step circle, h-7 w-7. */
+const STEP_SIZE = 28;
+/** The tick, drawn in the circle's own 28×28 box. */
+const CHECK_PATH = "M9 14.5l3.2 3.2L19 10.8";
+/** A little longer than the tick itself, so one dash this long hides all of it. */
+const CHECK_LENGTH = 16;
+/** The active step's dot as a fraction of the circle — the disc grows out of it. */
+const DOT_SCALE = 8 / STEP_SIZE;
 
 /** The mark for this step: the app thinking, with a ring breathing out of it. */
 function AnalyzingMark() {
@@ -59,21 +82,89 @@ function AnalyzingMark() {
   );
 }
 
-/** One line of the checklist: done, being worked on, or still to come. */
+/**
+ * One line of the checklist: done, being worked on, or still to come.
+ *
+ * Finishing a line is three overlapping beats rather than a swap: the active
+ * dot swells into a green disc, the tick draws itself across it, and a ring
+ * ripples out and fades. The dot and the disc are the same view, so the one
+ * visibly becomes the other.
+ */
 function AnalyzingStep({ label, state }: { label: string; state: "done" | "active" | "waiting" }) {
+  // 0 = the active dot, 1 = the full disc. Sprung, so it lands with a bounce.
+  const grow = useSharedValue(0);
+  // 0 = no tick, 1 = the tick fully drawn.
+  const draw = useSharedValue(0);
+  // 0 = the ring sitting on the circle, 1 = spread out and gone.
+  const ripple = useSharedValue(0);
+  // The active dot breathing while that line is being worked on — the last
+  // line can hold for a while on a slow answer, and a still dot reads as stuck.
+  const breathe = useSharedValue(0);
+
+  useEffect(() => {
+    if (state === "active") {
+      breathe.value = withRepeat(withTiming(1, { duration: 650, easing: Easing.inOut(Easing.quad) }), -1, true);
+      return;
+    }
+    if (state !== "done") return;
+    breathe.value = withTiming(0, { duration: 120 });
+    grow.value = withSpring(1, { damping: 10, stiffness: 240, mass: 0.6 });
+    draw.value = withDelay(150, withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) }));
+    ripple.value = withDelay(90, withTiming(1, { duration: 700, easing: Easing.out(Easing.quad) }));
+    Haptics.selectionAsync().catch(() => {});
+  }, [state, grow, draw, ripple, breathe]);
+
+  const discStyle = useAnimatedStyle(() => {
+    // The spring overshoots past 1; colour and breathing only care how far in.
+    const settled = Math.min(grow.value, 1);
+    return {
+      backgroundColor: interpolateColor(settled, [0, 0.6], [colors.orange[500], colors.olive[500]]),
+      transform: [{ scale: DOT_SCALE * (1 + 0.4 * breathe.value * (1 - settled)) + (1 - DOT_SCALE) * grow.value }],
+    };
+  });
+  const rippleStyle = useAnimatedStyle(() => ({
+    opacity: ripple.value === 0 ? 0 : 0.55 * (1 - ripple.value),
+    transform: [{ scale: 1 + ripple.value * 0.9 }],
+  }));
+  const checkProps = useAnimatedProps(() => ({
+    strokeDashoffset: CHECK_LENGTH * (1 - draw.value),
+  }));
+
   return (
     <View className="flex-row items-start gap-3">
-      {state === "done" ? (
-        <View className="h-7 w-7 items-center justify-center rounded-full bg-olive-500">
-          <Feather name="check" size={16} color={colors.cream[50]} />
-        </View>
-      ) : state === "active" ? (
-        <View className="h-7 w-7 items-center justify-center rounded-full border-2 border-orange-500">
-          <View className="h-2 w-2 rounded-full bg-orange-500" />
-        </View>
-      ) : (
-        <View className="h-7 w-7 rounded-full border-2 border-cream-300" />
-      )}
+      <View className="h-7 w-7">
+        <View
+          className={
+            state === "waiting"
+              ? "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-cream-300"
+              : state === "active"
+                ? "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-orange-500"
+                : "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-olive-500"
+          }
+        />
+        {state === "done" ? (
+          <Animated.View
+            className="absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-olive-500"
+            style={rippleStyle}
+          />
+        ) : null}
+        {state === "waiting" ? null : (
+          <Animated.View className="absolute left-0 top-0 h-7 w-7 rounded-full" style={discStyle}>
+            <Svg width={STEP_SIZE} height={STEP_SIZE}>
+              <AnimatedPath
+                d={CHECK_PATH}
+                fill="none"
+                stroke={colors.cream[50]}
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={CHECK_LENGTH}
+                animatedProps={checkProps}
+              />
+            </Svg>
+          </Animated.View>
+        )}
+      </View>
       <Text
         className={
           state === "waiting"
@@ -125,7 +216,7 @@ export default function OnboardingAnalyzing() {
         // The heuristic splitter is what classifyIntent itself falls back to,
         // so an outright failure here still has something to show.
         console.warn("[onboarding-analyzing] extraction failed", error);
-        if (!cancelled) setResult(extractTasks(dump));
+        if (!cancelled) setResult(extractTasks(dump, new Date(), getLanguage()));
       });
     return () => {
       cancelled = true;

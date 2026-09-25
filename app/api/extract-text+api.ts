@@ -50,6 +50,8 @@ const INSTRUCTIONS: Record<ExtractTextRequestBody["kind"], string> = {
 // the model writes in its own words (a description) follows the app language.
 const DESCRIPTION_LANGUAGE: Partial<Record<AppLanguage, string>> = {
   fr: " Keep extracted text in its original language, but write any description of your own in French.",
+  es: " Keep extracted text in its original language, but write any description of your own in Spanish.",
+  de: " Keep extracted text in its original language, but write any description of your own in German.",
 };
 
 // The accompanying message steers what to look for, but must not become the

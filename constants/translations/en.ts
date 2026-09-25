@@ -1,7 +1,7 @@
 import type { TaskScope } from "@/lib/taskMeta";
 
-// Every piece of interface copy in the app, in English. fr.ts has to match
-// this shape exactly — TypeScript flags any key that's missing there.
+// Every piece of interface copy in the app, in English. The other languages'
+// files have to match this shape exactly — TypeScript flags any key that's missing there.
 // Copy that depends on a number is a small function, so each language can
 // handle its own plurals and word order.
 
@@ -396,7 +396,10 @@ export const en = {
     nudgeTime: "Remind me at",
     overdueAlerts: "Overdue task alerts",
     overdueAlertsBody: "A heads-up when a task passes its deadline.",
-    notificationsNote: "Saved on this device. Reminders start arriving in a later update.",
+    notificationsNote: "Saved on this device. The daily nudge starts arriving in a later update.",
+    notificationsBlockedTitle: "Notifications are off",
+    notificationsBlockedBody: "Allow notifications for Nexdo in your phone's settings to get overdue alerts.",
+    openPhoneSettings: "Open settings",
 
     appearance: "APPEARANCE",
     theme: "Theme",
@@ -410,6 +413,14 @@ export const en = {
     terms: "Terms of service",
     version: (version: string) => `Nexdo v${version}`,
     linkError: "Couldn't open that link. Try again.",
+  },
+
+  /** Phone notifications — shown by the system, outside the app. */
+  notifications: {
+    overdueTitle: (title: string) => `Overdue: ${title}`,
+    overdueBody: "Its deadline just passed. Tap to finish it or pick a new time.",
+    /** Android lists this under Nexdo's notification settings. */
+    overdueChannel: "Overdue tasks",
   },
 
   profile: {
@@ -472,11 +483,12 @@ export const en = {
     dragHandle: "Drag to sort your tasks",
   },
 
-  /** Onboarding step 3 — what the user wants help with. Labels are in the same
-   *  order as the GOALS ids in app/onboarding-goals.tsx. */
+  /** Onboarding step 3 — what gets in the user's way. The options are
+   *  first-person confessions, so the question asks which ones fit. Labels are
+   *  in the same order as the GOALS ids in app/onboarding-goals.tsx. */
   onboardingGoals: {
-    headline: "What do you want Nexdo to help you with?",
-    body: "Select all that apply to you right now.",
+    headline: "Be honest — which of these sound like you?",
+    body: "Pick as many as you like. No judgment here.",
     options: [
       "I forget what I need to do",
       "I have too much on my mind",
@@ -488,12 +500,13 @@ export const en = {
     continue: "Continue",
   },
 
-  /** Onboarding step 4 — the brain dump, typed or spoken. */
+  /** Onboarding step 4 — the brain dump, typed or spoken. Every line asks for
+   *  tasks by name: "what's on your mind" read as an invitation to chat. */
   onboardingDump: {
-    eyebrow: "INTERACTIVE DEMO",
-    headline: "What's on your mind right now?",
-    body: "Don't organize it. Just dump your messy thoughts here.",
-    placeholder: "e.g. Tomorrow I need to finish my math homework, email my professor, buy groceries…",
+    eyebrow: "TRY IT WITH YOUR REAL TASKS",
+    headline: "What do you need to get done this week?",
+    body: "**List every task on your plate** — messy is fine. Type them, or tap the mic and say them out loud.",
+    placeholder: "Finish math homework by Friday\nEmail my professor\nBuy groceries tonight…",
     startRecording: "Start speaking",
     stopRecording: "Stop and write it down",
     transcribing: "Writing it down…",
@@ -522,15 +535,15 @@ export const en = {
     next: "What should I do first?",
   },
 
-  /** Onboarding step 7 — the one task Nexdo picks, and why. */
+  /** Onboarding step 7 — the one task Nexdo picks, and a tip for doing it. */
   onboardingFocus: {
     eyebrow: "THE DECISION ENGINE",
     headline: "So… what should you do first?",
     body: "You don't organize your tasks and then still wonder where to start. **Nexdo makes the decision.**",
     nextFocus: "NEXT FOCUS",
     urgency: (score: number) => `Urgency ${score} / 100`,
-    why: "WHY THIS RIGHT NOW?",
-    thinking: "Working out why…",
+    advice: "AI ADVICE",
+    thinking: "Thinking of a tip…",
     nothing: "There's nothing to decide on yet. Add a task once you're set up and Nexdo will pick for you.",
     next: "Makes sense",
   },
@@ -550,12 +563,14 @@ export const en = {
     invalidCode: "Invalid code. Try again.",
     sendCodeError: "Couldn't send the verification code. Try again.",
     signUpTitle: "Don't lose your plan.",
-    signUpSubtitle: "3 tasks are sorted and ready. Create an account to save them and keep going.",
-    plannedTasks: [
-      { title: "Buy groceries", when: "Tonight" },
-      { title: "Finish math assignment", when: "Friday" },
-      { title: "Call dentist", when: "Tomorrow" },
-    ],
+    signUpSubtitle: (count: number) =>
+      count === 1
+        ? "Your task is sorted and ready. Create an account to save it and keep going."
+        : `${count} tasks are sorted and ready. Create an account to save them and keep going.`,
+    // For anyone who reaches sign-up without a plan: from the log-in screen,
+    // or when the brain dump had nothing in it to do.
+    signUpTitleNoPlan: "Create your account.",
+    signUpSubtitleNoPlan: "Keep everything you need to do in one place, and let Nexdo tell you what to tackle first.",
     continueWithGoogle: "Continue with Google",
     continueWithApple: "Continue with Apple",
     checkEmail: "Check your email",

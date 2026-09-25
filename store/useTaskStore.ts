@@ -9,6 +9,7 @@ import { applyContextToTask } from "@/lib/ai/applyContext";
 import { generatePlan } from "@/lib/ai/generatePlan";
 import type { PlanStep, StructuredAction } from "@/lib/ai/types";
 import { translate } from "@/lib/i18n";
+import { syncOverdueAlerts } from "@/lib/notifications";
 import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask } from "@/lib/scoring";
 import { deleteTaskRow, fetchTasks, subscribeToTasks, upsertTaskRow } from "@/lib/supabaseSync";
 import { describeTaskCount, tasksInScope } from "@/lib/taskMeta";
@@ -267,6 +268,9 @@ export const useTaskStore = create<TaskStore>()(
         // on this device inherits that judgement about ids it has never seen.
         confirmedUpsertIds.clear();
         set({ tasks: recalcAll(initialTasks), syncUserId: null });
+        // The phone would otherwise keep firing alerts about the departing
+        // account's tasks, titles and all.
+        await syncOverdueAlerts([]);
         await AsyncStorage.removeItem("nexdo-tasks");
       },
 

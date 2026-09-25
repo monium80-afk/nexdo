@@ -18,13 +18,16 @@ import type { Task } from "@/types/task";
 
 const RECENT_TASK_LIMIT = 5;
 const HISTORY_TURNS = 6;
-// English and French replies are both understood, whatever the app language.
+// English, French, Spanish and German replies are all understood, whatever the app language.
 // A letter lookahead rather than \b, which doesn't treat accented letters as part of a word.
-const YES_PATTERN = /^(yes|yep|yeah|sure|do it|confirm|ok|okay|go ahead|oui|ouais|d'accord|vas-y|allez-y|confirme|confirmer)(?![a-zà-ÿ])/i;
-const NO_PATTERN = /^(no|nope|cancel|never ?mind|don'?t|non|annule|annuler|laisse tomber|pas maintenant)(?![a-zà-ÿ])/i;
+const YES_PATTERN =
+  /^(yes|yep|yeah|sure|do it|confirm|ok|okay|go ahead|oui|ouais|d'accord|vas-y|allez-y|confirme|confirmer|s[íi]|claro|vale|dale|de acuerdo|adelante|hazlo|confirma|confirmar|ja|jap|jep|klar|gerne?|genau|passt|einverstanden|los|mach (?:das|es|schon)|mach's|best[äa]tigen?)(?![a-zà-ÿ])/i;
+const NO_PATTERN =
+  /^(no|nope|cancel|never ?mind|don'?t|non|annule|annuler|laisse tomber|pas maintenant|cancela|cancelar|d[ée]jalo|olv[íi]dalo|mejor no|ahora no|nein|n[öo]|abbrechen|brich ab|lass (?:es|das)|lieber nicht|jetzt nicht|vergiss es)(?![a-zà-ÿ])/i;
 // Literal "undo" is intercepted here rather than sent to the AI — see
 // TASK_MANAGER_SYSTEM_PROMPT §6.2, which is written assuming this.
-const UNDO_PATTERN = /^(undo( (that|it))?|revert( (that|it))?|d[ée]faire( [çc]a)?|d[ée]fais( [çc]a)?)[.!]?$/i;
+const UNDO_PATTERN =
+  /^(undo( (that|it))?|revert( (that|it))?|d[ée]faire( [çc]a)?|d[ée]fais( [çc]a)?|deshacer( eso)?|deshazlo|deshaz( eso)?|r[üu]ckg[äa]ngig( machen)?|mach (?:das |es )?r[üu]ckg[äa]ngig|mach's r[üu]ckg[äa]ngig)[.!]?$/i;
 
 // Invalidates any in-flight classifyIntent() call so its response is
 // dropped if the user signs out (or the store resets) before it resolves —

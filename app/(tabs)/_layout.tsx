@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import { TabBar } from "@/components/TabBar";
 import { useAuthSync } from "@/hooks/useAuthSync";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -12,6 +13,7 @@ export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   useAuthSync();
+  useNotifications();
 
   // Identify the user with PostHog when they are signed in (catches both
   // fresh logins and returning sessions that are already authenticated).

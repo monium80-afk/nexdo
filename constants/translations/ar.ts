@@ -408,7 +408,10 @@ export const ar: Translations = {
     nudgeTime: "ذكّرني عند",
     overdueAlerts: "تنبيهات المهام المتأخرة",
     overdueAlertsBody: "تنبيه فور تجاوز أي مهمة موعدها النهائي.",
-    notificationsNote: "تم الحفظ على هذا الجهاز. ستبدأ التذكيرات في تحديث لاحق.",
+    notificationsNote: "تم الحفظ على هذا الجهاز. سيبدأ التنبيه اليومي في تحديث لاحق.",
+    notificationsBlockedTitle: "الإشعارات متوقفة",
+    notificationsBlockedBody: "اسمح لـ Nexdo بإرسال الإشعارات من إعدادات هاتفك لتصلك تنبيهات المهام المتأخرة.",
+    openPhoneSettings: "فتح الإعدادات",
 
     appearance: "المظهر",
     theme: "السمة",
@@ -422,6 +425,12 @@ export const ar: Translations = {
     terms: "شروط الاستخدام",
     version: (version: string) => `نكسدو الإصدار ${version}`,
     linkError: "تعذّر فتح هذا الرابط. أعد المحاولة.",
+  },
+
+  notifications: {
+    overdueTitle: (title: string) => `متأخرة: ${title}`,
+    overdueBody: "انتهى موعدها النهائي للتو. اضغط لإنجازها أو لاختيار موعد جديد.",
+    overdueChannel: "المهام المتأخرة",
   },
 
   profile: {
@@ -482,8 +491,8 @@ export const ar: Translations = {
   },
 
   onboardingGoals: {
-    headline: "بماذا تريد أن يساعدك نكسدو؟",
-    body: "اختر كل ما ينطبق عليك الآن.",
+    headline: "بصراحة، أيٌّ من هذه يشبهك؟",
+    body: "اختر ما تشاء منها. لا أحد يحكم عليك هنا.",
     options: [
       "أنسى ما عليّ فعله",
       "لديّ الكثير في ذهني",
@@ -496,10 +505,10 @@ export const ar: Translations = {
   },
 
   onboardingDump: {
-    eyebrow: "عرض تفاعلي",
-    headline: "ما الذي يشغل بالك الآن؟",
-    body: "لا ترتّبه. فقط أفرغ أفكارك هنا.",
-    placeholder: "مثلاً: غدًا عليّ إنهاء واجب الرياضيات، ومراسلة الأستاذ، والتسوّق…",
+    eyebrow: "جرّبه بمهامك الحقيقية",
+    headline: "ما الذي عليك إنجازه هذا الأسبوع؟",
+    body: "**عدّد كل مهامك**، ولو بلا ترتيب. اكتبها، أو اضغط على الميكروفون وقُلها بصوتك.",
+    placeholder: "إنهاء واجب الرياضيات قبل الجمعة\nمراسلة الأستاذ\nالتسوّق الليلة…",
     startRecording: "ابدأ التحدّث",
     stopRecording: "أوقف وفرّغ الكلام",
     transcribing: "جارٍ التفريغ…",
@@ -532,8 +541,8 @@ export const ar: Translations = {
     body: "أنت لا ترتّب مهامك لتظلّ بعدها حائرًا من أين تبدأ. **نكسدو يتّخذ القرار.**",
     nextFocus: "التركيز التالي",
     urgency: (score: number) => `الإلحاح ${score} / 100`,
-    why: "لماذا هذه الآن؟",
-    thinking: "جارٍ التحليل…",
+    advice: "نصيحة الذكاء الاصطناعي",
+    thinking: "جارٍ تحضير نصيحة…",
     nothing: "لا شيء لتقرّره بعد. أضف مهمة بعد الإعداد وسيختار نكسدو لك.",
     next: "منطقي",
   },
@@ -553,12 +562,14 @@ export const ar: Translations = {
     invalidCode: "رمز غير صالح. أعد المحاولة.",
     sendCodeError: "تعذّر إرسال رمز التحقق. أعد المحاولة.",
     signUpTitle: "لا تفقد خطتك.",
-    signUpSubtitle: "3 مهام مرتبة وجاهزة. أنشئ حسابًا لحفظها والمتابعة.",
-    plannedTasks: [
-      { title: "شراء البقالة", when: "الليلة" },
-      { title: "إنهاء واجب الرياضيات", when: "الجمعة" },
-      { title: "الاتصال بطبيب الأسنان", when: "غدًا" },
-    ],
+    // Two takes the dual all the way through; every other count agrees in the
+    // feminine singular, as non-human plurals do.
+    signUpSubtitle: (count: number) =>
+      count === 2
+        ? "مهمتان مرتبتان وجاهزتان. أنشئ حسابًا لحفظهما والمتابعة."
+        : `${counted(count, "مهمة", "مهام", "مهمتان")} مرتبة وجاهزة. أنشئ حسابًا لحفظها والمتابعة.`,
+    signUpTitleNoPlan: "أنشئ حسابك.",
+    signUpSubtitleNoPlan: "اجمع كل ما عليك فعله في مكان واحد، ودع نكسدو يخبرك بماذا تبدأ.",
     continueWithGoogle: "تابع باستخدام Google",
     continueWithApple: "تابع باستخدام Apple",
     checkEmail: "تحقق من بريدك الإلكتروني",

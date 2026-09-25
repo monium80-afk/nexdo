@@ -250,23 +250,24 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   // is different advice, but re-running the effect for the same pair (a store
   // callback changing identity, say) must not send a second request or push a
   // second bubble into the thread.
-  const analysisSeededFor = useRef<string | null>(null);
+  const analysisSeededFor = useRef(new Set<string>());
+  const analysisSeedKey = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (!contextTaskId) return;
     const seedKey = `${contextTaskId}:${availableMinutes ?? ""}`;
-    if (analysisSeededFor.current === seedKey) return;
+    if (analysisSeededFor.current.has(seedKey) || analysisSeedKey.current === seedKey) return;
     const task = useTaskStore.getState().tasks.find((candidate) => candidate.id === contextTaskId);
     if (!task) return;
 
     // Claimed before the request leaves, so a re-run while it is still in
     // flight doesn't start a second one.
-    analysisSeededFor.current = seedKey;
+    analysisSeedKey.current = seedKey;
     let seeded = false;
     let cancelled = false;
     const release = () => {
-      if (analysisSeededFor.current === seedKey) analysisSeededFor.current = null;
+      if (analysisSeedKey.current === seedKey) analysisSeedKey.current = null;
     };
 
     generateAdvice(task, availableMinutes)
@@ -275,6 +276,8 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
         const copy = translate().chat;
         seedMessage(copy.taskRead(task.title, copy.complexity[task.complexity], adviceToText(advice)), task.id);
         seeded = true;
+        analysisSeededFor.current.add(seedKey);
+        release();
       })
       .catch((error) => {
         // generateAdvice falls back to its own heuristic, so this is only
@@ -293,8 +296,11 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   // Local file:// uris don't survive a reinstall or another device — the
   // Files are uploaded before the message is written so synced devices only
   // receive storage paths. Failed uploads are left out of the sent message.
-  const uploadAttachments = async (attachments: ChatAttachment[]): Promise<ChatAttachment[]> => {
-    if (!user) return [];
+  const uploadAttachments = async (
+    attachments: ChatAttachment[],
+  ): Promise<{ storedAttachments: ChatAttachment[]; failedAttachments: ChatAttachment[] }> => {
+    if (!user) return { storedAttachments: [], failedAttachments: attachments };
+    const failedAttachments: ChatAttachment[] = [];
     const stored = await Promise.all(
       attachments.map(async (attachment, index) => {
         try {
@@ -307,11 +313,15 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           return { ...attachment, uri: path };
         } catch (error) {
           console.warn("[ai-chat] attachment upload failed", error);
+          failedAttachments.push(attachment);
           return null;
         }
       }),
     );
-    return stored.filter((attachment): attachment is ChatAttachment => attachment !== null);
+    return {
+      storedAttachments: stored.filter((attachment): attachment is ChatAttachment => attachment !== null),
+      failedAttachments,
+    };
   };
 
   // The one place a message leaves this screen. Clearing the draft and the
@@ -321,20 +331,24 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     if (!text.trim() && attachments.length === 0) return;
     setDraft("");
     setPendingAttachments([]);
-    const storedAttachments = attachments.length > 0 ? await uploadAttachments(attachments) : [];
+    const { storedAttachments, failedAttachments } =
+      attachments.length > 0
+        ? await uploadAttachments(attachments)
+        : { storedAttachments: [], failedAttachments: [] };
 
     // Nothing reached storage. A message with no text has nothing left to say,
     // and sendMessage would drop it on the floor — so the files go back in the
     // composer with an explanation rather than simply disappearing.
     if (attachments.length > 0 && storedAttachments.length === 0) {
-      setPendingAttachments(attachments);
-      setDraft(text);
+      setPendingAttachments((current) => [...current, ...failedAttachments]);
+      setDraft((current) => current || text);
       Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadFailedBody);
       return;
     }
     // Some made it. The message is still worth sending, but the ones that
     // didn't are said out loud instead of quietly missing from it.
     if (storedAttachments.length < attachments.length) {
+      setPendingAttachments((current) => [...current, ...failedAttachments]);
       Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadPartialBody(attachments.length - storedAttachments.length));
     }
 

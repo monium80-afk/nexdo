@@ -1,5 +1,6 @@
 import { useSignUp } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
+import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -9,9 +10,12 @@ import {
     StyleSheet,
     Text,
     View,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
 } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AuthTextField } from "@/components/AuthTextField";
@@ -22,18 +26,64 @@ import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
+import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { posthog } from "@/lib/posthog";
+import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
+import { previewDueLabel } from "@/lib/taskMeta";
+import { useOnboardingStore } from "@/store/useOnboardingStore";
 
 const REVEAL_LAYOUT = LinearTransition.duration(250);
 
-// One dot per sample task in auth.plannedTasks, in the same order.
-const PLANNED_TASK_DOTS = ["bg-orange-500", "bg-orange-500/70", "bg-orange-500/45"] as const;
+// Most pressing first: the dots fade down the list, and every row past the
+// third keeps the faintest.
+const PLAN_DOTS = ["bg-orange-500", "bg-orange-500/70", "bg-orange-500/45"] as const;
+
+// The plan card is always exactly three rows tall, whatever the dump turned
+// into. Any taller and a long dump would push the sign-up buttons off the
+// screen; any rows past three scroll inside the card instead.
+const PLAN_VISIBLE_ROWS = 3;
+/** Pinned on the title with leading-[21px] — text-base's own line height. */
+const PLAN_ROW_HEIGHT = 21;
+/** The card's padding and the gap between rows: p-5 / gap-5 at NativeWind's 14px rem. */
+const PLAN_SPACE = 17.5;
+/** The `card` utility's 1px border, top and bottom. */
+const PLAN_BORDER = 2;
+/** The scrolling area inside the border. */
+const PLAN_VIEWPORT = PLAN_VISIBLE_ROWS * PLAN_ROW_HEIGHT + (PLAN_VISIBLE_ROWS + 1) * PLAN_SPACE;
+const PLAN_CARD_HEIGHT = PLAN_VIEWPORT + PLAN_BORDER;
+const PLAN_FADE_HEIGHT = 28;
+
+/** Most pressing first, by the same score the Plan step showed on each card. */
+function sortByPriority(drafts: ExtractedTaskDraft[], now: Date): ExtractedTaskDraft[] {
+  const score = (draft: ExtractedTaskDraft) =>
+    computePriorityScore(
+      {
+        dueDate: draft.dueDate,
+        estimatedMinutes: draft.estimatedMinutes,
+        importance: PRIORITY_LEVEL_IMPORTANCE[draft.priorityLevel],
+      },
+      now,
+    );
+  return [...drafts].sort((a, b) => score(b) - score(a));
+}
 
 export default function SignUp() {
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
   const enterStyle = useScreenEnterAnimation();
+  // Fixed for the life of the screen, like the Plan step: the order and the
+  // due labels both read "now".
+  const [now] = useState(() => new Date());
+  // What the brain dump turned into, taken once on arrival rather than read
+  // live: signing up claims the drafts out of the store (hooks/useAuthSync.ts),
+  // and a live read would flash the no-plan copy just before the app moves on.
+  // Empty when there was nothing to find, or when sign-up was reached from log in.
+  const [plan] = useState(() => sortByPriority(useOnboardingStore.getState().drafts, now));
+  const hasPlan = plan.length > 0;
+  // Whether rows are hidden under the bottom edge of the plan card. Set from
+  // the list's own measurements, so it holds however tall the rows turn out.
+  const [moreBelow, setMoreBelow] = useState(false);
   const { signUp, errors, fetchStatus } = useSignUp();
   const { startSSOFlow } = useSSO();
   const [showEmailForm, setShowEmailForm] = useState(false);
@@ -77,6 +127,11 @@ export default function SignUp() {
     setModalVisible(true);
   };
 
+  const handlePlanScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+    setMoreBelow(contentOffset.y + layoutMeasurement.height < contentSize.height - 1);
+  };
+
   const handleVerifyCode = async (code: string) => {
     const { error } = await signUp.verifications.verifyEmailCode({ code });
     if (error) return error.longMessage ?? t.auth.invalidCode;
@@ -112,26 +167,67 @@ export default function SignUp() {
           <Animated.View style={enterStyle}>
             <View className="mt-8 gap-3">
               <Text className="text-title text-ink-cream" style={rtl}>
-                {t.auth.signUpTitle}
+                {hasPlan ? t.auth.signUpTitle : t.auth.signUpTitleNoPlan}
               </Text>
               <Text className="text-base font-grotesk-regular leading-relaxed text-ink-cream-muted" style={rtl}>
-                {t.auth.signUpSubtitle}
+                {hasPlan ? t.auth.signUpSubtitle(plan.length) : t.auth.signUpSubtitleNoPlan}
               </Text>
             </View>
 
-            <View className="card card--cream mt-6 gap-5 p-5">
-              {t.auth.plannedTasks.map((task, index) => (
-                <View key={task.title} className="flex-row items-center gap-3">
-                  <View className={`h-2.5 w-2.5 rounded-full ${PLANNED_TASK_DOTS[index]}`} />
-                  <Text className="flex-1 font-grotesk-bold text-base text-ink-cream">
-                    {task.title}
-                  </Text>
-                  <Text className="font-grotesk-regular text-sm text-ink-cream-muted">
-                    {task.when}
-                  </Text>
-                </View>
-              ))}
-            </View>
+            {hasPlan ? (
+              <View className="card card--cream mt-6" style={{ height: PLAN_CARD_HEIGHT }}>
+                {/* Fewer than three rows sit centred in the card; more than
+                    three scroll inside it. nestedScrollEnabled so Android hands
+                    the drag to this list rather than to the page around it. */}
+                <ScrollView
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.planRows}
+                  scrollEventThrottle={32}
+                  onContentSizeChange={(_, height) => setMoreBelow(height > PLAN_VIEWPORT + 1)}
+                  onScroll={handlePlanScroll}
+                >
+                  {plan.map((draft, index) => (
+                    <View key={`${draft.title}-${index}`} className="flex-row items-center gap-3">
+                      <View
+                        className={`h-2.5 w-2.5 rounded-full ${PLAN_DOTS[Math.min(index, PLAN_DOTS.length - 1)]}`}
+                      />
+                      <Text
+                        className="flex-1 font-grotesk-bold text-base leading-[21px] text-ink-cream"
+                        numberOfLines={1}
+                        style={rtl}
+                      >
+                        {draft.title}
+                      </Text>
+                      <Text className="font-grotesk-regular text-sm text-ink-cream-muted">
+                        {previewDueLabel(draft.dueDate, draft.dueHasTime, now, t)}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+
+                {/* The last visible row fades into the card with a chevron under
+                    it, so the list reads as going on. Gone once you reach the end. */}
+                {moreBelow ? (
+                  <Animated.View
+                    entering={FadeIn.duration(180)}
+                    exiting={FadeOut.duration(180)}
+                    style={styles.planFade}
+                  >
+                    <Svg style={StyleSheet.absoluteFill}>
+                      <Defs>
+                        <LinearGradient id="planFade" x1="0" y1="0" x2="0" y2="1">
+                          <Stop offset="0" stopColor={colors.cream[50]} stopOpacity="0" />
+                          <Stop offset="1" stopColor={colors.cream[50]} stopOpacity="1" />
+                        </LinearGradient>
+                      </Defs>
+                      <Rect x="0" y="0" width="100%" height="100%" fill="url(#planFade)" />
+                    </Svg>
+                    <Feather name="chevron-down" size={14} color={colors.ink.creamMuted} />
+                  </Animated.View>
+                ) : null}
+              </View>
+            ) : null}
 
             <View className="mt-8 gap-3">
               <SocialAuthButton
@@ -249,5 +345,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 24,
     paddingBottom: 24,
+  },
+  planRows: {
+    flexGrow: 1,
+    justifyContent: "center",
+    gap: PLAN_SPACE,
+    padding: PLAN_SPACE,
+  },
+  // Inset by the card's padding, which also keeps its square corners clear of
+  // the card's rounded ones.
+  planFade: {
+    position: "absolute",
+    left: PLAN_SPACE,
+    right: PLAN_SPACE,
+    bottom: 0,
+    height: PLAN_FADE_HEIGHT,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 1,
+    pointerEvents: "none",
   },
 });

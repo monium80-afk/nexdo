@@ -39,7 +39,7 @@ export const posthog = new PostHog(projectToken ?? 'placeholder_key', {
   // Disable analytics entirely when no token is provided
   disabled: !isPostHogConfigured,
   // Capture app lifecycle events (installed, opened, backgrounded, etc.)
-  captureNativeAppLifecycleEvents: true,
+  captureAppLifecycleEvents: true,
   // Batching settings
   flushAt: 20,
   flushInterval: 10000,

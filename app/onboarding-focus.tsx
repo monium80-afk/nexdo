@@ -9,7 +9,7 @@ import { OnboardingLayout } from "@/components/OnboardingLayout";
 import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
-import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
+import { generateAdvice } from "@/lib/ai/generateAdvice";
 import { formatDuration } from "@/lib/formatDuration";
 import { posthog } from "@/lib/posthog";
 import { rankTasksForNext } from "@/lib/scoring";
@@ -61,18 +61,21 @@ export default function OnboardingFocus() {
   );
   const top = ranked[0];
 
-  const [advice, setAdvice] = useState<TaskAdvice | null>(null);
+  // A tip that makes the task easier to do, not a reason it was picked — the
+  // urgency pill already covers that. Only the headline: that's the AI's whole
+  // advice, while the offline fallback's second line is its priority score.
+  const [adviceText, setAdviceText] = useState<string | null>(null);
 
   useEffect(() => {
     if (!top) return;
     let cancelled = false;
     generateAdvice(top)
-      .then((result) => {
-        if (!cancelled) setAdvice(result);
+      .then((advice) => {
+        if (!cancelled) setAdviceText(advice.headline);
       })
       .catch((error) => {
         // generateAdvice already falls back to its own heuristic, so this only
-        // fires on something unexpected — the card just stays without a reason.
+        // fires on something unexpected — the box just stays on the loader.
         console.warn("[onboarding-focus] advice failed", error);
       });
     return () => {
@@ -87,8 +90,6 @@ export default function OnboardingFocus() {
     posthog.capture("onboarding_focus_accepted", { had_pick: Boolean(top) });
     router.push("/(auth)/sign-up");
   };
-
-  const adviceText = advice ? `${advice.headline} ${advice.detail}`.trim() : null;
 
   return (
     <OnboardingLayout
@@ -137,7 +138,7 @@ export default function OnboardingFocus() {
               {/* The same bulb the session card uses for AI advice, so this
                   reads as the assistant speaking rather than a new thing. */}
               <Ionicons name="bulb-outline" size={15} color={colors.orange[500]} />
-              <Text className="eyebrow text-orange-500">{t.onboardingFocus.why}</Text>
+              <Text className="eyebrow text-orange-500">{t.onboardingFocus.advice}</Text>
             </View>
             {adviceText ? (
               <HighlightedText

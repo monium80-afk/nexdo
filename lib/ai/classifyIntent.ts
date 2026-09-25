@@ -199,7 +199,7 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 
   if (RESCHEDULE_PATTERN.test(text)) {
     const ref = resolveTaskReference(text, referenceCtx);
-    const newDueDate = parseDatePhrase(text, now);
+    const newDueDate = parseDatePhrase(text, now, getLanguage());
     if (ref.status === "resolved") {
       return { type: "RESCHEDULE_TASK", taskId: ref.taskId, newDueDate, confirmationTier: "immediate" };
     }
@@ -252,7 +252,7 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
   // runs BEFORE resolveTaskReference — a bare statement that merely shares
   // a word with an existing task ("clean the house" vs. "Clean the
   // kitchen") is a new task, not an edit to that one.
-  const drafts = extractTasks(text, now);
+  const drafts = extractTasks(text, now, getLanguage());
   if (drafts.length > 0) return { type: "CREATE_TASK", drafts, confirmationTier: "confirm-required" };
 
   const ref = resolveTaskReference(text, referenceCtx);

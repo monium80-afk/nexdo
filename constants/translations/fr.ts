@@ -395,7 +395,11 @@ export const fr: Translations = {
     nudgeTime: "Me rappeler à",
     overdueAlerts: "Alertes de tâches en retard",
     overdueAlertsBody: "Un signal dès qu'une tâche dépasse son échéance.",
-    notificationsNote: "Enregistré sur cet appareil. Les rappels arriveront dans une prochaine mise à jour.",
+    notificationsNote: "Enregistré sur cet appareil. Le rappel quotidien arrivera dans une prochaine mise à jour.",
+    notificationsBlockedTitle: "Notifications désactivées",
+    notificationsBlockedBody:
+      "Autorisez les notifications de Nexdo dans les réglages de votre téléphone pour recevoir les alertes de retard.",
+    openPhoneSettings: "Ouvrir les réglages",
 
     appearance: "APPARENCE",
     theme: "Thème",
@@ -409,6 +413,12 @@ export const fr: Translations = {
     terms: "Conditions d'utilisation",
     version: (version: string) => `Nexdo v${version}`,
     linkError: "Impossible d'ouvrir ce lien. Réessayez.",
+  },
+
+  notifications: {
+    overdueTitle: (title: string) => `En retard : ${title}`,
+    overdueBody: "Son échéance vient de passer. Touchez pour la terminer ou choisir un nouveau moment.",
+    overdueChannel: "Tâches en retard",
   },
 
   profile: {
@@ -469,8 +479,8 @@ export const fr: Translations = {
   },
 
   onboardingGoals: {
-    headline: "Avec quoi voulez-vous que Nexdo vous aide ?",
-    body: "Sélectionnez tout ce qui vous correspond en ce moment.",
+    headline: "Soyez honnête : lesquelles vous ressemblent ?",
+    body: "Choisissez-en autant que vous voulez. Ici, on ne juge pas.",
     options: [
       "J'oublie ce que je dois faire",
       "J'ai trop de choses en tête",
@@ -483,10 +493,10 @@ export const fr: Translations = {
   },
 
   onboardingDump: {
-    eyebrow: "DÉMO INTERACTIVE",
-    headline: "Qu'avez-vous en tête en ce moment ?",
-    body: "Ne triez rien. Videz simplement vos pensées ici.",
-    placeholder: "ex. Demain je dois finir mes maths, écrire au prof, faire les courses…",
+    eyebrow: "ESSAYEZ AVEC VOS VRAIES TÂCHES",
+    headline: "Qu'avez-vous à faire cette semaine ?",
+    body: "**Listez toutes vos tâches**, même en vrac. Tapez-les, ou touchez le micro et dites-les à voix haute.",
+    placeholder: "Finir le devoir de maths pour vendredi\nÉcrire au prof\nFaire les courses ce soir…",
     startRecording: "Commencer à parler",
     stopRecording: "Arrêter et transcrire",
     transcribing: "Transcription…",
@@ -519,8 +529,8 @@ export const fr: Translations = {
     body: "Vous n'organisez pas vos tâches pour vous demander ensuite par où commencer. **Nexdo décide pour vous.**",
     nextFocus: "À FAIRE MAINTENANT",
     urgency: (score: number) => `Urgence ${score} / 100`,
-    why: "POURQUOI CELLE-CI MAINTENANT ?",
-    thinking: "Analyse en cours…",
+    advice: "CONSEIL DE L'IA",
+    thinking: "Je prépare un conseil…",
     nothing: "Il n'y a encore rien à décider. Ajoutez une tâche une fois installé et Nexdo choisira pour vous.",
     next: "Logique",
   },
@@ -540,12 +550,12 @@ export const fr: Translations = {
     invalidCode: "Code invalide. Réessayez.",
     sendCodeError: "Impossible d'envoyer le code de vérification. Réessayez.",
     signUpTitle: "Ne perdez pas votre plan.",
-    signUpSubtitle: "3 tâches sont triées et prêtes. Créez un compte pour les enregistrer et continuer.",
-    plannedTasks: [
-      { title: "Faire les courses", when: "Ce soir" },
-      { title: "Finir le devoir de maths", when: "Vendredi" },
-      { title: "Appeler le dentiste", when: "Demain" },
-    ],
+    signUpSubtitle: (count: number) =>
+      count === 1
+        ? "Votre tâche est triée et prête. Créez un compte pour l'enregistrer et continuer."
+        : `${count} tâches sont triées et prêtes. Créez un compte pour les enregistrer et continuer.`,
+    signUpTitleNoPlan: "Créez votre compte.",
+    signUpSubtitleNoPlan: "Rassemblez tout ce que vous avez à faire au même endroit, et laissez Nexdo vous dire par quoi commencer.",
     continueWithGoogle: "Continuer avec Google",
     continueWithApple: "Continuer avec Apple",
     checkEmail: "Vérifiez vos e-mails",

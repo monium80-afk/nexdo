@@ -2,7 +2,8 @@ import { EXECUTION_COACH_INTEGRATION_NOTES, EXECUTION_COACH_SYSTEM_PROMPT } from
 import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, languageInstruction } from "@/lib/ai/language";
-import { authenticate, unauthorized } from "@/lib/serverAuth";
+import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
+import { authenticate } from "@/lib/serverAuth";
 import {
   asObject,
   badRequest,
@@ -105,10 +106,20 @@ function normalizeResponse(raw: unknown, language: AppLanguage | undefined): Nex
   };
 }
 
+// TODO(security): open to signed-out callers for the same reason as
+// app/api/inbox+api.ts — the onboarding decision screen
+// (app/onboarding-focus.tsx) shows the AI's advice on the picked task BEFORE
+// the user signs up. One request is a single Gemini call, and the shared
+// anonymous limiter bounds repeated requests per IP. To close it, restore
+//     if (!auth.userId) return unauthorized();
+// — onboarding then quietly shows generateAdvice's offline heuristic instead.
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
-  if (!auth.userId) return unauthorized();
+  if (!auth.userId) {
+    const rateLimitResponse = anonymousRateLimit(request, "next");
+    if (rateLimitResponse) return rateLimitResponse;
+  }
 
   let raw: unknown;
   try {

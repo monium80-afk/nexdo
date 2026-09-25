@@ -1,5 +1,6 @@
-// A per-IP cap on the two routes that stay open to signed-out callers
-// (app/api/inbox+api.ts and app/api/extract-text+api.ts, both for onboarding).
+// A per-IP cap on the routes that stay open to signed-out callers
+// (app/api/inbox+api.ts, app/api/extract-text+api.ts and app/api/next+api.ts,
+// all for onboarding).
 //
 // Known limits, because this is the only thing between the open internet and
 // the project's Gemini quota and it should not be mistaken for more than it is:
@@ -15,7 +16,7 @@
 //    can rate-limit itself.
 //
 // Anything that needs to hold properly wants a shared store (a Supabase table,
-// Redis) keyed the same way. Closing the two routes to signed-out callers —
+// Redis) keyed the same way. Closing these routes to signed-out callers —
 // see the TODOs on them — removes the need entirely.
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 5;

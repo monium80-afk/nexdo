@@ -1,18 +1,21 @@
 import { ar } from "@/constants/translations/ar";
+import { de } from "@/constants/translations/de";
 import { en } from "@/constants/translations/en";
+import { es } from "@/constants/translations/es";
 import { fr } from "@/constants/translations/fr";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type { AppLanguage } from "@/types/settings";
 
 export type Translations = typeof en;
 
-// English, French and Arabic are translated so far. The other languages in
-// Settings fall back to English for the interface (the AI still replies in them).
-const TRANSLATIONS: Partial<Record<AppLanguage, Translations>> = { en, fr, ar };
+// Every language Settings offers has its own copy — adding one to AppLanguage
+// without a translation file is a type error here.
+const TRANSLATIONS: Record<AppLanguage, Translations> = { en, fr, es, ar, de };
 
 export const ALL_TRANSLATIONS: Translations[] = Object.values(TRANSLATIONS);
 
 export function getTranslations(language: AppLanguage): Translations {
+  // The fallback covers a stored language value this build doesn't know.
   return TRANSLATIONS[language] ?? en;
 }
 

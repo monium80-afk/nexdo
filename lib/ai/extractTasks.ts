@@ -1,46 +1,76 @@
 import { hasExplicitTime, parseDatePhrase } from "@/lib/ai/parseDate";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import type { AppLanguage } from "@/types/settings";
 import type { TaskPriorityLevel } from "@/types/task";
 
 const LONG_TASK_KEYWORDS = /\b(write|study|prepare|build|plan|research|essay|report|presentation|thesis|revise|design)\b/i;
 const QUICK_TASK_KEYWORDS = /\b(call|email|text|book|order|pay|send|reply|buy|pick up|drop off|check|confirm)\b/i;
 
-// English and French — the inbox route reads stated importance straight off
-// the user's own words, whichever language they typed in.
+// English, French, Spanish and German — the inbox route reads stated
+// importance straight off the user's own words, whichever language they typed in.
 const HIGH_PRIORITY_KEYWORDS =
-  /\b(urgent|urgently|asap|immediately|critical|important|importance|high priority|top priority|emergency|overdue|exam|midterm|finals?|interview|deadline|urgente?|prioritaire|critique|examen|entretien)\b/i;
+  /\b(urgent|urgently|asap|immediately|critical|important|importance|high priority|top priority|emergency|overdue|exam|midterm|finals?|interview|deadline|urgente?|prioritaire|critique|examen|entretien|importante|prioritari[oa]|cr[íi]tic[oa]|emergencia|entrevista|cuanto antes|dringend(?:e[nrs]?)?|wichtig(?:e[nrs]?)?|eilig(?:e[nrs]?)?|kritisch(?:e[nrs]?)?|sofort|notfall|pr[üu]fung|klausur|vorstellungsgespr[äa]ch|hohe priorit[äa]t)\b/i;
 
 // An explicit length the user stated ("for two hours", "takes 45 min",
-// "1.5h", "pendant deux heures"). "in 2 hours" / "2 hours ago" are deadlines,
-// not durations, so the word before and after the match is captured and checked.
+// "1.5h", "pendant deux heures", "media hora", "eine halbe Stunde"). "in 2
+// hours" / "2 hours ago" are deadlines, not durations, so the word before and
+// after the match is captured and checked.
 const DURATION_PATTERN =
-  /(?:\b(\w+)\s+)?\b(?:(\d+(?:\.\d+)?)\s*(h|hrs?|hours?|heures?|m|mins?|minutes?)|(an?|one|two|three|four|five|six|seven|eight|nine|ten|une|deux|trois|quatre|cinq|sept|huit|neuf|dix)\s+(hrs?|hours?|heures?|mins?|minutes?))\b(\s+ago\b)?/gi;
+  /(?:\b(\w+)\s+)?\b(?:(\d+(?:\.\d+)?)\s*(h|hrs?|hours?|heures?|horas?|stunden?|std|m|mins?|minutes?|minutos?|minuten)|(an?|one|two|three|four|five|six|seven|eight|nine|ten|une|deux|trois|quatre|cinq|sept|huit|neuf|dix|un|una|media|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|eine?|einer?|halbe|anderthalb|eineinhalb|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn)\s+(hrs?|hours?|heures?|horas?|stunden?|mins?|minutes?|minutos?|minuten))\b(\s+ago\b)?/gi;
 const DURATION_WORDS: Record<string, number> = {
   a: 1,
   an: 1,
   one: 1,
   une: 1,
+  un: 1,
+  una: 1,
+  ein: 1,
+  eine: 1,
+  einer: 1,
+  media: 0.5,
+  halbe: 0.5,
+  anderthalb: 1.5,
+  eineinhalb: 1.5,
   two: 2,
   deux: 2,
+  dos: 2,
+  zwei: 2,
   three: 3,
   trois: 3,
+  tres: 3,
+  drei: 3,
   four: 4,
   quatre: 4,
+  cuatro: 4,
+  vier: 4,
   five: 5,
   cinq: 5,
+  cinco: 5,
+  fünf: 5,
   six: 6,
+  seis: 6,
+  sechs: 6,
   seven: 7,
   sept: 7,
+  siete: 7,
+  sieben: 7,
   eight: 8,
   huit: 8,
+  ocho: 8,
+  acht: 8,
   nine: 9,
   neuf: 9,
+  nueve: 9,
+  neun: 9,
   ten: 10,
   dix: 10,
+  diez: 10,
+  zehn: 10,
 };
-// Checked before the high-priority words — "pas urgent" contains "urgent".
+// Checked before the high-priority words — "pas urgent", "no es urgente" and
+// "nicht dringend" all contain a high-priority word.
 const LOW_PRIORITY_KEYWORDS =
-  /\b(someday|eventually|whenever|sometime|no rush|not urgent|not important|low priority|low importance|if i have time|maybe|at some point|pas urgente?|pas important|pas press|rien ne presse|un jour|quand j'ai le temps|si j'ai le temps|peut-[eê]tre|priorit[ée] basse)\b/i;
+  /\b(someday|eventually|whenever|sometime|no rush|not urgent|not important|low priority|low importance|if i have time|maybe|at some point|pas urgente?|pas important|pas press|rien ne presse|un jour|quand j'ai le temps|si j'ai le temps|peut-[eê]tre|priorit[ée] basse|no (?:es )?urgente|no es importante|sin prisa|no (?:hay|corre) prisa|alg[úu]n d[íi]a|cuando (?:pueda|tenga tiempo)|si tengo tiempo|tal vez|quiz[áa]s|a lo mejor|prioridad baja|baja prioridad|nicht (?:so )?(?:dringend|wichtig|eilig)|unwichtig|keine eile|eilt nicht|hat zeit|irgendwann|(?:wenn|falls) ich zeit habe|vielleicht|niedrige priorit[äa]t)\b/i;
 
 const DEFAULT_MINUTES = 30;
 const LONG_TASK_MINUTES = 60;
@@ -83,12 +113,12 @@ const CHITCHAT_PATTERN = /^\s*(hi|hey|hello|yo|thanks|thank you|ok|okay|cool|nic
 export function parseDurationMinutes(text: string): number | undefined {
   for (const match of text.matchAll(DURATION_PATTERN)) {
     const [, before, digits, digitUnit, words, wordUnit, ago] = match;
-    if (ago || /^(in|within|dans)$/i.test(before ?? "")) continue;
+    if (ago || /^(in|within|dans|en|hace|vor)$/i.test(before ?? "")) continue;
     const amountText = (digits ?? words).toLowerCase();
     // "half an hour" — "half" lands in the word-before capture.
     const amount = /^half$/i.test(before ?? "") ? 0.5 : (DURATION_WORDS[amountText] ?? Number.parseFloat(amountText));
     if (!Number.isFinite(amount) || amount <= 0) continue;
-    return Math.round(/^h/i.test(digitUnit ?? wordUnit) ? amount * 60 : amount);
+    return Math.round(/^(h|st)/i.test(digitUnit ?? wordUnit) ? amount * 60 : amount);
   }
   return undefined;
 }
@@ -142,7 +172,7 @@ function looksLikeTask(fragment: string): boolean {
 // Splits a brain-dump message into individual task drafts. Deliberately
 // simple sentence/keyword splitting, not general NLU — this is the offline
 // fallback for when /api/inbox can't be reached.
-export function extractTasks(text: string, now: Date = new Date()): ExtractedTaskDraft[] {
+export function extractTasks(text: string, now: Date = new Date(), language?: AppLanguage): ExtractedTaskDraft[] {
   const fragments = text
     .split(/\n|,| and then | and |;/i)
     .map((fragment) => fragment.trim())
@@ -153,9 +183,9 @@ export function extractTasks(text: string, now: Date = new Date()): ExtractedTas
       // With a single task in the message, a deadline anywhere in it belongs
       // to that task — including in a clause dropped as a continuation
       // ("pay the electricity bill, it was due last week").
-      const ownDueDate = parseDatePhrase(fragment, now);
-      const dueDate = ownDueDate ?? (fragments.length === 1 ? parseDatePhrase(text, now) : undefined);
-      const dueHasTime = dueDate ? hasExplicitTime(ownDueDate ? fragment : text) : undefined;
+      const ownDueDate = parseDatePhrase(fragment, now, language);
+      const dueDate = ownDueDate ?? (fragments.length === 1 ? parseDatePhrase(text, now, language) : undefined);
+      const dueHasTime = dueDate ? hasExplicitTime(ownDueDate ? fragment : text, language) : undefined;
       const title = cleanTitle(fragment);
       return {
         title,

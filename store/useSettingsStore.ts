@@ -12,11 +12,12 @@ type SettingsStore = {
   // Auto mode: the AI chat adds and updates tasks straight away instead of
   // showing a confirmation card first.
   aiAutoMode: boolean;
-  // Notification preferences. Saved here, but nothing schedules them yet —
-  // the reminders themselves land in a later lesson.
+  // Notification preferences. The daily nudge is saved but nothing schedules
+  // it yet — that lands in a later lesson.
   dailyNudgeEnabled: boolean;
   /** 24-hour "HH:MM" — the time of day the daily nudge should arrive. */
   dailyNudgeTime: string;
+  /** An alert the moment a task's deadline passes — scheduled by hooks/useNotifications.ts. */
   overdueAlertsEnabled: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;

@@ -261,6 +261,7 @@ export function NextTaskCard({
         if (useSessionStore.getState().session?.taskIds.includes(task.id)) leaveSession();
       } finally {
         pendingCelebrationTaskIds.current.delete(task.id);
+        setCelebratedTaskId((current) => (current === task.id ? null : current));
       }
     }, CELEBRATION_MS);
   };
