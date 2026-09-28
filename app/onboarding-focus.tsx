@@ -29,7 +29,7 @@ export default function OnboardingFocus() {
   const [now] = useState(() => new Date());
 
   // Built but never saved. buildTask is exactly what the store runs on a new
-  // task — complexity, generated plan, scores — so ranking these through
+  // task — complexity, steps, scores — so ranking these through
   // rankTasksForNext is the app's real decision, not a stand-in for it. Memoed
   // because every build mints fresh ids, and a new identity each render would
   // send the advice request round again.

@@ -3,6 +3,7 @@ import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, languageInstruction } from "@/lib/ai/language";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
+import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
 import {
   asObject,
@@ -34,8 +35,17 @@ export type NextResponseBody = {
   advice: string;
   plan: { id: string; title: string; estimatedMinutes: number; status: "pending" | "current" | "completed" }[];
   currentStepId: string | null;
+  /** Set when the model couldn't be reached and "advice" is the apology — never worth caching. */
+  unavailable?: true;
 };
 
+// Every caller reads only "advice", so dropping "plan" looks like free output
+// savings — it isn't. Tried and measured: with "advice" as the last field this
+// model kept repeating the advice sentence until it hit maxOutputTokens (a
+// billed ~2,000-token failure, and the user got the apology), while the full
+// schema below stopped cleanly on the same task. With "advice" first it
+// stopped, but spent the saved tokens on extra thinking instead. Keep "plan"
+// after "advice": it gives the model a clear place to close the string.
 const RESPONSE_SCHEMA: GeminiJsonSchema = {
   type: "OBJECT",
   properties: {
@@ -65,6 +75,7 @@ function fallbackResponse(language: AppLanguage | undefined): NextResponseBody {
     advice: aiUnavailableMessage(language),
     plan: [],
     currentStepId: null,
+    unavailable: true,
   };
 }
 
@@ -95,24 +106,23 @@ function normalizeResponse(raw: unknown, language: AppLanguage | undefined): Nex
     .filter((step): step is NextResponseBody["plan"][number] => step !== null);
 
   const currentStepId = clampString(result.currentStepId, MAX_ID_LENGTH);
+  const advice = clampString(result.advice, MAX_ADVICE_LENGTH);
 
   return {
     complexity: oneOf(result.complexity, ["simple", "medium", "complex"] as const) ?? "simple",
-    advice: clampString(result.advice, MAX_ADVICE_LENGTH) ?? aiUnavailableMessage(language),
+    advice: advice ?? aiUnavailableMessage(language),
     plan,
     // Only an id the plan actually contains — a dangling one leaves the card
     // with no current step highlighted.
     currentStepId: currentStepId && plan.some((step) => step.id === currentStepId) ? currentStepId : null,
+    ...(advice ? {} : { unavailable: true as const }),
   };
 }
 
-// TODO(security): open to signed-out callers for the same reason as
-// app/api/inbox+api.ts — the onboarding decision screen
-// (app/onboarding-focus.tsx) shows the AI's advice on the picked task BEFORE
-// the user signs up. One request is a single Gemini call, and the shared
-// anonymous limiter bounds repeated requests per IP. To close it, restore
-//     if (!auth.userId) return unauthorized();
-// — onboarding then quietly shows generateAdvice's offline heuristic instead.
+// Open to signed-out callers only for onboarding's free run: the decision
+// screen (app/onboarding-focus.tsx) shows the AI's advice on the picked task
+// BEFORE the user signs up. lib/anonymousTrial.ts allows a signed-out install
+// only that; past it, generateAdvice quietly shows its offline heuristic.
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
@@ -133,10 +143,16 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
+  if (!auth.userId) {
+    const trialResponse = await claimTrialCall(request, "next");
+    if (trialResponse) return trialResponse;
+  }
+
   const language = oneOf(parsed.language, LANGUAGES);
 
   try {
     const result = await generateStructuredJson({
+      label: "next",
       systemPrompt: `${EXECUTION_COACH_SYSTEM_PROMPT}\n\n${EXECUTION_COACH_INTEGRATION_NOTES}${languageInstruction(language)}`,
       userContent: JSON.stringify({
         task,

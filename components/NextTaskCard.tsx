@@ -231,6 +231,8 @@ export function NextTaskCard({
   // with everything else that task needs.
   const session = useSessionStore((state) => state.session);
   const runningSession = session?.taskIds.includes(task.id) ? session : undefined;
+  // Only a task with steps of its own, or ones AI Breakdown added (before the
+  // session or during it), gets a checklist under its title.
   const hasSteps = (task.subtasks?.length ?? 0) > 0;
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);

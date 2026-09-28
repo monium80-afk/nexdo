@@ -46,10 +46,13 @@ const DATE_PHRASE_EXAMPLES: Partial<Record<AppLanguage, string>> = {
 export function datePhraseInstruction(language: AppLanguage | undefined): string {
   if (!language || language === "en" || !LANGUAGE_NAMES[language]) return "";
   const examples = DATE_PHRASE_EXAMPLES[language];
+  // The last sentence is for "reply": the model tended to copy the English
+  // dueDatePhrase straight into it ("Ajouté 'Appeler le dentiste' (tomorrow
+  // at 18:00)"), which reads as a half-translated app.
   return `
 Exception: fields.dueDatePhrase is always written in English. Translate the user's deadline words and nothing more${
     examples ? ` — ${examples}` : ""
-  }. Still never work out the calendar date yourself.`;
+  }. Still never work out the calendar date yourself. That exception is for the field only: in "reply", write the deadline in ${LANGUAGE_NAMES[language]} like the rest of the sentence.`;
 }
 
 const AI_UNAVAILABLE: Partial<Record<AppLanguage, string>> = {

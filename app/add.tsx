@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
+import { RecurrencePicker } from "@/components/RecurrencePicker";
 import {
     computeDeadlineDate,
     DEADLINE_OPTIONS,
@@ -22,6 +23,7 @@ import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
+import type { RuleInput } from "@/lib/recurrence";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { TaskPriorityLevel } from "@/types/task";
 
@@ -70,6 +72,9 @@ export default function Add() {
   const [stepDraftLabel, setStepDraftLabel] = useState("");
 
   const [notes, setNotes] = useState("");
+
+  // Doesn't repeat by default.
+  const [recurrence, setRecurrence] = useState<RuleInput | null>(null);
 
   if (!isLoaded) return null;
   if (!isSignedIn) return <Redirect href="/onboarding" />;
@@ -152,6 +157,7 @@ export default function Add() {
         ...step,
         estimatedMinutes: minutesPerStep + (index < remainderMinutes ? 1 : 0),
       })),
+      recurrence: recurrence ?? undefined,
     });
 
     posthog.capture("task_created", {
@@ -159,6 +165,7 @@ export default function Add() {
       estimated_minutes: estimatedMinutes,
       has_deadline: Boolean(dueDate),
       step_count: steps.length,
+      recurrence: recurrence?.frequency ?? "none",
     });
 
     if (router.canGoBack()) {
@@ -278,6 +285,12 @@ export default function Add() {
               <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} />
             ) : null}
           </View>
+
+          <RecurrencePicker
+            value={recurrence}
+            onChange={setRecurrence}
+            dueDate={(customDeadlineOpen ? customDeadline : computeDeadlineDate(deadlineValue))?.toISOString()}
+          />
 
           <View className="gap-3">
             <SectionHeader

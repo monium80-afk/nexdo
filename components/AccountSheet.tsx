@@ -200,7 +200,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
             await signOut();
             await Promise.allSettled([
               Promise.resolve().then(() => handleChatSignOut()),
-              Promise.resolve().then(() => handleTaskSignOut()),
+              Promise.resolve().then(() => handleTaskSignOut({ accountDeleted: true })),
             ]);
           } catch (deleteError) {
             console.warn("[AccountSheet] account deletion failed", deleteError);

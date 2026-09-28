@@ -293,8 +293,8 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     };
   }, [contextTaskId, availableMinutes, seedMessage]);
 
-  // Local file:// uris don't survive a reinstall or another device — the
-  // Files are uploaded before the message is written so synced devices only
+  // Local file:// uris don't survive a reinstall or another device, so files
+  // are uploaded before the message is written and synced devices only ever
   // receive storage paths. Failed uploads are left out of the sent message.
   const uploadAttachments = async (
     attachments: ChatAttachment[],
@@ -352,7 +352,10 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
       Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadPartialBody(attachments.length - storedAttachments.length));
     }
 
-    sendMessage(text, storedAttachments, contextTaskId);
+    // The message carries the storage paths, but the text is read from the
+    // files still on this phone — the same ones, in the same order.
+    const uploadedLocal = attachments.filter((attachment) => !failedAttachments.includes(attachment));
+    sendMessage(text, storedAttachments, contextTaskId, uploadedLocal);
   };
 
   const handleRemoveAttachment = (index: number) => {

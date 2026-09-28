@@ -17,9 +17,10 @@ import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getDueInfo } from "@/lib/taskMeta";
+import type { TaskChanges } from "@/lib/taskOperations";
 import type { Task } from "@/types/task";
 
-export type TaskEditChanges = Partial<Pick<Task, "title" | "estimatedMinutes" | "dueDate">>;
+export type TaskEditChanges = Pick<TaskChanges, "title" | "estimatedMinutes" | "dueDate">;
 
 /** Lets Task Details' "Save Changes" button save these drafts too. */
 export type TaskEditPanelHandle = {
@@ -98,8 +99,8 @@ export function TaskEditPanel({
     if (deadline === "custom") {
       changes.dueDate = customDeadline.toISOString();
     } else if (deadline !== "keep") {
-      // "No deadline" deliberately sets dueDate to undefined, clearing it.
-      changes.dueDate = computeDeadlineDate(deadline)?.toISOString();
+      // "No deadline" is null: remove it.
+      changes.dueDate = computeDeadlineDate(deadline)?.toISOString() ?? null;
     }
 
     onSave(changes);

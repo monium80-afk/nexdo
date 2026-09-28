@@ -30,6 +30,13 @@ export default function Onboarding() {
     router.push("/onboarding-sort");
   };
 
+  // For someone who already has an account: straight to log in, without the
+  // setup steps. Pushed, so back brings them to this screen again.
+  const handleLogIn = () => {
+    posthog.capture("onboarding_login_tapped");
+    router.push("/(auth)/sign-in");
+  };
+
   return (
     <OnboardingLayout
       centered
@@ -46,6 +53,7 @@ export default function Onboarding() {
       body={t.onboarding.body}
       nextLabel={t.onboarding.getStarted}
       onNext={handleNext}
+      secondaryAction={{ label: t.onboarding.haveAccount, onPress: handleLogIn }}
     >
       <View className="flex-1 items-center justify-center">
         <View className="relative w-[84%] pb-[26px] pt-[26px]">

@@ -1,15 +1,17 @@
-import type { InboxAction, InboxRequestBody, InboxResponseBody } from "@/app/api/inbox+api";
+import type { InboxAction, InboxFilter, InboxRecurrence, InboxRequestBody, InboxResponseBody } from "@/app/api/inbox+api";
 import { stripAttachmentBlocks } from "@/lib/ai/attachmentMessage";
-import { taskToContext } from "@/lib/ai/context";
+import { selectRelevantTasks, taskToContext } from "@/lib/ai/context";
 import { extractTasks } from "@/lib/ai/extractTasks";
-import { parseDatePhrase } from "@/lib/ai/parseDate";
+import { hasExplicitTime, parseDatePhrase, parseDateRange } from "@/lib/ai/parseDate";
 import { resolveTaskReference } from "@/lib/ai/resolveTaskReference";
 import type { StructuredAction } from "@/lib/ai/types";
 import { apiPost } from "@/lib/api";
 import { getLanguage, translate } from "@/lib/i18n";
+import { toLocalDateKey, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { rankTasksForNext } from "@/lib/scoring";
-import type { TaskScope } from "@/lib/taskMeta";
-import type { Task, TaskPriorityLevel } from "@/types/task";
+import type { TaskChanges, TaskFilter, TaskOperation, TaskStatusFilter, TaskTarget } from "@/lib/taskOperations";
+import type { AppLanguage } from "@/types/settings";
+import type { Task, TaskPriorityLevel, Weekday } from "@/types/task";
 
 export type ClassifyIntentInput = {
   text: string;
@@ -20,116 +22,288 @@ export type ClassifyIntentInput = {
   history?: { role: "user" | "ai"; text: string }[];
 };
 
-// A turn can produce several actions (compound messages, taxonomy 6.1) plus
-// one narrated reply covering all of them. "reply" is null only from the
-// offline heuristic fallback, which has no narration of its own — the
-// caller falls back to each action's own executed-result message instead.
-export type ClassifiedTurn = { actions: StructuredAction[]; reply: string | null };
+// A turn can produce several actions (compound messages, taxonomy 6.1).
+// `replies` lines up with `actions`: what the model said about each one, or
+// null from the offline heuristic, which has no narration of its own — the
+// chat then uses the app's own message for it. `reply` is all of them joined.
+export type ClassifiedTurn = { actions: StructuredAction[]; replies: (string | null)[]; reply: string | null };
 
 const VALID_PRIORITIES: TaskPriorityLevel[] = ["high", "medium", "low"];
-const VALID_SCOPES: TaskScope[] = ["all", "completed", "pending"];
 
-// A pending-task-list cap for pathological cases — a normal user's pending
-// list is small enough to send in full, which is what makes duplicate
-// detection, "what's overdue", and "I'm overwhelmed" (taxonomy 1.1, 4.3,
-// 5.4) work well: the model needs the *whole* list, not a narrowed slice.
-const MAX_TASKS_SENT = 60;
+// Must match MAX_TASKS in app/api/inbox+api.ts, which keeps only the first
+// that-many tasks it receives. Up to that many go in full (duplicate
+// detection, "what's overdue" and "I'm overwhelmed" — taxonomy 1.1, 4.3, 5.4
+// — want the whole list); past that, the ones this message is most likely
+// about go first: the task in view, the ones just discussed, any named in the
+// message (completed ones included), then the highest priority, then the most
+// recently finished. Bulk actions reach tasks beyond this through their
+// filters, which the app applies to the whole list.
+const MAX_TASKS_SENT = 30;
 
-function tasksForPrompt(tasks: Task[]): Task[] {
-  const pending = tasks.filter((task) => task.status === "pending");
-  if (pending.length <= MAX_TASKS_SENT) return pending;
-  return [...pending].sort((a, b) => b.priorityScore - a.priorityScore).slice(0, MAX_TASKS_SENT);
+/**
+ * The model sees short ids ("t1", "t2", …) instead of the real ones: fewer
+ * tokens per task, and an id it made up can't accidentally match a real task —
+ * anything not in this map is simply "not found".
+ */
+function buildAliases(tasks: Task[]) {
+  const toAlias = new Map<string, string>();
+  const fromAlias = new Map<string, string>();
+  tasks.forEach((task, index) => {
+    const alias = `t${index + 1}`;
+    toAlias.set(task.id, alias);
+    fromAlias.set(alias, task.id);
+  });
+  return { toAlias, fromAlias };
 }
 
-// Layer A's action.type enum doesn't carry a confirmation tier for every
-// case — the destructive/safe ones are fixed here regardless of what the
-// model returns, so a wrong model output can never skip a confirmation it
-// shouldn't.
-function mapSingleAction(action: InboxAction, fallbackNote: string): StructuredAction | null {
+/** "Wednesday, October 7, 2026, 10:00 (UTC+02:00)" — so the model knows what "today" is, for questions. */
+function describeNow(now: Date): string {
+  const date = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const offset = -now.getTimezoneOffset();
+  const hours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0");
+  const minutes = (Math.abs(offset) % 60).toString().padStart(2, "0");
+  return `${date}, ${time} (UTC${offset >= 0 ? "+" : "-"}${hours}:${minutes})`;
+}
+
+type MapContext = {
+  now: Date;
+  language: AppLanguage;
+  fallbackNote: string;
+  /** The real id for an alias, or null for one the model invented. */
+  realId: (alias: string | null) => string | null;
+};
+
+/**
+ * The deadline an action names, worked out here on the device — in the
+ * user's time zone, which the server doesn't know. The model's English phrase
+ * is read with every language's rules (as it always was); the user's own
+ * words, when the server fell back to them, in the app language.
+ */
+function resolveDeadline(fields: InboxAction["fields"], ctx: MapContext): { dueDate?: string; hasTime: boolean } {
+  if (fields.dueDateText) {
+    const dueDate = parseDatePhrase(fields.dueDateText, ctx.now, ctx.language);
+    if (dueDate) return { dueDate, hasTime: hasExplicitTime(fields.dueDateText, ctx.language) };
+  }
+  if (fields.dueDatePhrase) {
+    const dueDate = parseDatePhrase(fields.dueDatePhrase, ctx.now);
+    if (dueDate) return { dueDate, hasTime: hasExplicitTime(fields.dueDatePhrase) };
+  }
+  return { hasTime: false };
+}
+
+function toRuleInput(recurrence: InboxRecurrence | undefined, ctx: MapContext): RuleInput | null | undefined {
+  if (!recurrence) return undefined;
+  if (recurrence.frequency === "none") return null;
+  const end = recurrence.endDatePhrase ? parseDatePhrase(recurrence.endDatePhrase, ctx.now) : undefined;
+  return {
+    frequency: recurrence.frequency,
+    interval: recurrence.interval,
+    weekdays: recurrence.weekdays?.filter((day): day is Weekday => day >= 0 && day <= 6),
+    monthDay: recurrence.monthDay,
+    endDate: end ? toLocalDateKey(new Date(end)) : undefined,
+  };
+}
+
+/** Null when a date phrase in the filter couldn't be read — better to ask than to act on too many tasks. */
+function toTaskFilter(filter: InboxFilter | null, ctx: MapContext): TaskFilter | null {
+  if (!filter) return {};
+  const result: TaskFilter = {
+    status: filter.status as TaskStatusFilter | undefined,
+    keywords: filter.titleKeywords,
+    recurring: filter.recurring,
+    hasDeadline: filter.hasDeadline,
+    priority: filter.priority,
+  };
+  if (filter.dueWithin) {
+    const range = parseDateRange(filter.dueWithin, ctx.now, "en");
+    if (!range) return null;
+    result.dueFrom = range.from;
+    result.dueTo = range.to;
+  }
+  if (filter.completedWithin) {
+    const range = parseDateRange(filter.completedWithin, ctx.now, "en");
+    if (!range) return null;
+    result.completedFrom = range.from;
+    result.completedTo = range.to;
+    result.status ??= "completed";
+  }
+  return result;
+}
+
+function buildChanges(action: InboxAction, ctx: MapContext, bulk: boolean): TaskChanges {
+  const { fields } = action;
+  const changes: TaskChanges = {};
+  // A bulk rename would give every task the same name — never what's meant.
+  if (fields.title && !bulk) changes.title = fields.title;
+  if (typeof fields.estimatedMinutesDelta === "number" && fields.estimatedMinutesDelta !== 0) {
+    changes.estimatedMinutesDelta = fields.estimatedMinutesDelta;
+  } else if (typeof fields.estimatedMinutes === "number" && fields.estimatedMinutes > 0) {
+    changes.estimatedMinutes = fields.estimatedMinutes;
+  }
+  if (VALID_PRIORITIES.includes(fields.priority as TaskPriorityLevel)) changes.priority = fields.priority as TaskPriorityLevel;
+  if (fields.dueDateShift) {
+    changes.dueShift = fields.dueDateShift;
+  } else {
+    const deadline = resolveDeadline(fields, ctx);
+    if (deadline.dueDate) {
+      changes.dueDate = deadline.dueDate;
+      // "Move it to Friday" keeps the time it was due at; "Friday at 3" doesn't.
+      changes.keepTimeOfDay = !deadline.hasTime;
+    }
+  }
+  const recurrence = toRuleInput(fields.recurrence, ctx);
+  if (recurrence !== undefined) changes.recurrence = recurrence;
+  return changes;
+}
+
+/** One task by id, or null when the model pointed at one it wasn't given. */
+function singleTarget(action: InboxAction, ctx: MapContext): TaskTarget | null {
+  const id = ctx.realId(action.taskId) ?? (action.taskIds?.length === 1 ? ctx.realId(action.taskIds[0]) : null);
+  return id ? { taskIds: [id] } : null;
+}
+
+type BulkTargetResult = { target: TaskTarget } | { notFound: true };
+
+function bulkTarget(action: InboxAction, ctx: MapContext): BulkTargetResult | null {
+  const ids = (action.taskIds ?? []).map((alias) => ctx.realId(alias)).filter((id): id is string => !!id);
+  const filter = toTaskFilter(action.filter, ctx);
+  if (!filter) return null;
+  const hasFilterCriteria = Object.values(filter).some((value) => (Array.isArray(value) ? value.length > 0 : value !== undefined));
+  if ((action.taskIds?.length ?? 0) > 0 && ids.length === 0 && !hasFilterCriteria) return { notFound: true };
+  // Ids for the tasks it could see, keywords for ones it couldn't: both count.
+  if (ids.length > 0 && filter.keywords?.length) return { target: { taskIds: ids, filter } };
+  if (ids.length > 0) return { target: { taskIds: ids } };
+  return { target: { filter } };
+}
+
+const SINGLE_KIND: Partial<Record<InboxAction["type"], TaskOperation["kind"]>> = {
+  UPDATE_TASK: "update",
+  COMPLETE_TASK: "complete",
+  REOPEN_TASK: "reopen",
+  DELETE_TASK: "delete",
+};
+
+const BULK_KIND: Partial<Record<InboxAction["type"], TaskOperation["kind"]>> = {
+  UPDATE_TASKS: "update",
+  COMPLETE_TASKS: "complete",
+  REOPEN_TASKS: "reopen",
+  DELETE_TASKS: "delete",
+};
+
+function operationFor(
+  kind: TaskOperation["kind"],
+  target: TaskTarget,
+  action: InboxAction,
+  ctx: MapContext,
+  bulk: boolean,
+): TaskOperation {
+  const scope = action.fields.recurrenceScope as RecurrenceScope | undefined;
+  switch (kind) {
+    case "update":
+      return { kind, target, changes: buildChanges(action, ctx, bulk), scope };
+    case "delete":
+      return { kind, target, scope };
+    default:
+      return { kind, target };
+  }
+}
+
+// Which actions need a yes/no first is settled on the device, whatever the
+// model set: a create always shows its preview, and useChatStore asks before
+// anything that reaches several tasks or a whole series.
+function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction | null {
+  const t = translate();
   if (action.type === "CREATE_TASK" && action.fields.title) {
     const priorityLevel = VALID_PRIORITIES.includes(action.fields.priority as TaskPriorityLevel)
       ? (action.fields.priority as TaskPriorityLevel)
       : "medium";
+    const deadline = resolveDeadline(action.fields, ctx);
     return {
       type: "CREATE_TASK",
       drafts: [
         {
           title: action.fields.title,
           estimatedMinutes: action.fields.estimatedMinutes ?? 30,
-          dueDate: action.fields.dueDate,
-          dueHasTime: action.fields.dueHasTime,
+          dueDate: deadline.dueDate,
+          dueHasTime: deadline.dueDate ? deadline.hasTime : undefined,
           priorityLevel,
           steps: action.fields.steps,
+          recurrence: toRuleInput(action.fields.recurrence, ctx) ?? undefined,
         },
       ],
       confirmationTier: "confirm-required",
     };
   }
 
-  if (action.type === "UPDATE_TASK" && action.taskId) {
-    const changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes">> = {};
-    if (action.fields.title) changes.title = action.fields.title;
-    if (action.fields.dueDate) changes.dueDate = action.fields.dueDate;
-    if (typeof action.fields.estimatedMinutes === "number") changes.estimatedMinutes = action.fields.estimatedMinutes;
+  const singleKind = SINGLE_KIND[action.type];
+  if (singleKind) {
+    const target = singleTarget(action, ctx);
+    if (!target) return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
     return {
-      type: "UPDATE_TASK",
-      taskId: action.taskId,
-      changes,
-      confirmationTier: action.confirmationRequired ? "confirm-required" : "immediate",
+      type: "OPERATE",
+      operation: operationFor(singleKind, target, action, ctx, false),
+      confirmationTier: singleKind === "update" && action.confirmationRequired ? "confirm-required" : "immediate",
     };
   }
 
-  if (action.type === "COMPLETE_TASK" && action.taskId) {
-    return { type: "COMPLETE_TASK", taskId: action.taskId, confirmationTier: "immediate" };
+  const bulkKind = BULK_KIND[action.type];
+  if (bulkKind) {
+    const result = bulkTarget(action, ctx);
+    if (!result) return { type: "CLARIFY", question: t.ops.whichDates, candidates: [], confirmationTier: "safe" };
+    if ("notFound" in result) return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
+    return { type: "OPERATE", operation: operationFor(bulkKind, result.target, action, ctx, true), confirmationTier: "confirm-required" };
   }
 
-  if (action.type === "COMPLETE_TASKS") {
-    return { type: "COMPLETE_TASKS", confirmationTier: "immediate" };
+  if (action.type === "LIST_TASKS") {
+    const filter = toTaskFilter(action.filter, ctx);
+    if (!filter) return { type: "CLARIFY", question: t.ops.whichDates, candidates: [], confirmationTier: "safe" };
+    return { type: "LIST_TASKS", filter, confirmationTier: "safe" };
   }
 
-  // Deletion is direct/unambiguous per the taxonomy — no confirmation tier,
-  // regardless of what the model set confirmationRequired to.
-  if (action.type === "DELETE_TASK" && action.taskId) {
-    return { type: "DELETE_TASK", taskId: action.taskId, confirmationTier: "immediate" };
-  }
+  const taskId = ctx.realId(action.taskId);
 
-  // Bulk removal always asks first, whatever the model set.
-  if (action.type === "DELETE_TASKS") {
-    const scope = VALID_SCOPES.find((value) => value === action.fields.scope) ?? "all";
-    return { type: "DELETE_TASKS", scope, confirmationTier: "confirm-required" };
-  }
-
-  if (action.type === "ADD_CONTEXT" && action.taskId) {
+  if (action.type === "ADD_CONTEXT" && taskId) {
     return {
       type: "ADD_TASK_CONTEXT",
-      taskId: action.taskId,
-      note: action.fields.note ?? fallbackNote,
+      taskId,
+      note: action.fields.note ?? ctx.fallbackNote,
       estimatedMinutes: action.fields.estimatedMinutes,
       confirmationTier: "safe",
     };
   }
 
-  if (action.type === "BREAKDOWN_TASK" && action.taskId && action.fields.steps?.length) {
-    return {
-      type: "BREAKDOWN_TASK",
-      taskId: action.taskId,
-      steps: action.fields.steps,
-      confirmationTier: "confirm-required",
-    };
+  if (action.type === "BREAKDOWN_TASK" && taskId && action.fields.steps?.length) {
+    return { type: "BREAKDOWN_TASK", taskId, steps: action.fields.steps, confirmationTier: "confirm-required" };
   }
 
   if (action.type === "REDIRECT_NEXT" && typeof action.fields.availableMinutes === "number") {
     return { type: "REDIRECT_NEXT", availableMinutes: action.fields.availableMinutes, confirmationTier: "safe" };
   }
 
+  // NONE — an answer, a question back, or chit-chat: the reply is the action.
+  if (action.reply?.trim()) return { type: "QUERY", answer: action.reply.trim(), confirmationTier: "safe" };
   return null;
 }
 
-function mapInboxResponse(response: InboxResponseBody, fallbackNote: string): StructuredAction[] {
-  const mapped = response.actions
-    .map((action) => mapSingleAction(action, fallbackNote))
-    .filter((a): a is StructuredAction => a !== null);
-  return mapped.length > 0 ? mapped : [{ type: "UNKNOWN", reply: response.reply, confirmationTier: "safe" }];
+function mapInboxResponse(response: InboxResponseBody, ctx: MapContext): ClassifiedTurn {
+  const actions: StructuredAction[] = [];
+  const replies: (string | null)[] = [];
+  for (const action of response.actions) {
+    const mapped = mapSingleAction(action, ctx);
+    if (!mapped) continue;
+    actions.push(mapped);
+    replies.push(action.reply?.trim() || null);
+  }
+  const reply = response.reply?.trim() || null;
+  if (actions.length === 0) {
+    return {
+      actions: [{ type: "UNKNOWN", reply: reply ?? translate().common.aiUnreachable, confirmationTier: "safe" }],
+      replies: [reply],
+      reply,
+    };
+  }
+  return { actions, replies, reply };
 }
 
 const DELETE_PATTERN = /\b(delete|remove|cancel)\b/i;
@@ -138,6 +312,7 @@ const BULK_PATTERN = /\b(all|every|everything)\b/i;
 const PENDING_SCOPE_PATTERN = /\b(pending|uncompleted|incomplete|unfinished|not done|open|active|remaining)\b/i;
 const COMPLETED_SCOPE_PATTERN = /\b(completed?|done|finished)\b/i;
 const ALREADY_DID_PATTERN = /\balready (did|finished|completed|done|started)\b/i;
+const REOPEN_PATTERN = /\b(reopen|re-open|unmark|undo (?:the )?completion|not (?:actually )?(?:done|finished))\b/i;
 const DONE_PATTERN = /\b(finished|done|complete[d]?)\b/i;
 const RESCHEDULE_PATTERN = /\b(move|reschedule|push|delay|change.*(deadline|due))\b/i;
 const SKIP_PATTERN = /\b(skip|not now|something else|show another|can'?t do this now)\b/i;
@@ -156,9 +331,14 @@ function askWhich(candidates: Task[]): StructuredAction {
   };
 }
 
+function operate(operation: TaskOperation, bulk = false): StructuredAction {
+  return { type: "OPERATE", operation, confirmationTier: bulk ? "confirm-required" : "immediate" };
+}
+
 // Ordered keyword/regex rules — used as an offline fallback if the real
 // Gemini call below fails (no network, missing API key, malformed output),
-// so the inbox degrades gracefully instead of breaking.
+// so the inbox degrades gracefully instead of breaking. They produce the same
+// operations the AI path does, so everything downstream is shared.
 // Order matters — more specific/destructive intents are checked first so a
 // message like "delete the essay, it's already done" resolves to delete.
 function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
@@ -167,19 +347,25 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
   const t = translate();
 
   if (DELETE_PATTERN.test(text) && BULK_PATTERN.test(text)) {
-    const scope: TaskScope = PENDING_SCOPE_PATTERN.test(text)
+    const status: TaskStatusFilter = PENDING_SCOPE_PATTERN.test(text)
       ? "pending"
       : COMPLETED_SCOPE_PATTERN.test(text)
         ? "completed"
         : "all";
-    return { type: "DELETE_TASKS", scope, confirmationTier: "confirm-required" };
+    return operate({ kind: "delete", target: { filter: { status } } }, true);
   }
 
   if (DELETE_PATTERN.test(text)) {
-    const ref = resolveTaskReference(text, referenceCtx);
-    if (ref.status === "resolved") return { type: "DELETE_TASK", taskId: ref.taskId, confirmationTier: "immediate" };
+    const ref = resolveTaskReference(text, referenceCtx, { includeCompleted: true });
+    if (ref.status === "resolved") return operate({ kind: "delete", target: { taskIds: [ref.taskId] } });
     if (ref.status === "ambiguous") return askWhich(ref.candidates);
     return { type: "UNKNOWN", reply: t.assistant.whichDelete, confirmationTier: "safe" };
+  }
+
+  if (REOPEN_PATTERN.test(text)) {
+    const ref = resolveTaskReference(text, referenceCtx, { onlyCompleted: true });
+    if (ref.status === "resolved") return operate({ kind: "reopen", target: { taskIds: [ref.taskId] } });
+    if (ref.status === "ambiguous") return askWhich(ref.candidates);
   }
 
   if (ALREADY_DID_PATTERN.test(text) && currentTaskId) {
@@ -188,20 +374,24 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 
   // "mark all my tasks as done" / "I finished everything".
   if (DONE_PATTERN.test(text) && BULK_PATTERN.test(text)) {
-    return { type: "COMPLETE_TASKS", confirmationTier: "immediate" };
+    return operate({ kind: "complete", target: { filter: { status: "pending" } } }, true);
   }
 
   if (DONE_PATTERN.test(text)) {
     const ref = resolveTaskReference(text, referenceCtx);
-    if (ref.status === "resolved") return { type: "COMPLETE_TASK", taskId: ref.taskId, confirmationTier: "immediate" };
+    if (ref.status === "resolved") return operate({ kind: "complete", target: { taskIds: [ref.taskId] } });
     if (ref.status === "ambiguous") return askWhich(ref.candidates);
   }
 
   if (RESCHEDULE_PATTERN.test(text)) {
-    const ref = resolveTaskReference(text, referenceCtx);
-    const newDueDate = parseDatePhrase(text, now, getLanguage());
-    if (ref.status === "resolved") {
-      return { type: "RESCHEDULE_TASK", taskId: ref.taskId, newDueDate, confirmationTier: "immediate" };
+    const ref = resolveTaskReference(text, referenceCtx, { includeCompleted: true });
+    const dueDate = parseDatePhrase(text, now, getLanguage());
+    if (ref.status === "resolved" && dueDate) {
+      return operate({
+        kind: "update",
+        target: { taskIds: [ref.taskId] },
+        changes: { dueDate, keepTimeOfDay: !hasExplicitTime(text, getLanguage()) },
+      });
     }
     if (ref.status === "ambiguous") return askWhich(ref.candidates);
   }
@@ -269,29 +459,33 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 // Falls back to the heuristic classifier above on any network/parse failure.
 export async function classifyIntent(input: ClassifyIntentInput): Promise<ClassifiedTurn> {
   try {
+    const selected = selectRelevantTasks(input.text, input.tasks, input.recentTaskIds, input.currentTaskId, MAX_TASKS_SENT);
+    const { toAlias, fromAlias } = buildAliases(selected);
     const request: InboxRequestBody = {
       message: input.text,
       now: input.now.toISOString(),
-      currentTaskId: input.currentTaskId,
-      recentTaskIds: input.recentTaskIds,
-      tasks: tasksForPrompt(input.tasks).map(taskToContext),
+      today: describeNow(input.now),
+      currentTaskId: input.currentTaskId ? toAlias.get(input.currentTaskId) : undefined,
+      recentTaskIds: input.recentTaskIds.map((id) => toAlias.get(id)).filter((id): id is string => !!id),
+      tasks: selected.map((task) => ({ ...taskToContext(task, input.now), id: toAlias.get(task.id)! })),
       history: input.history ?? [],
       language: getLanguage(),
     };
     const response = await apiPost<InboxResponseBody>("/api/inbox", request);
-    const actions = mapInboxResponse(response, input.text);
-    // An empty/whitespace reply (this model occasionally emits one on a
-    // compound turn) falls back to the per-action executed message instead
-    // of showing a blank chat bubble — see handleClassifiedActions. A bulk
-    // delete does too: only the app can count exactly how many tasks the
-    // confirmation question is about.
-    const hasReply = response.reply && response.reply.trim().length > 0;
-    const reply = hasReply && !actions.some((action) => action.type === "DELETE_TASKS") ? response.reply : null;
-    return { actions, reply };
+    return mapInboxResponse(response, {
+      now: input.now,
+      language: getLanguage(),
+      fallbackNote: input.text,
+      realId: (alias) => (alias ? (fromAlias.get(alias) ?? null) : null),
+    });
   } catch (error) {
     console.warn("[classifyIntent] falling back to heuristic", error);
     // The heuristic reads raw words, so the "[Attached image]" labels a
     // message with files is built from come back out first.
-    return { actions: [classifyIntentHeuristic({ ...input, text: stripAttachmentBlocks(input.text) })], reply: null };
+    return {
+      actions: [classifyIntentHeuristic({ ...input, text: stripAttachmentBlocks(input.text) })],
+      replies: [null],
+      reply: null,
+    };
   }
 }

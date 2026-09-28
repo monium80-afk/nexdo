@@ -32,6 +32,16 @@ create table if not exists public.tasks (
 -- writes — drop it. Safe to re-run on a fresh database.
 alter table public.tasks drop column if exists category;
 
+-- Repeating tasks. Set only on occurrences of a series: the rule, the series
+-- id, which rule day this occurrence stands for, and the template the next
+-- occurrence is built from (types/task.ts TaskRecurrence). Occurrence rows get
+-- ids derived from series id + day, so two devices generating the same
+-- occurrence write one row. Nullable, so adding it touches no existing row.
+alter table public.tasks add column if not exists recurrence jsonb;
+
+create index if not exists tasks_series_id_idx on public.tasks ((recurrence ->> 'seriesId'))
+  where recurrence is not null;
+
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 
 alter table public.tasks enable row level security;
@@ -121,3 +131,80 @@ drop policy if exists "chat_attachments_owner_delete" on storage.objects;
 create policy "chat_attachments_owner_delete" on storage.objects
   for delete
   using (bucket_id = 'chat-attachments' and (storage.foldername(name))[1] = (auth.jwt() ->> 'sub'));
+
+-- ---------------------------------------------------------------------
+-- ai_trials: the one free AI run a signed-out person gets in onboarding
+-- ---------------------------------------------------------------------
+-- Only the app's server touches this (lib/anonymousTrial.ts, with the
+-- SUPABASE_SECRET_KEY): RLS is on with no policies, so the app's publishable
+-- key can't read or write it, and the function below can only be run by the
+-- service role. A row is a random id the app made up on that install plus a
+-- SHA-256 hash of the caller's IP — never the IP itself.
+create table if not exists public.ai_trials (
+  trial_id text primary key,
+  ip_hash text not null,
+  created_at timestamptz not null default now(),
+  -- Calls used per route, e.g. {"inbox": 1, "extract-text": 2}.
+  calls jsonb not null default '{}'::jsonb
+);
+
+create index if not exists ai_trials_created_at_idx on public.ai_trials (created_at);
+create index if not exists ai_trials_ip_hash_created_at_idx on public.ai_trials (ip_hash, created_at);
+
+alter table public.ai_trials enable row level security;
+
+-- Spends one call of p_route for this trial id. Returns 'ok', or why not:
+-- 'trial_used' (this id has used its allowance for the route), 'ip_limit'
+-- (too many new ids from one IP today) or 'global_limit' (too many new ids
+-- today overall). The row lock makes the per-id count exact under parallel
+-- requests; the two daily ceilings can overshoot by a request or two.
+create or replace function public.claim_ai_trial_call(
+  p_trial_id text,
+  p_ip_hash text,
+  p_route text,
+  p_route_limit int,
+  p_ip_daily_limit int,
+  p_global_daily_limit int
+) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_calls jsonb;
+  v_used int;
+begin
+  -- Rows are only needed while they can still limit someone; the privacy
+  -- policy promises they go after 90 days. Cheap on the created_at index.
+  delete from ai_trials where created_at < now() - interval '90 days';
+
+  select calls into v_calls from ai_trials where trial_id = p_trial_id for update;
+
+  if not found then
+    if (select count(*) from ai_trials
+        where ip_hash = p_ip_hash and created_at > now() - interval '1 day') >= p_ip_daily_limit then
+      return 'ip_limit';
+    end if;
+    if (select count(*) from ai_trials
+        where created_at > now() - interval '1 day') >= p_global_daily_limit then
+      return 'global_limit';
+    end if;
+    insert into ai_trials (trial_id, ip_hash) values (p_trial_id, p_ip_hash)
+    on conflict (trial_id) do nothing;
+    select calls into v_calls from ai_trials where trial_id = p_trial_id for update;
+  end if;
+
+  v_used := coalesce((v_calls ->> p_route)::int, 0);
+  if v_used >= p_route_limit then
+    return 'trial_used';
+  end if;
+
+  update ai_trials
+  set calls = jsonb_set(calls, array[p_route], to_jsonb(v_used + 1))
+  where trial_id = p_trial_id;
+  return 'ok';
+end;
+$$;
+
+revoke all on function public.claim_ai_trial_call(text, text, text, int, int, int) from public, anon, authenticated;
+grant execute on function public.claim_ai_trial_call(text, text, text, int, int, int) to service_role;

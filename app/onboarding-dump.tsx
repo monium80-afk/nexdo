@@ -7,8 +7,8 @@ import {
     useAudioRecorder,
     useAudioRecorderState,
 } from "expo-audio";
-import { Redirect, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { Redirect, useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Text, TextInput, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
     Easing,
@@ -19,11 +19,13 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
 import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { extractAttachmentText } from "@/lib/ai/media";
+import { isTrialUsed } from "@/lib/aiTrial";
 import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
@@ -160,6 +162,21 @@ export default function OnboardingDump() {
   const [dump, setDump] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const rememberDump = useOnboardingStore((state) => state.setDump);
+  // A signed-out install gets the AI once. Checked on focus, not just on
+  // mount: stepping back here from a later step is the second run too.
+  const [trialUsed, setTrialUsed] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      isTrialUsed().then((used) => {
+        if (active) setTrialUsed(used);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   // Metering has to be asked for; the preset does not enable it on its own.
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
@@ -261,6 +278,31 @@ export default function OnboardingDump() {
       : dump.trim()
         ? "ready"
         : "idle";
+
+  // The free run is spent: the tasks it found are kept for the account (see
+  // useOnboardingStore), so the way on is to create one.
+  if (trialUsed) {
+    return (
+      <OnboardingLayout
+        percent={50}
+        centered
+        mark={
+          <View className="h-16 w-16 items-center justify-center rounded-[16px] border border-cream-300 bg-cream-50">
+            <GemLogo size={40} />
+          </View>
+        }
+        headline={t.onboardingDump.trialUsedHeadline}
+        body={t.onboardingDump.trialUsedBody}
+        nextLabel={t.onboardingDump.trialUsedCta}
+        onNext={() => {
+          posthog.capture("onboarding_trial_used_signup_tapped");
+          router.push("/(auth)/sign-up");
+        }}
+      >
+        {null}
+      </OnboardingLayout>
+    );
+  }
 
   return (
     <OnboardingLayout

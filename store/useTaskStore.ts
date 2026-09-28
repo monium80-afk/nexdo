@@ -3,36 +3,138 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { tasks as initialTasks } from "@/data/tasks";
 import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
 import { applyContextToTask } from "@/lib/ai/applyContext";
-import { generatePlan } from "@/lib/ai/generatePlan";
+import { generatePlan, isUntouchedTemplatePlan } from "@/lib/ai/generatePlan";
 import type { PlanStep, StructuredAction } from "@/lib/ai/types";
 import { translate } from "@/lib/i18n";
 import { syncOverdueAlerts } from "@/lib/notifications";
+import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
+import { buildRule, startSeries, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask } from "@/lib/scoring";
-import { deleteTaskRow, fetchTasks, subscribeToTasks, upsertTaskRow } from "@/lib/supabaseSync";
-import { describeTaskCount, tasksInScope } from "@/lib/taskMeta";
+import { deleteTaskRows, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
+import {
+  completeTaskDelta,
+  matchesFilter,
+  planOperation,
+  type OperationPlan,
+  type TaskChanges,
+  type TaskOperation,
+} from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
 import type { Subtask, Task, TaskPriorityLevel, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
 // the change to Supabase fire-and-forget. Failures are logged, not surfaced
-// to the user — acceptable for a v1 teaching app.
+// to the user — but every save is tracked in `unsynced` until Supabase
+// confirms it, so a failed one is retried rather than forgotten.
 let realtimeChannel: RealtimeChannel | null = null;
-const confirmedUpsertIds = new Set<string>();
 
-function syncUpsert(task: Task, userId: string | null) {
+function withoutKeys(record: Record<string, string>, keys: string[]): Record<string, string> {
+  const copy = { ...record };
+  keys.forEach((key) => delete copy[key]);
+  return copy;
+}
+
+// Returns a promise that never rejects, so callers can fire and forget it or
+// (signing out) wait for it. Several tasks go up in one request — one
+// statement on the database, so a bulk change lands whole or not at all.
+function syncUpsertMany(tasks: Task[], userId: string | null): Promise<void> {
+  if (tasks.length === 0) return Promise.resolve();
+  useTaskStore.setState((state) => ({
+    unsynced: { ...state.unsynced, ...Object.fromEntries(tasks.map((task) => [task.id, task.updatedAt])) },
+  }));
+  if (!userId) return Promise.resolve();
+  return upsertTaskRows(tasks, userId)
+    .then(() => {
+      // Only if this is still the newest version — an edit made while the
+      // request was in flight has its own save to wait for.
+      useTaskStore.setState((state) => {
+        const saved = tasks.filter((task) => state.unsynced[task.id] === task.updatedAt).map((task) => task.id);
+        return saved.length > 0 ? { unsynced: withoutKeys(state.unsynced, saved) } : {};
+      });
+    })
+    .catch((error) => {
+      console.warn("[useTaskStore] upsert failed", error);
+    });
+}
+
+function syncUpsert(task: Task, userId: string | null): Promise<void> {
+  return syncUpsertMany([task], userId);
+}
+
+function syncDeleteMany(taskIds: string[], userId: string | null) {
+  if (taskIds.length === 0) return;
+  useTaskStore.setState((state) =>
+    taskIds.some((id) => id in state.unsynced) ? { unsynced: withoutKeys(state.unsynced, taskIds) } : {},
+  );
   if (!userId) return;
-  upsertTaskRow(task, userId)
-    .then(() => confirmedUpsertIds.add(task.id))
-    .catch((error) => console.warn("[useTaskStore] upsert failed", error));
+  deleteTaskRows(taskIds, userId).catch((error) => console.warn("[useTaskStore] delete failed", error));
 }
 
 function syncDelete(taskId: string, userId: string | null) {
-  if (!userId) return;
-  deleteTaskRow(taskId, userId).catch((error) => console.warn("[useTaskStore] delete failed", error));
+  syncDeleteMany([taskId], userId);
+}
+
+// Signing out clears this phone's copy of the list — the account's tasks live
+// in Supabase and come back on the next sign-in. The exception is a task
+// Supabase never confirmed (offline, the app closed mid-save, a row the
+// database rejected): the phone holds the only copy, so it is set aside here
+// under the account it belongs to and uploaded the next time that account
+// signs in on this phone. Never shown to, or mixed into, another account.
+const stashKey = (userId: string) => `nexdo-unsynced-tasks:${userId}`;
+
+async function stashUnsynced(userId: string, tasks: Task[], unsynced: Record<string, string>) {
+  const pending = tasks.filter((task) => task.id in unsynced);
+  if (pending.length === 0) return;
+  const earlier = await takeStash(userId);
+  const ids = new Set(pending.map((task) => task.id));
+  await AsyncStorage.setItem(stashKey(userId), JSON.stringify([...pending, ...earlier.filter((task) => !ids.has(task.id))]));
+}
+
+async function takeStash(userId: string): Promise<Task[]> {
+  try {
+    const raw = await AsyncStorage.getItem(stashKey(userId));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as Task[]) : [];
+  } catch (error) {
+    console.warn("[useTaskStore] couldn't read unsynced tasks", error);
+    return [];
+  }
+}
+
+// Long enough for a slow connection; short enough that signing out offline
+// doesn't leave the button spinning.
+const SIGN_OUT_SAVE_TIMEOUT_MS = 8_000;
+
+// The demo tasks every install used to start with ("Clean out garage",
+// "Submit tax documents", ...). They were meant to drop away when an account
+// signed in, but mergeRemoteTasks kept them as local tasks not yet synced, so
+// every brand-new account opened with a dozen tasks it never wrote. The list
+// now starts empty; these ids are only here to clear them out of installs
+// and accounts that already have them (touching one had uploaded it).
+const SAMPLE_TASK_IDS = new Set([
+  "tax-documents",
+  "car-insurance",
+  "quarterly-report",
+  "chemistry-test",
+  "weekly-groceries",
+  "email-professor",
+  "client-proposal-slides",
+  "clean-garage",
+  "weekend-trip",
+  "reading-chapters",
+  "portfolio-website",
+  "digital-photos",
+  "morning-run",
+  "expense-report",
+  "reading-assignment",
+  "water-plants",
+]);
+
+function isSampleTask(task: Task): boolean {
+  return SAMPLE_TASK_IDS.has(task.id);
 }
 
 // The AsyncStorage snapshot and the Supabase fetch both land asynchronously
@@ -52,6 +154,8 @@ export type NewTaskInput = {
   priorityLevel: TaskPriorityLevel;
   notes?: string;
   steps?: TaskStep[];
+  /** Makes the new task the first occurrence of a repeating series. */
+  recurrence?: RuleInput;
 };
 
 function createTaskId(): string {
@@ -81,36 +185,34 @@ export function buildTask(input: NewTaskInput, now: Date): Task {
     subtaskCount: input.steps?.length,
   }).complexity;
 
-  const subtasks =
-    input.steps && input.steps.length > 0
-      ? stepsToSubtasks(input.steps)
-      : generatePlan({
-          title: input.title,
-          estimatedMinutes: input.estimatedMinutes,
-          complexity,
-        });
+  // Only real steps: ones the user or the AI gave this task. A task without any
+  // stays without, rather than getting a generic plan, so a session shows a
+  // checklist only when there is something real to tick off. AI Breakdown is
+  // there for everything else.
+  const subtasks = input.steps && input.steps.length > 0 ? stepsToSubtasks(input.steps) : undefined;
 
   const nowIso = now.toISOString();
-  return recalcTask(
-    {
-      id: createTaskId(),
-      title: input.title.trim(),
-      status: "pending",
-      dueDate: input.dueDate,
-      estimatedMinutes: input.estimatedMinutes,
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      notes: input.notes?.trim() || undefined,
-      subtasks,
-      currentStepId: subtasks?.find((subtask) => subtask.status === "current")?.id,
-      priorityScore: 0,
-      suitabilityScore: 0,
-      importance: PRIORITY_LEVEL_IMPORTANCE[input.priorityLevel],
-      complexity,
-      aiContext: { notes: [] },
-    },
-    now,
-  );
+  const task: Task = {
+    id: createTaskId(),
+    title: input.title.trim(),
+    status: "pending",
+    dueDate: input.dueDate,
+    estimatedMinutes: input.estimatedMinutes,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    notes: input.notes?.trim() || undefined,
+    subtasks,
+    currentStepId: subtasks?.find((subtask) => subtask.status === "current")?.id,
+    priorityScore: 0,
+    suitabilityScore: 0,
+    importance: PRIORITY_LEVEL_IMPORTANCE[input.priorityLevel],
+    complexity,
+    aiContext: { notes: [] },
+  };
+  // A repeating task's first occurrence sits on the rule's first day (a task
+  // due Wednesday that repeats on Mondays is due next Monday).
+  const rule = input.recurrence ? buildRule(input.recurrence, input.dueDate, now) : null;
+  return recalcTask(rule ? startSeries(task, rule) : task, now);
 }
 
 function remainingMinutes(subtasks: Subtask[]): number {
@@ -119,7 +221,11 @@ function remainingMinutes(subtasks: Subtask[]): number {
 
 function normalizePersistedTasks(tasks: Task[]): Task[] {
   return tasks.map((task) => {
-    const orderedSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order);
+    // Tasks saved before buildTask stopped adding a generic plan still carry
+    // one. If nobody has ticked or edited it, it was never the user's plan, so
+    // it goes, and the task shows no steps until it gets real ones.
+    const ownSubtasks = task.subtasks && !isUntouchedTemplatePlan(task.subtasks) ? task.subtasks : undefined;
+    const orderedSubtasks = ownSubtasks?.slice().sort((a, b) => a.order - b.order);
     const currentIndex = orderedSubtasks?.findIndex(
       (subtask) => subtask.id === task.currentStepId && subtask.status !== "completed",
     ) ?? -1;
@@ -152,41 +258,68 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
  * Per-task last-write-wins — the same rule the realtime handler uses. A local
  * edit whose background write never reached Supabase (offline, the app closed
  * mid-request, a row the database rejected) must not be undone by the stale
- * row it left behind. Supabase still decides which tasks *exist*, so a task
- * deleted on another device stays deleted.
+ * row it left behind. A task only this phone has is kept if it never reached
+ * Supabase; one that did and is gone now was deleted on another device, and
+ * stays deleted. `toPush` is every local version Supabase is behind on.
  */
-function mergeRemoteTasks(remote: Task[], local: Task[]): { tasks: Task[]; localNewer: Task[] } {
+function mergeRemoteTasks(
+  remote: Task[],
+  local: Task[],
+  unsynced: Record<string, string>,
+): { tasks: Task[]; toPush: Task[] } {
   const localById = new Map(local.map((task) => [task.id, task]));
   const remoteIds = new Set(remote.map((task) => task.id));
-  const localNewer: Task[] = [];
+  const toPush: Task[] = [];
 
   const tasks = remote.map((remoteTask) => {
     const localTask = localById.get(remoteTask.id);
     if (localTask && Date.parse(localTask.updatedAt) > Date.parse(remoteTask.updatedAt)) {
-      localNewer.push(localTask);
+      toPush.push(localTask);
       return localTask;
     }
     return remoteTask;
   });
 
-  const unconfirmedLocal = local.filter((task) => !remoteIds.has(task.id) && !confirmedUpsertIds.has(task.id));
-  return { tasks: [...unconfirmedLocal, ...tasks], localNewer };
+  const neverSaved = local.filter((task) => !remoteIds.has(task.id) && task.id in unsynced);
+  toPush.push(...neverSaved);
+  return { tasks: [...neverSaved, ...tasks], toPush };
 }
 
 type TaskStore = {
   tasks: Task[];
   syncUserId: string | null;
+  /** Tasks whose newest local version Supabase hasn't confirmed yet: id → that version's updatedAt. */
+  unsynced: Record<string, string>;
+  /** The account the local list belongs to — persisted, so it outlives an app restart. */
+  ownerId: string | null;
   hydrateFromSupabase: (userId: string) => Promise<void>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
-  handleSignOut: () => Promise<void>;
+  /**
+   * Call while still signed in, right before signing out: tries once more to
+   * save every task Supabase hasn't confirmed. Resolves to how many are still
+   * unsaved — those stay on this phone (see handleSignOut), not lost.
+   */
+  saveUnsyncedTasks: () => Promise<number>;
+  handleSignOut: (options?: { accountDeleted?: boolean }) => Promise<void>;
   addTask: (input: NewTaskInput) => string;
-  updateTask: (
-    id: string,
-    changes: Partial<Pick<Task, "title" | "dueDate" | "estimatedMinutes" | "notes">>,
-  ) => void;
-  deleteTask: (id: string) => void;
-  deleteTasks: (ids: string[]) => void;
+  /**
+   * Edits a task. On a repeating task, `scope` decides whether later
+   * occurrences follow ("future"/"series") or only this one changes ("this",
+   * the default).
+   */
+  updateTask: (id: string, changes: TaskChanges, scope?: RecurrenceScope) => void;
+  /** On a repeating task: "this" skips to the next occurrence (default), "future" ends the series, "series" removes it all. */
+  deleteTask: (id: string, scope?: RecurrenceScope) => void;
+  /**
+   * Plans an operation (lib/taskOperations.ts) and commits it in one state
+   * update and one sync request. Returns the plan: what changed, per task.
+   */
+  executeOperation: (operation: TaskOperation, now?: Date) => OperationPlan;
+  /** Commits a plan made by planOperation against the current list. */
+  applyPlan: (plan: Pick<OperationPlan, "upserts" | "deletes">, now?: Date) => void;
+  /** Undo for a whole operation: every task back to the version given, or removed where that's null. */
+  restoreSnapshots: (snapshots: { taskId: string; before: Task | null }[]) => void;
   toggleTaskStatus: (id: string) => void;
   completeTask: (id: string) => void;
   reopenTask: (id: string) => void;
@@ -204,33 +337,68 @@ type TaskStore = {
   applyPlanSteps: (taskId: string, steps: PlanStep[]) => void;
   /** AI Breakdown in a session: swaps the unfinished steps for new ones, keeping the ones already checked off. */
   replaceRemainingSteps: (taskId: string, steps: PlanStep[]) => void;
-  /** Undo support: null restores "no task" (undoes a create), otherwise replaces/reinserts the given task verbatim. */
-  restoreTaskSnapshot: (taskId: string, snapshot: Task | null) => void;
-  applyStructuredAction: (action: StructuredAction) => { message: string; taskId?: string; taskIds?: string[] };
+  applyStructuredAction: (action: StructuredAction) => {
+    message: string;
+    taskId?: string;
+    taskIds?: string[];
+    /** Every task the action touched as it was before — what undo restores. */
+    undo?: { taskId: string; before: Task | null }[];
+  };
 };
 
 export const useTaskStore = create<TaskStore>()(
   persist(
     (set, get) => ({
-      tasks: recalcAll(initialTasks),
+      tasks: [],
       syncUserId: null,
+      unsynced: {},
+      ownerId: null,
 
-      // Supabase decides which tasks a signed-in user has (an empty result
-      // means this user has no synced tasks yet — the local seed data was
-      // never a real synced task, so it's fine for it to drop away once a
-      // real account takes over), but a task the user edited more recently
-      // than the stored row keeps its local version. Anything local that
-      // Supabase is behind on gets pushed again right here, so the row
-      // repairs itself instead of reverting the user's edit on every launch.
+      // Supabase decides which tasks a signed-in user has, but a task the
+      // user edited more recently than the stored row keeps its local
+      // version. Anything local that Supabase is behind on gets pushed again
+      // right here, so the row repairs itself instead of reverting the user's
+      // edit on every launch.
       hydrateFromSupabase: async (userId) => {
         set({ syncUserId: userId });
         try {
-          const remoteTasks = await fetchTasks(userId);
           await rehydrated;
           if (get().syncUserId !== userId) return;
-          const { tasks, localNewer } = mergeRemoteTasks(normalizePersistedTasks(remoteTasks), get().tasks);
-          set({ tasks: recalcAll(tasks) });
-          localNewer.forEach((task) => syncUpsert(task, userId));
+
+          // A list another account left behind (its session ended without
+          // signing out here) is set aside for that account, never merged in.
+          const { ownerId } = get();
+          if (ownerId && ownerId !== userId) {
+            await stashUnsynced(ownerId, get().tasks, get().unsynced);
+            set({ tasks: [], unsynced: {} });
+          }
+          // Tasks this account had set aside when it last signed out here.
+          const stashed = (await takeStash(userId)).filter((task) => !isSampleTask(task));
+          if (stashed.length > 0) {
+            set((state) => {
+              const present = new Set(state.tasks.map((task) => task.id));
+              const added = stashed.filter((task) => !present.has(task.id));
+              return {
+                tasks: [...normalizePersistedTasks(added), ...state.tasks],
+                unsynced: { ...state.unsynced, ...Object.fromEntries(added.map((task) => [task.id, task.updatedAt])) },
+              };
+            });
+          }
+          set({ ownerId: userId });
+          await AsyncStorage.removeItem(stashKey(userId));
+
+          const fetched = await fetchTasks(userId);
+          if (get().syncUserId !== userId) return;
+          const remoteTasks = fetched.filter((task) => !isSampleTask(task));
+          const { tasks, toPush } = mergeRemoteTasks(normalizePersistedTasks(remoteTasks), get().tasks, get().unsynced);
+          // Everything not being pushed now matches Supabase; syncUpsert marks
+          // the rest unsynced again until their saves are confirmed.
+          set({ tasks: recalcAll(tasks), unsynced: {} });
+          const pushIds = new Set(toPush.map((task) => task.id));
+          get()
+            .tasks.filter((task) => pushIds.has(task.id))
+            .forEach((task) => syncUpsert(task, userId));
+          fetched.filter(isSampleTask).forEach((task) => syncDelete(task.id, userId));
         } catch (error) {
           console.warn("[useTaskStore] hydrate failed", error);
         }
@@ -259,15 +427,31 @@ export const useTaskStore = create<TaskStore>()(
         realtimeChannel = null;
       },
 
-      handleSignOut: async () => {
+      saveUnsyncedTasks: async () => {
+        const { syncUserId, tasks, unsynced } = get();
+        if (!syncUserId) return Object.keys(unsynced).length;
+        const saves = tasks.filter((task) => task.id in unsynced).map((task) => syncUpsert(task, syncUserId));
+        await Promise.race([
+          Promise.all(saves),
+          new Promise((resolve) => setTimeout(resolve, SIGN_OUT_SAVE_TIMEOUT_MS)),
+        ]);
+        return Object.keys(get().unsynced).length;
+      },
+
+      // Clears this phone's copy only — the account's tasks stay in Supabase
+      // for the next sign-in, and any this phone never managed to save are set
+      // aside for this account (see stashUnsynced) rather than thrown away.
+      handleSignOut: async (options) => {
         realtimeChannel?.unsubscribe();
         realtimeChannel = null;
-        // Cleared with everything else: these ids belong to the account that
-        // is leaving, and mergeRemoteTasks uses them to decide which local
-        // tasks were never written. Left behind, the next account to sign in
-        // on this device inherits that judgement about ids it has never seen.
-        confirmedUpsertIds.clear();
-        set({ tasks: recalcAll(initialTasks), syncUserId: null });
+        const { syncUserId, ownerId, tasks, unsynced } = get();
+        const owner = syncUserId ?? ownerId;
+        if (owner) {
+          // A deleted account has nothing to come back to.
+          if (options?.accountDeleted) await AsyncStorage.removeItem(stashKey(owner));
+          else await stashUnsynced(owner, tasks, unsynced);
+        }
+        set({ tasks: [], syncUserId: null, unsynced: {}, ownerId: null });
         // The phone would otherwise keep firing alerts about the departing
         // account's tasks, titles and all.
         await syncOverdueAlerts([]);
@@ -282,29 +466,53 @@ export const useTaskStore = create<TaskStore>()(
         return task.id;
       },
 
-      updateTask: (id, changes) => {
+      // Edits, completion, reopening and deletion all go through the same
+      // planner the AI uses (lib/taskOperations.ts), so a repeating task
+      // behaves the same whether it was ticked off by hand or by the chat.
+      updateTask: (id, changes, scope) => {
+        get().executeOperation({ kind: "update", target: { taskIds: [id] }, changes, scope });
+      },
+
+      deleteTask: (id, scope) => {
+        get().executeOperation({ kind: "delete", target: { taskIds: [id] }, scope });
+      },
+
+      executeOperation: (operation, now = new Date()) => {
+        const plan = planOperation(get().tasks, operation, now);
+        get().applyPlan(plan, now);
+        return plan;
+      },
+
+      applyPlan: (plan, now = new Date()) => {
+        if (plan.upserts.length === 0 && plan.deletes.length === 0) return;
+        const doomed = new Set(plan.deletes);
+        const changed = new Map(plan.upserts.map((task) => [task.id, task]));
+        set((state) => {
+          const kept = state.tasks.filter((task) => !doomed.has(task.id)).map((task) => changed.get(task.id) ?? task);
+          const present = new Set(kept.map((task) => task.id));
+          const created = plan.upserts.filter((task) => !present.has(task.id));
+          return { tasks: recalcAll([...created, ...kept], now) };
+        });
+        // The recalculated versions, so the saved scores match what's on screen.
+        const current = new Map(get().tasks.map((task) => [task.id, task]));
+        syncUpsertMany(
+          plan.upserts.map((task) => current.get(task.id)).filter((task): task is Task => !!task),
+          get().syncUserId,
+        );
+        syncDeleteMany(plan.deletes, get().syncUserId);
+      },
+
+      restoreSnapshots: (snapshots) => {
         const now = new Date();
-        set((state) => ({
-          tasks: recalcAll(
-            state.tasks.map((task) =>
-              task.id === id ? { ...task, ...changes, updatedAt: now.toISOString() } : task,
-            ),
-            now,
-          ),
-        }));
-        const updated = get().tasks.find((t) => t.id === id);
-        if (updated) syncUpsert(updated, get().syncUserId);
-      },
-
-      deleteTask: (id) => {
-        set((state) => ({ tasks: state.tasks.filter((task) => task.id !== id) }));
-        syncDelete(id, get().syncUserId);
-      },
-
-      deleteTasks: (ids) => {
-        const doomed = new Set(ids);
-        set((state) => ({ tasks: state.tasks.filter((task) => !doomed.has(task.id)) }));
-        ids.forEach((id) => syncDelete(id, get().syncUserId));
+        get().applyPlan(
+          {
+            // A fresh updatedAt: the restored version is the newest edit now,
+            // so other devices (last-write-wins) take it instead of ignoring it.
+            upserts: snapshots.flatMap((entry) => (entry.before ? [{ ...entry.before, updatedAt: now.toISOString() }] : [])),
+            deletes: snapshots.filter((entry) => !entry.before).map((entry) => entry.taskId),
+          },
+          now,
+        );
       },
 
       toggleTaskStatus: (id) => {
@@ -315,57 +523,11 @@ export const useTaskStore = create<TaskStore>()(
       },
 
       completeTask: (id) => {
-        const now = new Date();
-        set((state) => ({
-          tasks: recalcAll(
-            state.tasks.map((task) =>
-              task.id === id
-                ? { ...task, status: "completed", completedAt: now.toISOString(), updatedAt: now.toISOString() }
-                : task,
-            ),
-            now,
-          ),
-        }));
-        const updated = get().tasks.find((t) => t.id === id);
-        if (updated) syncUpsert(updated, get().syncUserId);
+        get().executeOperation({ kind: "complete", target: { taskIds: [id] } });
       },
 
       reopenTask: (id) => {
-        const now = new Date();
-        set((state) => ({
-          tasks: recalcAll(
-            state.tasks.map((task) =>
-              task.id === id
-                ? (() => {
-                    const reopenedSubtasks = task.subtasks?.length
-                      ? task.subtasks
-                          .slice()
-                          .sort((a, b) => a.order - b.order)
-                          .map((subtask, index) => ({
-                            ...subtask,
-                            status: index === 0 ? ("current" as const) : ("pending" as const),
-                          }))
-                      : undefined;
-                    const restoredMinutes = reopenedSubtasks?.length
-                      ? remainingMinutes(reopenedSubtasks)
-                      : Math.max(task.estimatedMinutes, 1);
-                    return {
-                      ...task,
-                      status: "pending",
-                      subtasks: reopenedSubtasks,
-                      currentStepId: reopenedSubtasks?.[0]?.id,
-                      estimatedMinutes: restoredMinutes,
-                      completedAt: undefined,
-                      updatedAt: now.toISOString(),
-                    };
-                  })()
-                : task,
-            ),
-            now,
-          ),
-        }));
-        const updated = get().tasks.find((t) => t.id === id);
-        if (updated) syncUpsert(updated, get().syncUserId);
+        get().executeOperation({ kind: "reopen", target: { taskIds: [id] } });
       },
 
       completeStep: (taskId, stepId) => {
@@ -394,6 +556,18 @@ export const useTaskStore = create<TaskStore>()(
         );
         const allDone = finalSubtasks.every((subtask) => subtask.status === "completed");
 
+        // Ticking the last step finishes the task — through the same path as
+        // any other completion, so a repeating task brings in its next one.
+        if (allDone) {
+          const delta = completeTaskDelta(task, now, get().tasks, {
+            subtasks: finalSubtasks,
+            currentStepId: undefined,
+            estimatedMinutes: 0,
+          });
+          get().applyPlan(delta, now);
+          return;
+        }
+
         set((state) => ({
           tasks: recalcAll(
             state.tasks.map((t) =>
@@ -402,9 +576,7 @@ export const useTaskStore = create<TaskStore>()(
                     ...t,
                     subtasks: finalSubtasks,
                     currentStepId: nextPending?.id,
-                    estimatedMinutes: allDone ? 0 : remainingMinutes(finalSubtasks),
-                    status: allDone ? "completed" : t.status,
-                    completedAt: allDone ? now.toISOString() : t.completedAt,
+                    estimatedMinutes: remainingMinutes(finalSubtasks),
                     updatedAt: now.toISOString(),
                   }
                 : t,
@@ -681,21 +853,6 @@ export const useTaskStore = create<TaskStore>()(
         if (updated) syncUpsert(updated, get().syncUserId);
       },
 
-      restoreTaskSnapshot: (taskId, snapshot) => {
-        const now = new Date();
-        if (snapshot === null) {
-          set((state) => ({ tasks: state.tasks.filter((t) => t.id !== taskId) }));
-          syncDelete(taskId, get().syncUserId);
-          return;
-        }
-        set((state) => {
-          const exists = state.tasks.some((t) => t.id === taskId);
-          const tasks = exists ? state.tasks.map((t) => (t.id === taskId ? snapshot : t)) : [snapshot, ...state.tasks];
-          return { tasks: recalcAll(tasks, now) };
-        });
-        syncUpsert(snapshot, get().syncUserId);
-      },
-
       applyStructuredAction: (action) => {
         // Named "copy" rather than "t" — "t" is already the loop variable for a task below.
         const copy = translate().assistant;
@@ -712,54 +869,36 @@ export const useTaskStore = create<TaskStore>()(
                   label: step.title,
                   estimatedMinutes: step.estimatedMinutes,
                 })),
+                recurrence: draft.recurrence,
               }),
             );
             const message =
               action.drafts.length === 1
                 ? copy.added(action.drafts[0].title)
                 : copy.addedMany(action.drafts.length, action.drafts.map((d) => d.title).join(", "));
-            return { message, taskId: ids[0], taskIds: ids };
+            return { message, taskId: ids[0], taskIds: ids, undo: ids.map((taskId) => ({ taskId, before: null })) };
           }
-          case "UPDATE_TASK": {
-            const task = get().tasks.find((t) => t.id === action.taskId);
-            get().updateTask(action.taskId, action.changes);
-            const updatedTask = get().tasks.find((t) => t.id === action.taskId);
+          case "OPERATE": {
+            // The message is written from what the plan actually did, task by
+            // task — never from what the model expected to happen.
+            const plan = get().executeOperation(action.operation);
+            const touched = plan.outcomes.filter((outcome) => outcome.outcome !== "unchanged").map((outcome) => outcome.taskId);
             return {
-              message: copy.updated(action.changes.title ?? updatedTask?.title ?? task?.title ?? copy.fallbackTask),
-              taskId: action.taskId,
+              message: describeOperationResult(action.operation, plan, translate(), get().tasks),
+              taskId: touched.length === 1 ? (plan.outcomes.find((o) => o.taskId === touched[0])?.next?.id ?? touched[0]) : undefined,
+              taskIds: touched,
+              undo: plan.before,
             };
           }
-          case "COMPLETE_TASK": {
-            const task = get().tasks.find((t) => t.id === action.taskId);
-            get().completeTask(action.taskId);
-            return { message: copy.markedDone(task?.title ?? copy.fallbackTask), taskId: action.taskId };
-          }
-          case "COMPLETE_TASKS": {
-            const pending = tasksInScope(get().tasks, "pending");
-            pending.forEach((task) => get().completeTask(task.id));
-            return { message: copy.markedAllDone(describeTaskCount(pending.length, "all")) };
-          }
-          case "DELETE_TASK": {
-            const task = get().tasks.find((t) => t.id === action.taskId);
-            get().deleteTask(action.taskId);
-            return { message: copy.deleted(task?.title ?? copy.fallbackTask) };
-          }
-          case "DELETE_TASKS": {
-            const matching = action.taskIds
-              ? get().tasks.filter((task) => action.taskIds?.includes(task.id))
-              : tasksInScope(get().tasks, action.scope);
-            get().deleteTasks(matching.map((task) => task.id));
-            return { message: copy.deletedMany(describeTaskCount(matching.length, action.scope)) };
+          case "LIST_TASKS": {
+            const now = new Date();
+            const matches = get().tasks.filter((task) => matchesFilter(task, action.filter, now));
+            return { message: describeTaskList(matches, translate(), now), taskIds: matches.map((task) => task.id) };
           }
           case "ADD_TASK_CONTEXT": {
             const task = get().tasks.find((t) => t.id === action.taskId);
             get().addContext(action.taskId, action.note, action.estimatedMinutes);
             return { message: copy.loggedContext(task?.title ?? copy.fallbackYourTask), taskId: action.taskId };
-          }
-          case "RESCHEDULE_TASK": {
-            const task = get().tasks.find((t) => t.id === action.taskId);
-            get().updateTask(action.taskId, { dueDate: action.newDueDate });
-            return { message: copy.rescheduled(task?.title ?? copy.fallbackTask), taskId: action.taskId };
           }
           case "SKIP_TASK": {
             const task = get().tasks.find((t) => t.id === action.taskId);
@@ -786,7 +925,21 @@ export const useTaskStore = create<TaskStore>()(
     {
       name: "nexdo-tasks",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ tasks: state.tasks }),
+      partialize: (state) => ({ tasks: state.tasks, unsynced: state.unsynced, ownerId: state.ownerId }),
+      // Version 1 added `unsynced`. An install from before it can't know
+      // which of its tasks Supabase ever saved — and task saves were being
+      // rejected for a while (the old NOT NULL "category" column) — so every
+      // task on the phone counts as unsaved once: the next sign-in keeps and
+      // uploads them, and last-write-wins still lets a newer row win.
+      version: 1,
+      migrate: (persisted, version) => {
+        const state = (persisted ?? {}) as Partial<TaskStore>;
+        if (version < 1) {
+          const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+          return { ...state, unsynced: Object.fromEntries(tasks.map((task) => [task.id, task.updatedAt])) };
+        }
+        return state;
+      },
       // Runs with (state) on success and (undefined, error) on failure —
       // either way the local snapshot is as loaded as it will get, which is
       // what hydrateFromSupabase is waiting on.
@@ -796,7 +949,9 @@ export const useTaskStore = create<TaskStore>()(
         return {
           ...current,
           ...persistedState,
-          tasks: normalizePersistedTasks(persistedState.tasks ?? current.tasks),
+          tasks: normalizePersistedTasks((persistedState.tasks ?? current.tasks).filter((task) => !isSampleTask(task))),
+          unsynced: persistedState.unsynced ?? {},
+          ownerId: persistedState.ownerId ?? null,
         };
       },
     },

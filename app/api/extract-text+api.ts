@@ -1,5 +1,6 @@
 import { extractTextFromMedia } from "@/lib/ai/gemini";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
+import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
 import { asObject, badRequest, BadRequestError, clampString, LANGUAGES, oneOf, readJsonBody } from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
@@ -85,21 +86,11 @@ const MAX_BODY_BYTES = 9 * 1024 * 1024;
 // prompt channel rather than a caption.
 const MAX_INSTRUCTION_LENGTH = 500;
 
-// TODO(security): deliberately still open to signed-out callers — see the same
-// note on app/api/inbox+api.ts. Onboarding transcribes a voice note before the
-// user signs up (app/onboarding-dump.tsx), which is the only reason this isn't
-// locked; there is no offline fallback for transcription, so locking it today
-// would leave that button permanently erroring.
-//
-// This is the sharpest of the two: the body is an arbitrary media file plus an
-// arbitrary instruction, which is the shape of a general-purpose LLM proxy. The
-// MIME allowlist and MAX_BODY_BYTES below limit what one request can be, while
-// the shared anonymous limiter bounds repeated requests per IP.
-//
-// To close it, restore:
-//     const userId = await getUserId(request);
-//     if (!userId) return unauthorized();
-// and move onboarding's transcription to after sign-up.
+// Open to signed-out callers only for onboarding's free run: the brain dump
+// can be spoken (app/onboarding-dump.tsx) before the user signs up. The body
+// is an arbitrary media file plus an instruction — the shape of a general LLM
+// proxy — so the MIME allowlist and MAX_BODY_BYTES limit what one request can
+// be, and lib/anonymousTrial.ts allows a signed-out install only a few.
 export async function POST(request: Request) {
   // See the same call in app/api/inbox+api.ts for why this 503s rather than
   // falling through to the anonymous path.
@@ -125,6 +116,11 @@ export async function POST(request: Request) {
   if (!kind || !mimeType || !base64) return badRequest();
   if (!ALLOWED_MIME_TYPES[kind].includes(mimeType.toLowerCase())) return badRequest();
 
+  if (!auth.userId) {
+    const trialResponse = await claimTrialCall(request, "extract-text");
+    if (trialResponse) return trialResponse;
+  }
+
   const language = oneOf(parsed.language, LANGUAGES);
   const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);
   const languageNote = kind === "voice" || !language ? "" : (DESCRIPTION_LANGUAGE[language] ?? "");
@@ -137,6 +133,7 @@ export async function POST(request: Request) {
 
   try {
     const text = await extractTextFromMedia({
+      label: `extract-text:${kind}`,
       mimeType,
       base64,
       instruction: `${INSTRUCTIONS[kind]}${languageNote}${focusNote(userInstruction)}`,

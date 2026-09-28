@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "Nexdo",
-    "slug": "TaskManager",
+    "slug": "Nexdo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "taskmanager",
+    "scheme": "nexdo",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,

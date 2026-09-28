@@ -43,6 +43,7 @@ export function OnboardingLayout({
   footer,
   inlineFooter = false,
   leaving = false,
+  secondaryAction,
   children,
 }: {
   percent: number;
@@ -80,6 +81,12 @@ export function OnboardingLayout({
    * `onNext` is called without anyone having pressed anything.
    */
   leaving?: boolean;
+  /**
+   * A quiet text link under the step's action — for a way out that shouldn't
+   * compete with it (the first step's "I already have an account"). It leaves
+   * straight away, without the step's exit animation.
+   */
+  secondaryAction?: { label: string; onPress: () => void };
   children: ReactNode;
 }) {
   const t = useTranslation();
@@ -213,6 +220,18 @@ export function OnboardingLayout({
               </AnimatedPressable>
             </View>
           )}
+
+          {secondaryAction ? (
+            <AnimatedPressable
+              onPress={secondaryAction.onPress}
+              scaleTo={0.98}
+              hitSlop={8}
+              accessibilityRole="button"
+              className="mt-3 items-center py-1.5"
+            >
+              <Text className="font-grotesk-medium text-sm text-ink-cream-muted">{secondaryAction.label}</Text>
+            </AnimatedPressable>
+          ) : null}
         </Animated.View>
       </View>
       </KeyboardAvoidingView>

@@ -1,4 +1,4 @@
-import { translate } from "@/lib/i18n";
+import { ALL_TRANSLATIONS, translate } from "@/lib/i18n";
 import type { Subtask, TaskComplexity } from "@/types/task";
 
 const SPLIT_RATIOS = [0.2, 0.6, 0.2];
@@ -28,4 +28,22 @@ export function generatePlan(input: {
     order: index,
     status: index === 0 ? "current" : "pending",
   }));
+}
+
+/**
+ * Whether these steps are still exactly the generic plan above, with nothing
+ * ticked off. Checked against every app language, since the labels were
+ * written in whichever one was set when the plan was made. New tasks used to
+ * get this plan by default; the task store uses this to recognise and drop it.
+ */
+export function isUntouchedTemplatePlan(subtasks: Subtask[]): boolean {
+  if (subtasks.some((subtask) => subtask.status === "completed")) return false;
+  const labels = subtasks
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((subtask) => subtask.label);
+  return ALL_TRANSLATIONS.some(
+    ({ planTemplate }) =>
+      planTemplate.length === labels.length && planTemplate.every((label, index) => label === labels[index]),
+  );
 }

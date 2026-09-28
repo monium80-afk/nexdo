@@ -9,8 +9,9 @@ import { extractAttachmentsText } from "@/lib/ai/media";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import { isImageAttachment } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
+import { describeConfirmation, describeScopeQuestion } from "@/lib/operationMessages";
 import { deleteAllMessages, fetchMessages, subscribeToMessages, upsertMessageRow } from "@/lib/supabaseSync";
-import { describeTaskCount, tasksInScope } from "@/lib/taskMeta";
+import { bulkRecurrenceScope, needsRecurrenceScope, resolveTarget, type TaskOperation } from "@/lib/taskOperations";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { ChatAttachment, ChatMessage } from "@/types/chat";
@@ -46,16 +47,12 @@ function createMessageId(role: "user" | "ai" | "seed"): string {
   return `message-${role}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const AUTO_MODE_ACTION_TYPES: StructuredAction["type"][] = ["CREATE_TASK", "UPDATE_TASK", "BREAKDOWN_TASK"];
+type PendingAction = { action: StructuredAction; label: string };
 
-type PendingAction = { action: StructuredAction; label: string; taskIds?: string[] };
-
-// Single-slot "undo the most recent action" (taxonomy 6.2). A create is
-// undone by deleting the task(s) it made; anything else is undone by
-// restoring a snapshot of the task taken right before the mutation.
-type UndoEntry =
-  | { kind: "create"; taskIds: string[] }
-  | { kind: "restore"; snapshots: { taskId: string; before: Task | null }[] };
+// Single-slot "undo the most recent action" (taxonomy 6.2): every task the
+// action touched, as it was just before — null for one it created, so undoing
+// a create (or the next occurrence a completion brought in) removes it again.
+type UndoEntry = { snapshots: { taskId: string; before: Task | null }[] };
 
 type ChatStore = {
   messages: ChatMessage[];
@@ -68,7 +65,18 @@ type ChatStore = {
   hydrateFromSupabase: (userId: string) => Promise<void>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
-  sendMessage: (text: string, attachments?: ChatAttachment[], contextTaskId?: string) => string;
+  /**
+   * `attachments` are what the message stores and syncs (storage paths once
+   * uploaded). `localAttachments` are the same files, in the same order, still
+   * on this device — what actually gets read for extraction, since a storage
+   * path isn't a file the device can open. Defaults to `attachments`.
+   */
+  sendMessage: (
+    text: string,
+    attachments?: ChatAttachment[],
+    contextTaskId?: string,
+    localAttachments?: ChatAttachment[],
+  ) => string;
   seedMessage: (text: string, relatedTaskId?: string) => void;
   updateMessageAttachments: (messageId: string, attachments: ChatAttachment[]) => void;
   updateMessageText: (messageId: string, text: string) => void;
@@ -95,58 +103,33 @@ const initialMessages = (): ChatMessage[] => [
   },
 ];
 
-// Only used when the offline heuristic fallback produces a confirm-required
-// action — the real AI path always has its own narrated "reply" instead.
-// A bulk delete's confirmation also uses this on the real AI path — only the
-// app can count exactly how many tasks it's about to remove.
-function confirmationPrompt(action: StructuredAction, frozenTaskIds?: string[]): string {
+// The question under a create or breakdown preview when the model didn't
+// narrate one (the offline heuristic never does).
+function confirmationPrompt(action: StructuredAction): string {
   const t = translate();
-  switch (action.type) {
-    case "CREATE_TASK":
-      return action.drafts.length === 1
-        ? t.assistant.foundOne(action.drafts[0].title)
-        : t.assistant.foundMany(action.drafts.length, action.drafts.map((d) => `"${d.title}"`).join(", "));
-    case "DELETE_TASKS": {
-      const count = frozenTaskIds?.length ?? tasksInScope(useTaskStore.getState().tasks, action.scope).length;
-      return t.assistant.confirmBulkDelete(describeTaskCount(count, action.scope), action.scope === "all");
-    }
-    default:
-      return t.assistant.goAhead;
+  if (action.type === "CREATE_TASK") {
+    return action.drafts.length === 1
+      ? t.assistant.foundOne(action.drafts[0].title)
+      : t.assistant.foundMany(action.drafts.length, action.drafts.map((d) => `"${d.title}"`).join(", "));
   }
+  return t.assistant.goAhead;
 }
 
-// What to snapshot before mutating, so undo can restore it verbatim.
-// CREATE_TASK is handled separately (undo = delete the new task), and
-// read-only/routing actions (QUERY, CLARIFY, UNKNOWN, REDIRECT_NEXT) never
-// touch a task, so there's nothing to snapshot.
-function snapshotBefore(
-  action: StructuredAction,
-  tasks: Task[],
-  frozenTaskIds?: string[],
-): { taskId: string; before: Task | null }[] {
-  if (action.type === "DELETE_TASKS" || action.type === "COMPLETE_TASKS") {
-    const scope = action.type === "DELETE_TASKS" ? action.scope : "pending";
-    const ids = frozenTaskIds ?? tasksInScope(tasks, scope).map((task) => task.id);
-    return ids.flatMap((taskId) => {
-      const task = tasks.find((candidate) => candidate.id === taskId);
-      return task ? [{ taskId, before: task }] : [];
-    });
-  }
-
+// Undo for the single-task actions that don't come back from the store with
+// their own list of touched tasks (task operations and creates do).
+function snapshotBefore(action: StructuredAction, tasks: Task[]): { taskId: string; before: Task | null }[] {
   const taskId =
-    action.type === "UPDATE_TASK" ||
-    action.type === "COMPLETE_TASK" ||
-    action.type === "DELETE_TASK" ||
-    action.type === "ADD_TASK_CONTEXT" ||
-    action.type === "RESCHEDULE_TASK" ||
-    action.type === "SKIP_TASK" ||
-    action.type === "BREAKDOWN_TASK"
+    action.type === "ADD_TASK_CONTEXT" || action.type === "SKIP_TASK" || action.type === "BREAKDOWN_TASK"
       ? action.taskId
       : null;
-  if (!taskId) return [];
-  const task = tasks.find((t) => t.id === taskId);
-  return task ? [{ taskId, before: task }] : [];
+  const task = taskId ? tasks.find((t) => t.id === taskId) : undefined;
+  return task ? [{ taskId: task.id, before: task }] : [];
 }
+
+// The model's reply is kept for what it's good at — answers, questions,
+// previews of new tasks — but never for a change to existing tasks: that
+// message is written from what the change actually did.
+const MODEL_REPLY_TYPES: StructuredAction["type"][] = ["CREATE_TASK", "BREAKDOWN_TASK", "ADD_TASK_CONTEXT", "SKIP_TASK", "REDIRECT_NEXT"];
 
 export const useChatStore = create<ChatStore>()(
   persist(
@@ -180,82 +163,106 @@ export const useChatStore = create<ChatStore>()(
 
       // Applies one action, and — unless it's a pure read/route — records
       // enough to undo it later as this turn's most recent mutation.
-      const executeAction = (action: StructuredAction, frozenTaskIds?: string[]): { message: string; taskId?: string } => {
+      const executeAction = (action: StructuredAction): { message: string; taskId?: string } => {
         if (action.type === "REDIRECT_NEXT") {
           set({ redirectToNext: { minutes: action.availableMinutes } });
           return useTaskStore.getState().applyStructuredAction(action);
         }
 
-        const beforeSnapshots = snapshotBefore(action, useTaskStore.getState().tasks, frozenTaskIds);
-        const actionToExecute =
-          action.type === "DELETE_TASKS" && frozenTaskIds
-            ? { ...action, taskIds: frozenTaskIds }
-            : action;
-        const result = useTaskStore.getState().applyStructuredAction(actionToExecute);
-
-        if (action.type === "CREATE_TASK") {
-          const ids = result.taskIds ?? (result.taskId ? [result.taskId] : []);
-          if (ids.length > 0) set({ lastUndo: { kind: "create", taskIds: ids } });
-        } else if (beforeSnapshots.length > 0) {
-          set({ lastUndo: { kind: "restore", snapshots: beforeSnapshots } });
-        }
-
+        const beforeSnapshots = snapshotBefore(action, useTaskStore.getState().tasks);
+        const result = useTaskStore.getState().applyStructuredAction(action);
+        const undo = result.undo ?? beforeSnapshots;
+        if (undo.length > 0) set({ lastUndo: { snapshots: undo } });
         return result;
       };
 
-      // A turn can carry several actions (compound messages) plus one
-      // narrated "reply" covering all of them. Confirm-required actions are
-      // queued together behind a single Yes/No; everything else applies now.
-      const handleClassifiedActions = (actions: StructuredAction[], narratedReply: string | null) => {
-        // A bulk delete that matches nothing has nothing to confirm — say so
-        // instead of asking "delete 0 tasks?".
-        // Same for "mark everything done" with nothing pending.
-        const emptyBulkDeletes = actions.filter(
-          (a) =>
-            (a.type === "DELETE_TASKS" && tasksInScope(useTaskStore.getState().tasks, a.scope).length === 0) ||
-            (a.type === "COMPLETE_TASKS" && tasksInScope(useTaskStore.getState().tasks, "pending").length === 0),
-        );
-        const actionable = actions.filter((a) => !emptyBulkDeletes.includes(a));
-        // Auto mode (Settings) skips the preview for adding and updating
-        // tasks. A bulk delete still always asks — one message can wipe out
-        // every task.
-        const autoMode = useSettingsStore.getState().aiAutoMode;
-        const needsConfirmation = (a: StructuredAction) =>
-          a.confirmationTier === "confirm-required" && !(autoMode && AUTO_MODE_ACTION_TYPES.includes(a.type));
-        const confirmRequired = actionable.filter(needsConfirmation);
-        const immediate = actionable.filter((a) => !needsConfirmation(a));
-
-        let lastTaskId: string | undefined;
+      // A turn can carry several actions (compound messages), each with the
+      // model's own line about it. Changes to existing tasks are checked
+      // against the whole list first: which tasks they really reach, whether a
+      // repeating task needs "just this one or all of them?", and whether to
+      // ask before going ahead. Everything that needs a yes is queued behind
+      // one Yes/No; the rest applies now. The reply is assembled in order —
+      // the model's words for answers and previews, the app's for changes.
+      const handleClassifiedActions = (actions: StructuredAction[], replies: (string | null)[]) => {
         const t = translate();
-        const executedMessages: string[] = emptyBulkDeletes.map((a) =>
-          a.type === "COMPLETE_TASKS"
-            ? t.assistant.noPendingToComplete
-            : a.type === "DELETE_TASKS" && a.scope !== "all"
-              ? t.assistant.noScopedToDelete(a.scope)
-              : t.assistant.noTasksToDelete,
-        );
-        for (const action of immediate) {
+        const now = new Date();
+        // Auto mode (Settings) skips the preview for adding and updating
+        // tasks. A delete that reaches more than one task still always asks —
+        // one message can wipe out every task.
+        const autoMode = useSettingsStore.getState().aiAutoMode;
+        const parts: string[] = [];
+        const toConfirm: PendingAction[] = [];
+        let lastTaskId: string | undefined;
+
+        const run = (action: StructuredAction, modelReply: string | null) => {
           const result = executeAction(action);
-          executedMessages.push(result.message);
+          parts.push(modelReply && MODEL_REPLY_TYPES.includes(action.type) ? modelReply : result.message);
           if (result.taskId) lastTaskId = result.taskId;
-        }
+        };
 
-        if (confirmRequired.length > 0) {
-          set({
-            pendingActions: confirmRequired.map((action) => {
-              const taskIds =
-                action.type === "DELETE_TASKS"
-                  ? tasksInScope(useTaskStore.getState().tasks, action.scope).map((task) => task.id)
-                  : undefined;
-              return { action, taskIds, label: narratedReply ?? confirmationPrompt(action, taskIds) };
-            }),
-          });
-        }
+        actions.forEach((action, index) => {
+          const modelReply = replies[index] ?? null;
 
-        const fallbackMessage =
-          [...executedMessages, ...confirmRequired.map((action) => confirmationPrompt(action))].join(" ") ||
-          t.assistant.done;
-        respondWith(emptyBulkDeletes.length > 0 ? fallbackMessage : narratedReply ?? fallbackMessage, lastTaskId);
+          if (action.type === "OPERATE") {
+            const { operation } = action;
+            const { tasks: targets, missingIds } = resolveTarget(
+              useTaskStore.getState().tasks,
+              operation.target,
+              operation.kind,
+              now,
+            );
+            // Nothing to act on: say so, rather than asking "delete 0 tasks?".
+            if (targets.length === 0) {
+              parts.push(missingIds.length > 0 ? t.ops.notFound : t.ops.nothingMatched);
+              return;
+            }
+            if (needsRecurrenceScope(operation, targets)) {
+              parts.push(describeScopeQuestion(operation, targets, t));
+              rememberTask(targets[0].id);
+              return;
+            }
+            // Frozen to the tasks it reaches right now, so the Yes confirms
+            // exactly the list that was shown — and, for a bulk request, to
+            // how the repeating tasks among them are treated.
+            const taskIds = targets.map((task) => task.id);
+            const frozenOperation: TaskOperation =
+              operation.kind === "update" || operation.kind === "delete"
+                ? { ...operation, target: { taskIds }, scope: bulkRecurrenceScope(operation, targets) }
+                : { ...operation, target: { taskIds } };
+            const frozen: StructuredAction = { ...action, operation: frozenOperation };
+            const scopeDefaulted = "scope" in frozenOperation && !!frozenOperation.scope && !("scope" in operation && operation.scope);
+            const reachesSeries = operation.kind === "delete" && operation.scope === "series" && targets.some((task) => task.recurrence);
+            const mustConfirm =
+              operation.kind === "delete"
+                ? targets.length > 1 || reachesSeries
+                : (targets.length > 1 || action.confirmationTier === "confirm-required") && !autoMode;
+            if (mustConfirm) {
+              const label = describeConfirmation(frozenOperation, targets, t, scopeDefaulted);
+              toConfirm.push({ action: frozen, label });
+              parts.push(label);
+              return;
+            }
+            run(frozen, null);
+            return;
+          }
+
+          if (action.type === "CREATE_TASK" || action.type === "BREAKDOWN_TASK") {
+            if (autoMode) {
+              run(action, null);
+              return;
+            }
+            const label = modelReply ?? confirmationPrompt(action);
+            toConfirm.push({ action, label });
+            parts.push(label);
+            return;
+          }
+
+          run(action, modelReply);
+        });
+
+        if (toConfirm.length > 0) set({ pendingActions: toConfirm });
+        const separator = parts.some((part) => part.includes("\n")) ? "\n\n" : " ";
+        respondWith(parts.join(separator).trim() || t.assistant.done, lastTaskId);
       };
 
       return {
@@ -320,7 +327,7 @@ export const useChatStore = create<ChatStore>()(
           if (updated) syncUpsert(updated, get().syncUserId);
         },
 
-        sendMessage: (text, attachments = [], contextTaskId) => {
+        sendMessage: (text, attachments = [], contextTaskId, localAttachments = attachments) => {
           const trimmed = text.trim();
           if (!trimmed && attachments.length === 0) return "";
 
@@ -349,7 +356,7 @@ export const useChatStore = create<ChatStore>()(
             // composeAttachmentMessage() produces.
             let effectiveText = trimmed;
             if (attachments.length > 0) {
-              const extracted = await extractAttachmentsText(attachments, {
+              const { extracted, failedCount } = await extractAttachmentsText(localAttachments, {
                 language: getLanguage(),
                 userInstruction: trimmed,
               });
@@ -360,7 +367,13 @@ export const useChatStore = create<ChatStore>()(
                 // that message is still worth answering on its own.
                 if (!trimmed) {
                   set({ pendingActions: [] });
-                  respondWith(translate().chat.attachmentReplies[attachments[0].kind]);
+                  // A file that never got read is not a blurry photo — telling
+                  // the user to retake it would only send the same failure again.
+                  respondWith(
+                    failedCount > 0
+                      ? translate().chat.attachmentReadFailed
+                      : translate().chat.attachmentReplies[attachments[0].kind],
+                  );
                   return;
                 }
               } else {
@@ -399,7 +412,7 @@ export const useChatStore = create<ChatStore>()(
               text: message.text,
             }));
 
-            const { actions, reply } = await classifyIntent({
+            const { actions, replies } = await classifyIntent({
               text: effectiveText,
               now: new Date(),
               currentTaskId: contextTaskId,
@@ -409,7 +422,7 @@ export const useChatStore = create<ChatStore>()(
             });
 
             if (generation !== signOutGeneration) return; // signed out / reset mid-request
-            handleClassifiedActions(actions, reply);
+            handleClassifiedActions(actions, replies);
           })().catch((error) => {
             // Nothing above is expected to reject — classifyIntent and
             // extractAttachmentsText both absorb their own failures — but this
@@ -456,10 +469,25 @@ export const useChatStore = create<ChatStore>()(
           if (pendingActions.length === 0) return;
           set({ pendingActions: [] });
           let lastTaskId: string | undefined;
-          const messages = pendingActions.map(({ action, taskIds }) => {
-            const result = executeAction(action, taskIds);
+          // Several changes confirmed at once are undone together.
+          const undo: { taskId: string; before: Task | null }[] = [];
+          const messages = pendingActions.map(({ action }) => {
+            set({ lastUndo: null });
+            const result = executeAction(action);
             if (result.taskId) lastTaskId = result.taskId;
+            undo.push(...(get().lastUndo?.snapshots ?? []));
             return result.message;
+          });
+          // The earliest snapshot of each task is the one from before all of them.
+          const firstSnapshots = new Map<string, Task | null>();
+          undo.forEach(({ taskId, before }) => {
+            if (!firstSnapshots.has(taskId)) firstSnapshots.set(taskId, before);
+          });
+          set({
+            lastUndo:
+              firstSnapshots.size > 0
+                ? { snapshots: [...firstSnapshots].map(([taskId, before]) => ({ taskId, before })) }
+                : null,
           });
           respondWith(messages.join(" "), lastTaskId);
         },
@@ -523,11 +551,7 @@ export const useChatStore = create<ChatStore>()(
             return;
           }
           set({ lastUndo: null });
-          if (lastUndo.kind === "create") {
-            lastUndo.taskIds.forEach((id) => useTaskStore.getState().restoreTaskSnapshot(id, null));
-          } else {
-            lastUndo.snapshots.forEach(({ taskId, before }) => useTaskStore.getState().restoreTaskSnapshot(taskId, before));
-          }
+          useTaskStore.getState().restoreSnapshots(lastUndo.snapshots);
           respondWith(translate().assistant.undone);
         },
 

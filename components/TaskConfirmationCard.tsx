@@ -11,6 +11,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
+import { buildRule, describeRule, slotDueDate } from "@/lib/recurrence";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
 import { previewDueLabel } from "@/lib/taskMeta";
 
@@ -52,17 +53,22 @@ export function TaskConfirmationCard({
   const [picker, setPicker] = useState<"date" | "time" | null>(null);
 
   const now = new Date();
-  // Scored off the draft's own priority so this preview matches what
-  // applyStructuredAction will actually save.
+  // What saving will set up — the same rule addTask builds from these fields.
+  // A repeating task is due on its first occurrence, which the rule may move
+  // (a deadline on a Wednesday for "every Mon and Thu" starts on Thursday).
+  const repeatRule = draft.recurrence ? buildRule(draft.recurrence, draft.dueDate, now) : null;
+  const shownDueDate = repeatRule ? slotDueDate(repeatRule, repeatRule.anchorDate) : draft.dueDate;
+  const dueLabel = previewDueLabel(shownDueDate, draft.dueHasTime || !!repeatRule, now, t);
+  // Scored off the draft's own priority and the deadline it will really have,
+  // so this preview matches what applyStructuredAction will actually save.
   const priorityScore = computePriorityScore(
     {
-      dueDate: draft.dueDate,
+      dueDate: shownDueDate,
       estimatedMinutes: draft.estimatedMinutes,
       importance: PRIORITY_LEVEL_IMPORTANCE[draft.priorityLevel],
     },
     now,
   );
-  const dueLabel = previewDueLabel(draft.dueDate, draft.dueHasTime, now, t);
 
   const handleMinutesChange = (text: string) => {
     const parsed = Number.parseInt(text.replace(/\D/g, ""), 10);
@@ -183,6 +189,15 @@ export function TaskConfirmationCard({
           </AnimatedPressable>
         </View>
       )}
+
+      {repeatRule ? (
+        <View className="flex-row items-center gap-1.5">
+          <Feather name="repeat" size={14} color={colors.orange[500]} />
+          <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream-subtle" style={rtl}>
+            {describeRule(repeatRule, t)}
+          </Text>
+        </View>
+      ) : null}
 
       <View className="h-px bg-cream-300" />
 

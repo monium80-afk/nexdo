@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { messageAttachments } from "@/lib/chatAttachments";
+import { normalizeRecurrence } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase";
 import type { Task } from "@/types/task";
 import type { ChatAttachment, ChatMessage } from "@/types/chat";
@@ -28,6 +29,9 @@ type TaskRow = {
   ai_context: Task["aiContext"];
   skip: Task["skip"] | null;
   completed_at: string | null;
+  // Optional on the type: a database that hasn't run the migration in
+  // supabase/schema.sql yet has no such column (see upsertTaskRows).
+  recurrence?: Task["recurrence"] | null;
 };
 
 function toTaskRow(task: Task, userId: string): TaskRow {
@@ -50,6 +54,7 @@ function toTaskRow(task: Task, userId: string): TaskRow {
     ai_context: task.aiContext,
     skip: task.skip ?? null,
     completed_at: task.completedAt ?? null,
+    recurrence: task.recurrence ?? null,
   };
 }
 
@@ -72,6 +77,7 @@ function fromTaskRow(row: TaskRow): Task {
     aiContext: row.ai_context ?? { notes: [] },
     skip: row.skip ?? undefined,
     completedAt: row.completed_at ?? undefined,
+    recurrence: normalizeRecurrence(row.recurrence),
   };
 }
 
@@ -101,16 +107,69 @@ export async function fetchTasks(userId: string): Promise<Task[]> {
   });
 }
 
+// The "recurrence" column arrives with a migration the database owner has to
+// run (supabase/schema.sql). Until then PostgREST rejects any row that names
+// it (PGRST204). That must not stop ordinary tasks saving — the stale
+// "category" column once broke every save for a week — so a plain task is
+// retried without the key. A repeating task is not: saved without its rule,
+// the next sync would come back as a one-off and quietly stop repeating, so it
+// stays unsaved (and retried) until the column exists. Checked again every
+// few minutes, so running the migration while the app is open is picked up.
+const RECURRENCE_COLUMN_RECHECK_MS = 5 * 60 * 1000;
+let recurrenceColumnMissingUntil = 0;
+
+function isMissingRecurrenceColumn(error: { code?: string; message?: string } | null): boolean {
+  return !!error && error.code === "PGRST204" && /recurrence/i.test(error.message ?? "");
+}
+
+function withoutRecurrence(row: TaskRow): TaskRow {
+  const copy = { ...row };
+  delete copy.recurrence;
+  return copy;
+}
+
+/**
+ * Saves several tasks in one request. PostgREST runs a bulk upsert as a single
+ * statement, so the rows land together or not at all — a bulk AI change can't
+ * be left half-written.
+ */
+export async function upsertTaskRows(tasks: Task[], userId: string): Promise<void> {
+  if (tasks.length === 0) return;
+  const rows = tasks.map((task) => toTaskRow(task, userId));
+  if (Date.now() >= recurrenceColumnMissingUntil) {
+    const { error } = await supabase.from("tasks").upsert(rows);
+    if (!error) return;
+    if (!isMissingRecurrenceColumn(error)) throw error;
+    recurrenceColumnMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
+    console.warn(
+      "[supabaseSync] The tasks table has no recurrence column yet — run supabase/schema.sql. Repeating tasks stay unsaved until then.",
+    );
+  }
+  const plainRows = rows.filter((row) => !row.recurrence).map(withoutRecurrence);
+  if (plainRows.length < rows.length) {
+    throw new Error("Repeating tasks can't be saved until supabase/schema.sql adds the recurrence column.");
+  }
+  if (plainRows.length > 0) {
+    const { error } = await supabase.from("tasks").upsert(plainRows);
+    if (error) throw error;
+  }
+}
+
 export async function upsertTaskRow(task: Task, userId: string): Promise<void> {
-  const { error } = await supabase.from("tasks").upsert(toTaskRow(task, userId));
-  if (error) throw error;
+  return upsertTaskRows([task], userId);
 }
 
 // Scoped to the owner as well as the id. RLS already enforces this server
 // side, but every other query here says whose rows it means, and a delete is
 // the one that costs the most if a policy is ever loosened by accident.
 export async function deleteTaskRow(taskId: string, userId: string): Promise<void> {
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId).eq("user_id", userId);
+  return deleteTaskRows([taskId], userId);
+}
+
+/** Deletes several tasks in one statement — all of them or none. */
+export async function deleteTaskRows(taskIds: string[], userId: string): Promise<void> {
+  if (taskIds.length === 0) return;
+  const { error } = await supabase.from("tasks").delete().in("id", taskIds).eq("user_id", userId);
   if (error) throw error;
 }
 

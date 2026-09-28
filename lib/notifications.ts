@@ -1,4 +1,5 @@
-import * as Notifications from "expo-notifications";
+import { isRunningInExpoGo } from "expo";
+import type { NotificationResponse } from "expo-notifications";
 import { Platform } from "react-native";
 
 import { colors } from "@/constants/theme";
@@ -8,7 +9,18 @@ import type { Task } from "@/types/task";
 // Local notifications only: the phone schedules each alert itself, so it
 // arrives at the deadline even when Nexdo is closed — no server, no push
 // tokens. The web build has no scheduler, so everything here is a no-op there.
-const isSupported = Platform.OS !== "web";
+// Expo Go on Android is a no-op too: since SDK 53, merely importing
+// expo-notifications there throws (it wires up push tokens on load), so the
+// module is only loaded where it works. Test alerts on Android in a
+// development build.
+const isSupported = Platform.OS !== "web" && !(Platform.OS === "android" && isRunningInExpoGo());
+
+// Only ever read after an isSupported check, so it's never actually null then.
+const Notifications: typeof import("expo-notifications") = isSupported
+  ? // An import statement would always load it — only require() can skip it.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("expo-notifications")
+  : (null as never);
 
 const OVERDUE_CHANNEL_ID = "overdue";
 
@@ -149,4 +161,26 @@ export function syncOverdueAlerts(tasks: Task[]): Promise<void> {
     .then(() => runOverdueSync(tasks))
     .catch((error) => console.warn("[notifications] couldn't sync overdue alerts", error));
   return syncQueue;
+}
+
+/**
+ * Calls `open` with the screen a tapped alert points to, starting with the tap
+ * that launched Nexdo if there was one. Returns a function that stops listening.
+ */
+export function listenForNotificationTaps(open: (url: string) => void): () => void {
+  if (!isSupported) return () => {};
+
+  const openFromNotification = (response: NotificationResponse) => {
+    const url = response.notification.request.content.data?.url;
+    if (typeof url === "string") open(url);
+    // Handled — otherwise the next listener would open it again.
+    Notifications.clearLastNotificationResponse();
+  };
+
+  // A tap that launched the app happened before this listener existed.
+  const launchResponse = Notifications.getLastNotificationResponse();
+  if (launchResponse) openFromNotification(launchResponse);
+
+  const subscription = Notifications.addNotificationResponseReceivedListener(openFromNotification);
+  return () => subscription.remove();
 }

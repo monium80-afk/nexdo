@@ -8,6 +8,21 @@ const plural = (count: number, one: string, many: string) => (count === 1 ? one 
 
 const SCOPE_ADJECTIVES = { completed: ["completada", "completadas"], pending: ["pendiente", "pendientes"] } as const;
 
+type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
+
+/** "2 semanas más tarde", "1 día antes" — how far a bulk move pushed the deadlines. */
+const shiftLength = (amount: number, unit: ShiftUnit) => {
+  const size = Math.abs(amount);
+  const label = {
+    minutes: plural(size, "minuto", "minutos"),
+    hours: plural(size, "hora", "horas"),
+    days: plural(size, "día", "días"),
+    weeks: plural(size, "semana", "semanas"),
+    months: plural(size, "mes", "meses"),
+  }[unit];
+  return `${size} ${label} ${amount > 0 ? "más tarde" : "antes"}`;
+};
+
 /** "a las 19:00", but "a la 1:00" — the article agrees with the hour. */
 const clock = (time: string) => (/^0?1[:.]/.test(time) ? `la ${time}` : `las ${time}`);
 
@@ -210,6 +225,25 @@ export const es: Translations = {
     notePlaceholder: "¿Qué debería saber la IA sobre esta tarea?",
     editNote: "Editar nota",
     deleteNote: "Eliminar nota",
+    repeatEyebrow: "SE REPITE",
+    notRepeating: "Esta tarea no se repite.",
+    setRepeat: "Hacer que se repita",
+    editRepeat: "Cambiar",
+    saveRepeat: "Guardar repetición",
+    stopRepeating: "Dejar de repetir",
+    stopRepeatingTitle: "¿Dejar de repetir?",
+    stopRepeatingBody:
+      "Esta tarea se queda en tu lista como tarea puntual. No se crearán nuevas repeticiones; las anteriores se conservan.",
+    occurrenceNote: "Al completar esta repetición se programa la siguiente.",
+    editScopeTitle: "Cambiar una tarea que se repite",
+    editScopeBody: "Aplicar estos cambios a…",
+    scopeThis: "Solo esta repetición",
+    scopeFuture: "Esta y las siguientes",
+    deleteScopeTitle: "Eliminar una tarea que se repite",
+    deleteScopeBody:
+      "¿Saltar solo esta repetición (la siguiente ocupa su lugar) o eliminar todas, incluidas las anteriores?",
+    deleteThisOccurrence: "Esta repetición",
+    deleteWholeSeries: "Toda la serie",
   },
 
   form: {
@@ -284,6 +318,7 @@ export const es: Translations = {
       voice: "No llegué a entender esa grabación — inténtalo de nuevo en un sitio más tranquilo o escríbelo.",
       document: "No pude sacar texto de ese archivo — prueba con otro o escríbelo.",
     },
+    attachmentReadFailed: "Algo salió mal al leer ese archivo — vuelve a enviarlo dentro de un momento.",
     couldntCatch: "No te he entendido",
     couldntTranscribe: "No se pudo transcribir",
     uploadFailedTitle: "No se pudo adjuntar",
@@ -370,6 +405,99 @@ export const es: Translations = {
     adviceDetail: (score: number, urgency: string) => `Puntuación de prioridad ${score}/100 — ${urgency}.`,
   },
 
+  recurrence: {
+    everyDays: (n: number) => (n === 1 ? "Todos los días" : `Cada ${n} días`),
+    everyWeeks: (n: number, days: string) => (n === 1 ? `Cada semana: ${days}` : `Cada ${n} semanas: ${days}`),
+    everyMonths: (n: number, day: number) => (n === 1 ? `Cada mes, el día ${day}` : `Cada ${n} meses, el día ${day}`),
+    everyYears: (n: number, date: string) => (n === 1 ? `Cada año, el ${date}` : `Cada ${n} años, el ${date}`),
+    until: (label: string, date: string) => `${label}, hasta el ${date}`,
+    title: "REPETIR",
+    frequencies: { none: "No se repite", daily: "Diaria", weekly: "Semanal", monthly: "Mensual", yearly: "Anual" },
+    every: "Cada",
+    unit: (frequency: "daily" | "weekly" | "monthly" | "yearly", n: number) =>
+      ({
+        daily: plural(n, "día", "días"),
+        weekly: plural(n, "semana", "semanas"),
+        monthly: plural(n, "mes", "meses"),
+        yearly: plural(n, "año", "años"),
+      })[frequency],
+    decrease: "Repetir con menos frecuencia",
+    increase: "Repetir con más frecuencia",
+    onDays: "LOS DÍAS",
+    ends: "TERMINA",
+    endsNever: "Nunca",
+    endsOn: "En una fecha",
+    summary: (label: string) => `Se repite: ${label}`,
+    firstOn: (when: string) => `Primera: ${when}`,
+  },
+
+  ops: {
+    joinList: (items: string[]) =>
+      items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`,
+    andMore: (list: string, more: number) => `${list} y ${more} más`,
+    quote: (title: string) => `«${title}»`,
+    nextOccurrence: (when: string) => `La siguiente vence el ${when}.`,
+    seriesEnded: "Era la última de la serie.",
+    alreadyDone: (title: string) => `«${title}» ya está marcada como hecha, así que no he cambiado nada.`,
+    alreadyOpen: (title: string) => `«${title}» ya está abierta, así que no he cambiado nada.`,
+    noDeadlineToMove: (title: string) => `«${title}» no tiene fecha límite que mover, así que la he dejado igual.`,
+    invalidChange: (title: string) => `No he podido aplicar ese cambio a «${title}», así que no ha cambiado nada.`,
+    nothingChanged: (title: string) => `«${title}» ya está así; no he cambiado nada.`,
+    reopened: (title: string) => `He reabierto «${title}»; vuelve a estar en tu lista.`,
+    skippedOccurrence: (title: string, when?: string) =>
+      `He saltado esta repetición de «${title}».${when ? ` La siguiente vence el ${when}.` : " Era la última de la serie."}`,
+    deletedSeries: (title: string, count: number) =>
+      `He eliminado toda la serie «${title}» (${count} ${plural(count, "repetición", "repeticiones")}).`,
+    endedSeries: (title: string) => `«${title}» ya no se repetirá. Las anteriores se conservan.`,
+    updatedCompleted: (title: string) => `He actualizado «${title}»; sigue marcada como hecha.`,
+    nowDue: (when: string) => `Nueva fecha límite: ${when}.`,
+    stoppedRepeating: (title: string) => `«${title}» ya no se repetirá; ahora es una tarea puntual.`,
+    nowRepeats: (title: string, rule: string) => `«${title}» ahora se repite (${rule}).`,
+    completedMany: (n: number) => `He marcado ${n} ${plural(n, "tarea", "tareas")} como ${plural(n, "hecha", "hechas")}.`,
+    reopenedMany: (n: number) => `He reabierto ${n} ${plural(n, "tarea", "tareas")}.`,
+    updatedMany: (n: number) => `He actualizado ${n} ${plural(n, "tarea", "tareas")}.`,
+    shiftedMany: (n: number, amount: number, unit: ShiftUnit) =>
+      `He movido ${plural(n, "la fecha límite", "las fechas límite")} de ${n} ${plural(n, "tarea", "tareas")} ${shiftLength(amount, unit)}.`,
+    someStillCompleted: (n: number) => (n === 1 ? "Una sigue marcada como hecha." : `${n} siguen marcadas como hechas.`),
+    deletedMany: (n: number) => `He eliminado ${n} ${plural(n, "tarea", "tareas")}.`,
+    noDeadlineSkipped: (n: number) =>
+      n === 1
+        ? "1 tarea no tiene fecha límite y la he dejado igual."
+        : `${n} tareas no tienen fecha límite y las he dejado igual.`,
+    alreadyDoneMany: (n: number) => (n === 1 ? "1 ya estaba hecha." : `${n} ya estaban hechas.`),
+    alreadyOpenMany: (n: number) => (n === 1 ? "1 ya estaba abierta." : `${n} ya estaban abiertas.`),
+    nothingChangedMany: "Esas tareas ya están así; no he cambiado nada.",
+    notFound: "No encuentro esa tarea; puede que se haya eliminado. No he cambiado nada.",
+    whichDates: "No sé bien a qué fechas te refieres, ¿puedes decirlo de otra forma? No he cambiado nada.",
+    nothingMatched: "Ninguna tarea coincide, así que no he cambiado nada.",
+    someNotFound: (n: number) => (n === 1 ? "No he encontrado 1 tarea." : `No he encontrado ${n} tareas.`),
+    confirmComplete: (n: number, titles: string) =>
+      `¿Marcar ${n} ${plural(n, "tarea", "tareas")} como ${plural(n, "hecha", "hechas")}? ${titles}.`,
+    confirmReopen: (n: number, titles: string) => `¿Reabrir ${n} ${plural(n, "tarea", "tareas")}? ${titles}.`,
+    confirmDelete: (n: number, titles: string, includesCompleted: boolean) =>
+      `¿Eliminar ${n} ${plural(n, "tarea", "tareas")}${includesCompleted ? " (incluidas las hechas)" : ""}? ${titles}.`,
+    confirmDeleteSeries: (title: string) => `¿Eliminar todas las repeticiones de «${title}», incluidas las anteriores?`,
+    confirmShift: (n: number, titles: string, amount: number, unit: ShiftUnit) =>
+      `¿Mover ${plural(n, "la fecha límite", "las fechas límite")} de ${n} ${plural(n, "tarea", "tareas")} ${shiftLength(amount, unit)}? ${titles}.`,
+    confirmUpdate: (n: number, titles: string) => `¿Cambiar ${n} ${plural(n, "tarea", "tareas")}? ${titles}.`,
+    askEditScope: (title: string, rule: string) =>
+      `«${title}» se repite (${rule}). ¿Cambio solo esta repetición, o esta y todas las siguientes?`,
+    askDeleteScope: (title: string, rule: string) =>
+      `«${title}» se repite (${rule}). ¿Salto solo esta repetición, detengo la serie a partir de aquí (las anteriores se quedan) o elimino toda la serie?`,
+    askEditScopeMany: (n: number) =>
+      `${n} de esas tareas se ${plural(n, "repite", "repiten")}. ¿El cambio se aplica solo a las repeticiones actuales, o también a las siguientes?`,
+    askDeleteScopeMany: (n: number) =>
+      `${n} de esas tareas se ${plural(n, "repite", "repiten")}. ¿Salto solo las repeticiones actuales, o elimino toda la serie?`,
+    listHeader: (n: number) => (n === 1 ? "Coincide 1 tarea:" : `Coinciden ${n} tareas:`),
+    repeatingUpdateNote: "En las tareas que se repiten, solo cambia la repetición actual.",
+    repeatingDeleteNote: "Las tareas que se repiten dejarán de repetirse.",
+    listEmpty: "Ninguna tarea coincide.",
+    listMore: (n: number) => `…y ${n} más.`,
+    completedOn: (when: string) => `hecha el ${when}`,
+    dueOn: (when: string) => `vence el ${when}`,
+    overdueSince: (when: string) => `vencida desde el ${when}`,
+  },
+
   settings: {
     title: "Ajustes",
     preferences: "PREFERENCIAS DE NEXDO",
@@ -379,6 +507,10 @@ export const es: Translations = {
     signingOut: "Cerrando sesión…",
     signOutCleanupError: "Sesión cerrada, pero hubo un problema al limpiar los datos locales.",
     signOutError: "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+    unsavedTasksTitle: "Algunas tareas aún no se han guardado",
+    unsavedTasksBody: (count: number) =>
+      `${count === 1 ? "1 tarea aún no ha llegado" : `${count} tareas aún no han llegado`} a tu cuenta — revisa tu conexión. Si cierras sesión ahora, ${count === 1 ? "se queda" : "se quedan"} a salvo en este teléfono y ${count === 1 ? "se guardará" : "se guardarán"} la próxima vez que inicies sesión aquí, pero hasta entonces no ${count === 1 ? "aparecerá" : "aparecerán"} en tus otros dispositivos.`,
+    signOutAnyway: "Cerrar sesión igualmente",
 
     aiChat: "BANDEJA DE IA",
     autoMode: "Modo automático",
@@ -462,6 +594,7 @@ export const es: Translations = {
   onboarding: {
     next: "Siguiente paso",
     getStarted: "Empezar",
+    haveAccount: "Ya tengo una cuenta",
     stickyNotes: ["¿cita dentista?", "examen próx. semana", "compra", "responder correo"],
     headline: "Deja de darle vueltas a qué hacer después.",
     body: "Vacía tu cabeza. Nexdo lo organiza, detecta las fechas límite y te dice qué merece tu atención.",
@@ -502,6 +635,9 @@ export const es: Translations = {
     stopRecording: "Parar y transcribir",
     transcribing: "Transcribiendo…",
     organize: "Organizar con Nexdo",
+    trialUsedHeadline: "Ya has probado la IA de Nexdo",
+    trialUsedBody: "La prueba gratuita es **una por dispositivo**. Crea tu cuenta para conservar tus tareas y seguir organizándote con la IA.",
+    trialUsedCta: "Crear mi cuenta",
   },
 
   onboardingAnalyzing: {

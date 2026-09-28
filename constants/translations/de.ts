@@ -10,6 +10,21 @@ const plural = (count: number, one: string, many: string) => (count === 1 ? one 
 // "1 erledigte Aufgabe", "3 erledigte Aufgaben".
 const SCOPE_ADJECTIVES = { completed: "erledigte", pending: "offene" } as const;
 
+type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
+
+/** "um 2 Wochen nach hinten" — how far a bulk move pushed the deadlines. */
+const shiftLength = (amount: number, unit: ShiftUnit) => {
+  const size = Math.abs(amount);
+  const label = {
+    minutes: plural(size, "Minute", "Minuten"),
+    hours: plural(size, "Stunde", "Stunden"),
+    days: plural(size, "Tag", "Tage"),
+    weeks: plural(size, "Woche", "Wochen"),
+    months: plural(size, "Monat", "Monate"),
+  }[unit];
+  return `um ${size} ${label} ${amount > 0 ? "nach hinten" : "nach vorne"}`;
+};
+
 export const de: Translations = {
   locale: "de-DE",
 
@@ -209,6 +224,24 @@ export const de: Translations = {
     notePlaceholder: "Was sollte die KI über diese Aufgabe wissen?",
     editNote: "Notiz bearbeiten",
     deleteNote: "Notiz löschen",
+    repeatEyebrow: "WIEDERHOLUNG",
+    notRepeating: "Diese Aufgabe wiederholt sich nicht.",
+    setRepeat: "Wiederholen lassen",
+    editRepeat: "Ändern",
+    saveRepeat: "Wiederholung speichern",
+    stopRepeating: "Nicht mehr wiederholen",
+    stopRepeatingTitle: "Nicht mehr wiederholen?",
+    stopRepeatingBody:
+      "Die Aufgabe bleibt als einmalige Aufgabe auf deiner Liste. Es werden keine neuen Wiederholungen erstellt; frühere bleiben erhalten.",
+    occurrenceNote: "Wenn du diese Wiederholung erledigst, wird die nächste geplant.",
+    editScopeTitle: "Wiederkehrende Aufgabe ändern",
+    editScopeBody: "Änderungen übernehmen für…",
+    scopeThis: "Nur diese Wiederholung",
+    scopeFuture: "Diese und alle folgenden",
+    deleteScopeTitle: "Wiederkehrende Aufgabe löschen",
+    deleteScopeBody: "Nur diese Wiederholung überspringen (die nächste rückt nach) oder alle löschen, auch frühere?",
+    deleteThisOccurrence: "Diese Wiederholung",
+    deleteWholeSeries: "Ganze Serie",
   },
 
   form: {
@@ -291,6 +324,7 @@ export const de: Translations = {
       voice: "Die Aufnahme habe ich nicht richtig verstanden — versuch es an einem ruhigeren Ort noch einmal oder tipp es einfach ein.",
       document: "Aus dieser Datei konnte ich keinen Text herausholen — versuch eine andere oder tipp es einfach ein.",
     },
+    attachmentReadFailed: "Beim Lesen der Datei ist etwas schiefgelaufen — schick sie gleich noch einmal.",
     couldntCatch: "Nicht verstanden",
     couldntTranscribe: "Transkription fehlgeschlagen",
     uploadFailedTitle: "Anhang nicht möglich",
@@ -379,6 +413,103 @@ export const de: Translations = {
     adviceDetail: (score: number, urgency: string) => `Prioritäts-Score ${score}/100 — ${urgency}.`,
   },
 
+  recurrence: {
+    everyDays: (n: number) => (n === 1 ? "Jeden Tag" : `Alle ${n} Tage`),
+    everyWeeks: (n: number, days: string) => (n === 1 ? `Jede Woche: ${days}` : `Alle ${n} Wochen: ${days}`),
+    everyMonths: (n: number, day: number) => (n === 1 ? `Jeden Monat am ${day}.` : `Alle ${n} Monate am ${day}.`),
+    everyYears: (n: number, date: string) => (n === 1 ? `Jedes Jahr am ${date}` : `Alle ${n} Jahre am ${date}`),
+    until: (label: string, date: string) => `${label}, bis ${date}`,
+    title: "WIEDERHOLEN",
+    frequencies: {
+      none: "Keine Wiederholung",
+      daily: "Täglich",
+      weekly: "Wöchentlich",
+      monthly: "Monatlich",
+      yearly: "Jährlich",
+    },
+    every: "Intervall:",
+    unit: (frequency: "daily" | "weekly" | "monthly" | "yearly", n: number) =>
+      ({
+        daily: plural(n, "Tag", "Tage"),
+        weekly: plural(n, "Woche", "Wochen"),
+        monthly: plural(n, "Monat", "Monate"),
+        yearly: plural(n, "Jahr", "Jahre"),
+      })[frequency],
+    decrease: "Seltener wiederholen",
+    increase: "Öfter wiederholen",
+    onDays: "AN",
+    ends: "ENDET",
+    endsNever: "Nie",
+    endsOn: "An einem Datum",
+    summary: (label: string) => `Wiederholt sich: ${label}`,
+    firstOn: (when: string) => `Erstes Mal: ${when}`,
+  },
+
+  ops: {
+    joinList: (items: string[]) =>
+      items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} und ${items[items.length - 1]}`,
+    andMore: (list: string, more: number) => `${list} und ${more} weitere`,
+    quote: (title: string) => `„${title}“`,
+    nextOccurrence: (when: string) => `Nächste Fälligkeit: ${when}.`,
+    seriesEnded: "Das war die letzte der Serie.",
+    alreadyDone: (title: string) => `„${title}“ ist schon als erledigt markiert, also hat sich nichts geändert.`,
+    alreadyOpen: (title: string) => `„${title}“ ist schon offen, also hat sich nichts geändert.`,
+    noDeadlineToMove: (title: string) => `„${title}“ hat keine Frist zum Verschieben, also habe ich sie so gelassen.`,
+    invalidChange: (title: string) => `Diese Änderung konnte ich bei „${title}“ nicht anwenden, also hat sich nichts geändert.`,
+    nothingChanged: (title: string) => `„${title}“ ist schon so — nichts geändert.`,
+    reopened: (title: string) => `„${title}“ ist wieder offen und zurück auf deiner Liste.`,
+    skippedOccurrence: (title: string, when?: string) =>
+      `Diese Wiederholung von „${title}“ habe ich übersprungen.${when ? ` Nächste Fälligkeit: ${when}.` : " Das war die letzte der Serie."}`,
+    deletedSeries: (title: string, count: number) =>
+      `Die ganze Serie „${title}“ wurde gelöscht (${count} ${plural(count, "Wiederholung", "Wiederholungen")}).`,
+    endedSeries: (title: string) => `„${title}“ wiederholt sich nicht mehr. Frühere Wiederholungen bleiben erhalten.`,
+    updatedCompleted: (title: string) => `„${title}“ wurde aktualisiert — sie ist weiterhin als erledigt markiert.`,
+    nowDue: (when: string) => `Neue Frist: ${when}.`,
+    stoppedRepeating: (title: string) => `„${title}“ wiederholt sich nicht mehr — sie ist jetzt eine einmalige Aufgabe.`,
+    nowRepeats: (title: string, rule: string) => `„${title}“ wiederholt sich jetzt (${rule}).`,
+    completedMany: (n: number) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} als erledigt markiert.`,
+    reopenedMany: (n: number) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} wieder geöffnet.`,
+    updatedMany: (n: number) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} aktualisiert.`,
+    shiftedMany: (n: number, amount: number, unit: ShiftUnit) =>
+      `${plural(n, "Die Frist", "Die Fristen")} von ${n} ${plural(n, "Aufgabe", "Aufgaben")} ${plural(n, "wurde", "wurden")} ${shiftLength(amount, unit)} verschoben.`,
+    someStillCompleted: (n: number) =>
+      n === 1 ? "Eine davon ist weiterhin als erledigt markiert." : `${n} davon sind weiterhin als erledigt markiert.`,
+    deletedMany: (n: number) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} gelöscht.`,
+    noDeadlineSkipped: (n: number) =>
+      n === 1 ? "1 Aufgabe hat keine Frist und bleibt, wie sie ist." : `${n} Aufgaben haben keine Frist und bleiben, wie sie sind.`,
+    alreadyDoneMany: (n: number) => (n === 1 ? "1 war schon erledigt." : `${n} waren schon erledigt.`),
+    alreadyOpenMany: (n: number) => (n === 1 ? "1 war schon offen." : `${n} waren schon offen.`),
+    nothingChangedMany: "Diese Aufgaben sind schon so — nichts geändert.",
+    notFound: "Ich finde diese Aufgabe nicht — vielleicht wurde sie gelöscht. Es wurde nichts geändert.",
+    whichDates: "Ich bin nicht sicher, welche Daten du meinst — kannst du es anders sagen? Es wurde nichts geändert.",
+    nothingMatched: "Keine Aufgabe passt dazu, also wurde nichts geändert.",
+    someNotFound: (n: number) => (n === 1 ? "1 Aufgabe wurde nicht gefunden." : `${n} Aufgaben wurden nicht gefunden.`),
+    confirmComplete: (n: number, titles: string) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} als erledigt markieren? ${titles}.`,
+    confirmReopen: (n: number, titles: string) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} wieder öffnen? ${titles}.`,
+    confirmDelete: (n: number, titles: string, includesCompleted: boolean) =>
+      `${n} ${plural(n, "Aufgabe", "Aufgaben")} löschen${includesCompleted ? " (auch erledigte)" : ""}? ${titles}.`,
+    confirmDeleteSeries: (title: string) => `Alle Wiederholungen von „${title}“ löschen, auch frühere?`,
+    confirmShift: (n: number, titles: string, amount: number, unit: ShiftUnit) =>
+      `${plural(n, "Die Frist", "Die Fristen")} von ${n} ${plural(n, "Aufgabe", "Aufgaben")} ${shiftLength(amount, unit)} verschieben? ${titles}.`,
+    confirmUpdate: (n: number, titles: string) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} ändern? ${titles}.`,
+    askEditScope: (title: string, rule: string) =>
+      `„${title}“ wiederholt sich (${rule}). Soll ich nur diese Wiederholung ändern oder diese und alle folgenden?`,
+    askDeleteScope: (title: string, rule: string) =>
+      `„${title}“ wiederholt sich (${rule}). Soll ich nur diese Wiederholung überspringen, die Serie ab hier beenden (frühere bleiben) oder die ganze Serie löschen?`,
+    askEditScopeMany: (n: number) =>
+      `${n} dieser Aufgaben ${plural(n, "wiederholt", "wiederholen")} sich. Soll die Änderung nur für die aktuellen Wiederholungen gelten oder auch für die folgenden?`,
+    askDeleteScopeMany: (n: number) =>
+      `${n} dieser Aufgaben ${plural(n, "wiederholt", "wiederholen")} sich. Soll ich nur die aktuellen Wiederholungen überspringen oder die ganze Serie löschen?`,
+    listHeader: (n: number) => (n === 1 ? "1 Aufgabe passt:" : `${n} Aufgaben passen:`),
+    repeatingUpdateNote: "Bei wiederkehrenden Aufgaben ändert sich nur die aktuelle Wiederholung.",
+    repeatingDeleteNote: "Wiederkehrende Aufgaben darunter wiederholen sich danach nicht mehr.",
+    listEmpty: "Keine Aufgabe passt dazu.",
+    listMore: (n: number) => `…und ${n} weitere.`,
+    completedOn: (when: string) => `erledigt am ${when}`,
+    dueOn: (when: string) => `fällig am ${when}`,
+    overdueSince: (when: string) => `überfällig seit ${when}`,
+  },
+
   settings: {
     title: "Einstellungen",
     preferences: "NEXDO-EINSTELLUNGEN",
@@ -388,6 +519,10 @@ export const de: Translations = {
     signingOut: "Wird abgemeldet…",
     signOutCleanupError: "Abgemeldet, aber beim Aufräumen der lokalen Daten gab es ein Problem.",
     signOutError: "Abmelden fehlgeschlagen. Versuch es noch einmal.",
+    unsavedTasksTitle: "Einige Aufgaben sind noch nicht gespeichert",
+    unsavedTasksBody: (count: number) =>
+      `${count === 1 ? "1 Aufgabe ist" : `${count} Aufgaben sind`} noch nicht in deinem Konto angekommen — prüf deine Verbindung. Wenn du dich jetzt abmeldest, ${count === 1 ? "bleibt sie" : "bleiben sie"} sicher auf diesem Handy und ${count === 1 ? "wird" : "werden"} bei deiner nächsten Anmeldung hier gespeichert — bis dahin aber nicht auf deinen anderen Geräten angezeigt.`,
+    signOutAnyway: "Trotzdem abmelden",
 
     aiChat: "KI-POSTEINGANG",
     autoMode: "Automatikmodus",
@@ -472,6 +607,7 @@ export const de: Translations = {
   onboarding: {
     next: "Nächster Schritt",
     getStarted: "Los geht's",
+    haveAccount: "Ich habe schon ein Konto",
     stickyNotes: ["Zahnarzttermin?", "Prüfung nächste Woche", "einkaufen", "Mail beantworten"],
     headline: "Hör auf zu grübeln, was als Nächstes kommt.",
     body: "Schreib alles auf, was dir durch den Kopf geht. Nexdo ordnet es, erkennt Fristen und sagt dir, was deine Aufmerksamkeit verdient.",
@@ -512,6 +648,9 @@ export const de: Translations = {
     stopRecording: "Stopp und aufschreiben",
     transcribing: "Wird aufgeschrieben…",
     organize: "Mit Nexdo ordnen",
+    trialUsedHeadline: "Du hast die KI von Nexdo schon ausprobiert",
+    trialUsedBody: "Die kostenlose Vorschau gibt es **einmal pro Gerät**. Erstell dein Konto, um deine Aufgaben zu behalten und weiter mit der KI zu planen.",
+    trialUsedCta: "Mein Konto erstellen",
   },
 
   onboardingAnalyzing: {

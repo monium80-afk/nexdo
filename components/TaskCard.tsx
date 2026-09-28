@@ -8,6 +8,7 @@ import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
+import { describeRule } from "@/lib/recurrence";
 import { getDeadlineUrgency, getDueInfo, type DeadlineUrgency } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 
@@ -90,6 +91,13 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
           icon={<Feather name="clock" size={13} color={colors.ink.creamMuted} />}
           label={formatDuration(task.estimatedMinutes)}
         />
+        {/* The rule in a few words, so a repeating task is recognisable in the list. */}
+        {task.recurrence ? (
+          <MetaPill
+            icon={<Feather name="repeat" size={13} color={colors.orange[500]} />}
+            label={describeRule(task.recurrence.rule, t)}
+          />
+        ) : null}
       </View>
     </AnimatedPressable>
   );

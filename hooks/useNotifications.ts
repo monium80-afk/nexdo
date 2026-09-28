@@ -1,9 +1,7 @@
-import * as Notifications from "expo-notifications";
 import { router, type Href } from "expo-router";
 import { useEffect } from "react";
-import { Platform } from "react-native";
 
-import { syncOverdueAlerts } from "@/lib/notifications";
+import { listenForNotificationTaps, syncOverdueAlerts } from "@/lib/notifications";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -26,7 +24,7 @@ function overdueAlertKey(tasks: Task[]): string {
  *
  * Mounted in the signed-in tabs layout, next to useAuthSync: the alerts are
  * about this account's tasks. Signing out clears them (see
- * useTaskStore.handleSignOut), since the list left behind is only sample data.
+ * useTaskStore.handleSignOut), along with the task list itself.
  */
 export function useNotifications() {
   const userId = useTaskStore((state) => state.syncUserId);
@@ -46,20 +44,7 @@ export function useNotifications() {
   }, [userId, overdueAlertsEnabled, language, alertKey]);
 
   useEffect(() => {
-    if (!userId || Platform.OS === "web") return;
-
-    const openFromNotification = (response: Notifications.NotificationResponse) => {
-      const url = response.notification.request.content.data?.url;
-      if (typeof url === "string") router.push(url as Href);
-      // Handled — otherwise the next run of this effect would open it again.
-      Notifications.clearLastNotificationResponse();
-    };
-
-    // A tap that launched the app happened before this listener existed.
-    const launchResponse = Notifications.getLastNotificationResponse();
-    if (launchResponse) openFromNotification(launchResponse);
-
-    const subscription = Notifications.addNotificationResponseReceivedListener(openFromNotification);
-    return () => subscription.remove();
+    if (!userId) return;
+    return listenForNotificationTaps((url) => router.push(url as Href));
   }, [userId]);
 }

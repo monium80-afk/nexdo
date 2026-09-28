@@ -20,6 +20,32 @@ function escapeAdviceText(text: string): string {
   return text.replace(/\*/g, "\\*");
 }
 
+// The route runs at temperature 0, so the same request gets the same advice
+// back — and the Advice button is a toggle, so closing and reopening it used
+// to pay for that same answer again. Keyed by the whole request body: any edit
+// to the task, its steps, the time budget, the language — or the deadline
+// label moving on ("in 2 hours" → "in 1 hour") — is a different key and a
+// fresh answer. Only real AI answers are kept; the offline fallback never is.
+const ADVICE_CACHE_TTL_MS = 30 * 60 * 1000;
+const ADVICE_CACHE_MAX_ENTRIES = 50;
+const adviceCache = new Map<string, { advice: TaskAdvice; storedAt: number }>();
+
+function readCachedAdvice(key: string): TaskAdvice | null {
+  const entry = adviceCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.storedAt > ADVICE_CACHE_TTL_MS) {
+    adviceCache.delete(key);
+    return null;
+  }
+  return entry.advice;
+}
+
+function cacheAdvice(key: string, advice: TaskAdvice) {
+  // A Map iterates in insertion order, so the first key is the oldest.
+  if (adviceCache.size >= ADVICE_CACHE_MAX_ENTRIES) adviceCache.delete(adviceCache.keys().next().value!);
+  adviceCache.set(key, { advice, storedAt: Date.now() });
+}
+
 // Layer B (Execution Coach) — see data/aiPrompts.ts and app/api/next+api.ts.
 // Falls back to the heuristic advice below on any network/parse failure.
 export async function generateAdvice(task: Task, availableMinutes?: number): Promise<TaskAdvice> {
@@ -36,8 +62,14 @@ export async function generateAdvice(task: Task, availableMinutes?: number): Pro
       availableMinutes,
       language: getLanguage(),
     };
+    const cacheKey = JSON.stringify(body);
+    const cached = readCachedAdvice(cacheKey);
+    if (cached) return cached;
+
     const result = await apiPost<NextResponseBody>("/api/next", body);
-    return { headline: result.advice.trim(), detail: "" };
+    const advice = { headline: result.advice.trim(), detail: "" };
+    if (!result.unavailable) cacheAdvice(cacheKey, advice);
+    return advice;
   } catch (error) {
     console.warn("[generateAdvice] falling back to heuristic", error);
     return generateAdviceHeuristic(task);

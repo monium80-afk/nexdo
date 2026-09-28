@@ -6,6 +6,21 @@ const plural = (count: number, one: string, many: string) => (count <= 1 ? one :
 
 const SCOPE_ADJECTIVES = { completed: ["terminée", "terminées"], pending: ["en attente", "en attente"] } as const;
 
+type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
+
+/** "2 semaines", "1 jour" — how far a bulk move pushed the deadlines. */
+const shiftLength = (amount: number, unit: ShiftUnit) => {
+  const size = Math.abs(amount);
+  const label = {
+    minutes: plural(size, "minute", "minutes"),
+    hours: plural(size, "heure", "heures"),
+    days: plural(size, "jour", "jours"),
+    weeks: plural(size, "semaine", "semaines"),
+    months: "mois",
+  }[unit];
+  return `${size} ${label} ${amount > 0 ? "plus tard" : "plus tôt"}`;
+};
+
 export const fr: Translations = {
   locale: "fr-FR",
 
@@ -206,6 +221,25 @@ export const fr: Translations = {
     notePlaceholder: "Que doit savoir l'IA sur cette tâche ?",
     editNote: "Modifier la note",
     deleteNote: "Supprimer la note",
+    repeatEyebrow: "RÉPÉTITION",
+    notRepeating: "Cette tâche ne se répète pas.",
+    setRepeat: "Répéter",
+    editRepeat: "Modifier",
+    saveRepeat: "Enregistrer",
+    stopRepeating: "Arrêter la répétition",
+    stopRepeatingTitle: "Arrêter la répétition ?",
+    stopRepeatingBody:
+      "Cette tâche reste dans votre liste comme tâche ponctuelle. Aucune nouvelle occurrence ne sera créée ; les passées sont conservées.",
+    occurrenceNote: "Terminer cette occurrence planifie la suivante.",
+    editScopeTitle: "Modifier une tâche répétée",
+    editScopeBody: "Appliquer ces modifications à…",
+    scopeThis: "Cette occurrence seulement",
+    scopeFuture: "Celle-ci et les suivantes",
+    deleteScopeTitle: "Supprimer une tâche répétée",
+    deleteScopeBody:
+      "Sauter seulement cette occurrence (la suivante prend sa place), ou supprimer toutes les occurrences, y compris les passées ?",
+    deleteThisOccurrence: "Cette occurrence",
+    deleteWholeSeries: "Toute la série",
   },
 
   form: {
@@ -280,6 +314,7 @@ export const fr: Translations = {
       voice: "Je n'ai pas bien saisi cet enregistrement — réessayez dans un endroit plus calme, ou tapez-le plutôt.",
       document: "Je n'ai pas pu extraire de texte de ce fichier — essayez-en un autre, ou tapez-le plutôt.",
     },
+    attachmentReadFailed: "Un problème est survenu pendant la lecture de ce fichier — réessayez de l'envoyer dans un instant.",
     couldntCatch: "Je n'ai pas compris",
     couldntTranscribe: "Transcription impossible",
     uploadFailedTitle: "Pièce jointe impossible",
@@ -369,6 +404,107 @@ export const fr: Translations = {
     adviceDetail: (score: number, urgency: string) => `Score de priorité ${score}/100 — ${urgency}.`,
   },
 
+  recurrence: {
+    everyDays: (n: number) => (n === 1 ? "Tous les jours" : `Tous les ${n} jours`),
+    everyWeeks: (n: number, days: string) => (n === 1 ? `Chaque semaine : ${days}` : `Toutes les ${n} semaines : ${days}`),
+    everyMonths: (n: number, day: number) => (n === 1 ? `Chaque mois, le ${day}` : `Tous les ${n} mois, le ${day}`),
+    everyYears: (n: number, date: string) => (n === 1 ? `Chaque année, le ${date}` : `Tous les ${n} ans, le ${date}`),
+    until: (label: string, date: string) => `${label}, jusqu'au ${date}`,
+    title: "RÉPÉTITION",
+    frequencies: {
+      none: "Pas de répétition",
+      daily: "Quotidienne",
+      weekly: "Hebdomadaire",
+      monthly: "Mensuelle",
+      yearly: "Annuelle",
+    },
+    every: "Intervalle :",
+    unit: (frequency: "daily" | "weekly" | "monthly" | "yearly", n: number) =>
+      ({
+        daily: plural(n, "jour", "jours"),
+        weekly: plural(n, "semaine", "semaines"),
+        monthly: "mois",
+        yearly: plural(n, "an", "ans"),
+      })[frequency],
+    decrease: "Répéter moins souvent",
+    increase: "Répéter plus souvent",
+    onDays: "LES JOURS",
+    ends: "FIN",
+    endsNever: "Jamais",
+    endsOn: "À une date",
+    summary: (label: string) => `Répétition : ${label}`,
+    firstOn: (when: string) => `Première : ${when}`,
+  },
+
+  ops: {
+    joinList: (items: string[]) =>
+      items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} et ${items[items.length - 1]}`,
+    andMore: (list: string, more: number) => `${list} et ${more} ${plural(more, "autre", "autres")}`,
+    quote: (title: string) => `« ${title} »`,
+    nextOccurrence: (when: string) => `Prochaine échéance : ${when}.`,
+    seriesEnded: "C'était la dernière de la série.",
+    alreadyDone: (title: string) => `« ${title} » est déjà marquée comme terminée : rien n'a changé.`,
+    alreadyOpen: (title: string) => `« ${title} » est déjà ouverte : rien n'a changé.`,
+    noDeadlineToMove: (title: string) => `« ${title} » n'a pas d'échéance à déplacer : je l'ai laissée telle quelle.`,
+    invalidChange: (title: string) => `Je n'ai pas pu appliquer ce changement à « ${title} » : rien n'a changé.`,
+    nothingChanged: (title: string) => `« ${title} » est déjà ainsi : rien n'a changé.`,
+    reopened: (title: string) => `« ${title} » a été rouverte — elle est de retour dans votre liste.`,
+    skippedOccurrence: (title: string, when?: string) =>
+      `Cette occurrence de « ${title} » a été sautée.${when ? ` Prochaine échéance : ${when}.` : " C'était la dernière de la série."}`,
+    deletedSeries: (title: string, count: number) =>
+      `Toute la série « ${title} » a été supprimée (${count} ${plural(count, "occurrence", "occurrences")}).`,
+    endedSeries: (title: string) => `« ${title} » ne se répétera plus. Les occurrences passées sont conservées.`,
+    updatedCompleted: (title: string) => `« ${title} » a été mise à jour — elle reste marquée comme terminée.`,
+    nowDue: (when: string) => `Nouvelle échéance : ${when}.`,
+    stoppedRepeating: (title: string) => `« ${title} » ne se répétera plus — c'est maintenant une tâche ponctuelle.`,
+    nowRepeats: (title: string, rule: string) => `« ${title} » se répète désormais (${rule}).`,
+    completedMany: (n: number) =>
+      `${n} ${plural(n, "tâche marquée", "tâches marquées")} comme ${plural(n, "terminée", "terminées")}.`,
+    reopenedMany: (n: number) => `${n} ${plural(n, "tâche rouverte", "tâches rouvertes")}.`,
+    updatedMany: (n: number) => `${n} ${plural(n, "tâche mise", "tâches mises")} à jour.`,
+    shiftedMany: (n: number, amount: number, unit: ShiftUnit) =>
+      `${plural(n, "L'échéance", "Les échéances")} de ${n} ${plural(n, "tâche a été décalée", "tâches ont été décalées")} de ${shiftLength(amount, unit)}.`,
+    someStillCompleted: (n: number) =>
+      n === 1 ? "L'une d'elles reste marquée comme terminée." : `${n} d'entre elles restent marquées comme terminées.`,
+    deletedMany: (n: number) => `${n} ${plural(n, "tâche supprimée", "tâches supprimées")}.`,
+    noDeadlineSkipped: (n: number) =>
+      n === 1
+        ? "1 tâche n'a pas d'échéance et a été laissée telle quelle."
+        : `${n} tâches n'ont pas d'échéance et ont été laissées telles quelles.`,
+    alreadyDoneMany: (n: number) => (n === 1 ? "1 était déjà terminée." : `${n} étaient déjà terminées.`),
+    alreadyOpenMany: (n: number) => (n === 1 ? "1 était déjà ouverte." : `${n} étaient déjà ouvertes.`),
+    nothingChangedMany: "Ces tâches sont déjà ainsi : rien n'a changé.",
+    notFound: "Je ne trouve pas cette tâche — elle a peut-être été supprimée. Rien n'a été modifié.",
+    whichDates: "Je n'ai pas compris de quelles dates il s'agit — pouvez-vous reformuler ? Rien n'a été modifié.",
+    nothingMatched: "Aucune tâche ne correspond : rien n'a été modifié.",
+    someNotFound: (n: number) => (n === 1 ? "1 tâche est introuvable." : `${n} tâches sont introuvables.`),
+    confirmComplete: (n: number, titles: string) =>
+      `Marquer ${n} ${plural(n, "tâche", "tâches")} comme ${plural(n, "terminée", "terminées")} ? ${titles}.`,
+    confirmReopen: (n: number, titles: string) => `Rouvrir ${n} ${plural(n, "tâche", "tâches")} ? ${titles}.`,
+    confirmDelete: (n: number, titles: string, includesCompleted: boolean) =>
+      `Supprimer ${n} ${plural(n, "tâche", "tâches")}${includesCompleted ? " (y compris des tâches terminées)" : ""} ? ${titles}.`,
+    confirmDeleteSeries: (title: string) => `Supprimer toutes les occurrences de « ${title} », y compris les passées ?`,
+    confirmShift: (n: number, titles: string, amount: number, unit: ShiftUnit) =>
+      `Décaler ${plural(n, "l'échéance", "les échéances")} de ${n} ${plural(n, "tâche", "tâches")} de ${shiftLength(amount, unit)} ? ${titles}.`,
+    confirmUpdate: (n: number, titles: string) => `Modifier ${n} ${plural(n, "tâche", "tâches")} ? ${titles}.`,
+    askEditScope: (title: string, rule: string) =>
+      `« ${title} » se répète (${rule}). Dois-je modifier seulement cette occurrence, ou celle-ci et toutes les suivantes ?`,
+    askDeleteScope: (title: string, rule: string) =>
+      `« ${title} » se répète (${rule}). Dois-je sauter seulement cette occurrence, arrêter la série à partir d'ici (les passées restent), ou supprimer toute la série ?`,
+    askEditScopeMany: (n: number) =>
+      `${n} de ces tâches se ${plural(n, "répète", "répètent")}. La modification doit-elle s'appliquer seulement aux occurrences actuelles, ou aussi aux suivantes ?`,
+    askDeleteScopeMany: (n: number) =>
+      `${n} de ces tâches se ${plural(n, "répète", "répètent")}. Dois-je sauter seulement les occurrences actuelles, ou supprimer toute la série ?`,
+    listHeader: (n: number) => (n === 1 ? "1 tâche correspond :" : `${n} tâches correspondent :`),
+    repeatingUpdateNote: "Pour les tâches répétées, seule l'occurrence actuelle change.",
+    repeatingDeleteNote: "Les tâches répétées parmi elles ne se répéteront plus.",
+    listEmpty: "Aucune tâche ne correspond.",
+    listMore: (n: number) => `…et ${n} de plus.`,
+    completedOn: (when: string) => `terminée le ${when}`,
+    dueOn: (when: string) => `échéance le ${when}`,
+    overdueSince: (when: string) => `en retard depuis le ${when}`,
+  },
+
   settings: {
     title: "Réglages",
     preferences: "PRÉFÉRENCES NEXDO",
@@ -378,6 +514,10 @@ export const fr: Translations = {
     signingOut: "Déconnexion…",
     signOutCleanupError: "Déconnexion réussie, mais le nettoyage des données locales a rencontré un problème.",
     signOutError: "Impossible de se déconnecter. Réessayez.",
+    unsavedTasksTitle: "Certaines tâches ne sont pas encore enregistrées",
+    unsavedTasksBody: (count: number) =>
+      `${count === 1 ? "1 tâche n'a" : `${count} tâches n'ont`} pas encore été enregistrée${count === 1 ? "" : "s"} sur votre compte — vérifiez votre connexion. Si vous vous déconnectez maintenant, ${count === 1 ? "elle reste" : "elles restent"} en sécurité sur ce téléphone et ${count === 1 ? "sera enregistrée" : "seront enregistrées"} à votre prochaine connexion ici, mais n'apparaîtr${count === 1 ? "a" : "ont"} pas sur vos autres appareils d'ici là.`,
+    signOutAnyway: "Se déconnecter quand même",
 
     aiChat: "BOÎTE IA",
     autoMode: "Mode automatique",
@@ -461,6 +601,7 @@ export const fr: Translations = {
   onboarding: {
     next: "Étape suivante",
     getStarted: "Commencer",
+    haveAccount: "J'ai déjà un compte",
     stickyNotes: ["rdv dentiste ?", "examen la semaine pro", "courses", "répondre au mail"],
     headline: "Arrêtez de vous demander quoi faire ensuite.",
     body: "Videz-vous la tête. Nexdo organise tout, détecte les échéances et vous dit ce qui mérite votre attention.",
@@ -501,6 +642,9 @@ export const fr: Translations = {
     stopRecording: "Arrêter et transcrire",
     transcribing: "Transcription…",
     organize: "Organiser avec Nexdo",
+    trialUsedHeadline: "Vous avez déjà essayé l'IA de Nexdo",
+    trialUsedBody: "L'aperçu gratuit, c'est **un essai par appareil**. Créez votre compte pour garder vos tâches et continuer à vous organiser avec l'IA.",
+    trialUsedCta: "Créer mon compte",
   },
 
   onboardingAnalyzing: {

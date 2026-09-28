@@ -101,6 +101,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateStructuredJson({
+      label: "breakdown",
       systemPrompt: `${BREAKDOWN_SYSTEM_PROMPT}${languageInstruction(language)}`,
       userContent: JSON.stringify({
         task,

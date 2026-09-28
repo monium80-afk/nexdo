@@ -533,6 +533,75 @@ function extractTimeOfDay(lower: string): TimeOfDay | undefined {
   return undefined;
 }
 
+function dayStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function dayEnd(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function addDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+/** Monday of the week `date` is in — weeks run Monday to Sunday, like lib/recurrence.ts. */
+function weekStart(date: Date): Date {
+  return dayStart(addDays(date, -((date.getDay() + 6) % 7)));
+}
+
+export type DateRange = { from?: string; to?: string };
+
+/**
+ * A span of time for a filter ("due this week", "completed yesterday",
+ * "before friday"), as whole local days. Undefined when the phrase names no
+ * time at all. Like parseDatePhrase, it runs on the device, so the days are
+ * the user's own.
+ */
+export function parseDateRange(text: string, now: Date = new Date(), language?: AppLanguage): DateRange | undefined {
+  const lower = normalizeDatePhrase(text.toLowerCase().trim(), language);
+  const range = (from: Date, to: Date): DateRange => ({ from: dayStart(from).toISOString(), to: dayEnd(to).toISOString() });
+
+  const bound = lower.match(/^(before|by|until|till|up to|after|since|from|starting)\s+(.+)$/);
+  if (bound) {
+    // Already rewritten into English above.
+    const inner = parseDateRange(bound[2], now, "en");
+    if (!inner) return undefined;
+    return /^(after|since|from|starting)$/.test(bound[1]) ? { from: inner.from ?? inner.to } : { to: inner.to ?? inner.from };
+  }
+
+  const count = lower.match(new RegExp(`\\b(?:the\\s+)?(past|last|next|coming)\\s+(${COUNT_PATTERN})\\s+(day|week|month)s?\\b`));
+  if (count) {
+    const amount = toCount(count[2]) ?? 1;
+    const days = count[3] === "week" ? amount * 7 : count[3] === "month" ? amount * 30 : amount;
+    return count[1] === "past" || count[1] === "last" ? range(addDays(now, -(days - 1)), now) : range(now, addDays(now, days));
+  }
+
+  if (/\bthis week\b/.test(lower)) return range(weekStart(now), addDays(weekStart(now), 6));
+  if (/\blast week\b/.test(lower)) return range(addDays(weekStart(now), -7), addDays(weekStart(now), -1));
+  if (/\bnext week\b/.test(lower)) return range(addDays(weekStart(now), 7), addDays(weekStart(now), 13));
+  if (/\b(this |the )?weekend\b/.test(lower) && !/\bnext weekend\b/.test(lower)) {
+    const saturday = addDays(weekStart(now), 5);
+    return range(saturday, addDays(saturday, 1));
+  }
+  if (/\bnext weekend\b/.test(lower)) {
+    const saturday = addDays(weekStart(now), 12);
+    return range(saturday, addDays(saturday, 1));
+  }
+  const monthRange = (offset: number) =>
+    range(new Date(now.getFullYear(), now.getMonth() + offset, 1), new Date(now.getFullYear(), now.getMonth() + offset + 1, 0));
+  if (/\bthis month\b/.test(lower)) return monthRange(0);
+  if (/\blast month\b/.test(lower)) return monthRange(-1);
+  if (/\bnext month\b/.test(lower)) return monthRange(1);
+
+  // Anything else names a single day ("today", "yesterday", "friday", "march 5").
+  const day = parseDatePhrase(lower, now, "en");
+  if (!day) return undefined;
+  return range(new Date(day), new Date(day));
+}
+
 export function parseDatePhrase(text: string, now: Date = new Date(), language?: AppLanguage): string | undefined {
   const lower = normalizeDatePhrase(text.toLowerCase(), language);
   const time = extractTimeOfDay(lower);

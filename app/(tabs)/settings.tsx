@@ -158,6 +158,7 @@ export default function Settings() {
   const { signOut } = useClerk();
   const handleChatSignOut = useChatStore((state) => state.handleSignOut);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
+  const saveUnsyncedTasks = useTaskStore((state) => state.saveUnsyncedTasks);
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const language = useSettingsStore((state) => state.language);
@@ -238,7 +239,7 @@ export default function Settings() {
     }
   };
 
-  const handleSignOut = async () => {
+  const signOutNow = async () => {
     setIsSigningOut(true);
     setSignOutError(null);
     try {
@@ -257,6 +258,26 @@ export default function Settings() {
     } finally {
       setIsSigningOut(false);
     }
+  };
+
+  // Signing out never deletes tasks: the account keeps them for the next
+  // sign-in. This is the last moment the app can still save any change that
+  // hasn't reached the account yet, so it tries once more first. Anything
+  // still unsaved stays on this phone (useTaskStore.handleSignOut) — the
+  // question is only whether to wait for a better connection.
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    setSignOutError(null);
+    const unsaved = await saveUnsyncedTasks();
+    if (unsaved === 0) {
+      await signOutNow();
+      return;
+    }
+    setIsSigningOut(false);
+    Alert.alert(t.settings.unsavedTasksTitle, t.settings.unsavedTasksBody(unsaved), [
+      { text: t.common.cancel, style: "cancel" },
+      { text: t.settings.signOutAnyway, onPress: () => signOutNow() },
+    ]);
   };
 
   return (

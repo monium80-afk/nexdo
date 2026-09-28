@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { ContextNoteCard, type ContextNoteCardHandle } from "@/components/ContextNoteCard";
 import { GemLogo } from "@/components/GemLogo";
+import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@/components/TaskEditPanel";
 import { DeadlineChip, DeadlineDatePicker } from "@/components/TaskFormFields";
 import { colors } from "@/constants/theme";
@@ -15,8 +16,10 @@ import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
+import { describeRule, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useTaskStore } from "@/store/useTaskStore";
+import type { RecurrenceRule } from "@/types/task";
 
 // Labels live in the translations (taskDetail.postpone).
 const POSTPONE_OPTIONS = [
@@ -30,6 +33,42 @@ function computePostponeDate(currentDueDate: string | undefined, days: number, n
   const base = new Date(Math.max(parsedDueDate.getTime(), now.getTime()));
   base.setDate(base.getDate() + days);
   return base;
+}
+
+/** The picker's own shape for a saved rule, so "Change" opens on what's there. */
+function ruleToInput(rule: RecurrenceRule): RuleInput {
+  return {
+    frequency: rule.frequency,
+    interval: rule.interval,
+    weekdays: rule.weekdays,
+    monthDay: rule.monthDay,
+    endDate: rule.endDate,
+  };
+}
+
+/**
+ * Asks which occurrences a change reaches. The web build has no native alert
+ * to ask with, so there it keeps to the safe default: this occurrence only.
+ */
+function chooseScope(
+  title: string,
+  body: string,
+  options: { label: string; scope: RecurrenceScope; destructive?: boolean }[],
+  cancelLabel: string,
+  onChoose: (scope: RecurrenceScope) => void,
+) {
+  if (Platform.OS === "web") {
+    onChoose("this");
+    return;
+  }
+  Alert.alert(title, body, [
+    { text: cancelLabel, style: "cancel" },
+    ...options.map((option) => ({
+      text: option.label,
+      style: option.destructive ? ("destructive" as const) : ("default" as const),
+      onPress: () => onChoose(option.scope),
+    })),
+  ]);
 }
 
 export default function TaskDetail() {
@@ -54,6 +93,8 @@ export default function TaskDetail() {
   const [customPostponeDate, setCustomPostponeDate] = useState<Date | null>(null);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [editingSubtaskText, setEditingSubtaskText] = useState("");
+  // The repeat being edited — undefined while the picker is closed.
+  const [repeatDraft, setRepeatDraft] = useState<RuleInput | null | undefined>(undefined);
   const editPanelRef = useRef<TaskEditPanelHandle>(null);
   const noteCardRefs = useRef<(ContextNoteCardHandle | null)[]>([]);
 
@@ -93,9 +134,47 @@ export default function TaskDetail() {
     setCustomPostponeDate(null);
   };
 
+  // A repeating task asks whether later occurrences should follow — unless
+  // nothing actually changed, which there's no point asking about.
   const handleSaveEdit = (changes: TaskEditChanges) => {
-    updateTask(task.id, changes);
     setEditing(false);
+    const changed =
+      (changes.title !== undefined && changes.title !== task.title) ||
+      (changes.estimatedMinutes !== undefined && changes.estimatedMinutes !== task.estimatedMinutes) ||
+      changes.dueDate !== undefined;
+    if (!changed) return;
+    if (!task.recurrence || task.status !== "pending") {
+      updateTask(task.id, changes);
+      return;
+    }
+    chooseScope(
+      t.taskDetail.editScopeTitle,
+      t.taskDetail.editScopeBody,
+      [
+        { label: t.taskDetail.scopeThis, scope: "this" },
+        { label: t.taskDetail.scopeFuture, scope: "future" },
+      ],
+      t.common.cancel,
+      (scope) => updateTask(task.id, changes, scope),
+    );
+  };
+
+  const handleSaveRepeat = () => {
+    if (repeatDraft === undefined) return;
+    updateTask(task.id, { recurrence: repeatDraft });
+    setRepeatDraft(undefined);
+  };
+
+  const handleStopRepeating = () => {
+    const stop = () => updateTask(task.id, { recurrence: null });
+    if (Platform.OS === "web") {
+      stop();
+      return;
+    }
+    Alert.alert(t.taskDetail.stopRepeatingTitle, t.taskDetail.stopRepeatingBody, [
+      { text: t.common.cancel, style: "cancel" },
+      { text: t.taskDetail.stopRepeating, style: "destructive", onPress: stop },
+    ]);
   };
 
   const handleAddSubtask = () => {
@@ -154,6 +233,23 @@ export default function TaskDetail() {
   };
 
   const handleDelete = () => {
+    // A repeating task: skip just this one (the next takes its place), or the lot.
+    if (task.recurrence && task.status === "pending") {
+      chooseScope(
+        t.taskDetail.deleteScopeTitle,
+        t.taskDetail.deleteScopeBody,
+        [
+          { label: t.taskDetail.deleteThisOccurrence, scope: "this", destructive: true },
+          { label: t.taskDetail.deleteWholeSeries, scope: "series", destructive: true },
+        ],
+        t.common.cancel,
+        (scope) => {
+          deleteTask(task.id, scope);
+          router.back();
+        },
+      );
+      return;
+    }
     Alert.alert(t.taskDetail.deleteConfirmTitle, t.taskDetail.deleteConfirmBody, [
       { text: t.common.cancel, style: "cancel" },
       {
@@ -278,6 +374,63 @@ export default function TaskDetail() {
               </View>
             </>
           )}
+
+          <View className="gap-3 rounded-2xl border border-cream-300 bg-cream-50 p-4">
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-row items-center gap-2">
+                <Feather name="repeat" size={14} color={colors.orange[500]} />
+                <Text className="eyebrow text-ink-cream">{t.taskDetail.repeatEyebrow}</Text>
+              </View>
+              {repeatDraft === undefined ? (
+                <AnimatedPressable
+                  onPress={() => setRepeatDraft(task.recurrence ? ruleToInput(task.recurrence.rule) : null)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                >
+                  <Text className="font-grotesk-semibold text-sm text-orange-500">
+                    {task.recurrence ? t.taskDetail.editRepeat : t.taskDetail.setRepeat}
+                  </Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
+
+            {repeatDraft === undefined ? (
+              task.recurrence ? (
+                <View className="gap-1">
+                  <Text className="font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
+                    {describeRule(task.recurrence.rule, t)}
+                  </Text>
+                  {task.status === "pending" ? (
+                    <Text className="font-grotesk-regular text-xs text-ink-cream-muted" style={rtl}>
+                      {t.taskDetail.occurrenceNote}
+                    </Text>
+                  ) : null}
+                  {task.status === "pending" ? (
+                    <AnimatedPressable onPress={handleStopRepeating} hitSlop={8} className="mt-1 self-start">
+                      <Text className="font-grotesk-semibold text-sm text-overdue-500">{t.taskDetail.stopRepeating}</Text>
+                    </AnimatedPressable>
+                  ) : null}
+                </View>
+              ) : (
+                <Text className="font-grotesk-regular text-xs text-ink-cream-muted" style={rtl}>
+                  {t.taskDetail.notRepeating}
+                </Text>
+              )
+            ) : (
+              <View className="gap-3">
+                <RecurrencePicker value={repeatDraft} onChange={setRepeatDraft} dueDate={task.dueDate} />
+                <View className="flex-row items-center justify-end gap-4">
+                  <AnimatedPressable onPress={() => setRepeatDraft(undefined)} hitSlop={8} className="px-2 py-2">
+                    <Text className="font-grotesk-semibold text-sm text-ink-cream-muted">{t.common.cancel}</Text>
+                  </AnimatedPressable>
+                  <AnimatedPressable onPress={handleSaveRepeat} className="btn btn--primary flex-row gap-2 px-5 py-2.5">
+                    <Feather name="check" size={15} color={colors.cream[50]} />
+                    <Text className="font-grotesk-bold text-sm text-cream-50">{t.taskDetail.saveRepeat}</Text>
+                  </AnimatedPressable>
+                </View>
+              </View>
+            )}
+          </View>
 
           <View className="gap-3">
             <Text className="font-grotesk-medium text-sm text-ink-cream-muted">

@@ -208,6 +208,23 @@ export const en = {
     notePlaceholder: "What should the AI know about this task?",
     editNote: "Edit note",
     deleteNote: "Delete note",
+    repeatEyebrow: "REPEATS",
+    notRepeating: "This task doesn't repeat.",
+    setRepeat: "Make it repeat",
+    editRepeat: "Change",
+    saveRepeat: "Save repeat",
+    stopRepeating: "Stop repeating",
+    stopRepeatingTitle: "Stop repeating?",
+    stopRepeatingBody: "This task stays on your list as a one-off. No new occurrences will be created; past ones are kept.",
+    occurrenceNote: "Completing this occurrence schedules the next one.",
+    editScopeTitle: "Change a repeating task",
+    editScopeBody: "Apply these changes to…",
+    scopeThis: "Only this occurrence",
+    scopeFuture: "This and future ones",
+    deleteScopeTitle: "Delete a repeating task",
+    deleteScopeBody: "Skip just this occurrence (the next one takes its place), or delete every occurrence, past ones included?",
+    deleteThisOccurrence: "This occurrence",
+    deleteWholeSeries: "Whole series",
   },
 
   form: {
@@ -285,6 +302,7 @@ export const en = {
       voice: "I couldn't quite catch that recording — try again somewhere quieter, or type it instead.",
       document: "I couldn't pull any text out of that file — try a different one, or type it instead.",
     },
+    attachmentReadFailed: "Something went wrong while reading that file — please try sending it again in a moment.",
     couldntCatch: "Couldn't catch that",
     couldntTranscribe: "Couldn't transcribe",
     uploadFailedTitle: "Couldn't attach that",
@@ -370,6 +388,116 @@ export const en = {
     adviceDetail: (score: number, urgency: string) => `Priority score ${score}/100 — ${urgency}.`,
   },
 
+  /** Repeating tasks — the rule in words, and the picker on the Add form and Task Details. */
+  recurrence: {
+    everyDays: (n: number) => (n === 1 ? "Every day" : `Every ${n} days`),
+    everyWeeks: (n: number, days: string) => (n === 1 ? `Every week on ${days}` : `Every ${n} weeks on ${days}`),
+    everyMonths: (n: number, day: number) => (n === 1 ? `Every month on day ${day}` : `Every ${n} months on day ${day}`),
+    everyYears: (n: number, date: string) => (n === 1 ? `Every year on ${date}` : `Every ${n} years on ${date}`),
+    until: (label: string, date: string) => `${label}, until ${date}`,
+    title: "REPEAT",
+    frequencies: { none: "Doesn't repeat", daily: "Daily", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" },
+    every: "Every",
+    unit: (frequency: "daily" | "weekly" | "monthly" | "yearly", n: number) =>
+      ({
+        daily: plural(n, "day", "days"),
+        weekly: plural(n, "week", "weeks"),
+        monthly: plural(n, "month", "months"),
+        yearly: plural(n, "year", "years"),
+      })[frequency],
+    decrease: "Repeat less often",
+    increase: "Repeat more often",
+    onDays: "ON",
+    ends: "ENDS",
+    endsNever: "Never",
+    endsOn: "On a date",
+    summary: (label: string) => `Repeats: ${label}`,
+    firstOn: (when: string) => `First one: ${when}`,
+  },
+
+  /** What the assistant says about changes to existing tasks — written from what actually happened. */
+  ops: {
+    joinList: (items: string[]) =>
+      items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`,
+    andMore: (list: string, more: number) => `${list} and ${more} more`,
+    quote: (title: string) => `"${title}"`,
+    nextOccurrence: (when: string) => `The next one is due ${when}.`,
+    seriesEnded: "That was the last one in the series.",
+    alreadyDone: (title: string) => `"${title}" is already marked as completed, so nothing changed.`,
+    alreadyOpen: (title: string) => `"${title}" is already open, so nothing changed.`,
+    noDeadlineToMove: (title: string) => `"${title}" has no deadline to move, so I left it as it is.`,
+    invalidChange: (title: string) => `I couldn't apply that change to "${title}", so nothing changed.`,
+    nothingChanged: (title: string) => `"${title}" already looks like that — nothing changed.`,
+    reopened: (title: string) => `Reopened "${title}" — it's back on your list.`,
+    skippedOccurrence: (title: string, when?: string) =>
+      `Skipped this occurrence of "${title}".${when ? ` The next one is due ${when}.` : " That was the last one in the series."}`,
+    deletedSeries: (title: string, count: number) =>
+      `Deleted the whole "${title}" series (${count} ${plural(count, "occurrence", "occurrences")}).`,
+    endedSeries: (title: string) => `"${title}" won't repeat any more. Past occurrences are kept.`,
+    updatedCompleted: (title: string) => `Updated "${title}" — it's still marked as completed.`,
+    nowDue: (when: string) => `New deadline: ${when}.`,
+    stoppedRepeating: (title: string) => `"${title}" won't repeat any more — it's now a one-off task.`,
+    nowRepeats: (title: string, rule: string) => `"${title}" now repeats (${rule}).`,
+    completedMany: (n: number) => `Marked ${n} ${plural(n, "task", "tasks")} as done.`,
+    reopenedMany: (n: number) => `Reopened ${n} ${plural(n, "task", "tasks")}.`,
+    updatedMany: (n: number) => `Updated ${n} ${plural(n, "task", "tasks")}.`,
+    shiftedMany: (n: number, amount: number, unit: "minutes" | "hours" | "days" | "weeks" | "months") => {
+      const size = Math.abs(amount);
+      const unitLabel = {
+        minutes: plural(size, "minute", "minutes"),
+        hours: plural(size, "hour", "hours"),
+        days: plural(size, "day", "days"),
+        weeks: plural(size, "week", "weeks"),
+        months: plural(size, "month", "months"),
+      }[unit];
+      return `Moved the ${plural(n, "deadline", "deadlines")} of ${n} ${plural(n, "task", "tasks")} ${size} ${unitLabel} ${amount > 0 ? "later" : "earlier"}.`;
+    },
+    someStillCompleted: (n: number) => `${n} of them ${n === 1 ? "is" : "are"} still marked as completed.`,
+    deletedMany: (n: number) => `Deleted ${n} ${plural(n, "task", "tasks")}.`,
+    noDeadlineSkipped: (n: number) =>
+      n === 1 ? "1 task has no deadline and was left as it is." : `${n} tasks have no deadline and were left as they are.`,
+    alreadyDoneMany: (n: number) => (n === 1 ? "1 was already completed." : `${n} were already completed.`),
+    alreadyOpenMany: (n: number) => (n === 1 ? "1 was already open." : `${n} were already open.`),
+    nothingChangedMany: "Those tasks already look like that — nothing changed.",
+    notFound: "I couldn't find that task — it may have been deleted. Nothing was changed.",
+    whichDates: "I couldn't tell which dates you mean — could you put it another way? Nothing was changed.",
+    nothingMatched: "No tasks match that, so nothing was changed.",
+    someNotFound: (n: number) => `${n} ${plural(n, "task", "tasks")} couldn't be found.`,
+    confirmComplete: (n: number, titles: string) => `Mark ${n} ${plural(n, "task", "tasks")} as done? ${titles}.`,
+    confirmReopen: (n: number, titles: string) => `Reopen ${n} ${plural(n, "task", "tasks")}? ${titles}.`,
+    confirmDelete: (n: number, titles: string, includesCompleted: boolean) =>
+      `Delete ${n} ${plural(n, "task", "tasks")}${includesCompleted ? " (completed ones included)" : ""}? ${titles}.`,
+    confirmDeleteSeries: (title: string) => `Delete every occurrence of "${title}", past ones included?`,
+    confirmShift: (n: number, titles: string, amount: number, unit: "minutes" | "hours" | "days" | "weeks" | "months") => {
+      const size = Math.abs(amount);
+      const unitLabel = {
+        minutes: plural(size, "minute", "minutes"),
+        hours: plural(size, "hour", "hours"),
+        days: plural(size, "day", "days"),
+        weeks: plural(size, "week", "weeks"),
+        months: plural(size, "month", "months"),
+      }[unit];
+      return `Move the ${plural(n, "deadline", "deadlines")} of ${n} ${plural(n, "task", "tasks")} ${size} ${unitLabel} ${amount > 0 ? "later" : "earlier"}? ${titles}.`;
+    },
+    confirmUpdate: (n: number, titles: string) => `Change ${n} ${plural(n, "task", "tasks")}? ${titles}.`,
+    askEditScope: (title: string, rule: string) =>
+      `"${title}" repeats (${rule}). Should I change just this occurrence, or this one and all future ones?`,
+    askDeleteScope: (title: string, rule: string) =>
+      `"${title}" repeats (${rule}). Should I skip just this occurrence, stop the series from here on (past ones stay), or delete the whole series?`,
+    askEditScopeMany: (n: number) =>
+      `${n} of those ${plural(n, "task repeats", "tasks repeat")}. Should the change apply only to the current occurrences, or to future ones too?`,
+    askDeleteScopeMany: (n: number) =>
+      `${n} of those ${plural(n, "task repeats", "tasks repeat")}. Should I skip just the current occurrences, or delete the whole series?`,
+    listHeader: (n: number) => (n === 1 ? "1 task matches:" : `${n} tasks match:`),
+    repeatingUpdateNote: "For repeating tasks, only the current occurrence changes.",
+    repeatingDeleteNote: "Repeating tasks among them will stop repeating.",
+    listEmpty: "No tasks match that.",
+    listMore: (n: number) => `…and ${n} more.`,
+    completedOn: (when: string) => `completed ${when}`,
+    dueOn: (when: string) => `due ${when}`,
+    overdueSince: (when: string) => `overdue since ${when}`,
+  },
+
   settings: {
     title: "Settings",
     preferences: "NEXDO PREFERENCES",
@@ -379,6 +507,10 @@ export const en = {
     signingOut: "Signing out…",
     signOutCleanupError: "Signed out, but local data cleanup needs attention.",
     signOutError: "Couldn't sign out. Try again.",
+    unsavedTasksTitle: "Some tasks aren't saved yet",
+    unsavedTasksBody: (count: number) =>
+      `${count === 1 ? "1 task hasn't" : `${count} tasks haven't`} reached your account yet — check your connection. If you sign out now, ${count === 1 ? "it stays" : "they stay"} safe on this phone and ${count === 1 ? "is" : "are"} saved the next time you sign in here, but won't show on other devices until then.`,
+    signOutAnyway: "Sign out anyway",
 
     aiChat: "AI INBOX",
     autoMode: "Auto mode",
@@ -465,6 +597,7 @@ export const en = {
   onboarding: {
     next: "Next step",
     getStarted: "Get Started",
+    haveAccount: "I already have an account",
     stickyNotes: ["dentist appt?", "exam next week", "groceries", "reply to email"],
     headline: "Stop figuring out what to do next.",
     body: "Dump everything on your mind. Nexdo organizes it, detects deadlines, and tells you what deserves your attention.",
@@ -511,6 +644,10 @@ export const en = {
     stopRecording: "Stop and write it down",
     transcribing: "Writing it down…",
     organize: "Organize with Nexdo",
+    // Shown instead of the dump once this install has had its free AI run.
+    trialUsedHeadline: "You've already tried Nexdo's AI",
+    trialUsedBody: "The free preview is **one run per device**. Create your account to keep your tasks and keep organizing with AI.",
+    trialUsedCta: "Create my account",
   },
 
   /** Onboarding step 5 — the wait while the AI reads the dump. */

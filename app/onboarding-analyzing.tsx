@@ -23,6 +23,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
 import { extractTasks } from "@/lib/ai/extractTasks";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import { markTrialUsed } from "@/lib/aiTrial";
 import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
@@ -203,6 +204,10 @@ export default function OnboardingAnalyzing() {
   // decides to create out of the dump is what this flow shows.
   useEffect(() => {
     let cancelled = false;
+    // This read is the free AI run a signed-out install gets. From here on,
+    // onboarding asks for an account instead of offering it again — the server
+    // counts it too, so this is what the user sees, not what enforces it.
+    markTrialUsed();
     classifyIntent({ text: dump, now: new Date(), recentTaskIds: [], tasks: [] })
       .then((turn) => {
         if (cancelled) return;

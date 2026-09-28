@@ -17,6 +17,32 @@ const counted = (count: number, one: string, few: string, two: string) => {
 // each adjective covers "مهمة مكتملة" and "مهام مكتملة" alike.
 const SCOPE_ADJECTIVES = { completed: "مكتملة", pending: "قيد الانتظار" } as const;
 
+/** Tasks as the object of a verb ("حذفت مهمتين") — the dual changes form there. */
+const tasksObject = (count: number) => counted(count, "مهمة", "مهام", "مهمتين");
+const tasksSubject = (count: number) => counted(count, "مهمة", "مهام", "مهمتان");
+
+type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
+
+/** "بمقدار أسبوعين" — how far a bulk move pushed the deadlines. */
+const shiftLength = (amount: number, unit: ShiftUnit) => {
+  const size = Math.abs(amount);
+  const label = {
+    minutes: counted(size, "دقيقة", "دقائق", "دقيقتين"),
+    hours: counted(size, "ساعة", "ساعات", "ساعتين"),
+    days: counted(size, "يوم", "أيام", "يومين"),
+    weeks: counted(size, "أسبوع", "أسابيع", "أسبوعين"),
+    months: counted(size, "شهر", "أشهر", "شهرين"),
+  }[unit];
+  return `بمقدار ${label}`;
+};
+
+/** The unit beside the repeat stepper's number: singular for 1, dual for 2, plural for 3–10. */
+const stepperUnit = (n: number, one: string, few: string, two: string) => {
+  if (n === 2) return two;
+  const rest = n % 100;
+  return rest >= 3 && rest <= 10 ? few : one;
+};
+
 export const ar: Translations = {
   // Gregorian calendar and Western digits, so dates match the numbers the rest
   // of the app prints. Plain "ar" would give Arabic-Indic digits (٢٥), and
@@ -218,6 +244,23 @@ export const ar: Translations = {
     notePlaceholder: "ما الذي يجب أن يعرفه الذكاء الاصطناعي عن هذه المهمة؟",
     editNote: "تعديل الملاحظة",
     deleteNote: "حذف الملاحظة",
+    repeatEyebrow: "التكرار",
+    notRepeating: "هذه المهمة لا تتكرر.",
+    setRepeat: "اجعلها تتكرر",
+    editRepeat: "تغيير",
+    saveRepeat: "حفظ التكرار",
+    stopRepeating: "إيقاف التكرار",
+    stopRepeatingTitle: "إيقاف التكرار؟",
+    stopRepeatingBody: "تبقى المهمة في قائمتك كمهمة لمرة واحدة. لن تُنشأ تكرارات جديدة، وتبقى السابقة محفوظة.",
+    occurrenceNote: "إنجاز هذا التكرار يجدول التالي.",
+    editScopeTitle: "تغيير مهمة متكررة",
+    editScopeBody: "تطبيق هذه التغييرات على…",
+    scopeThis: "هذا التكرار فقط",
+    scopeFuture: "هذا وما يليه",
+    deleteScopeTitle: "حذف مهمة متكررة",
+    deleteScopeBody: "تخطي هذا التكرار فقط (يحل التالي مكانه)، أم حذف كل التكرارات بما فيها السابقة؟",
+    deleteThisOccurrence: "هذا التكرار",
+    deleteWholeSeries: "السلسلة كلها",
   },
 
   form: {
@@ -300,6 +343,7 @@ export const ar: Translations = {
       voice: "لم ألتقط هذا التسجيل جيدًا — أعد المحاولة في مكان أهدأ، أو اكتبها بدلاً من ذلك.",
       document: "لم أتمكن من استخراج أي نص من هذا الملف — جرّب ملفًا آخر، أو اكتبها بدلاً من ذلك.",
     },
+    attachmentReadFailed: "حدث خطأ أثناء قراءة هذا الملف — أعد إرساله بعد قليل.",
     couldntCatch: "لم أفهم ذلك",
     couldntTranscribe: "تعذّر التفريغ النصي",
     uploadFailedTitle: "تعذّر إرفاق ذلك",
@@ -382,6 +426,100 @@ export const ar: Translations = {
     adviceDetail: (score: number, urgency: string) => `درجة الأولوية ${score}/100 — ${urgency}.`,
   },
 
+  recurrence: {
+    everyDays: (n: number) => (n === 1 ? "كل يوم" : `كل ${counted(n, "يوم", "أيام", "يومين")}`),
+    everyWeeks: (n: number, days: string) =>
+      n === 1 ? `كل أسبوع: ${days}` : `كل ${counted(n, "أسبوع", "أسابيع", "أسبوعين")}: ${days}`,
+    everyMonths: (n: number, day: number) =>
+      n === 1 ? `كل شهر في اليوم ${day}` : `كل ${counted(n, "شهر", "أشهر", "شهرين")} في اليوم ${day}`,
+    everyYears: (n: number, date: string) =>
+      n === 1 ? `كل سنة في ${date}` : `كل ${counted(n, "سنة", "سنوات", "سنتين")} في ${date}`,
+    until: (label: string, date: string) => `${label}، حتى ${date}`,
+    title: "التكرار",
+    frequencies: { none: "لا يتكرر", daily: "يوميًا", weekly: "أسبوعيًا", monthly: "شهريًا", yearly: "سنويًا" },
+    every: "كل",
+    unit: (frequency: "daily" | "weekly" | "monthly" | "yearly", n: number) =>
+      ({
+        daily: stepperUnit(n, "يوم", "أيام", "يومين"),
+        weekly: stepperUnit(n, "أسبوع", "أسابيع", "أسبوعين"),
+        monthly: stepperUnit(n, "شهر", "أشهر", "شهرين"),
+        yearly: stepperUnit(n, "سنة", "سنوات", "سنتين"),
+      })[frequency],
+    decrease: "تكرار أقل",
+    increase: "تكرار أكثر",
+    onDays: "في أيام",
+    ends: "ينتهي",
+    endsNever: "أبدًا",
+    endsOn: "في تاريخ",
+    summary: (label: string) => `يتكرر: ${label}`,
+    firstOn: (when: string) => `الأولى: ${when}`,
+  },
+
+  ops: {
+    joinList: (items: string[]) =>
+      items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join("، ")} و${items[items.length - 1]}`,
+    andMore: (list: string, more: number) => `${list} و${counted(more, "مهمة أخرى", "مهام أخرى", "مهمتان أخريان")}`,
+    quote: (title: string) => `«${title}»`,
+    nextOccurrence: (when: string) => `موعد التالية: ${when}.`,
+    seriesEnded: "كانت هذه الأخيرة في السلسلة.",
+    alreadyDone: (title: string) => `«${title}» محددة كمنجزة بالفعل، لذا لم يتغير شيء.`,
+    alreadyOpen: (title: string) => `«${title}» مفتوحة بالفعل، لذا لم يتغير شيء.`,
+    noDeadlineToMove: (title: string) => `ليس لـ«${title}» موعد نهائي لتأجيله، لذا تركتها كما هي.`,
+    invalidChange: (title: string) => `لم أتمكن من تطبيق هذا التغيير على «${title}»، لذا لم يتغير شيء.`,
+    nothingChanged: (title: string) => `«${title}» هكذا بالفعل — لم يتغير شيء.`,
+    reopened: (title: string) => `أعدت فتح «${title}» — عادت إلى قائمتك.`,
+    skippedOccurrence: (title: string, when?: string) =>
+      `تخطيت هذا التكرار من «${title}».${when ? ` موعد التالي: ${when}.` : " كان هذا الأخير في السلسلة."}`,
+    deletedSeries: (title: string, count: number) =>
+      `حذفت سلسلة «${title}» بالكامل (${counted(count, "تكرار", "تكرارات", "تكراران")}).`,
+    endedSeries: (title: string) => `لن تتكرر «${title}» بعد الآن. التكرارات السابقة محفوظة.`,
+    updatedCompleted: (title: string) => `حدّثت «${title}» — وما زالت محددة كمنجزة.`,
+    nowDue: (when: string) => `الموعد النهائي الجديد: ${when}.`,
+    stoppedRepeating: (title: string) => `لن تتكرر «${title}» بعد الآن — أصبحت مهمة لمرة واحدة.`,
+    nowRepeats: (title: string, rule: string) => `أصبحت «${title}» تتكرر (${rule}).`,
+    completedMany: (n: number) => `حدّدت ${tasksObject(n)} كمنجزة.`,
+    reopenedMany: (n: number) => `أعدت فتح ${tasksObject(n)}.`,
+    updatedMany: (n: number) => `حدّثت ${tasksObject(n)}.`,
+    shiftedMany: (n: number, amount: number, unit: ShiftUnit) =>
+      `${amount > 0 ? "أخّرت" : "قدّمت"} المواعيد النهائية لـ${tasksObject(n)} ${shiftLength(amount, unit)}.`,
+    someStillCompleted: (n: number) =>
+      n === 1 ? "ما زالت واحدة منها محددة كمنجزة." : `ما زالت ${tasksSubject(n)} منها محددة كمنجزة.`,
+    deletedMany: (n: number) => `حذفت ${tasksObject(n)}.`,
+    noDeadlineSkipped: (n: number) =>
+      n === 1 ? "مهمة واحدة ليس لها موعد نهائي، فتركتها كما هي." : `${tasksSubject(n)} بلا موعد نهائي، فتركتها كما هي.`,
+    alreadyDoneMany: (n: number) => (n === 1 ? "واحدة كانت منجزة بالفعل." : `${tasksSubject(n)} كانت منجزة بالفعل.`),
+    alreadyOpenMany: (n: number) => (n === 1 ? "واحدة كانت مفتوحة بالفعل." : `${tasksSubject(n)} كانت مفتوحة بالفعل.`),
+    nothingChangedMany: "هذه المهام هكذا بالفعل — لم يتغير شيء.",
+    notFound: "لم أجد هذه المهمة — ربما حُذفت. لم يتغير شيء.",
+    whichDates: "لم أفهم أي تواريخ تقصد — هل يمكنك قولها بطريقة أخرى؟ لم يتغير شيء.",
+    nothingMatched: "لا توجد مهام مطابقة، لذا لم يتغير شيء.",
+    someNotFound: (n: number) => (n === 1 ? "لم أجد مهمة واحدة." : `لم أجد ${tasksObject(n)}.`),
+    confirmComplete: (n: number, titles: string) => `هل أحدد ${tasksObject(n)} كمنجزة؟ ${titles}.`,
+    confirmReopen: (n: number, titles: string) => `هل أعيد فتح ${tasksObject(n)}؟ ${titles}.`,
+    confirmDelete: (n: number, titles: string, includesCompleted: boolean) =>
+      `هل أحذف ${tasksObject(n)}${includesCompleted ? " (بما فيها المنجزة)" : ""}؟ ${titles}.`,
+    confirmDeleteSeries: (title: string) => `هل أحذف كل تكرارات «${title}»، بما فيها السابقة؟`,
+    confirmShift: (n: number, titles: string, amount: number, unit: ShiftUnit) =>
+      `هل ${amount > 0 ? "أؤخّر" : "أقدّم"} المواعيد النهائية لـ${tasksObject(n)} ${shiftLength(amount, unit)}؟ ${titles}.`,
+    confirmUpdate: (n: number, titles: string) => `هل أغيّر ${tasksObject(n)}؟ ${titles}.`,
+    askEditScope: (title: string, rule: string) =>
+      `«${title}» تتكرر (${rule}). هل أغيّر هذا التكرار فقط، أم هذا وكل ما يليه؟`,
+    askDeleteScope: (title: string, rule: string) =>
+      `«${title}» تتكرر (${rule}). هل أتخطى هذا التكرار فقط، أم أوقف السلسلة من هنا (مع إبقاء السابقة)، أم أحذف السلسلة كلها؟`,
+    askEditScopeMany: (n: number) =>
+      `${tasksSubject(n)} من هذه تتكرر. هل يُطبَّق التغيير على التكرارات الحالية فقط، أم على التالية أيضًا؟`,
+    askDeleteScopeMany: (n: number) =>
+      `${tasksSubject(n)} من هذه تتكرر. هل أتخطى التكرارات الحالية فقط، أم أحذف السلسلة كلها؟`,
+    listHeader: (n: number) => (n === 1 ? "مهمة واحدة مطابقة:" : `${tasksSubject(n)} مطابقة:`),
+    repeatingUpdateNote: "في المهام المتكررة، يتغير التكرار الحالي فقط.",
+    repeatingDeleteNote: "المهام المتكررة بينها ستتوقف عن التكرار.",
+    listEmpty: "لا توجد مهام مطابقة.",
+    listMore: (n: number) => `…و${counted(n, "مهمة أخرى", "مهام أخرى", "مهمتان أخريان")}.`,
+    completedOn: (when: string) => `أُنجزت في ${when}`,
+    dueOn: (when: string) => `موعدها ${when}`,
+    overdueSince: (when: string) => `متأخرة منذ ${when}`,
+  },
+
   settings: {
     title: "الإعدادات",
     preferences: "تفضيلات نكسدو",
@@ -391,6 +529,10 @@ export const ar: Translations = {
     signingOut: "جارٍ تسجيل الخروج…",
     signOutCleanupError: "تم تسجيل الخروج، لكن تنظيف البيانات المحلية يحتاج إلى مراجعة.",
     signOutError: "تعذّر تسجيل الخروج. أعد المحاولة.",
+    unsavedTasksTitle: "بعض المهام لم تُحفظ بعد",
+    unsavedTasksBody: (count: number) =>
+      `${count === 1 ? "مهمة واحدة لم تصل" : `${count} مهام لم تصل`} إلى حسابك بعد — تحقّق من اتصالك. إذا سجّلت الخروج الآن فستبقى آمنة على هذا الهاتف وتُحفظ عند تسجيل دخولك التالي هنا، لكنها لن تظهر على أجهزتك الأخرى حتى ذلك الحين.`,
+    signOutAnyway: "تسجيل الخروج على أي حال",
 
     aiChat: "صندوق الذكاء الاصطناعي",
     autoMode: "الوضع التلقائي",
@@ -473,6 +615,7 @@ export const ar: Translations = {
   onboarding: {
     next: "الخطوة التالية",
     getStarted: "لنبدأ",
+    haveAccount: "لدي حساب بالفعل",
     stickyNotes: ["موعد طبيب الأسنان؟", "امتحان الأسبوع القادم", "التسوّق", "الرد على البريد"],
     headline: "كفى حيرة بشأن ما تفعله تاليًا.",
     body: "أفرغ كل ما يشغل بالك. ينظّمه نكسدو ويكتشف المواعيد النهائية ويخبرك بما يستحق انتباهك.",
@@ -513,6 +656,9 @@ export const ar: Translations = {
     stopRecording: "أوقف وفرّغ الكلام",
     transcribing: "جارٍ التفريغ…",
     organize: "نظّمها مع نكسدو",
+    trialUsedHeadline: "لقد جرّبت الذكاء الاصطناعي في نكسدو من قبل",
+    trialUsedBody: "التجربة المجانية **مرة واحدة لكل جهاز**. أنشئ حسابك لتحتفظ بمهامك وتواصل التنظيم بالذكاء الاصطناعي.",
+    trialUsedCta: "إنشاء حسابي",
   },
 
   onboardingAnalyzing: {

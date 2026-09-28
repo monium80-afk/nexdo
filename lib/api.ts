@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { getTrialId } from "@/lib/aiTrial";
+
 // Expo Router API routes (app/api/**/+api.ts) are served by the same Metro
 // dev server as the app. On web that's same-origin, so a relative fetch
 // works. On native there's no "origin" to resolve against, so we build an
@@ -28,7 +30,10 @@ export function setApiTokenGetter(fn: () => Promise<string | null>) {
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = getClerkToken ? await getClerkToken() : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (token) return { Authorization: `Bearer ${token}` };
+  // Signed out, the only AI anyone gets is onboarding's one free run, which
+  // the server counts against this install's trial id.
+  return { "X-Nexdo-Trial": await getTrialId() };
 }
 
 export async function apiPost<T>(
