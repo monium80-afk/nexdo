@@ -4,7 +4,7 @@ import { Image, ScrollView, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { isImageAttachment } from "@/lib/chatAttachments";
 import type { ChatAttachment } from "@/types/chat";
@@ -19,6 +19,7 @@ type AttachmentPreviewRowProps = {
 };
 
 function RemoveButton({ onPress, inset }: { onPress: () => void; inset: boolean }) {
+  const colors = useColors();
   const t = useTranslation();
   return (
     <AnimatedPressable
@@ -31,12 +32,13 @@ function RemoveButton({ onPress, inset }: { onPress: () => void; inset: boolean 
       style={inset ? { position: "absolute", top: 4, right: 4 } : undefined}
       className="h-6 w-6 items-center justify-center rounded-full bg-charcoal-900/80"
     >
-      <Feather name="x" size={13} color={colors.cream[50]} />
+      <Feather name="x" size={13} color={colors.onAccent} />
     </AnimatedPressable>
   );
 }
 
 export function AttachmentPreviewRow({ attachments, onRemove }: AttachmentPreviewRowProps) {
+  const colors = useColors();
   const t = useTranslation();
   // The photo being looked at full screen, if any — a thumbnail this small
   // shows little more than "there's a picture here".

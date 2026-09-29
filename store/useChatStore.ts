@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { composeAttachmentMessage } from "@/lib/ai/attachmentMessage";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
+import { createCandidateId } from "@/lib/ai/extractTasks";
 import { extractAttachmentsText } from "@/lib/ai/media";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import { isImageAttachment } from "@/lib/chatAttachments";
@@ -80,11 +81,14 @@ type ChatStore = {
   seedMessage: (text: string, relatedTaskId?: string) => void;
   updateMessageAttachments: (messageId: string, attachments: ChatAttachment[]) => void;
   updateMessageText: (messageId: string, text: string) => void;
-  updatePendingDraft: (actionIndex: number, draftIndex: number, patch: Partial<ExtractedTaskDraft>) => void;
+  /** Edits one preview card's draft, found by its candidate id. */
+  updatePendingDraft: (candidateId: string, patch: Partial<ExtractedTaskDraft>) => void;
   confirmPendingActions: () => void;
-  confirmPendingDraft: (actionIndex: number, draftIndex: number) => void;
-  confirmAllPendingDrafts: () => void;
-  dismissPendingDraft: (actionIndex: number, draftIndex: number) => void;
+  /** "Add Task" on one card: adds that card's task only — once, however often it's tapped. */
+  confirmPendingDraft: (candidateId: string) => Promise<void>;
+  /** "Add all": every card with a title and a length, each once. */
+  confirmAllPendingDrafts: () => Promise<void>;
+  dismissPendingDraft: (candidateId: string) => void;
   cancelPendingActions: () => void;
   undoLastAction: () => void;
   clearRedirectToNext: () => void;
@@ -131,12 +135,48 @@ function snapshotBefore(action: StructuredAction, tasks: Task[]): { taskId: stri
 // message is written from what the change actually did.
 const MODEL_REPLY_TYPES: StructuredAction["type"][] = ["CREATE_TASK", "BREAKDOWN_TASK", "ADD_TASK_CONTEXT", "SKIP_TASK", "REDIRECT_NEXT"];
 
+/** Every preview card gets an id it keeps for its whole life, whichever path made its draft. */
+function withCandidateIds(action: StructuredAction): StructuredAction {
+  if (action.type !== "CREATE_TASK") return action;
+  return {
+    ...action,
+    drafts: action.drafts.map((draft) => (draft.candidateId ? draft : { ...draft, candidateId: createCandidateId() })),
+  };
+}
+
+/** A card that can be saved as it stands: it has a title and a length. */
+function isValidDraft(draft: ExtractedTaskDraft): boolean {
+  return draft.title.trim().length > 0 && Number.isFinite(draft.estimatedMinutes) && draft.estimatedMinutes > 0;
+}
+
+/**
+ * The reply for new tasks, once the database has answered: "Added …" only
+ * when the account really has them; otherwise it says they're on the phone
+ * and still being saved (they stay queued in useTaskStore's `unsynced`).
+ */
+async function savedReply(message: string, taskIds: string[]): Promise<string> {
+  if (taskIds.length === 0) return message;
+  const saved = await useTaskStore.getState().confirmSaved(taskIds);
+  return saved ? message : `${message} ${translate().assistant.notSavedYet}`;
+}
+
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => {
       const pushMessage = (message: ChatMessage) => {
         set((state) => ({ messages: [...state.messages, message] }));
         syncUpsert(message, get().syncUserId);
+      };
+
+      /** Takes these cards out of the queue, and any create action left with none. */
+      const removeDrafts = (candidateIds: Set<string>) => {
+        set((state) => ({
+          pendingActions: state.pendingActions.flatMap((item) => {
+            if (item.action.type !== "CREATE_TASK") return [item];
+            const drafts = item.action.drafts.filter((draft) => !candidateIds.has(draft.candidateId ?? ""));
+            return drafts.length > 0 ? [{ ...item, action: { ...item.action, drafts } }] : [];
+          }),
+        }));
       };
 
       const rememberTask = (taskId?: string) => {
@@ -163,7 +203,7 @@ export const useChatStore = create<ChatStore>()(
 
       // Applies one action, and — unless it's a pure read/route — records
       // enough to undo it later as this turn's most recent mutation.
-      const executeAction = (action: StructuredAction): { message: string; taskId?: string } => {
+      const executeAction = (action: StructuredAction): { message: string; taskId?: string; taskIds?: string[] } => {
         if (action.type === "REDIRECT_NEXT") {
           set({ redirectToNext: { minutes: action.availableMinutes } });
           return useTaskStore.getState().applyStructuredAction(action);
@@ -183,7 +223,7 @@ export const useChatStore = create<ChatStore>()(
       // ask before going ahead. Everything that needs a yes is queued behind
       // one Yes/No; the rest applies now. The reply is assembled in order —
       // the model's words for answers and previews, the app's for changes.
-      const handleClassifiedActions = (actions: StructuredAction[], replies: (string | null)[]) => {
+      const handleClassifiedActions = async (actions: StructuredAction[], replies: (string | null)[]) => {
         const t = translate();
         const now = new Date();
         // Auto mode (Settings) skips the preview for adding and updating
@@ -192,15 +232,17 @@ export const useChatStore = create<ChatStore>()(
         const autoMode = useSettingsStore.getState().aiAutoMode;
         const parts: string[] = [];
         const toConfirm: PendingAction[] = [];
+        const createdIds: string[] = [];
         let lastTaskId: string | undefined;
 
         const run = (action: StructuredAction, modelReply: string | null) => {
           const result = executeAction(action);
           parts.push(modelReply && MODEL_REPLY_TYPES.includes(action.type) ? modelReply : result.message);
           if (result.taskId) lastTaskId = result.taskId;
+          if (action.type === "CREATE_TASK") createdIds.push(...(result.taskIds ?? []));
         };
 
-        actions.forEach((action, index) => {
+        actions.map(withCandidateIds).forEach((action, index) => {
           const modelReply = replies[index] ?? null;
 
           if (action.type === "OPERATE") {
@@ -253,7 +295,10 @@ export const useChatStore = create<ChatStore>()(
             }
             const label = modelReply ?? confirmationPrompt(action);
             toConfirm.push({ action, label });
-            parts.push(label);
+            // New tasks are previewed by their cards, under a "Found N tasks"
+            // line the chat screen draws — no message goes into the thread.
+            // The model's reply would read "Added …" before anything is added.
+            if (action.type === "BREAKDOWN_TASK") parts.push(label);
             return;
           }
 
@@ -261,8 +306,13 @@ export const useChatStore = create<ChatStore>()(
         });
 
         if (toConfirm.length > 0) set({ pendingActions: toConfirm });
+        // Only new tasks to preview: the cards say it all.
+        if (parts.length === 0 && toConfirm.length > 0) {
+          set({ isAiTyping: false });
+          return;
+        }
         const separator = parts.some((part) => part.includes("\n")) ? "\n\n" : " ";
-        respondWith(parts.join(separator).trim() || t.assistant.done, lastTaskId);
+        respondWith(await savedReply(parts.join(separator).trim() || t.assistant.done, createdIds), lastTaskId);
       };
 
       return {
@@ -422,7 +472,7 @@ export const useChatStore = create<ChatStore>()(
             });
 
             if (generation !== signOutGeneration) return; // signed out / reset mid-request
-            handleClassifiedActions(actions, replies);
+            await handleClassifiedActions(actions, replies);
           })().catch((error) => {
             // Nothing above is expected to reject — classifyIntent and
             // extractAttachmentsText both absorb their own failures — but this
@@ -449,32 +499,36 @@ export const useChatStore = create<ChatStore>()(
 
         // "Edit details" on a TaskConfirmationCard writes straight back into
         // the queued draft, so confirming adds exactly what's on screen.
-        updatePendingDraft: (actionIndex, draftIndex, patch) => {
+        updatePendingDraft: (candidateId, patch) => {
           set((state) => ({
-            pendingActions: state.pendingActions.map((pending, index) => {
-              if (index !== actionIndex || pending.action.type !== "CREATE_TASK") return pending;
+            pendingActions: state.pendingActions.map((pending) => {
+              if (pending.action.type !== "CREATE_TASK") return pending;
               return {
                 ...pending,
                 action: {
                   ...pending.action,
-                  drafts: pending.action.drafts.map((draft, i) => (i === draftIndex ? { ...draft, ...patch } : draft)),
+                  drafts: pending.action.drafts.map((draft) =>
+                    draft.candidateId === candidateId ? { ...draft, ...patch, candidateId } : draft,
+                  ),
                 },
               };
             }),
           }));
         },
 
-        confirmPendingActions: () => {
+        confirmPendingActions: async () => {
           const { pendingActions } = get();
           if (pendingActions.length === 0) return;
           set({ pendingActions: [] });
           let lastTaskId: string | undefined;
+          const createdIds: string[] = [];
           // Several changes confirmed at once are undone together.
           const undo: { taskId: string; before: Task | null }[] = [];
           const messages = pendingActions.map(({ action }) => {
             set({ lastUndo: null });
             const result = executeAction(action);
             if (result.taskId) lastTaskId = result.taskId;
+            if (action.type === "CREATE_TASK") createdIds.push(...(result.taskIds ?? []));
             undo.push(...(get().lastUndo?.snapshots ?? []));
             return result.message;
           });
@@ -489,53 +543,45 @@ export const useChatStore = create<ChatStore>()(
                 ? { snapshots: [...firstSnapshots].map(([taskId, before]) => ({ taskId, before })) }
                 : null,
           });
-          respondWith(messages.join(" "), lastTaskId);
+          respondWith(await savedReply(messages.join(" "), createdIds), lastTaskId);
         },
 
         // "Add Task" on one card adds only that card's draft — the other
-        // drafts stay queued so they can still be added or dismissed.
-        confirmPendingDraft: (actionIndex, draftIndex) => {
-          const pending = get().pendingActions[actionIndex];
-          if (!pending || pending.action.type !== "CREATE_TASK") return;
-          const draft = pending.action.drafts[draftIndex];
-          if (!draft) return;
-
-          const remainingDrafts = pending.action.drafts.filter((_, i) => i !== draftIndex);
-          set((state) => ({
-            pendingActions: state.pendingActions.flatMap((item, index) => {
-              if (index !== actionIndex || item.action.type !== "CREATE_TASK") return [item];
-              return remainingDrafts.length > 0 ? [{ ...item, action: { ...item.action, drafts: remainingDrafts } }] : [];
-            }),
-          }));
+        // drafts stay queued so they can still be added or dismissed. Found by
+        // its candidate id, not its place in the list: a second tap finds
+        // nothing (the card is already gone) rather than the next card along,
+        // and the task's id comes from the same candidate id, so even a
+        // replayed add lands on the one task.
+        confirmPendingDraft: async (candidateId) => {
+          const draft = get()
+            .pendingActions.flatMap((pending) => (pending.action.type === "CREATE_TASK" ? pending.action.drafts : []))
+            .find((entry) => entry.candidateId === candidateId);
+          if (!draft || !isValidDraft(draft)) return;
+          removeDrafts(new Set([candidateId]));
 
           const result = executeAction({ type: "CREATE_TASK", drafts: [draft], confirmationTier: "confirm-required" });
-          respondWith(result.message, result.taskId);
+          respondWith(await savedReply(result.message, result.taskIds ?? []), result.taskId);
         },
 
-        // "Add all tasks" — every queued draft at once. Any non-task action
-        // in the same turn (e.g. a bulk delete) keeps its own Yes/Cancel.
-        confirmAllPendingDrafts: () => {
-          const { pendingActions } = get();
-          const drafts = pendingActions.flatMap((pending) =>
-            pending.action.type === "CREATE_TASK" ? pending.action.drafts : [],
-          );
+        // "Add all tasks" — every queued card that can be saved as it stands,
+        // each once. Any non-task action in the same turn (e.g. a bulk
+        // delete) keeps its own Yes/Cancel, and a card still missing a title
+        // stays to be fixed.
+        confirmAllPendingDrafts: async () => {
+          const drafts = get()
+            .pendingActions.flatMap((pending) => (pending.action.type === "CREATE_TASK" ? pending.action.drafts : []))
+            .filter(isValidDraft);
           if (drafts.length === 0) return;
-          set({ pendingActions: pendingActions.filter((pending) => pending.action.type !== "CREATE_TASK") });
+          removeDrafts(new Set(drafts.map((draft) => draft.candidateId!)));
 
           const result = executeAction({ type: "CREATE_TASK", drafts, confirmationTier: "confirm-required" });
-          respondWith(result.message, result.taskId);
+          respondWith(await savedReply(result.message, result.taskIds ?? []), result.taskId);
         },
 
         // "Cancel" on one card drops only that card's draft — the other
         // drafts stay queued.
-        dismissPendingDraft: (actionIndex, draftIndex) => {
-          set((state) => ({
-            pendingActions: state.pendingActions.flatMap((item, index) => {
-              if (index !== actionIndex || item.action.type !== "CREATE_TASK") return [item];
-              const remainingDrafts = item.action.drafts.filter((_, i) => i !== draftIndex);
-              return remainingDrafts.length > 0 ? [{ ...item, action: { ...item.action, drafts: remainingDrafts } }] : [];
-            }),
-          }));
+        dismissPendingDraft: (candidateId) => {
+          removeDrafts(new Set([candidateId]));
         },
 
         cancelPendingActions: () => {

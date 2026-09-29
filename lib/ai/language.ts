@@ -9,6 +9,11 @@ const LANGUAGE_NAMES: Record<AppLanguage, string> = {
   de: "German",
 };
 
+/** "French", "Arabic" … — for prompts, which are written in English. */
+export function languageName(language: AppLanguage): string {
+  return LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES.en;
+}
+
 // Matches how the interface copy speaks to the user. Spanish and German apps
 // say "tú" / "du" — "usted" and "Sie" read as stiff there — so they're the
 // exceptions to the polite form.

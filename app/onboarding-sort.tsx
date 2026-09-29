@@ -20,7 +20,8 @@ import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
+import { lightColors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -82,6 +83,7 @@ function taskTravel(progress: number, lead: number) {
 
 /** The warm haze behind the scatter — the chaos the app clears. */
 function MessGlow() {
+  const colors = useColors();
   return (
     <Svg style={StyleSheet.absoluteFill}>
       <Defs>
@@ -169,6 +171,7 @@ function PlanTask({ task, progress }: { task: (typeof TASKS)[number]; progress: 
 
 export default function OnboardingSort() {
   const t = useTranslation();
+  const colors = useColors();
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -305,8 +308,8 @@ export default function OnboardingSort() {
                   className="items-center justify-center gap-[3px] rounded-full border-[3px] border-cream-50 bg-orange-500"
                   style={[{ height: GRIP_SIZE, width: GRIP_SIZE }, styles.gripGlow]}
                 >
-                  <View className="h-[2px] w-3 rounded-full bg-cream-50" />
-                  <View className="h-[2px] w-3 rounded-full bg-cream-50" />
+                  <View className="h-[2px] w-3 rounded-full bg-on-accent" />
+                  <View className="h-[2px] w-3 rounded-full bg-on-accent" />
                 </View>
               </View>
             </Animated.View>
@@ -317,47 +320,48 @@ export default function OnboardingSort() {
   );
 }
 
+// Fixed, not themed: a shadow stays dark, and the glows are the one orange both themes share.
 const styles = StyleSheet.create({
   cardShadow: Platform.select({
     ios: {
-      shadowColor: colors.ink.cream,
+      shadowColor: lightColors.ink.cream,
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.1,
       shadowRadius: 20,
     },
-    android: { shadowColor: colors.ink.cream, elevation: 6 },
+    android: { shadowColor: lightColors.ink.cream, elevation: 6 },
     default: {},
   }),
   filterGlow: Platform.select({
     ios: {
-      shadowColor: colors.orange[500],
+      shadowColor: lightColors.orange[500],
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.7,
       shadowRadius: 10,
     },
-    android: { shadowColor: colors.orange[500], elevation: 8 },
+    android: { shadowColor: lightColors.orange[500], elevation: 8 },
     default: {},
   }),
   // Lifted off the line it sits on, so the logo reads as sitting *in* the
   // filter rather than being another dot on it.
   filterBadge: Platform.select({
     ios: {
-      shadowColor: colors.ink.cream,
+      shadowColor: lightColors.ink.cream,
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.16,
       shadowRadius: 6,
     },
-    android: { shadowColor: colors.ink.cream, elevation: 10 },
+    android: { shadowColor: lightColors.ink.cream, elevation: 10 },
     default: {},
   }),
   gripGlow: Platform.select({
     ios: {
-      shadowColor: colors.orange[500],
+      shadowColor: lightColors.orange[500],
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.55,
       shadowRadius: 12,
     },
-    android: { shadowColor: colors.orange[500], elevation: 10 },
+    android: { shadowColor: lightColors.orange[500], elevation: 10 },
     default: {},
   }),
 });

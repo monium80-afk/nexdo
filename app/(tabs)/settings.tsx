@@ -2,30 +2,30 @@ import { useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
+import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useState, type ReactNode } from "react";
-import { Alert, Linking, Platform, ScrollView, Switch, Text, View } from "react-native";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AccountSheet } from "@/components/AccountSheet";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { Chip } from "@/components/Chip";
 import { ProfileCard } from "@/components/ProfileCard";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { SUPPORT_LINKS } from "@/constants/support";
-import { colors } from "@/constants/theme";
+import { MOTION } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { requestNotificationPermission } from "@/lib/notifications";
+import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
+import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
-import type { AppLanguage, ThemePreference } from "@/types/settings";
-
-const THEME_OPTIONS: { value: ThemePreference; icon: keyof typeof Feather.glyphMap }[] = [
-  { value: "light", icon: "sun" },
-  { value: "dark", icon: "moon" },
-  { value: "system", icon: "smartphone" },
-];
+import type { AppLanguage } from "@/types/settings";
 
 // Each language is listed in its own name, so it's recognizable to someone who reads it.
 const LANGUAGE_OPTIONS: { value: AppLanguage; label: string }[] = [
@@ -50,12 +50,12 @@ function dateToTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-/** An eyebrow plus whatever cards the section holds. */
+/** A muted eyebrow plus whatever cards the section holds — the Tasks page's sheet title over its cards. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const rtl = useRtlText();
   return (
     <View className="gap-3">
-      <Text className="eyebrow text-ink-charcoal-muted" style={rtl}>
+      <Text className="eyebrow text-ink-cream-muted" style={rtl}>
         {title}
       </Text>
       {children}
@@ -63,8 +63,58 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** The group card every section's rows sit in — the task list's card. */
+function Group({ children }: { children: ReactNode }) {
+  return <View className="card card--cream-soft gap-4 p-[16px]">{children}</View>;
+}
+
 function Divider() {
-  return <View className="h-px bg-white/10" />;
+  return <View className="h-px bg-cream-200" />;
+}
+
+function ToggleControl({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (next: boolean) => void }) {
+  const colors = useColors();
+  const progress = useSharedValue(value ? 1 : 0);
+  const reduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    progress.value = withTiming(value ? 1 : 0, {
+      duration: reduceMotion ? 0 : MOTION.duration.standard,
+      easing: MOTION.easing.standard,
+    });
+  }, [progress, reduceMotion, value]);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], [colors.cream[300], colors.orange[500]]),
+  }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: progress.value * 20 }],
+  }));
+
+  const toggle = () => {
+    const next = !value;
+    // eslint-disable-next-line react-hooks/immutability
+    progress.value = withTiming(next ? 1 : 0, {
+      duration: reduceMotion ? 0 : MOTION.duration.standard,
+      easing: MOTION.easing.standard,
+    });
+    onValueChange(next);
+  };
+
+  return (
+    <Pressable
+      onPress={toggle}
+      hitSlop={6}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value }}
+      className="h-10 items-center justify-center"
+    >
+      <Animated.View className="h-7 w-12 justify-center rounded-full px-[3px]" style={trackStyle}>
+        <Animated.View className="h-[22px] w-[22px] rounded-full" style={[{ backgroundColor: colors.onAccent }, thumbStyle]} />
+      </Animated.View>
+    </Pressable>
+  );
 }
 
 /** Label + explanation on the left, a switch on the right. */
@@ -83,21 +133,14 @@ function ToggleRow({
   return (
     <View className="flex-row items-center gap-3">
       <View className="flex-1 gap-1">
-        <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
+        <Text className="font-grotesk-semibold text-base text-ink-cream" style={rtl}>
           {label}
         </Text>
-        <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted" style={rtl}>
+        <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
           {body}
         </Text>
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: colors.charcoal[600], true: colors.orange[500] }}
-        thumbColor={colors.cream[50]}
-        ios_backgroundColor={colors.charcoal[600]}
-        accessibilityLabel={label}
-      />
+      <ToggleControl label={label} value={value} onValueChange={onValueChange} />
     </View>
   );
 }
@@ -118,59 +161,69 @@ function ActionRow({
   disabled?: boolean;
   onPress: () => void;
 }) {
+  const colors = useColors();
   const rtl = useRtlText();
   return (
     <AnimatedPressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      className="flex-row items-center gap-3"
-      style={disabled ? { opacity: 0.6 } : undefined}
+      className={`flex-row items-center gap-3 ${disabled ? "opacity-40" : ""}`}
     >
-      <Feather name={icon} size={18} color={destructive ? colors.overdue[500] : colors.ink.charcoal} />
+      <Feather name={icon} size={18} color={destructive ? colors.overdue[500] : colors.ink.creamMuted} />
       <View className="flex-1 gap-1">
         <Text
           className={
             destructive
               ? "font-grotesk-semibold text-base text-overdue-500"
-              : "font-grotesk-semibold text-base text-ink-charcoal"
+              : "font-grotesk-semibold text-base text-ink-cream"
           }
           style={rtl}
         >
           {label}
         </Text>
         {body ? (
-          <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted" style={rtl}>
+          <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
             {body}
           </Text>
         ) : null}
       </View>
       {/* A chevron reads as "this opens something" — wrong on a row that
           destroys data, and those rows say what they do already. */}
-      {destructive ? null : <Feather name="chevron-right" size={18} color={colors.ink.charcoalMuted} />}
+      {destructive ? null : <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />}
     </AnimatedPressable>
   );
 }
 
 export default function Settings() {
+  const colors = useColors();
+  const scheme = useThemeScheme();
   const t = useTranslation();
   const rtl = useRtlText();
   const { signOut } = useClerk();
   const handleChatSignOut = useChatStore((state) => state.handleSignOut);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
   const saveUnsyncedTasks = useTaskStore((state) => state.saveUnsyncedTasks);
-  const theme = useSettingsStore((state) => state.theme);
-  const setTheme = useSettingsStore((state) => state.setTheme);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
   const aiAutoMode = useSettingsStore((state) => state.aiAutoMode);
   const setAiAutoMode = useSettingsStore((state) => state.setAiAutoMode);
+  const voiceAddButton = useSettingsStore((state) => state.voiceAddButton);
+  const setVoiceAddButton = useSettingsStore((state) => state.setVoiceAddButton);
   const dailyNudgeEnabled = useSettingsStore((state) => state.dailyNudgeEnabled);
   const setDailyNudgeEnabled = useSettingsStore((state) => state.setDailyNudgeEnabled);
   const dailyNudgeTime = useSettingsStore((state) => state.dailyNudgeTime);
   const setDailyNudgeTime = useSettingsStore((state) => state.setDailyNudgeTime);
   const overdueAlertsEnabled = useSettingsStore((state) => state.overdueAlertsEnabled);
   const setOverdueAlertsEnabled = useSettingsStore((state) => state.setOverdueAlertsEnabled);
+  const deadlineRemindersEnabled = useSettingsStore((state) => state.deadlineRemindersEnabled);
+  const setDeadlineRemindersEnabled = useSettingsStore((state) => state.setDeadlineRemindersEnabled);
+  const dayReminderTime = useSettingsStore((state) => state.dayReminderTime);
+  const setDayReminderTime = useSettingsStore((state) => state.setDayReminderTime);
+  const reminderOffsets = useSettingsStore((state) => state.reminderOffsets);
+  const toggleReminderOffset = useSettingsStore((state) => state.toggleReminderOffset);
+  const importantExtraReminder = useSettingsStore((state) => state.importantExtraReminder);
+  const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   const clearChatHistory = useChatStore((state) => state.clearHistory);
 
   const [accountOpen, setAccountOpen] = useState(false);
@@ -178,8 +231,28 @@ export default function Settings() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [historyStatus, setHistoryStatus] = useState<string | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission>("undetermined");
+
+  // Checked again whenever Settings comes into view — the user may have just
+  // changed it in the phone's own settings.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getNotificationPermission().then((value) => {
+        if (active) setPermission(value);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const nudgeTimeLabel = timeToDate(dailyNudgeTime).toLocaleTimeString(t.locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const reminderTimeLabel = timeToDate(dayReminderTime).toLocaleTimeString(t.locale, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -195,21 +268,50 @@ export default function Settings() {
     setDailyNudgeTime(dateToTime(selected));
   };
 
-  const handleOverdueAlertsChange = async (enabled: boolean) => {
-    if (!enabled) {
-      setOverdueAlertsEnabled(false);
-      return;
-    }
-    // Asked right as the user turns alerts on, while it's obvious why Nexdo
-    // wants to notify them. The switch stays off until the phone says yes.
-    if (await requestNotificationPermission()) {
-      setOverdueAlertsEnabled(true);
+  // Asked right as the user turns a kind of notification on, while it's
+  // obvious why Nexdo wants to notify them. The switch stays off until the
+  // phone says yes; if the phone won't ask again, the way to its settings is shown.
+  const enableWithPermission = async (enable: () => void) => {
+    const granted = await requestNotificationPermission();
+    setPermission(await getNotificationPermission());
+    if (granted) {
+      enable();
       return;
     }
     Alert.alert(t.settings.notificationsBlockedTitle, t.settings.notificationsBlockedBody, [
       { text: t.common.cancel, style: "cancel" },
       { text: t.settings.openPhoneSettings, onPress: () => Linking.openSettings() },
     ]);
+  };
+
+  const handleOverdueAlertsChange = async (enabled: boolean) => {
+    if (!enabled) {
+      setOverdueAlertsEnabled(false);
+      return;
+    }
+    await enableWithPermission(() => setOverdueAlertsEnabled(true));
+  };
+
+  const handleDeadlineRemindersChange = async (enabled: boolean) => {
+    if (!enabled) {
+      setDeadlineRemindersEnabled(false);
+      return;
+    }
+    await enableWithPermission(() => setDeadlineRemindersEnabled(true));
+  };
+
+  const handleDailyNudgeChange = async (enabled: boolean) => {
+    if (!enabled) {
+      setDailyNudgeEnabled(false);
+      return;
+    }
+    await enableWithPermission(() => setDailyNudgeEnabled(true));
+  };
+
+  const handleReminderTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === "android") setShowReminderTimePicker(false);
+    if (event.type === "dismissed" || !selected) return;
+    setDayReminderTime(dateToTime(selected));
   };
 
   const handleClearHistory = () => {
@@ -282,225 +384,245 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScrollView
-        style={{ backgroundColor: colors.charcoal[900] }}
-        contentContainerStyle={{ gap: 24, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text className="text-title text-ink-charcoal" style={rtl}>
-          {t.settings.title}
-        </Text>
+      <ScreenHeader title={t.settings.title} />
 
-        <Section title={t.settings.account}>
-          <ProfileCard onPress={() => setAccountOpen(true)} />
+      <View className="screen-body">
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View className="gap-6 px-6 pt-4">
+            <Section title={t.settings.account}>
+              <ProfileCard onPress={() => setAccountOpen(true)} />
 
-          <View className="card card--charcoal p-4">
-            <AnimatedPressable
-              onPress={handleSignOut}
-              disabled={isSigningOut}
-              accessibilityRole="button"
-              className="flex-row items-center gap-3"
-              style={isSigningOut ? { opacity: 0.6 } : undefined}
-            >
-              <Feather name="log-out" size={18} color={colors.overdue[500]} />
-              <Text className="flex-1 font-grotesk-semibold text-base text-overdue-500" style={rtl}>
-                {isSigningOut ? t.settings.signingOut : t.settings.signOut}
-              </Text>
-            </AnimatedPressable>
-          </View>
-
-          {signOutError ? (
-            <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-              {signOutError}
-            </Text>
-          ) : null}
-        </Section>
-
-        <Section title={t.settings.aiChat}>
-          <View className="card card--charcoal gap-4 p-4">
-            <ToggleRow
-              label={t.settings.autoMode}
-              body={t.settings.autoModeBody}
-              value={aiAutoMode}
-              onValueChange={setAiAutoMode}
-            />
-
-            <Divider />
-
-            <ActionRow icon="trash-2" label={t.settings.clearHistory} destructive onPress={handleClearHistory} />
-
-            {historyStatus ? (
-              <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted" style={rtl}>
-                {historyStatus}
-              </Text>
-            ) : null}
-          </View>
-        </Section>
-
-        <Section title={t.settings.notifications}>
-          <View className="card card--charcoal gap-4 p-4">
-            <ToggleRow
-              label={t.settings.dailyNudge}
-              body={t.settings.dailyNudgeBody}
-              value={dailyNudgeEnabled}
-              onValueChange={setDailyNudgeEnabled}
-            />
-
-            {dailyNudgeEnabled ? (
-              <View className="gap-3">
+              <View className="card card--cream-soft p-[16px]">
                 <AnimatedPressable
-                  onPress={() => setShowTimePicker((open) => !open)}
+                  onPress={handleSignOut}
+                  disabled={isSigningOut}
                   accessibilityRole="button"
-                  className="choice choice--charcoal flex-row items-center gap-3 px-3.5 py-3"
+                  className={`flex-row items-center gap-3 ${isSigningOut ? "opacity-40" : ""}`}
                 >
-                  <Feather name="clock" size={16} color={colors.orange[500]} />
-                  <Text className="flex-1 font-grotesk-medium text-sm text-ink-charcoal" style={rtl}>
-                    {t.settings.nudgeTime}
+                  <Feather name="log-out" size={18} color={colors.overdue[500]} />
+                  <Text className="flex-1 font-grotesk-semibold text-base text-overdue-500" style={rtl}>
+                    {isSigningOut ? t.settings.signingOut : t.settings.signOut}
                   </Text>
-                  <Text className="font-grotesk-bold text-sm text-orange-500">{nudgeTimeLabel}</Text>
                 </AnimatedPressable>
+              </View>
 
-                {showTimePicker ? (
-                  <DateTimePicker
-                    value={timeToDate(dailyNudgeTime)}
-                    mode="time"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    themeVariant="dark"
-                    textColor={colors.ink.charcoal}
-                    accentColor={colors.orange[500]}
-                    onChange={handleTimeChange}
-                  />
+              {signOutError ? (
+                <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
+                  {signOutError}
+                </Text>
+              ) : null}
+            </Section>
+
+            <Section title={t.settings.aiChat}>
+              <Group>
+                <ToggleRow
+                  label={t.settings.autoMode}
+                  body={t.settings.autoModeBody}
+                  value={aiAutoMode}
+                  onValueChange={setAiAutoMode}
+                />
+
+                <Divider />
+
+                <ToggleRow
+                  label={t.settings.voiceButton}
+                  body={t.settings.voiceButtonBody}
+                  value={voiceAddButton}
+                  onValueChange={setVoiceAddButton}
+                />
+
+                <Divider />
+
+                <ActionRow icon="trash-2" label={t.settings.clearHistory} destructive onPress={handleClearHistory} />
+
+                {historyStatus ? (
+                  <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                    {historyStatus}
+                  </Text>
                 ) : null}
-              </View>
-            ) : null}
+              </Group>
+            </Section>
 
-            <Divider />
+            <Section title={t.settings.notifications}>
+              <Group>
+                {permission === "denied" ? (
+                  <View className="gap-2">
+                    <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
+                      {t.settings.notificationsDenied}
+                    </Text>
+                    <AnimatedPressable onPress={() => Linking.openSettings()} accessibilityRole="button" className="self-start">
+                      <Text className="font-grotesk-semibold text-sm text-orange-600">{t.settings.openPhoneSettings}</Text>
+                    </AnimatedPressable>
+                  </View>
+                ) : null}
 
-            <ToggleRow
-              label={t.settings.overdueAlerts}
-              body={t.settings.overdueAlertsBody}
-              value={overdueAlertsEnabled}
-              onValueChange={handleOverdueAlertsChange}
-            />
+                <ToggleRow
+                  label={t.settings.deadlineReminders}
+                  body={t.settings.deadlineRemindersBody}
+                  value={deadlineRemindersEnabled}
+                  onValueChange={handleDeadlineRemindersChange}
+                />
 
-            <Text className="font-grotesk-regular text-xs text-ink-charcoal-muted" style={rtl}>
-              {t.settings.notificationsNote}
-            </Text>
-          </View>
-        </Section>
-
-        <Section title={t.settings.appearance}>
-          <View className="card card--charcoal gap-4 p-4">
-            <View className="gap-3">
-              <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
-                {t.settings.theme}
-              </Text>
-              <View className="flex-row gap-2">
-                {THEME_OPTIONS.map((option) => {
-                  const selected = theme === option.value;
-                  return (
+                {deadlineRemindersEnabled ? (
+                  <View className="gap-3">
                     <AnimatedPressable
-                      key={option.value}
-                      onPress={() => setTheme(option.value)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      className={
-                        selected
-                          ? "choice choice--charcoal-selected flex-1 flex-row items-center justify-center gap-2 py-3"
-                          : "choice choice--charcoal flex-1 flex-row items-center justify-center gap-2 py-3"
-                      }
+                      onPress={() => setShowReminderTimePicker((open) => !open)}
+                      accessibilityRole="button"
+                      className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
                     >
-                      <Feather
-                        name={option.icon}
-                        size={15}
-                        color={selected ? colors.orange[500] : colors.ink.charcoalMuted}
+                      <Feather name="bell" size={14} color={colors.ink.creamMuted} />
+                      <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
+                        {t.settings.reminderTime}
+                      </Text>
+                      <Text className="font-grotesk-bold text-sm text-orange-600">{reminderTimeLabel}</Text>
+                    </AnimatedPressable>
+
+                    {showReminderTimePicker ? (
+                      <DateTimePicker
+                        value={timeToDate(dayReminderTime)}
+                        mode="time"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        themeVariant={scheme}
+                        textColor={colors.ink.cream}
+                        accentColor={colors.orange[500]}
+                        onChange={handleReminderTimeChange}
                       />
-                      <Text
-                        className={
-                          selected
-                            ? "font-grotesk-semibold text-sm text-orange-500"
-                            : "font-grotesk-medium text-sm text-ink-charcoal"
-                        }
-                      >
-                        {t.settings.themes[option.value]}
-                      </Text>
-                    </AnimatedPressable>
-                  );
-                })}
-              </View>
-            </View>
+                    ) : null}
 
-            <Divider />
+                    <Text className="eyebrow text-ink-cream-muted" style={rtl}>
+                      {t.settings.beforeDeadline}
+                    </Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {REMINDER_OFFSET_OPTIONS.map((minutes) => (
+                        <Chip
+                          key={minutes}
+                          label={t.settings.offsetChip(minutes)}
+                          selected={reminderOffsets.includes(minutes)}
+                          onPress={() => toggleReminderOffset(minutes)}
+                        />
+                      ))}
+                    </View>
 
-            <View className="gap-3">
-              <Text className="font-grotesk-semibold text-base text-ink-charcoal" style={rtl}>
-                {t.settings.language}
-              </Text>
-              <View className="flex-row flex-wrap gap-2">
-                {LANGUAGE_OPTIONS.map((option) => {
-                  const selected = language === option.value;
-                  return (
+                    <ToggleRow
+                      label={t.settings.importantReminder}
+                      body={t.settings.importantReminderBody}
+                      value={importantExtraReminder}
+                      onValueChange={setImportantExtraReminder}
+                    />
+                  </View>
+                ) : null}
+
+                <Divider />
+
+                <ToggleRow
+                  label={t.settings.dailyNudge}
+                  body={t.settings.dailyNudgeBody}
+                  value={dailyNudgeEnabled}
+                  onValueChange={handleDailyNudgeChange}
+                />
+
+                {dailyNudgeEnabled ? (
+                  <View className="gap-3">
+                    {/* The picked time, shown like a filled field that opens the picker. */}
                     <AnimatedPressable
-                      key={option.value}
-                      onPress={() => handleSelectLanguage(option.value)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      className={
-                        selected
-                          ? "choice choice--charcoal-selected flex-row items-center gap-1.5 px-3.5 py-2.5"
-                          : "choice choice--charcoal flex-row items-center gap-1.5 px-3.5 py-2.5"
-                      }
+                      onPress={() => setShowTimePicker((open) => !open)}
+                      accessibilityRole="button"
+                      className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
                     >
-                      {selected ? <Feather name="check" size={14} color={colors.orange[500]} /> : null}
-                      <Text
-                        className={
-                          selected
-                            ? "font-grotesk-semibold text-sm text-orange-500"
-                            : "font-grotesk-medium text-sm text-ink-charcoal"
-                        }
-                      >
-                        {option.label}
+                      <Feather name="clock" size={14} color={colors.ink.creamMuted} />
+                      <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
+                        {t.settings.nudgeTime}
                       </Text>
+                      <Text className="font-grotesk-bold text-sm text-orange-600">{nudgeTimeLabel}</Text>
                     </AnimatedPressable>
-                  );
-                })}
-              </View>
-            </View>
+
+                    {showTimePicker ? (
+                      <DateTimePicker
+                        value={timeToDate(dailyNudgeTime)}
+                        mode="time"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        themeVariant={scheme}
+                        textColor={colors.ink.cream}
+                        accentColor={colors.orange[500]}
+                        onChange={handleTimeChange}
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <Divider />
+
+                <ToggleRow
+                  label={t.settings.overdueAlerts}
+                  body={t.settings.overdueAlertsBody}
+                  value={overdueAlertsEnabled}
+                  onValueChange={handleOverdueAlertsChange}
+                />
+
+                <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                  {t.settings.notificationsNote}
+                </Text>
+              </Group>
+            </Section>
+
+            <Section title={t.settings.appearance}>
+              <Group>
+                <View className="gap-3">
+                  <Text className="font-grotesk-semibold text-base text-ink-cream" style={rtl}>
+                    {t.settings.language}
+                  </Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <Chip
+                        key={option.value}
+                        label={option.label}
+                        selected={language === option.value}
+                        onPress={() => handleSelectLanguage(option.value)}
+                        accessibilityRole="radio"
+                      />
+                    ))}
+                  </View>
+                </View>
+              </Group>
+            </Section>
+
+            <Section title={t.settings.support}>
+              <Group>
+                <ActionRow
+                  icon="help-circle"
+                  label={t.settings.help}
+                  body={t.settings.helpBody}
+                  onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
+                />
+
+                <Divider />
+
+                <ActionRow
+                  icon="shield"
+                  label={t.settings.privacy}
+                  onPress={() => handleOpenLink(SUPPORT_LINKS.privacyPolicy)}
+                />
+
+                <Divider />
+
+                <ActionRow
+                  icon="file-text"
+                  label={t.settings.terms}
+                  onPress={() => handleOpenLink(SUPPORT_LINKS.termsOfService)}
+                />
+              </Group>
+
+              <Text className="text-center font-grotesk-medium text-sm text-ink-cream-subtle">
+                {t.settings.version(APP_VERSION)}
+              </Text>
+            </Section>
           </View>
-        </Section>
-
-        <Section title={t.settings.support}>
-          <View className="card card--charcoal gap-4 p-4">
-            <ActionRow
-              icon="help-circle"
-              label={t.settings.help}
-              body={t.settings.helpBody}
-              onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
-            />
-
-            <Divider />
-
-            <ActionRow
-              icon="shield"
-              label={t.settings.privacy}
-              onPress={() => handleOpenLink(SUPPORT_LINKS.privacyPolicy)}
-            />
-
-            <Divider />
-
-            <ActionRow
-              icon="file-text"
-              label={t.settings.terms}
-              onPress={() => handleOpenLink(SUPPORT_LINKS.termsOfService)}
-            />
-          </View>
-
-          <Text className="text-center font-grotesk-medium text-xs text-ink-charcoal-muted">
-            {t.settings.version(APP_VERSION)}
-          </Text>
-        </Section>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
     </SafeAreaView>

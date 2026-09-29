@@ -1,6 +1,6 @@
 import Svg, { ClipPath, Defs, Rect } from "react-native-svg";
 
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 
 type GemLogoProps = {
   size?: number;
@@ -12,6 +12,7 @@ const CORNER_RADIUS = 14;
 const CENTER = 50;
 
 export function GemLogo({ size = 40, onDark = false }: GemLogoProps) {
+  const colors = useColors();
   const half = SQUARE / 2;
 
   return (
@@ -33,7 +34,7 @@ export function GemLogo({ size = 40, onDark = false }: GemLogoProps) {
         y={0}
         width={CENTER}
         height={100}
-        fill={onDark ? "#FFFFFF" : colors.charcoal[900]}
+        fill={onDark ? "#FFFFFF" : colors.logoInk}
         clipPath="url(#gemClip)"
       />
       <Rect

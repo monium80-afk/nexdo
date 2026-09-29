@@ -2,24 +2,15 @@ import { useClerk, useUser } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { BottomSheet } from "@/components/BottomSheet";
+import { PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
+import { SectionHeader } from "@/components/SectionHeader";
+import { TextField } from "@/components/TextField";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 import { deleteAllAttachments } from "@/lib/supabaseStorage";
@@ -40,6 +31,7 @@ type AccountSheetProps = {
  * so they follow the account to every device it signs in on.
  */
 export function AccountSheet({ visible, onClose }: AccountSheetProps) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const { user } = useUser();
@@ -213,215 +205,167 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <Pressable className="scrim flex-1 justify-center px-5" onPress={onClose}>
-          <Pressable
-            onPress={() => {}}
-            className="card--cream-elevated overflow-hidden rounded-3xl"
-            style={{ maxHeight: "88%" }}
+    <BottomSheet visible={visible} onClose={onClose} title={t.account.title} closeLabel={t.account.close}>
+      <ScrollView
+        // Shrinks so the sheet scrolls inside itself rather than growing past the screen.
+        style={{ flexGrow: 0, flexShrink: 1 }}
+        contentContainerStyle={{ gap: 20, paddingTop: 4 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="flex-row items-center gap-4">
+          <AnimatedPressable
+            onPress={handleChangePhoto}
+            disabled={uploadingPhoto}
+            accessibilityRole="button"
+            accessibilityLabel={t.account.changePhoto}
+            className="h-[64px] w-[64px] overflow-hidden rounded-full border border-cream-200"
           >
-            <ScrollView
-              contentContainerStyle={{ gap: 20, padding: 24 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text className="text-title text-ink-cream">{t.account.title}</Text>
-                <AnimatedPressable
-                  onPress={onClose}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.account.close}
-                >
-                  <Feather name="x" size={24} color={colors.ink.creamMuted} />
-                </AnimatedPressable>
+            {user?.hasImage ? (
+              <Image source={{ uri: user.imageUrl }} className="h-full w-full rounded-full" />
+            ) : (
+              <View className="h-full w-full items-center justify-center rounded-full bg-cream-200">
+                <Feather name="user" size={26} color={colors.ink.creamMuted} />
               </View>
-
-              <View className="h-px bg-cream-300" />
-
-              <View className="flex-row items-center gap-4">
-                <AnimatedPressable
-                  onPress={handleChangePhoto}
-                  disabled={uploadingPhoto}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.account.changePhoto}
-                  className="h-[72px] w-[72px] overflow-hidden rounded-full border-[3px] border-orange-500"
-                >
-                  {user?.hasImage ? (
-                    <Image source={{ uri: user.imageUrl }} className="h-full w-full rounded-full" />
-                  ) : (
-                    <View className="h-full w-full items-center justify-center rounded-full bg-cream-200">
-                      <Feather name="user" size={28} color={colors.ink.creamMuted} />
-                    </View>
-                  )}
-                  {uploadingPhoto ? (
-                    <View className="scrim items-center justify-center rounded-full" style={StyleSheet.absoluteFill}>
-                      <ActivityIndicator size="small" color={colors.onAccent} />
-                    </View>
-                  ) : null}
-                </AnimatedPressable>
-
-                <AnimatedPressable
-                  onPress={handleChangePhoto}
-                  disabled={uploadingPhoto}
-                  className="flex-1 gap-1"
-                  accessibilityRole="button"
-                  accessibilityLabel={t.account.changePhoto}
-                >
-                  <Text className="font-grotesk-bold text-base text-orange-500" style={rtl}>
-                    {t.account.changePhoto}
-                  </Text>
-                  <Text className="font-grotesk-regular text-sm text-ink-cream-muted" style={rtl}>
-                    {t.account.photoHint}
-                  </Text>
-                </AnimatedPressable>
+            )}
+            {uploadingPhoto ? (
+              <View className="scrim items-center justify-center rounded-full" style={StyleSheet.absoluteFill}>
+                <ActivityIndicator size="small" color={colors.onAccent} />
               </View>
+            ) : null}
+          </AnimatedPressable>
 
-              <View className="gap-2">
-                <Text className="font-grotesk-bold text-[15px] text-ink-cream" style={rtl}>
-                  {t.account.name}
-                </Text>
-                <TextInput
-                  value={name}
-                  onChangeText={(value) => {
-                    setName(value);
-                    setNameStatus(null);
-                  }}
-                  onBlur={handleSaveName}
-                  onSubmitEditing={handleSaveName}
-                  returnKeyType="done"
-                  placeholder={t.account.namePlaceholder}
-                  placeholderTextColor={colors.ink.creamSubtle}
-                  style={[{ paddingVertical: 14 }, rtl]}
-                  className="rounded-2xl border border-cream-300 bg-cream-100 px-4 font-grotesk-medium text-base text-ink-cream"
-                />
-                {nameStatus ? (
-                  <Text className="font-grotesk-medium text-xs text-ink-cream-muted" style={rtl}>
-                    {nameStatus === "saving" ? t.account.saving : t.account.saved}
-                  </Text>
-                ) : null}
-              </View>
+          <AnimatedPressable
+            onPress={handleChangePhoto}
+            disabled={uploadingPhoto}
+            className="flex-1 gap-1"
+            accessibilityRole="button"
+            accessibilityLabel={t.account.changePhoto}
+          >
+            <Text className="font-grotesk-semibold text-base text-orange-600" style={rtl}>
+              {t.account.changePhoto}
+            </Text>
+            <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+              {t.account.photoHint}
+            </Text>
+          </AnimatedPressable>
+        </View>
 
-              <View className="gap-2">
-                <Text className="font-grotesk-bold text-[15px] text-ink-cream" style={rtl}>
-                  {t.account.email}
-                </Text>
-                {/* Read-only: changing the sign-in email needs its own
-                    verification flow, which this sheet doesn't run. */}
-                <View className="rounded-2xl border border-cream-300 bg-cream-100 px-4 py-3.5">
-                  <Text numberOfLines={1} className="font-grotesk-medium text-base text-ink-cream-muted" style={rtl}>
-                    {user?.primaryEmailAddress?.emailAddress ?? t.account.noEmail}
-                  </Text>
-                </View>
-              </View>
+        <View className="gap-2">
+          <SectionHeader label={t.account.name} />
+          <TextField
+            value={name}
+            onChangeText={(value) => {
+              setName(value);
+              setNameStatus(null);
+            }}
+            onBlur={handleSaveName}
+            onSubmitEditing={handleSaveName}
+            returnKeyType="done"
+            placeholder={t.account.namePlaceholder}
+          />
+          {nameStatus ? (
+            <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+              {nameStatus === "saving" ? t.account.saving : t.account.saved}
+            </Text>
+          ) : null}
+        </View>
 
-              {error ? (
-                <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                  {error}
-                </Text>
-              ) : null}
+        <View className="gap-2">
+          <SectionHeader label={t.account.email} />
+          {/* Read-only: changing the sign-in email needs its own
+              verification flow, which this sheet doesn't run. */}
+          <View className="input min-h-[44px] justify-center border-cream-200 px-4">
+            <Text numberOfLines={1} className="font-grotesk-regular text-sm text-ink-cream-muted" style={rtl}>
+              {user?.primaryEmailAddress?.emailAddress ?? t.account.noEmail}
+            </Text>
+          </View>
+        </View>
 
-              <View className="h-px bg-cream-300" />
+        {error ? (
+          <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
+            {error}
+          </Text>
+        ) : null}
 
-              {editingPassword ? (
-                <View className="gap-3">
-                  {user?.passwordEnabled ? (
-                    <TextInput
-                      value={currentPassword}
-                      onChangeText={setCurrentPassword}
-                      placeholder={t.account.currentPassword}
-                      placeholderTextColor={colors.ink.creamSubtle}
-                      secureTextEntry
-                      autoCapitalize="none"
-                      style={[{ paddingVertical: 14 }, rtl]}
-                      className="rounded-2xl border border-cream-300 bg-cream-100 px-4 font-grotesk-medium text-base text-ink-cream"
-                    />
-                  ) : null}
-                  <TextInput
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    placeholder={t.account.newPassword}
-                    placeholderTextColor={colors.ink.creamSubtle}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    style={[{ paddingVertical: 14 }, rtl]}
-                    className="rounded-2xl border border-cream-300 bg-cream-100 px-4 font-grotesk-medium text-base text-ink-cream"
-                  />
-                  <TextInput
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder={t.account.confirmPassword}
-                    placeholderTextColor={colors.ink.creamSubtle}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    style={[{ paddingVertical: 14 }, rtl]}
-                    className="rounded-2xl border border-cream-300 bg-cream-100 px-4 font-grotesk-medium text-base text-ink-cream"
-                  />
+        <View className="h-px bg-cream-200" />
 
-                  {passwordError ? (
-                    <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                      {passwordError}
-                    </Text>
-                  ) : (
-                    <Text className="font-grotesk-regular text-xs text-ink-cream-muted" style={rtl}>
-                      {t.account.passwordHint}
-                    </Text>
-                  )}
+        {editingPassword ? (
+          <View className="gap-3">
+            {user?.passwordEnabled ? (
+              <TextField
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder={t.account.currentPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+            ) : null}
+            <TextField
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder={t.account.newPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <TextField
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder={t.account.confirmPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
 
-                  <View className="flex-row items-center gap-3">
-                    <AnimatedPressable
-                      onPress={() => setEditingPassword(false)}
-                      className="btn btn--secondary-cream flex-1"
-                      accessibilityRole="button"
-                    >
-                      <Text className="font-grotesk-bold text-base text-ink-cream">{t.common.cancel}</Text>
-                    </AnimatedPressable>
-                    <AnimatedPressable
-                      onPress={handleSavePassword}
-                      disabled={savingPassword}
-                      className="btn btn--primary flex-1"
-                      style={savingPassword ? { opacity: 0.6 } : undefined}
-                      accessibilityRole="button"
-                    >
-                      <Text className="font-grotesk-bold text-base text-on-accent">
-                        {savingPassword ? t.account.saving : t.account.savePassword}
-                      </Text>
-                    </AnimatedPressable>
-                  </View>
-                </View>
-              ) : (
-                <AnimatedPressable
-                  onPress={() => {
-                    setPasswordStatus(null);
-                    setEditingPassword(true);
-                  }}
-                  accessibilityRole="button"
-                  className="items-center rounded-2xl border border-cream-300 bg-cream-200 py-4"
-                >
-                  <Text className="font-grotesk-bold text-base text-ink-cream">{t.account.changePassword}</Text>
-                </AnimatedPressable>
-              )}
+            {passwordError ? (
+              <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
+                {passwordError}
+              </Text>
+            ) : (
+              <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                {t.account.passwordHint}
+              </Text>
+            )}
 
-              {passwordStatus ? (
-                <Text className="text-center font-grotesk-medium text-sm text-ink-cream-muted">{passwordStatus}</Text>
-              ) : null}
+            <View className="flex-row items-center gap-3">
+              <SecondaryButton
+                label={t.common.cancel}
+                onPress={() => setEditingPassword(false)}
+                size="lg"
+                className="flex-1"
+              />
+              <PrimaryButton
+                label={savingPassword ? t.account.saving : t.account.savePassword}
+                onPress={handleSavePassword}
+                disabled={savingPassword}
+                size="lg"
+                className="flex-1"
+              />
+            </View>
+          </View>
+        ) : (
+          <SecondaryButton
+            icon="lock"
+            label={t.account.changePassword}
+            onPress={() => {
+              setPasswordStatus(null);
+              setEditingPassword(true);
+            }}
+            size="lg"
+          />
+        )}
 
-              <AnimatedPressable
-                onPress={handleDeleteAccount}
-                disabled={deleting}
-                accessibilityRole="button"
-                className="items-center py-1"
-                style={deleting ? { opacity: 0.6 } : undefined}
-              >
-                <Text className="font-grotesk-bold text-base text-overdue-500">
-                  {deleting ? t.account.deleting : t.account.deleteAccount}
-                </Text>
-              </AnimatedPressable>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+        {passwordStatus ? (
+          <Text className="text-center font-grotesk-medium text-sm text-ink-cream-muted">{passwordStatus}</Text>
+        ) : null}
+
+        <TextButton
+          label={deleting ? t.account.deleting : t.account.deleteAccount}
+          onPress={handleDeleteAccount}
+          disabled={deleting}
+          tone="destructive"
+          className="self-center py-1"
+        />
+      </ScrollView>
+    </BottomSheet>
   );
 }

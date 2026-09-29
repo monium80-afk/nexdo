@@ -12,8 +12,8 @@ import { Alert, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AttachmentPreviewRow } from "@/components/AttachmentPreviewRow";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ChatAttachment } from "@/types/chat";
 
@@ -58,6 +58,7 @@ export function InboxInput({
   onRemoveAttachment,
   isTranscribing = false,
 }: InboxInputProps) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   // Recording state (isRecording, durationMillis) is polled by this hook, not stored locally —
@@ -226,7 +227,7 @@ export function InboxInput({
           style={{ opacity: !isRecording && !canSend ? 0.4 : 1 }}
           className="mr-2 h-11 w-11 items-center justify-center rounded-2xl bg-orange-500"
         >
-          <Feather name={isRecording ? "square" : "send"} size={isRecording ? 15 : 17} color={colors.cream[50]} />
+          <Feather name={isRecording ? "square" : "send"} size={isRecording ? 15 : 17} color={colors.onAccent} />
         </AnimatedPressable>
       </View>
     </View>

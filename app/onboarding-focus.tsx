@@ -6,8 +6,8 @@ import { ActivityIndicator, Text, View } from "react-native";
 
 import { HighlightedText } from "@/components/HighlightedText";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { generateAdvice } from "@/lib/ai/generateAdvice";
 import { formatDuration } from "@/lib/formatDuration";
@@ -18,6 +18,7 @@ import { buildTask } from "@/store/useTaskStore";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
 export default function OnboardingFocus() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
@@ -42,6 +43,8 @@ export default function OnboardingFocus() {
               title: draft.title,
               estimatedMinutes: draft.estimatedMinutes,
               dueDate: draft.dueDate,
+              // The same deadline useAuthSync saves: a time only if one was said.
+              dueHasTime: draft.dueHasTime ?? false,
               priorityLevel: draft.priorityLevel,
               // Kept: when the AI grouped linked items under one task, that is
               // the plan the advice should reason about. Ids only have to be

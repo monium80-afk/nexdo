@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 
-const DURATION = 280;
+import { MOTION } from "@/constants/theme";
+
 const RISE_DISTANCE = 14;
 
 /**
@@ -13,13 +14,14 @@ const RISE_DISTANCE = 14;
  */
 export function useScreenEnterAnimation() {
   const progress = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     progress.value = withTiming(1, {
-      duration: DURATION,
-      easing: Easing.out(Easing.ease),
+      duration: reduceMotion ? 0 : MOTION.duration.screen,
+      easing: MOTION.easing.enter,
     });
-  }, [progress]);
+  }, [progress, reduceMotion]);
 
   return useAnimatedStyle(() => ({
     opacity: progress.value,

@@ -5,13 +5,14 @@ import { Platform, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
-import { buildRule, describeRule, slotDueDate } from "@/lib/recurrence";
+import { deadlineFromDate, deadlineInstant } from "@/lib/deadline";
+import { buildRule, describeRule, slotDeadline } from "@/lib/recurrence";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
 import { previewDueLabel } from "@/lib/taskMeta";
 
@@ -46,6 +47,7 @@ export function TaskConfirmationCard({
   /** Writes edits back into the queued draft so "Add Task" saves what's on screen. */
   onChange: (patch: Partial<ExtractedTaskDraft>) => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const [isEditing, setIsEditing] = useState(false);
@@ -53,12 +55,15 @@ export function TaskConfirmationCard({
   const [picker, setPicker] = useState<"date" | "time" | null>(null);
 
   const now = new Date();
-  // What saving will set up — the same rule addTask builds from these fields.
-  // A repeating task is due on its first occurrence, which the rule may move
-  // (a deadline on a Wednesday for "every Mon and Thu" starts on Thursday).
-  const repeatRule = draft.recurrence ? buildRule(draft.recurrence, draft.dueDate, now) : null;
-  const shownDueDate = repeatRule ? slotDueDate(repeatRule, repeatRule.anchorDate) : draft.dueDate;
-  const dueLabel = previewDueLabel(shownDueDate, draft.dueHasTime || !!repeatRule, now, t);
+  // What saving will set up — the same deadline and rule addTask builds from
+  // these fields: a day, with a time only if one was said. A repeating task
+  // is due on its first occurrence, which the rule may move (a deadline on a
+  // Wednesday for "every Mon and Thu" starts on Thursday).
+  const draftDeadline = draft.dueDate ? deadlineFromDate(new Date(draft.dueDate), !!draft.dueHasTime) : undefined;
+  const repeatRule = draft.recurrence ? buildRule(draft.recurrence, draftDeadline, now) : null;
+  const shownDeadline = repeatRule ? slotDeadline(repeatRule, repeatRule.anchorDate) : draftDeadline;
+  const shownDueDate = shownDeadline ? deadlineInstant(shownDeadline).toISOString() : undefined;
+  const dueLabel = previewDueLabel(shownDueDate, !!shownDeadline?.time, now, t);
   // Scored off the draft's own priority and the deadline it will really have,
   // so this preview matches what applyStructuredAction will actually save.
   const priorityScore = computePriorityScore(
@@ -99,8 +104,9 @@ export function TaskConfirmationCard({
   };
 
   return (
-    <View className="card card--cream gap-3 border-orange-500 p-4">
-      <View className="flex-row items-center justify-between gap-2">
+    // The frame (orange edge, width, corners) is the card's own and stays as it is.
+    <View className="card card--cream gap-3 border-orange-500 px-4 pb-4 pt-5">
+      <View className="flex-row items-start gap-2">
         {isEditing ? (
           <TextInput
             value={draft.title}
@@ -111,14 +117,24 @@ export function TaskConfirmationCard({
             className="rounded-xl border border-cream-300 bg-cream-50 px-3 py-2 font-grotesk-bold text-sm text-ink-cream"
           />
         ) : (
-          <Text className="flex-1 font-grotesk-bold text-base text-ink-cream" style={rtl}>
-            {draft.title}
-          </Text>
+          <>
+            <Text
+              className="flex-1 font-grotesk-semibold text-[20px] leading-[25px] tracking-[-0.02em] text-ink-cream"
+              style={rtl}
+            >
+              {draft.title}
+            </Text>
+            <AnimatedPressable
+              onPress={() => setIsEditing(true)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t.chat.editDetails}
+              className="mt-[1px]"
+            >
+              <Feather name="edit-2" size={15} color={colors.ink.creamSubtle} />
+            </AnimatedPressable>
+          </>
         )}
-        <View className="flex-row items-center gap-1.5 rounded-full bg-charcoal-900 px-2.5 py-1.5">
-          <GemLogo size={14} onDark />
-          <Text className="font-grotesk-bold text-xs text-ink-charcoal">{priorityScore}</Text>
-        </View>
       </View>
 
       {isEditing ? (
@@ -169,45 +185,56 @@ export function TaskConfirmationCard({
           ) : null}
         </View>
       ) : (
-        <View className="flex-row items-center justify-between gap-2">
-          <View className="flex-row items-center gap-4">
-            <View className="flex-row items-center gap-1.5">
-              <Feather name="clock" size={14} color={colors.orange[500]} />
-              <Text className="font-grotesk-medium text-sm text-ink-cream-subtle">
-                {formatDuration(draft.estimatedMinutes)}
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-1.5">
-              <Feather name="calendar" size={14} color={colors.orange[500]} />
-              <Text className="font-grotesk-medium text-sm text-ink-cream-subtle">{dueLabel}</Text>
-            </View>
+        // Score in a soft chip, then duration and deadline. "No deadline"
+        // is a shade quieter than a real one.
+        <View className="flex-row flex-wrap items-center gap-x-3.5 gap-y-2">
+          <View
+            accessible
+            accessibilityLabel={t.tasks.score(priorityScore)}
+            // Less on the left: the gem's box has air of its own, so this
+            // looks even on both sides.
+            className="flex-row items-center gap-1 rounded-[8px] bg-cream-200/70 py-[2px] pl-[5px] pr-[7px]"
+          >
+            <GemLogo size={13} />
+            <Text className="font-grotesk-semibold text-[13px] leading-[17px] text-ink-cream-muted">{priorityScore}</Text>
           </View>
-          {/* Icon rather than an "Edit details" label — the row is tight on
-              narrow screens and the text pushed past the card's edge. */}
-          <AnimatedPressable onPress={() => setIsEditing(true)} hitSlop={10} accessibilityLabel={t.chat.editDetails}>
-            <Feather name="edit-2" size={15} color={colors.ink.creamSubtle} />
-          </AnimatedPressable>
+          <View className="flex-row items-center gap-1">
+            <Feather name="clock" size={14} color={colors.ink.creamSubtle} />
+            <Text className="font-grotesk-medium text-[13.5px] text-ink-cream-muted">
+              {formatDuration(draft.estimatedMinutes)}
+            </Text>
+          </View>
+          <View className="flex-row items-center gap-1">
+            <Feather name="calendar" size={14} color={colors.ink.creamSubtle} />
+            <Text
+              className={
+                shownDueDate
+                  ? "font-grotesk-medium text-[13.5px] text-ink-cream-muted"
+                  : "font-grotesk-medium text-[13.5px] text-ink-cream-subtle"
+              }
+            >
+              {dueLabel}
+            </Text>
+          </View>
         </View>
       )}
 
       {repeatRule ? (
-        <View className="flex-row items-center gap-1.5">
-          <Feather name="repeat" size={14} color={colors.orange[500]} />
-          <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream-subtle" style={rtl}>
+        <View className="flex-row items-center gap-1">
+          <Feather name="repeat" size={14} color={colors.ink.creamSubtle} />
+          <Text className="flex-1 font-grotesk-medium text-[13.5px] text-ink-cream-muted" style={rtl}>
             {describeRule(repeatRule, t)}
           </Text>
         </View>
       ) : null}
 
-      <View className="h-px bg-cream-300" />
-
-      <View className="flex-row items-center justify-end gap-4">
+      <View className="mt-1 flex-row items-center justify-end gap-5">
         <AnimatedPressable onPress={onDismiss} hitSlop={8}>
-          <Text className="font-grotesk-semibold text-sm text-ink-cream-muted">{t.chat.dismiss}</Text>
+          <Text className="font-grotesk-semibold text-[13.5px] text-ink-cream-muted">{t.chat.dismiss}</Text>
         </AnimatedPressable>
         <AnimatedPressable onPress={onAdd} className="flex-row items-center gap-2 rounded-full bg-orange-500 px-4 py-2">
-          <Feather name="check" size={16} color={colors.cream[50]} />
-          <Text className="font-grotesk-bold text-sm text-cream-50">{t.chat.addTask}</Text>
+          <Feather name="check" size={13} color={colors.onAccent} />
+          <Text className="font-grotesk-bold text-[12.5px] leading-[17.5px] text-on-accent">{t.chat.addTask}</Text>
         </AnimatedPressable>
       </View>
     </View>

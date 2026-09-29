@@ -44,6 +44,74 @@ create index if not exists tasks_series_id_idx on public.tasks ((recurrence ->> 
 
 create index if not exists tasks_user_id_idx on public.tasks (user_id);
 
+-- Task lifecycle, deadlines and reminders (2026-09-29). Additive only: every
+-- column is nullable and no existing row is rewritten. The same statements
+-- are in supabase/migrations/20260929120000_task_deadlines_reminders.sql.
+--
+-- A deadline is stored the way the user gave it: its calendar day, a clock
+-- time only when they named one ("Oct 15" has none), and the IANA zone it was
+-- given in. due_date stays as the instant it passes (the end of the day for a
+-- date-only deadline), for sorting and overdue checks. Rows written before
+-- these columns have only due_date; the app reads those as exact deadlines,
+-- exactly as it always showed them, and fills the columns in on its next
+-- save — there is deliberately no backfill here, since the server can't know
+-- which time zone a bare timestamp was meant in.
+alter table public.tasks add column if not exists deadline_date date;
+alter table public.tasks add column if not exists deadline_time time;
+alter table public.tasks add column if not exists deadline_timezone text;
+-- Per-task reminder choices on top of the app-wide ones ({"muted": true}).
+alter table public.tasks add column if not exists reminder_settings jsonb;
+-- Put first on the Next page by the user.
+alter table public.tasks add column if not exists pinned_at timestamptz;
+-- When the task was archived, or (a repeating task's occurrence) skipped.
+alter table public.tasks add column if not exists closed_at timestamptz;
+
+-- The one status lifecycle every feature shares (types/task.ts TaskStatus),
+-- and values the app never writes. NOT VALID: checked on every new write,
+-- without re-checking rows that are already there.
+do $$
+begin
+  alter table public.tasks add constraint tasks_status_check
+    check (status in ('pending', 'completed', 'skipped', 'archived')) not valid;
+exception when duplicate_object then null;
+end
+$$;
+
+do $$
+begin
+  alter table public.tasks add constraint tasks_deadline_time_needs_date
+    check (deadline_time is null or deadline_date is not null) not valid;
+exception when duplicate_object then null;
+end
+$$;
+
+do $$
+begin
+  alter table public.tasks add constraint tasks_importance_range
+    check (importance between 0 and 100) not valid;
+exception when duplicate_object then null;
+end
+$$;
+
+create index if not exists tasks_user_status_idx on public.tasks (user_id, status);
+create index if not exists tasks_user_deadline_idx on public.tasks (user_id, deadline_date)
+  where deadline_date is not null;
+
+-- A repeating task has at most one row per series and day. Occurrence ids are
+-- already derived from both (so two devices write the same row); this makes
+-- the database refuse a duplicate even if a bug ever made a different id. If
+-- existing data already breaks the rule, the index is skipped with a notice
+-- rather than failing the whole script.
+do $$
+begin
+  create unique index if not exists tasks_series_occurrence_unique
+    on public.tasks (user_id, (recurrence ->> 'seriesId'), (recurrence ->> 'occurrenceDate'))
+    where recurrence is not null;
+exception when unique_violation then
+  raise notice 'tasks_series_occurrence_unique not created: duplicate occurrences exist';
+end
+$$;
+
 alter table public.tasks enable row level security;
 
 drop policy if exists "tasks_owner_all" on public.tasks;

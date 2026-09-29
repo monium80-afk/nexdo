@@ -1,17 +1,22 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
-import Animated, { Easing, FadeInUp, LinearTransition } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { IconButton, PrimaryButton } from "@/components/Button";
+import { Chip } from "@/components/Chip";
+import { EmptyState } from "@/components/EmptyState";
 import { FilterSheet } from "@/components/FilterSheet";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { TaskCard } from "@/components/TaskCard";
-import { colors } from "@/constants/theme";
+import { listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getDueInfo } from "@/lib/taskMeta";
+import { isListed } from "@/lib/taskOperations";
 import { useTaskFilterStore, type TaskSortOption, type TaskStatusFilter } from "@/store/useTaskFilterStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -44,20 +49,43 @@ function sortTasks(list: Task[], sort: TaskSortOption): Task[] {
 }
 
 export default function TasksListScreen() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
-  const tasks = useTaskStore((state) => state.tasks);
+  const allTasks = useTaskStore((state) => state.tasks);
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [statusSheetOpen, setStatusSheetOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [deadlineNow, setDeadlineNow] = useState(() => new Date());
+
+  // The list is open and done tasks. Archived ones — and occurrences a
+  // repeating task skipped — are kept, but only under the Archived filter.
+  const tasks = useMemo(() => allTasks.filter(isListed), [allTasks]);
+  const archivedTasks = useMemo(() => allTasks.filter((task) => task.status === "archived"), [allTasks]);
 
   const pendingCount = tasks.filter((task) => task.status === "pending").length;
   const completedCount = tasks.filter((task) => task.status === "completed").length;
-  const overdueCount = tasks.filter((task) => getDueInfo(task).tone === "overdue").length;
+  const overdueCount = tasks.filter((task) => getDueInfo(task, deadlineNow).tone === "overdue").length;
+
+  // Refresh at the next exact due time or local midnight so labels and colors
+  // change while the list stays open, without polling throughout the day.
+  useEffect(() => {
+    const now = Date.now();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const nextDue = tasks
+      .filter((task) => task.status === "pending" && task.dueDate)
+      .map((task) => Date.parse(task.dueDate!))
+      .filter((time) => Number.isFinite(time) && time > now)
+      .reduce((soonest, time) => Math.min(soonest, time), Number.POSITIVE_INFINITY);
+    const nextChange = Math.min(midnight.getTime(), nextDue);
+    const timer = setTimeout(() => setDeadlineNow(new Date()), Math.max(1, nextChange - now));
+    return () => clearTimeout(timer);
+  }, [deadlineNow, tasks]);
 
   const statusOptions = useMemo(
     () => [
@@ -65,23 +93,28 @@ export default function TasksListScreen() {
       { label: t.tasks.status.pending, value: "pending" as TaskStatusFilter, count: pendingCount },
       { label: t.tasks.status.completed, value: "completed" as TaskStatusFilter, count: completedCount },
       { label: t.tasks.status.overdue, value: "overdue" as TaskStatusFilter, count: overdueCount },
+      // Only once there's something archived to find.
+      ...(archivedTasks.length > 0
+        ? [{ label: t.tasks.status.archived, value: "archived" as TaskStatusFilter, count: archivedTasks.length }]
+        : []),
     ],
-    [tasks.length, pendingCount, completedCount, overdueCount, t],
+    [tasks.length, pendingCount, completedCount, overdueCount, archivedTasks.length, t],
   );
 
   const sortOptions = SORT_VALUES.map((value) => ({ label: t.tasks.sort[value], value }));
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = tasks.filter((task) => {
+    const source = status === "archived" ? archivedTasks : tasks;
+    const filtered = source.filter((task) => {
       if (status === "pending" && task.status !== "pending") return false;
       if (status === "completed" && task.status !== "completed") return false;
-      if (status === "overdue" && getDueInfo(task).tone !== "overdue") return false;
+      if (status === "overdue" && getDueInfo(task, deadlineNow).tone !== "overdue") return false;
       if (query && !task.title.toLowerCase().includes(query)) return false;
       return true;
     });
     return sortTasks(filtered, sort);
-  }, [tasks, status, sort, search]);
+  }, [tasks, archivedTasks, status, sort, search, deadlineNow]);
 
   const statusLabel = t.tasks.status[status];
   const sortLabel = t.tasks.sort[sort];
@@ -92,27 +125,16 @@ export default function TasksListScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <View className="gap-4 bg-charcoal-900 px-6 pb-5 pt-2">
-        <View className="flex-row items-center justify-between gap-3">
-          <Text className="text-title text-ink-charcoal">{t.tasks.title}</Text>
-          <View className="flex-row items-center gap-2.5">
-            <AnimatedPressable
-              onPress={() => setSearchOpen((open) => !open)}
-              hitSlop={8}
-              className="h-11 w-11 items-center justify-center rounded-full bg-charcoal-800"
-            >
-              <Feather name={searchOpen ? "x" : "search"} size={18} color={colors.ink.charcoal} />
-            </AnimatedPressable>
-            <AnimatedPressable
-              onPress={() => router.push("/add")}
-              className="btn btn--primary flex-row gap-2"
-            >
-              <Feather name="plus" size={16} color={colors.cream[50]} />
-              <Text className="font-grotesk-bold text-sm text-cream-50">{t.tasks.addTask}</Text>
-            </AnimatedPressable>
-          </View>
-        </View>
-
+      <ScreenHeader
+        title={t.tasks.title}
+        actions={
+          // Search and Add share one height, so they read as a pair.
+          <>
+            <IconButton icon={searchOpen ? "x" : "search"} variant="header" onPress={() => setSearchOpen((open) => !open)} />
+            <PrimaryButton icon="plus" label={t.tasks.addTask} onPress={() => router.push("/add")} />
+          </>
+        }
+      >
         {searchOpen ? (
           <View className="flex-row items-center gap-2 rounded-2xl border border-charcoal-600 bg-charcoal-800 px-4 py-2.5">
             <Feather name="search" size={16} color={colors.ink.charcoalMuted} />
@@ -127,101 +149,77 @@ export default function TasksListScreen() {
             />
           </View>
         ) : (
-          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+          <View className="flex-row flex-wrap items-center gap-x-[15px] gap-y-1">
             <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
               <Text className="font-grotesk-bold text-ink-charcoal">{pendingCount}</Text>
               {t.tasks.pendingSuffix}
+            </Text>
+            <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
               <Text className="font-grotesk-bold text-ink-charcoal">{completedCount}</Text>
               {t.tasks.completedSuffix}
             </Text>
+            {/* overdue-300: the -500 red is too dark to read on the charcoal header. */}
             {overdueCount > 0 ? (
-              <Text className="font-grotesk-semibold text-sm text-overdue-500">
+              <Text className="font-grotesk-semibold text-sm text-overdue-300">
                 {t.tasks.overdueCount(overdueCount)}
               </Text>
             ) : null}
           </View>
         )}
+      </ScreenHeader>
+
+      <View className="screen-body">
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 28 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Filter on the left, sort on the right, each as wide as its label and
+              orange only once something other than the default is picked. */}
+          <View className="flex-row items-center justify-between gap-3 px-6 pt-4">
+            <Chip
+              label={statusLabel}
+              selected={status !== "all"}
+              icon={(color) => <Feather name="filter" size={14} color={color} />}
+              chevron
+              onPress={() => setStatusSheetOpen(true)}
+            />
+            <Chip
+              label={sortLabel}
+              selected={sort !== "recent"}
+              icon={(color) => <Ionicons name="swap-vertical" size={14} color={color} />}
+              chevron
+              onPress={() => setSortSheetOpen(true)}
+            />
+          </View>
+
+          <Text className="px-6 pt-3 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+            {t.tasks.showingPrefix}
+            <Text className="font-grotesk-bold text-ink-cream">{filteredTasks.length}</Text>
+            {t.tasks.showingSuffix(filteredTasks.length, tasks.length)}
+          </Text>
+
+          <View className="gap-[11px] px-6 pt-3">
+            {filteredTasks.length === 0 ? (
+              <EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} />
+            ) : (
+              filteredTasks.map((task, index) => (
+                <Animated.View
+                  key={task.id}
+                  entering={listItemEntering(index)}
+                  exiting={listItemExiting()}
+                  layout={listItemLayout()}
+                >
+                  <TaskCard
+                    task={task}
+                    onPress={() => handleOpenTask(task.id)}
+                    onToggle={() => toggleTaskStatus(task.id)}
+                  />
+                </Animated.View>
+              ))
+            )}
+          </View>
+        </ScrollView>
       </View>
-
-      <ScrollView
-        style={{ backgroundColor: colors.cream[100] }}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View className="flex-row gap-3 px-6 pt-5">
-          <AnimatedPressable
-            onPress={() => setStatusSheetOpen(true)}
-            className={
-              status !== "all"
-                ? "chip chip--selected flex-1 flex-row items-center justify-center gap-1.5 px-3 py-2"
-                : "chip chip--idle flex-1 flex-row items-center justify-center gap-1.5 px-3 py-2"
-            }
-          >
-            <Feather name="filter" size={14} color={status !== "all" ? colors.orange[600] : colors.ink.cream} />
-            <Text
-              className={
-                status !== "all"
-                  ? "font-grotesk-bold text-sm text-orange-600"
-                  : "font-grotesk-semibold text-sm text-ink-cream"
-              }
-              numberOfLines={1}
-            >
-              {statusLabel}
-            </Text>
-            <Feather name="chevron-down" size={14} color={status !== "all" ? colors.orange[600] : colors.ink.creamMuted} />
-          </AnimatedPressable>
-          <AnimatedPressable
-            onPress={() => setSortSheetOpen(true)}
-            className={
-              sort !== "recent"
-                ? "chip chip--selected flex-1 flex-row items-center justify-center gap-1.5 px-3 py-2"
-                : "chip chip--idle flex-1 flex-row items-center justify-center gap-1.5 px-3 py-2"
-            }
-          >
-            <Ionicons name="swap-vertical" size={14} color={sort !== "recent" ? colors.orange[600] : colors.ink.cream} />
-            <Text
-              className={
-                sort !== "recent"
-                  ? "font-grotesk-bold text-sm text-orange-600"
-                  : "font-grotesk-semibold text-sm text-ink-cream"
-              }
-              numberOfLines={1}
-            >
-              {sortLabel}
-            </Text>
-          </AnimatedPressable>
-        </View>
-
-        <Text className="px-6 pt-4 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-          {t.tasks.showingPrefix}
-          <Text className="font-grotesk-bold text-ink-cream">{filteredTasks.length}</Text>
-          {t.tasks.showingSuffix(filteredTasks.length, tasks.length)}
-        </Text>
-
-        <View className="gap-4 px-6 pt-4">
-          {filteredTasks.length === 0 ? (
-            <View className="items-center gap-2 py-16">
-              <Feather name="inbox" size={28} color={colors.ink.creamMuted} />
-              <Text className="font-grotesk-semibold text-base text-ink-cream">{t.tasks.emptyTitle}</Text>
-              <Text className="text-body text-center text-ink-cream-muted">{t.tasks.emptyBody}</Text>
-            </View>
-          ) : (
-            filteredTasks.map((task, index) => (
-              <Animated.View
-                key={task.id}
-                entering={FadeInUp.delay(Math.min(index, 8) * 40).duration(260)}
-                layout={LinearTransition.duration(350).easing(Easing.out(Easing.quad))}
-              >
-                <TaskCard
-                  task={task}
-                  onPress={() => handleOpenTask(task.id)}
-                  onToggle={() => toggleTaskStatus(task.id)}
-                />
-              </Animated.View>
-            ))
-          )}
-        </View>
-      </ScrollView>
 
       <FilterSheet
         visible={statusSheetOpen}

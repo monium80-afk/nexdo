@@ -1,6 +1,6 @@
 import { describeRuleForAi } from "@/lib/recurrence";
 import { getDueInfo } from "@/lib/taskMeta";
-import { isOverdue, priorityLevelOf } from "@/lib/taskOperations";
+import { isListed, isOverdue, priorityLevelOf } from "@/lib/taskOperations";
 import type { Task, TaskPriorityLevel } from "@/types/task";
 
 // Trims a Task down to the fields the AI prompts actually need — keeps the
@@ -34,6 +34,16 @@ function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
+/** "Wednesday, October 7, 2026, 10:00 (UTC+02:00)" — so the model knows what "today" is, for questions. */
+export function describeNow(now: Date): string {
+  const date = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const offset = -now.getTimezoneOffset();
+  const hours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0");
+  const minutes = (Math.abs(offset) % 60).toString().padStart(2, "0");
+  return `${date}, ${time} (UTC${offset >= 0 ? "+" : "-"}${hours}:${minutes})`;
+}
+
 /** Always English: it's for the model, like the rest of the prompt. */
 export function completedLabelFor(completedAt: string, now: Date): string {
   const date = new Date(completedAt);
@@ -56,7 +66,9 @@ export function taskToContext(task: Task, now: Date = new Date()): TaskContext {
     id: task.id,
     title: task.title,
     status: task.status,
-    dueDate: task.dueDate,
+    // A date-only deadline goes as its day ("2026-10-15"): its dueDate is an
+    // end-of-day instant, which would read as a time the user never gave.
+    dueDate: task.deadline && !task.deadline.time ? task.deadline.date : task.dueDate,
     // A completed task's own label would just say "Completed" — the model
     // needs the deadline it had, so it's described as if still open.
     dueLabel: getDueInfo(completed ? { ...task, status: "pending" } : task, now).pillLabel,
@@ -98,6 +110,9 @@ export function selectRelevantTasks(
 ): Task[] {
   const selected: Task[] = [];
   const seen = new Set<string>();
+  // Archived tasks and skipped occurrences are put away: the AI works with
+  // what's on the list (open and done), like every filter in lib/taskOperations.ts.
+  tasks = tasks.filter(isListed);
   const byId = new Map(tasks.map((task) => [task.id, task]));
 
   const add = (task: Task | undefined) => {

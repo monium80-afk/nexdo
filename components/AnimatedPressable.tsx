@@ -1,5 +1,7 @@
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+
+import { MOTION } from "@/constants/theme";
 
 const ReanimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -24,6 +26,7 @@ type AnimatedPressableProps = Omit<PressableProps, "style"> & {
  */
 export function AnimatedPressable({ scaleTo = 0.96, onPressIn, onPressOut, style, ...rest }: AnimatedPressableProps) {
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
@@ -33,12 +36,18 @@ export function AnimatedPressable({ scaleTo = 0.96, onPressIn, onPressOut, style
         // Reanimated shared values are mutable-by-design (worklets read/write
         // `.value` directly) — react-hooks/immutability doesn't know that yet.
         // eslint-disable-next-line react-hooks/immutability
-        scale.value = withTiming(scaleTo, { duration: 100, easing: Easing.out(Easing.quad) });
+        scale.value = withTiming(scaleTo, {
+          duration: reduceMotion ? 0 : MOTION.duration.pressIn,
+          easing: MOTION.easing.enter,
+        });
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
         // eslint-disable-next-line react-hooks/immutability
-        scale.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.quad) });
+        scale.value = withTiming(1, {
+          duration: reduceMotion ? 0 : MOTION.duration.pressOut,
+          easing: MOTION.easing.enter,
+        });
         onPressOut?.(event);
       }}
       style={[style, animatedStyle]}

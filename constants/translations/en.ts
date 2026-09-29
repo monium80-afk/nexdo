@@ -64,6 +64,11 @@ export const en = {
     dueTomorrowAt: (time: string) => `Due tomorrow at ${time}`,
     inDays: (days: number) => `In ${days} days`,
     dueOnAt: (day: string, time: string) => `Due ${day} at ${time}`,
+    /** A deadline with no set time — just its day. */
+    dueOn: (day: string) => `Due ${day}`,
+    dueAgoDay: (days: number) => (days === 1 ? "Due yesterday" : `Due ${days} days ago`),
+    archived: "Archived",
+    skipped: "Skipped",
   },
 
   /** The generic 3-step plan a new medium/complex task starts with. */
@@ -96,9 +101,19 @@ export const en = {
     startSessionFor: (duration: string) => `Start Session (${duration})`,
     previous: "Previous",
     nextCard: "Next",
+    /** Beside the "01 / 12" counter above the card stack. */
+    tasksPrioritized: "Tasks prioritized",
+    /** The card's Start button — its length sits beside it, not inside the label. */
+    startSessionLabel: "Start session",
+    breakDown: "Break down",
+    getAdvice: "Get advice",
     taskComplete: "Task complete",
     pickTasks: "PICK YOUR TASKS",
     useRecommended: "Use recommended",
+    /** Under a task's title when it has a plan: the step to do next. */
+    nextStep: (label: string) => `Next step: ${label}`,
+    /** In place of the rank when the user put this task first. */
+    pinned: "Pinned first",
   },
 
   session: {
@@ -162,16 +177,16 @@ export const en = {
     title: "Tasks",
     addTask: "Add Task",
     searchPlaceholder: "Search tasks...",
-    pendingSuffix: " pending, ",
+    pendingSuffix: " pending",
     completedSuffix: " completed",
-    overdueCount: (count: number) => `• ${count} overdue`,
+    overdueCount: (count: number) => `${count} overdue`,
     showingPrefix: "Showing ",
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
     statusTitle: "STATUS",
     sortTitle: "SORT BY",
-    status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue" },
+    status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue", archived: "Archived" },
     sort: { recent: "Recently added", dueDate: "Due date", priority: "Priority score" },
     score: (score: number) => `Score: ${score}`,
     overdueBadge: "OVERDUE",
@@ -180,16 +195,12 @@ export const en = {
   taskDetail: {
     notFound: "Task not found",
     goBack: "Go back",
-    eyebrow: "TASK DETAILS",
-    scoreLabel: "Score: ",
     postponeTitle: "POSTPONE TASK",
     currentDeadline: (label: string) => `Current deadline: "${label}". Push to a later date:`,
     postpone: { oneDay: "+1 Day (Tomorrow)", threeDays: "+3 Days", oneWeek: "+1 Week" },
     customDate: "Custom Date...",
     setDate: "Set date",
     editTask: "Edit task",
-    due: (label: string) => `Due: ${label}`,
-    estimate: (duration: string) => `Est: ${duration}`,
     rationaleTitle: "AI priority rationale",
     generatingAdvice: "Generating advice...",
     subtasks: (done: number, total: number) => `Subtasks (${done}/${total})`,
@@ -199,7 +210,7 @@ export const en = {
     deleteSubtask: (label: string) => `Delete ${label}`,
     notes: "NOTES",
     contextTitle: "ADD CONTEXT FOR AI",
-    contextBody: "The AI reads these notes when it gives advice on this task or breaks it down.",
+    contextBody: "Tell Nexdo more about this task. It reassesses the time, steps, deadline and advice, and shows you what it changed.",
     contextPlaceholder: "e.g. I already finished the research.",
     deleteTask: "Delete Task",
     saveChanges: "Save Changes",
@@ -221,14 +232,69 @@ export const en = {
     editScopeBody: "Apply these changes to…",
     scopeThis: "Only this occurrence",
     scopeFuture: "This and future ones",
+    scopeSeries: "All of them, past ones too",
     deleteScopeTitle: "Delete a repeating task",
     deleteScopeBody: "Skip just this occurrence (the next one takes its place), or delete every occurrence, past ones included?",
     deleteThisOccurrence: "This occurrence",
     deleteWholeSeries: "Whole series",
+    adviceTitle: "AI ADVICE",
+    /** The report Task Details shows after Nexdo reassesses a task for a new note. */
+    reassess: {
+      running: "Nexdo is reassessing this task…",
+      updatedTitle: "Task updated based on your new context",
+      upToDate: "Your task is up to date. No changes to your task details were needed.",
+      clarifyTitle: "Nexdo needs one detail",
+      answerPlaceholder: "Answer Nexdo…",
+      deadlineUnclear: "When is this task due now? Nexdo couldn't tell an exact date from your note.",
+      aiFailed: "Nexdo couldn't reassess this task right now. Nothing was changed.",
+      saveFailed: "Nexdo couldn't save the changes. Nothing was changed.",
+      keptUserEdits: "Some suggestions were skipped because you changed the same details while Nexdo was working.",
+      discard: "Discard note",
+      dismiss: "Dismiss",
+      title: (from: string, to: string) => `Title: “${from}” → “${to}”`,
+      description: { added: "Description: Added", updated: "Description: Updated", removed: "Description: Removed" },
+      deadline: (from: string, to: string) => `Deadline: ${from} → ${to}`,
+      deadlineUnchanged: "Deadline: Unchanged",
+      duration: (from: string, to: string) => `Estimated duration: ${from} → ${to}`,
+      priority: (from: string, to: string) => `Priority: ${from} → ${to}`,
+      levels: { high: "High", medium: "Medium", low: "Low" },
+      score: (from: number, to: number) => `Task score: ${from} → ${to}`,
+      subtasks: (parts: string[]) => `Subtasks: Updated (${parts.join(", ")})`,
+      subtaskParts: {
+        added: (count: number) => `${count} added`,
+        removed: (count: number) => `${count} removed`,
+        completed: (count: number) => `${count} marked done`,
+        renamed: (count: number) => `${count} renamed`,
+        retimed: (count: number) => `${count} re-estimated`,
+        reordered: "reordered",
+      },
+      advice: { added: "AI advice: Added", revised: "AI advice: Revised" },
+    },
+    /** The reminder line in the deadline card — the reminder is not the deadline, so it's shown on its own. */
+    reminderAt: (when: string) => `Reminder: ${when}`,
+    reminderNoDeadline: "No reminder — this task has no deadline.",
+    reminderNoneLeft: "No reminder left before the deadline.",
+    reminderMuted: "Reminders are off for this task.",
+    reminderOffInSettings: "Deadline reminders are off in Settings.",
+    muteReminders: "Turn off",
+    unmuteReminders: "Turn on",
+    organizeTitle: "ORGANIZE",
+    pin: "Put first on Next",
+    unpin: "Unpin from Next",
+    archive: "Archive",
+    restore: "Restore",
+    archivedNote: "Archived — hidden from your list, reminders and Next until you restore it.",
+    /** The plan summary above the subtasks. */
+    planLeft: (steps: number, duration: string) => `${steps} ${plural(steps, "step", "steps")} left · ${duration}`,
+    planPerDay: (duration: string, day: string) => `About ${duration} a day to finish by ${day}.`,
+    planOverdue: "Past its deadline — the steps left are all due now.",
+    /** A suggested day for a step — a suggestion, not a booking in a calendar. */
+    suggestedDay: (day: string) => `Suggested: ${day}`,
+    today: "Today",
+    tomorrow: "Tomorrow",
   },
 
   form: {
-    eyebrow: "MANUAL ENTRY",
     title: "Add New Task",
     taskTitle: "TASK TITLE",
     titlePlaceholder: "e.g. Complete Organic Chemistry lab writeup",
@@ -271,6 +337,9 @@ export const en = {
     deadlineRemoved: "The deadline will be removed.",
     newDeadline: (label: string) => `New deadline: ${label}`,
     saveChanges: "Save changes",
+    /** A deadline is a day; a time is only added when the user wants one. */
+    addTime: "Add a time",
+    removeTime: "No set time",
   },
 
   chat: {
@@ -281,6 +350,8 @@ export const en = {
     activeTasksSuffix: " active tasks in queue",
     typing: "Typing…",
     addAll: (count: number) => `Add all ${count} tasks`,
+    /** Above the cards for tasks the AI pulled out of a message — they aren't added yet. */
+    foundTasks: (count: number) => `Found ${count} ${plural(count, "task", "tasks")}`,
     yesDoIt: "Yes, do it",
     openNext: (minutes: number) => `Open Next (${minutes} min)`,
     starterSuggestions: {
@@ -345,6 +416,31 @@ export const en = {
     videoNotSupportedBody: "Nexdo reads photos, voice notes and documents. Send a photo or a file instead.",
   },
 
+  /** Live voice (app/live-voice.tsx) and the tab bar's mic button that opens it. */
+  live: {
+    open: "Talk to add or change tasks",
+    title: "Live voice",
+    connecting: "Connecting…",
+    listening: (clock: string) => `Listening · ${clock}`,
+    finishing: "Catching your last words…",
+    stopped: "Stopped",
+    undo: "Undo",
+    yourTasks: "Your tasks",
+    emptyTitle: "No open tasks",
+    emptyBody: "Say one and it appears here.",
+    marks: { added: "Just added", updated: "Updated", completed: "Done" },
+    stop: "Stop listening",
+    talkAgain: "Talk again",
+    done: "Done",
+    problems: {
+      permission: "Nexdo needs the microphone to hear you. You can allow it in Settings.",
+      unavailable: "Couldn't start live voice. Check your connection and try again.",
+      connection: "The connection dropped. What you'd already said still counts.",
+      timeLimit: "Live voice stops after 5 minutes — tap Talk again to keep going.",
+      silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",
+    },
+  },
+
   /** What the assistant says when the app itself (not the AI model) writes the reply. */
   assistant: {
     foundOne: (title: string) => `I found 1 task: "${title}". Want me to add it?`,
@@ -386,6 +482,8 @@ export const en = {
     urgencyMedium: "this is worth tackling soon",
     urgencyLow: "there's no rush, but it's on your list",
     adviceDetail: (score: number, urgency: string) => `Priority score ${score}/100 — ${urgency}.`,
+    /** Said after "Added …" when the account hasn't confirmed the save. */
+    notSavedYet: "It's on this phone but not saved to your account yet — Nexdo will keep trying.",
   },
 
   /** Repeating tasks — the rule in words, and the picker on the Add form and Task Details. */
@@ -413,6 +511,11 @@ export const en = {
     endsOn: "On a date",
     summary: (label: string) => `Repeats: ${label}`,
     firstOn: (when: string) => `First one: ${when}`,
+    ifMissed: "IF ONE IS MISSED",
+    missedKeep: "Keep it open",
+    missedSkip: "Skip it",
+    missedKeepHint: "A missed one stays open until you do it, and the next one waits.",
+    missedSkipHint: "A missed one is marked skipped once the next one is due.",
   },
 
   /** What the assistant says about changes to existing tasks — written from what actually happened. */
@@ -496,6 +599,10 @@ export const en = {
     completedOn: (when: string) => `completed ${when}`,
     dueOn: (when: string) => `due ${when}`,
     overdueSince: (when: string) => `overdue since ${when}`,
+    dateUnclear: (phrase: string) =>
+      `I couldn't tell which date "${phrase}" means, so I haven't added anything yet. Which day is it? (For example "March 4".)`,
+    archived: (title: string) => `Archived "${title}".`,
+    restored: (title: string) => `Restored "${title}" — it's back on your list.`,
   },
 
   settings: {
@@ -515,6 +622,8 @@ export const en = {
     aiChat: "AI INBOX",
     autoMode: "Auto mode",
     autoModeBody: "Add and update tasks right away, without asking you to confirm first.",
+    voiceButton: "Talk instead of type",
+    voiceButtonBody: "The middle button of the tab bar becomes a microphone that opens Live voice, instead of the Add Task form.",
     clearHistory: "Clear chat history",
     clearConfirmTitle: "Clear chat history?",
     clearConfirmBody: "This removes every message in the AI chat. Your tasks won't be affected.",
@@ -523,15 +632,24 @@ export const en = {
     historyClearFailed: "Cleared on this device, but couldn't clear the synced copy. Try again.",
 
     notifications: "NOTIFICATIONS",
-    dailyNudge: 'Daily "what\'s next" nudge',
-    dailyNudgeBody: "One reminder a day with the task worth doing next.",
+    dailyNudge: "Daily planning",
+    dailyNudgeBody: "One note a day: what's due and where to start. Separate from deadline reminders.",
     nudgeTime: "Remind me at",
     overdueAlerts: "Overdue task alerts",
-    overdueAlertsBody: "A heads-up when a task passes its deadline.",
-    notificationsNote: "Saved on this device. The daily nudge starts arriving in a later update.",
+    overdueAlertsBody: "A heads-up when a task with a set time passes its deadline.",
+    notificationsNote: "Reminders are scheduled on this phone. A task without a deadline never gets one.",
     notificationsBlockedTitle: "Notifications are off",
-    notificationsBlockedBody: "Allow notifications for Nexdo in your phone's settings to get overdue alerts.",
+    notificationsBlockedBody: "Allow notifications for Nexdo in your phone's settings to get reminders.",
     openPhoneSettings: "Open settings",
+    deadlineReminders: "Deadline reminders",
+    deadlineRemindersBody: "On the day a task is due. A task with no set time is reminded at the time below.",
+    reminderTime: "Reminder time",
+    beforeDeadline: "ALSO BEFORE A SET TIME",
+    offsetChip: (minutes: number) =>
+      minutes < 60 ? `${minutes} min` : minutes < 1440 ? plural(minutes / 60, "1 hour", `${minutes / 60} hours`) : plural(minutes / 1440, "1 day", `${minutes / 1440} days`),
+    importantReminder: "Extra reminder for high priority",
+    importantReminderBody: "The day before, at the reminder time.",
+    notificationsDenied: "Notifications are off for Nexdo in your phone's settings, so no reminder can arrive.",
 
     appearance: "APPEARANCE",
     theme: "Theme",
@@ -551,8 +669,29 @@ export const en = {
   notifications: {
     overdueTitle: (title: string) => `Overdue: ${title}`,
     overdueBody: "Its deadline just passed. Tap to finish it or pick a new time.",
-    /** Android lists this under Nexdo's notification settings. */
+    /** Android lists these under Nexdo's notification settings. */
     overdueChannel: "Overdue tasks",
+    remindersChannel: "Task reminders",
+    planningChannel: "Daily planning",
+    completeAction: "Mark as done",
+    dueTodayTitle: (title: string) => `Due today: ${title}`,
+    dueTodayBody: "No set time — any time today works.",
+    dueAtBody: (time: string) => `Due today at ${time}.`,
+    dueInBody: (offset: string, time: string) => `Due in ${offset}, at ${time}.`,
+    offsetLabel: (minutes: number) =>
+      minutes < 60
+        ? `${minutes} ${plural(minutes, "minute", "minutes")}`
+        : minutes < 1440
+          ? `${Math.round(minutes / 60)} ${plural(Math.round(minutes / 60), "hour", "hours")}`
+          : `${Math.round(minutes / 1440)} ${plural(Math.round(minutes / 1440), "day", "days")}`,
+    dueTomorrowTitle: (title: string) => `Due tomorrow: ${title}`,
+    dueTomorrowBody: "Tomorrow, no set time.",
+    dueTomorrowAtBody: (time: string) => `Due tomorrow at ${time}.`,
+    dailyTitle: "Plan your day",
+    dailyDueBody: (count: number, top: string) =>
+      `${count} ${plural(count, "task", "tasks")} due today.${top ? ` Start with "${top}".` : ""}`,
+    dailyOpenBody: (count: number, top: string) =>
+      `${count} open ${plural(count, "task", "tasks")}.${top ? ` Start with "${top}".` : ""}`,
   },
 
   profile: {

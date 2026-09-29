@@ -3,7 +3,7 @@ import { Image, Modal, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 /**
@@ -12,6 +12,7 @@ import { useTranslation } from "@/hooks/useTranslation";
  * the whole frame, uncropped, on black.
  */
 export function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () => void }) {
+  const colors = useColors();
   const t = useTranslation();
 
   return (
@@ -31,7 +32,7 @@ export function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () =>
             hitSlop={10}
             className="h-11 w-11 items-center justify-center rounded-full bg-white/15"
           >
-            <Feather name="x" size={22} color={colors.cream[50]} />
+            <Feather name="x" size={22} color={colors.onAccent} />
           </AnimatedPressable>
         </View>
       </SafeAreaView>

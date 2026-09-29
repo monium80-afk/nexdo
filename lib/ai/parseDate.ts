@@ -7,8 +7,12 @@
 // ("last week") that should land as overdue, not as no deadline at all.
 // Returns undefined only when the text names no deadline whatsoever.
 
+import { pad, toLocalDateKey } from "@/lib/localDate";
 import type { AppLanguage } from "@/types/settings";
 
+// The hour a resolved date carries when the phrase named no time. It is only
+// a placeholder inside this file: parseDeadlinePhrase() — what task deadlines
+// are built from — drops it and keeps the deadline date-only.
 const DEFAULT_HOUR = 18;
 
 const COUNT_WORDS: Record<string, number> = {
@@ -602,6 +606,66 @@ export function parseDateRange(text: string, now: Date = new Date(), language?: 
   return range(new Date(day), new Date(day));
 }
 
+const NUMERIC_DATE_PATTERN = /(?:^|[^\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?(?![\d/])/;
+
+/** A slashed day/month date, which way round it's meant, or "ambiguous" when both readings are real dates. */
+function readNumericDate(lower: string): { day: number; month: number; year?: number } | "ambiguous" | null {
+  const match = lower.match(NUMERIC_DATE_PATTERN);
+  if (!match) return null;
+  const a = Number(match[1]);
+  const b = Number(match[2]);
+  const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : undefined;
+  const valid = (month: number, day: number) => month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  const monthFirst = valid(a, b);
+  const dayFirst = valid(b, a);
+  if (monthFirst && dayFirst && a !== b) return "ambiguous";
+  if (monthFirst) return { month: a, day: b, year };
+  if (dayFirst) return { month: b, day: a, year };
+  return null;
+}
+
+/** Whether the text holds a date like "3/4" that could be read two ways — ask, don't guess. */
+export function isAmbiguousDate(text: string, language?: AppLanguage): boolean {
+  return readNumericDate(normalizeDatePhrase(text.toLowerCase(), language)) === "ambiguous";
+}
+
+// Words that only turn up in a phrase meant as a date. A phrase with one of
+// these that still can't be read ("by the 3rd week of term") needs a
+// question, not a silent "no deadline"; one without ("soon", "later") simply
+// isn't a deadline.
+const DATE_WORD_PATTERN = new RegExp(
+  `\\d|\\b(?:${[...WEEKDAYS, ...MONTH_ALTERNATIVES.flat()].join("|")}|today|tomorrow|tonight|yesterday|week|month|year|weekend|morning|evening|afternoon|noon|midnight)\\b`,
+);
+
+/** Whether a deadline phrase looks like it names a date, even if it can't be read as one. */
+export function looksLikeDate(text: string, language?: AppLanguage): boolean {
+  return DATE_WORD_PATTERN.test(normalizeDatePhrase(text.toLowerCase(), language));
+}
+
+// "in 2 hours", "in 30 minutes", "3 hours ago" — no clock time is said, but
+// the result is an exact moment all the same.
+const RELATIVE_TIME_PATTERN = new RegExp(
+  `\\bin\\s+(?:the\\s+next\\s+)?(?:${COUNT_PATTERN})\\s+(?:hour|minute)s?\\b|\\b(?:${COUNT_PATTERN})\\s+hours?\\s+ago\\b`,
+);
+
+/** A deadline as read from a phrase: its day, and a clock time only when the phrase really gave one. */
+export type ParsedDeadline = { date: string; time?: string };
+
+/**
+ * The deadline a phrase names, in the user's own time zone (this runs on the
+ * device): "October 15" is a date-only deadline, "October 15 at 7 PM" and
+ * "in 2 hours" are exact ones. Undefined when the phrase names no readable,
+ * unambiguous date — see isAmbiguousDate / looksLikeDate for telling those apart.
+ */
+export function parseDeadlinePhrase(text: string, now: Date = new Date(), language?: AppLanguage): ParsedDeadline | undefined {
+  const iso = parseDatePhrase(text, now, language);
+  if (!iso) return undefined;
+  const date = new Date(iso);
+  const exact =
+    hasExplicitTime(text, language) || RELATIVE_TIME_PATTERN.test(normalizeDatePhrase(text.toLowerCase(), language));
+  return { date: toLocalDateKey(date), time: exact ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : undefined };
+}
+
 export function parseDatePhrase(text: string, now: Date = new Date(), language?: AppLanguage): string | undefined {
   const lower = normalizeDatePhrase(text.toLowerCase(), language);
   const time = extractTimeOfDay(lower);
@@ -636,7 +700,8 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   if (ago) {
     const count = toCount(ago[1]);
     if (count !== undefined) {
-      if (ago[2] === "hour") return resolve(new Date(now.getTime() - count * 60 * 60 * 1000));
+      // An amount of hours is already an exact moment — no default hour on top.
+      if (ago[2] === "hour") return new Date(now.getTime() - count * 60 * 60 * 1000).toISOString();
       if (ago[2] === "month") return resolve(byMonths(-count));
       return resolve(byDays(ago[2] === "week" ? -count * 7 : -count));
     }
@@ -646,8 +711,9 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   if (within) {
     const count = toCount(within[1]);
     if (count !== undefined) {
-      if (within[2] === "minute") return resolve(new Date(now.getTime() + count * 60 * 1000));
-      if (within[2] === "hour") return resolve(new Date(now.getTime() + count * 60 * 60 * 1000));
+      // "in 2 hours" is an exact moment — resolve() would put it at the default hour.
+      if (within[2] === "minute") return new Date(now.getTime() + count * 60 * 1000).toISOString();
+      if (within[2] === "hour") return new Date(now.getTime() + count * 60 * 60 * 1000).toISOString();
       if (within[2] === "month") return resolve(byMonths(count));
       return resolve(byDays(within[2] === "week" ? count * 7 : count));
     }
@@ -688,6 +754,20 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   const iso = lower.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (iso) {
     return resolve(new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+  }
+
+  // "10/15", "15/10/2026" — read only when there's one way to read it. "3/4"
+  // could be March 4th or April 3rd, and a guess there is a wrong deadline
+  // half the time: it isn't read at all, and isAmbiguousDate() lets the
+  // caller ask instead.
+  const numeric = readNumericDate(lower);
+  if (numeric === "ambiguous") return undefined;
+  if (numeric) {
+    const date = new Date(numeric.year ?? now.getFullYear(), numeric.month - 1, numeric.day);
+    if (numeric.year === undefined && date.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
+      date.setFullYear(date.getFullYear() + 1);
+    }
+    return resolve(date);
   }
 
   // "march 5", "5 march", "sept 20", "september 25th", "the 25th of september"

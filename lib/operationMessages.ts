@@ -1,7 +1,8 @@
+import { formatDeadline } from "@/lib/deadline";
 import type { Translations } from "@/lib/i18n";
 import { describeRule } from "@/lib/recurrence";
 import type { OperationPlan, TaskOperation, TaskOutcome } from "@/lib/taskOperations";
-import type { Task } from "@/types/task";
+import type { Task, TaskDeadline } from "@/types/task";
 
 // What the assistant says about a task operation — written by the app from
 // the plan that was actually carried out (lib/taskOperations.ts), so a reply
@@ -28,9 +29,16 @@ export function previewTitles(titles: string[], t: Translations): string {
   return t.ops.andMore(quoted.slice(0, PREVIEW_TITLES).join(", "), quoted.length - PREVIEW_TITLES);
 }
 
+/** A deadline in a reply: its day, and its time only if it has one. */
+function when(deadline: TaskDeadline | undefined, iso: string | undefined, t: Translations): string | undefined {
+  if (deadline) return formatDeadline(deadline, t.locale);
+  return iso ? formatWhen(iso, t) : undefined;
+}
+
 function nextPart(outcome: TaskOutcome, t: Translations): string {
   if (!outcome.recurring) return "";
-  return outcome.next?.dueDate ? ` ${t.ops.nextOccurrence(formatWhen(outcome.next.dueDate, t))}` : ` ${t.ops.seriesEnded}`;
+  const next = when(outcome.next?.deadline, outcome.next?.dueDate, t);
+  return next ? ` ${t.ops.nextOccurrence(next)}` : ` ${t.ops.seriesEnded}`;
 }
 
 function single(operation: TaskOperation, outcome: TaskOutcome, t: Translations): string {
@@ -55,7 +63,11 @@ function single(operation: TaskOperation, outcome: TaskOutcome, t: Translations)
     case "reopened":
       return t.ops.reopened(title);
     case "skipped":
-      return t.ops.skippedOccurrence(title, outcome.next?.dueDate ? formatWhen(outcome.next.dueDate, t) : undefined);
+      return t.ops.skippedOccurrence(title, when(outcome.next?.deadline, outcome.next?.dueDate, t));
+    case "archived":
+      return t.ops.archived(title);
+    case "restored":
+      return t.ops.restored(title);
     case "deleted":
       if (operation.kind === "delete" && operation.scope === "series" && outcome.recurring) {
         return t.ops.deletedSeries(title, outcome.removedCount ?? 1);
@@ -64,7 +76,8 @@ function single(operation: TaskOperation, outcome: TaskOutcome, t: Translations)
       return t.assistant.deleted(title);
     case "updated": {
       const base = outcome.wasCompleted ? t.ops.updatedCompleted(title) : t.assistant.updated(title);
-      return outcome.newDueDate ? `${base} ${t.ops.nowDue(formatWhen(outcome.newDueDate, t))}` : base;
+      const due = when(outcome.newDeadline, outcome.newDueDate, t);
+      return due ? `${base} ${t.ops.nowDue(due)}` : base;
     }
   }
 }
@@ -92,7 +105,7 @@ export function describeOperationResult(
         operation.changes.recurrence === null
           ? t.ops.stoppedRepeating(outcomes[0].title)
           : task?.recurrence
-            ? `${t.ops.nowRepeats(outcomes[0].title, describeRule(task.recurrence.rule, t))} ${t.ops.nowDue(formatWhen(task.dueDate!, t))}`
+            ? `${t.ops.nowRepeats(outcomes[0].title, describeRule(task.recurrence.rule, t))} ${t.ops.nowDue(when(task.deadline, task.dueDate, t) ?? "")}`
             : message;
     }
   } else {
@@ -155,6 +168,10 @@ export function describeConfirmation(
         : t.ops.confirmUpdate(targets.length, titles);
       return repeatingDefaulted ? `${question} ${t.ops.repeatingUpdateNote}` : question;
     }
+    // Archiving and restoring come from Task Details, one task at a time — never asked about.
+    case "archive":
+    case "restore":
+      return t.ops.confirmUpdate(targets.length, titles);
   }
 }
 
@@ -183,8 +200,8 @@ export function describeTaskList(tasks: Task[], t: Translations, now: Date): str
         ? t.ops.completedOn(formatWhen(task.completedAt, t))
         : task.dueDate
           ? Date.parse(task.dueDate) < now.getTime()
-            ? t.ops.overdueSince(formatWhen(task.dueDate, t))
-            : t.ops.dueOn(formatWhen(task.dueDate, t))
+            ? t.ops.overdueSince(when(task.deadline, task.dueDate, t)!)
+            : t.ops.dueOn(when(task.deadline, task.dueDate, t)!)
           : t.due.noDeadline;
     const repeat = task.recurrence ? ` · ${describeRule(task.recurrence.rule, t)}` : "";
     return `• ${task.title} — ${detail}${repeat}`;

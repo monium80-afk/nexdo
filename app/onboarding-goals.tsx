@@ -6,8 +6,8 @@ import { ScrollView, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -20,6 +20,7 @@ type Goal = (typeof GOALS)[number];
 /** One answer. Picked ones take an orange tint rather than a solid fill: the
  *  whole list has to stay readable however many are on. */
 function GoalRow({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const colors = useColors();
   const rtl = useRtlText();
 
   return (

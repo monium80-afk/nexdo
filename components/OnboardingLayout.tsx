@@ -8,8 +8,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { HighlightedText } from "@/components/HighlightedText";
 import { SetupProgressBar } from "@/components/SetupProgressBar";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 // One step sinks out of the way before the next rises into it, so the two are
@@ -89,6 +89,7 @@ export function OnboardingLayout({
   secondaryAction?: { label: string; onPress: () => void };
   children: ReactNode;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
 
@@ -201,7 +202,7 @@ export function OnboardingLayout({
               accessibilityLabel={nextLabel}
               className="btn btn--primary mt-4 gap-3 rounded-full"
             >
-              <Text className="font-grotesk-bold text-xl text-cream-50">{nextLabel}</Text>
+              <Text className="font-grotesk-bold text-xl text-on-accent">{nextLabel}</Text>
               <Feather name="arrow-right" size={20} color={colors.onAccent} />
             </AnimatedPressable>
           ) : (

@@ -6,8 +6,8 @@ import { ScrollView, Text, View } from "react-native";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
@@ -66,6 +66,7 @@ function PlanCard({ draft, now }: { draft: ExtractedTaskDraft; now: Date }) {
 }
 
 export default function OnboardingPlan() {
+  const colors = useColors();
   const t = useTranslation();
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();

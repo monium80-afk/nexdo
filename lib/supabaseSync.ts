@@ -30,9 +30,20 @@ type TaskRow = {
   skip: Task["skip"] | null;
   completed_at: string | null;
   // Optional on the type: a database that hasn't run the migration in
-  // supabase/schema.sql yet has no such column (see upsertTaskRows).
+  // supabase/schema.sql yet has no such columns (see upsertTaskRows).
   recurrence?: Task["recurrence"] | null;
+  /** The deadline's calendar day (Postgres `date`). */
+  deadline_date?: string | null;
+  /** Its clock time (Postgres `time`, read back as "HH:MM:SS") — null for a date-only deadline. */
+  deadline_time?: string | null;
+  deadline_timezone?: string | null;
+  reminder_settings?: Task["reminders"] | null;
+  pinned_at?: string | null;
+  closed_at?: string | null;
 };
+
+/** Columns added after the first release, each by a re-run of supabase/schema.sql. */
+const NEWER_COLUMNS = ["deadline_date", "deadline_time", "deadline_timezone", "reminder_settings", "pinned_at", "closed_at"] as const;
 
 function toTaskRow(task: Task, userId: string): TaskRow {
   return {
@@ -55,6 +66,27 @@ function toTaskRow(task: Task, userId: string): TaskRow {
     skip: task.skip ?? null,
     completed_at: task.completedAt ?? null,
     recurrence: task.recurrence ?? null,
+    deadline_date: task.deadline?.date ?? null,
+    deadline_time: task.deadline?.time ?? null,
+    deadline_timezone: task.deadline?.timeZone ?? null,
+    reminder_settings: task.reminders ?? null,
+    pinned_at: task.pinnedAt ?? null,
+    closed_at: task.closedAt ?? null,
+  };
+}
+
+/**
+ * The row's deadline, when the database has the deadline columns and one is
+ * set. Without them, only due_date is there, and lib/deadline.ts
+ * reconcileDeadline reads that as an exact deadline.
+ */
+function deadlineFromRow(row: TaskRow): Task["deadline"] {
+  if (!row.deadline_date) return undefined;
+  const time = row.deadline_time ? row.deadline_time.slice(0, 5) : undefined;
+  return {
+    date: row.deadline_date.slice(0, 10),
+    ...(time ? { time } : {}),
+    ...(row.deadline_timezone ? { timeZone: row.deadline_timezone } : {}),
   };
 }
 
@@ -63,6 +95,7 @@ function fromTaskRow(row: TaskRow): Task {
     id: row.id,
     title: row.title,
     status: row.status,
+    deadline: deadlineFromRow(row),
     dueDate: row.due_date ?? undefined,
     estimatedMinutes: row.estimated_minutes,
     createdAt: row.created_at,
@@ -78,6 +111,9 @@ function fromTaskRow(row: TaskRow): Task {
     skip: row.skip ?? undefined,
     completedAt: row.completed_at ?? undefined,
     recurrence: normalizeRecurrence(row.recurrence),
+    reminders: row.reminder_settings?.muted === true ? { muted: true } : undefined,
+    pinnedAt: row.pinned_at ?? undefined,
+    closedAt: row.closed_at ?? undefined,
   };
 }
 
@@ -117,14 +153,25 @@ export async function fetchTasks(userId: string): Promise<Task[]> {
 // few minutes, so running the migration while the app is open is picked up.
 const RECURRENCE_COLUMN_RECHECK_MS = 5 * 60 * 1000;
 let recurrenceColumnMissingUntil = 0;
+// The same for the deadline / reminder / pin / archive columns. Without them
+// a row is still saved — due_date keeps the instant, so no deadline is lost —
+// only the "no set time", per-task reminder and pin details stay on the phone
+// until the migration is run (useTaskStore keeps them across a re-fetch).
+let newerColumnsMissingUntil = 0;
 
-function isMissingRecurrenceColumn(error: { code?: string; message?: string } | null): boolean {
-  return !!error && error.code === "PGRST204" && /recurrence/i.test(error.message ?? "");
+function isMissingColumn(error: { code?: string; message?: string } | null, names: readonly string[]): boolean {
+  return !!error && error.code === "PGRST204" && names.some((name) => (error.message ?? "").includes(name));
 }
 
 function withoutRecurrence(row: TaskRow): TaskRow {
   const copy = { ...row };
   delete copy.recurrence;
+  return copy;
+}
+
+function withoutNewerColumns(row: TaskRow): TaskRow {
+  const copy = { ...row };
+  NEWER_COLUMNS.forEach((column) => delete copy[column]);
   return copy;
 }
 
@@ -136,23 +183,39 @@ function withoutRecurrence(row: TaskRow): TaskRow {
 export async function upsertTaskRows(tasks: Task[], userId: string): Promise<void> {
   if (tasks.length === 0) return;
   const rows = tasks.map((task) => toTaskRow(task, userId));
-  if (Date.now() >= recurrenceColumnMissingUntil) {
-    const { error } = await supabase.from("tasks").upsert(rows);
+  // PostgREST names one missing column per error, so a database missing both
+  // groups takes two rounds to find out; three attempts cover it.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const now = Date.now();
+    const dropRecurrence = now < recurrenceColumnMissingUntil;
+    const dropNewer = now < newerColumnsMissingUntil;
+    let sendable = dropNewer ? rows.map(withoutNewerColumns) : rows;
+    if (dropRecurrence) {
+      // A repeating task saved without its rule would come back as a one-off.
+      if (sendable.some((row) => row.recurrence)) {
+        throw new Error("Repeating tasks can't be saved until supabase/schema.sql adds the recurrence column.");
+      }
+      sendable = sendable.map(withoutRecurrence);
+    }
+    const { error } = await supabase.from("tasks").upsert(sendable);
     if (!error) return;
-    if (!isMissingRecurrenceColumn(error)) throw error;
-    recurrenceColumnMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
-    console.warn(
-      "[supabaseSync] The tasks table has no recurrence column yet — run supabase/schema.sql. Repeating tasks stay unsaved until then.",
-    );
+    if (!dropNewer && isMissingColumn(error, NEWER_COLUMNS)) {
+      newerColumnsMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
+      console.warn(
+        "[supabaseSync] The tasks table has no deadline_date/reminder_settings columns yet — run supabase/schema.sql. Tasks still save; a date-only deadline is stored as its end-of-day time until then.",
+      );
+      continue;
+    }
+    if (!dropRecurrence && isMissingColumn(error, ["recurrence"])) {
+      recurrenceColumnMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
+      console.warn(
+        "[supabaseSync] The tasks table has no recurrence column yet — run supabase/schema.sql. Repeating tasks stay unsaved until then.",
+      );
+      continue;
+    }
+    throw error;
   }
-  const plainRows = rows.filter((row) => !row.recurrence).map(withoutRecurrence);
-  if (plainRows.length < rows.length) {
-    throw new Error("Repeating tasks can't be saved until supabase/schema.sql adds the recurrence column.");
-  }
-  if (plainRows.length > 0) {
-    const { error } = await supabase.from("tasks").upsert(plainRows);
-    if (error) throw error;
-  }
+  throw new Error("[supabaseSync] tasks upsert kept failing on missing columns");
 }
 
 export async function upsertTaskRow(task: Task, userId: string): Promise<void> {

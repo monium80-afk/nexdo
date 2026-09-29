@@ -22,9 +22,9 @@ import { AuthTextField } from "@/components/AuthTextField";
 import { SetupProgressBar } from "@/components/SetupProgressBar";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
-import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { posthog } from "@/lib/posthog";
@@ -68,6 +68,7 @@ function sortByPriority(drafts: ExtractedTaskDraft[], now: Date): ExtractedTaskD
 }
 
 export default function SignUp() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();

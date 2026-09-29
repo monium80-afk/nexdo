@@ -22,7 +22,7 @@ export function getScoreTier(score: number): ScoreTier {
   return "low";
 }
 
-export type DueTone = "overdue" | "urgent" | "upcoming" | "muted";
+export type DueTone = "overdue" | "today" | "urgent" | "upcoming" | "muted";
 
 export type DueInfo = {
   label: string;
@@ -42,35 +42,52 @@ export function getDueInfo(task: Task, now: Date = new Date()): DueInfo {
   if (task.status === "completed") {
     return { label: t.due.completed, tone: "muted", pillLabel: t.due.completed };
   }
+  if (task.status === "archived" || task.status === "skipped") {
+    const label = task.status === "archived" ? t.due.archived : t.due.skipped;
+    return { label, tone: "muted", pillLabel: label };
+  }
 
   if (!task.dueDate) {
-    return { label: t.due.noDeadline, tone: "muted", pillLabel: t.due.noDeadline };
+    return { label: t.due.noDeadline, tone: "upcoming", pillLabel: t.due.noDeadline };
   }
 
   const due = new Date(task.dueDate);
   const dayDiff = Math.round((startOfDay(due).getTime() - startOfDay(now).getTime()) / DAY_MS);
   const time = due.toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
+  // A date-only deadline ("Oct 15") is shown as its day. Its dueDate is the
+  // end of that day, which is when it turns overdue — not a time to show.
+  const dateOnly = !!task.deadline && !task.deadline.time;
 
-  if (dayDiff < 0) {
+  if (dayDiff < 0 || (dayDiff === 0 && due.getTime() < now.getTime())) {
     const daysOverdue = Math.abs(dayDiff);
-    return { label: t.due.daysOverdue(daysOverdue), tone: "overdue", pillLabel: t.due.dueAgo(daysOverdue, time) };
+    const label = dayDiff === 0 ? t.due.overdue : t.due.daysOverdue(daysOverdue);
+    return {
+      label,
+      tone: "overdue",
+      pillLabel:
+        dayDiff === 0
+          ? t.due.overdue
+          : dateOnly
+            ? t.due.dueAgoDay(daysOverdue)
+            : t.due.dueAgo(daysOverdue, time),
+    };
   }
 
   if (dayDiff === 0) {
-    return { label: t.due.dueToday, tone: "urgent", pillLabel: t.due.dueTodayBy(time) };
+    return { label: t.due.dueToday, tone: "today", pillLabel: dateOnly ? t.due.dueToday : t.due.dueTodayBy(time) };
   }
 
   if (dayDiff === 1) {
-    return { label: t.due.dueTomorrow, tone: "urgent", pillLabel: t.due.dueTomorrowAt(time) };
+    return { label: t.due.dueTomorrow, tone: "urgent", pillLabel: dateOnly ? t.due.dueTomorrow : t.due.dueTomorrowAt(time) };
   }
 
-  if (dayDiff <= 6) {
+  if (dayDiff <= 7) {
     const weekday = due.toLocaleDateString(t.locale, { weekday: "long" });
-    return { label: t.due.inDays(dayDiff), tone: "upcoming", pillLabel: t.due.dueOnAt(weekday, time) };
+    return { label: t.due.inDays(dayDiff), tone: "urgent", pillLabel: dateOnly ? t.due.dueOn(weekday) : t.due.dueOnAt(weekday, time) };
   }
 
   const dateLabel = due.toLocaleDateString(t.locale, { month: "short", day: "numeric" });
-  return { label: t.due.inDays(dayDiff), tone: "upcoming", pillLabel: t.due.dueOnAt(dateLabel, time) };
+  return { label: t.due.inDays(dayDiff), tone: "upcoming", pillLabel: dateOnly ? t.due.dueOn(dateLabel) : t.due.dueOnAt(dateLabel, time) };
 }
 
 // A lighter-weight cousin of getDueInfo above — that one takes a full Task,
@@ -95,16 +112,4 @@ export function previewDueLabel(
   // Weekday plus date — a bare "Tuesday" read as the wrong day for "in six days".
   if (dayDiff <= 6) return `${due.toLocaleDateString(t.locale, { weekday: "short", month: "short", day: "numeric" })}${time}`;
   return `${due.toLocaleDateString(t.locale, { month: "short", day: "numeric" })}${time}`;
-}
-
-// Colors the task list's deadline tag: red / yellow / green.
-export type DeadlineUrgency = "close" | "normal" | "far";
-
-/** 2 days or less (overdue included) is close, 3-7 days is normal, anything later — or no deadline — is far. */
-export function getDeadlineUrgency(task: Task, now: Date = new Date()): DeadlineUrgency {
-  if (!task.dueDate) return "far";
-  const dayDiff = Math.round((startOfDay(new Date(task.dueDate)).getTime() - startOfDay(now).getTime()) / DAY_MS);
-  if (dayDiff <= 2) return "close";
-  if (dayDiff <= 7) return "normal";
-  return "far";
 }

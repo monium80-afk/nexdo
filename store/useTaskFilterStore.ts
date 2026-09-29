@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type TaskStatusFilter = "all" | "pending" | "completed" | "overdue";
+export type TaskStatusFilter = "all" | "pending" | "completed" | "overdue" | "archived";
 export type TaskSortOption = "recent" | "dueDate" | "priority";
 
 type TaskFilterStore = {

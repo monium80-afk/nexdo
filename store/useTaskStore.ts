@@ -4,11 +4,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { analyzeTaskComplexity } from "@/lib/ai/analyzeComplexity";
-import { applyContextToTask } from "@/lib/ai/applyContext";
 import { generatePlan, isUntouchedTemplatePlan } from "@/lib/ai/generatePlan";
 import type { PlanStep, StructuredAction } from "@/lib/ai/types";
+import { deadlineFromDate, makeDeadline, reconcileDeadline, withDeadline, type DeadlineInput } from "@/lib/deadline";
 import { translate } from "@/lib/i18n";
-import { syncOverdueAlerts } from "@/lib/notifications";
+import { clearAllNotifications } from "@/lib/notifications";
 import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
 import { buildRule, startSeries, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask } from "@/lib/scoring";
@@ -17,12 +17,13 @@ import {
   completeTaskDelta,
   matchesFilter,
   planOperation,
+  skipMissedDelta,
   type OperationPlan,
   type TaskChanges,
   type TaskOperation,
 } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
-import type { Subtask, Task, TaskPriorityLevel, TaskStep } from "@/types/task";
+import type { Subtask, Task, TaskDeadline, TaskPriorityLevel, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
@@ -40,13 +41,18 @@ function withoutKeys(record: Record<string, string>, keys: string[]): Record<str
 // Returns a promise that never rejects, so callers can fire and forget it or
 // (signing out) wait for it. Several tasks go up in one request — one
 // statement on the database, so a bulk change lands whole or not at all.
+// The save in flight for each task, so a caller about to tell the user "it's
+// saved" (confirmSaved) can wait for the database's answer instead of
+// assuming it. Resolves to whether that save went through.
+const pendingSaves = new Map<string, Promise<boolean>>();
+
 function syncUpsertMany(tasks: Task[], userId: string | null): Promise<void> {
   if (tasks.length === 0) return Promise.resolve();
   useTaskStore.setState((state) => ({
     unsynced: { ...state.unsynced, ...Object.fromEntries(tasks.map((task) => [task.id, task.updatedAt])) },
   }));
   if (!userId) return Promise.resolve();
-  return upsertTaskRows(tasks, userId)
+  const request = upsertTaskRows(tasks, userId)
     .then(() => {
       // Only if this is still the newest version — an edit made while the
       // request was in flight has its own save to wait for.
@@ -54,10 +60,19 @@ function syncUpsertMany(tasks: Task[], userId: string | null): Promise<void> {
         const saved = tasks.filter((task) => state.unsynced[task.id] === task.updatedAt).map((task) => task.id);
         return saved.length > 0 ? { unsynced: withoutKeys(state.unsynced, saved) } : {};
       });
+      return true;
     })
     .catch((error) => {
       console.warn("[useTaskStore] upsert failed", error);
+      return false;
     });
+  tasks.forEach((task) => pendingSaves.set(task.id, request));
+  void request.then(() => {
+    tasks.forEach((task) => {
+      if (pendingSaves.get(task.id) === request) pendingSaves.delete(task.id);
+    });
+  });
+  return request.then(() => undefined);
 }
 
 function syncUpsert(task: Task, userId: string | null): Promise<void> {
@@ -148,9 +163,20 @@ const rehydrated = new Promise<void>((resolve) => {
 });
 
 export type NewTaskInput = {
+  /**
+   * An id to create the task under — given for a task made from an AI
+   * preview card (derived from its candidate id), so adding the same card
+   * twice lands on the same task instead of a duplicate.
+   */
+  id?: string;
   title: string;
   estimatedMinutes: number;
+  /** The deadline: a day, plus a time only if the user gave one. Preferred over `dueDate`. */
+  deadline?: DeadlineInput;
+  /** A deadline as an ISO instant (an AI draft, onboarding) — exact unless `dueHasTime` is false. */
   dueDate?: string;
+  /** With `dueDate`: false when no clock time was given, so only its day is kept. */
+  dueHasTime?: boolean;
   priorityLevel: TaskPriorityLevel;
   notes?: string;
   steps?: TaskStep[];
@@ -161,6 +187,22 @@ export type NewTaskInput = {
 function createTaskId(): string {
   return `task-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/** The task id an AI preview card creates — the same one however many times it's added. */
+export function taskIdForCandidate(candidateId: string): string {
+  return `task-${candidateId}`;
+}
+
+/** The deadline a new task starts with — never one the user didn't give. */
+function initialDeadline(input: NewTaskInput): TaskDeadline | undefined {
+  if (input.deadline) return makeDeadline(input.deadline);
+  if (!input.dueDate) return undefined;
+  const due = new Date(input.dueDate);
+  return deadlineFromDate(due, input.dueHasTime ?? true);
+}
+
+/** How long a caller waits for the database before saying a new task isn't saved yet. */
+const CONFIRM_SAVE_TIMEOUT_MS = 10_000;
 
 function stepsToSubtasks(steps: TaskStep[]): Subtask[] {
   return steps.map((step, index) => ({
@@ -192,11 +234,10 @@ export function buildTask(input: NewTaskInput, now: Date): Task {
   const subtasks = input.steps && input.steps.length > 0 ? stepsToSubtasks(input.steps) : undefined;
 
   const nowIso = now.toISOString();
-  const task: Task = {
-    id: createTaskId(),
+  const base: Task = {
+    id: input.id ?? createTaskId(),
     title: input.title.trim(),
     status: "pending",
-    dueDate: input.dueDate,
     estimatedMinutes: input.estimatedMinutes,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -209,9 +250,10 @@ export function buildTask(input: NewTaskInput, now: Date): Task {
     complexity,
     aiContext: { notes: [] },
   };
+  const task = withDeadline(base, initialDeadline(input));
   // A repeating task's first occurrence sits on the rule's first day (a task
   // due Wednesday that repeats on Mondays is due next Monday).
-  const rule = input.recurrence ? buildRule(input.recurrence, input.dueDate, now) : null;
+  const rule = input.recurrence ? buildRule(input.recurrence, task.deadline, now) : null;
   return recalcTask(rule ? startSeries(task, rule) : task, now);
 }
 
@@ -243,15 +285,43 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
       }));
     const currentStepId = subtasks?.find((subtask) => subtask.status === "current")?.id;
 
-    return {
+    const advice = task.aiContext?.advice;
+    // `deadline` is the source of truth; a task saved before date-only
+    // deadlines existed has only `dueDate`, and keeps it as an exact one.
+    return reconcileDeadline({
       ...task,
+      status: TASK_STATUSES.includes(task.status) ? task.status : "pending",
       aiContext: {
         notes: Array.isArray(task.aiContext?.notes) ? task.aiContext.notes : [],
+        ...(typeof advice === "string" && advice ? { advice } : {}),
       },
       subtasks,
       currentStepId,
-    };
+    });
   });
+}
+
+const TASK_STATUSES: Task["status"][] = ["pending", "completed", "skipped", "archived"];
+
+/**
+ * A row read back from a database that doesn't have the newer columns yet
+ * (supabase/schema.sql not re-run) comes back without them. What the phone
+ * already knows about the same version of the task is kept rather than lost:
+ * the deadline's date-only-ness (its dueDate is unchanged, so nothing moved
+ * it), and — for the very same version — its reminder, pin and archive details.
+ */
+function keepLocalOnlyFields(remote: Task, local: Task | undefined): Task {
+  if (!local) return remote;
+  let merged = remote;
+  if (!remote.deadline && local.deadline && remote.dueDate && remote.dueDate === local.dueDate) {
+    merged = { ...merged, deadline: local.deadline };
+  }
+  if (remote.updatedAt === local.updatedAt) {
+    if (!remote.reminders && local.reminders) merged = { ...merged, reminders: local.reminders };
+    if (!remote.pinnedAt && local.pinnedAt) merged = { ...merged, pinnedAt: local.pinnedAt };
+    if (!remote.closedAt && local.closedAt) merged = { ...merged, closedAt: local.closedAt };
+  }
+  return merged;
 }
 
 /**
@@ -277,13 +347,22 @@ function mergeRemoteTasks(
       toPush.push(localTask);
       return localTask;
     }
-    return remoteTask;
+    return keepLocalOnlyFields(remoteTask, localTask);
   });
 
   const neverSaved = local.filter((task) => !remoteIds.has(task.id) && task.id in unsynced);
   toPush.push(...neverSaved);
   return { tasks: [...neverSaved, ...tasks], toPush };
 }
+
+export type SaveTaskResult =
+  | { ok: true; task: Task }
+  | { ok: false; reason: "missing" | "save-failed" | "conflict" };
+
+// How many times saveTaskNow rebuilds on a newer version before giving up —
+// each retry only happens if the task changed during a request that takes a
+// fraction of a second, so a third is already very unlikely.
+const MAX_SAVE_ATTEMPTS = 3;
 
 type TaskStore = {
   tasks: Task[];
@@ -303,6 +382,16 @@ type TaskStore = {
   saveUnsyncedTasks: () => Promise<number>;
   handleSignOut: (options?: { accountDeleted?: boolean }) => Promise<void>;
   addTask: (input: NewTaskInput) => string;
+  /**
+   * Waits for the database to confirm these tasks' latest saves. True only
+   * when every one is saved to the account — what the user may be told.
+   */
+  confirmSaved: (taskIds: string[]) => Promise<boolean>;
+  archiveTask: (id: string) => void;
+  /** Brings back an archived task or a skipped occurrence. */
+  restoreTask: (id: string) => void;
+  /** Applies the "skip missed" rule of every repeating task; returns how many tasks it changed. */
+  applyMissedOccurrences: (now?: Date) => number;
   /**
    * Edits a task. On a repeating task, `scope` decides whether later
    * occurrences follow ("future"/"series") or only this one changes ("this",
@@ -330,8 +419,19 @@ type TaskStore = {
   /** Removes a subtask and hands "current" to the next unfinished one if needed. */
   deleteSubtask: (taskId: string, subtaskId: string) => void;
   addContext: (taskId: string, note: string, estimatedMinutesOverride?: number) => void;
-  /** Replaces the task's AI context notes as-is — the Task Details note cards add, edit and remove through this. */
+  /** Replaces the task's AI context notes as-is — removing a note goes through this (adding or editing one reassesses the task, see useReassessStore). */
   setContextNotes: (taskId: string, notes: string[]) => void;
+  /**
+   * Saves a change the user is about to be told about, and resolves once it
+   * really is saved: confirmed by Supabase when signed in, on the phone when
+   * not. If the save fails, nothing changes on the phone either.
+   *
+   * `build` gets the task as it is now and returns the version to save. If
+   * the task changes while the request is in flight (a step ticked, another
+   * device), `build` runs again on the newer version, so neither change
+   * overwrites the other.
+   */
+  saveTaskNow: (taskId: string, build: (current: Task) => Task) => Promise<SaveTaskResult>;
   skipTask: (taskId: string, reason: string) => void;
   regeneratePlan: (taskId: string) => void;
   applyPlanSteps: (taskId: string, steps: PlanStep[]) => void;
@@ -390,7 +490,8 @@ export const useTaskStore = create<TaskStore>()(
           const fetched = await fetchTasks(userId);
           if (get().syncUserId !== userId) return;
           const remoteTasks = fetched.filter((task) => !isSampleTask(task));
-          const { tasks, toPush } = mergeRemoteTasks(normalizePersistedTasks(remoteTasks), get().tasks, get().unsynced);
+          const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, get().unsynced);
+          const tasks = normalizePersistedTasks(merged);
           // Everything not being pushed now matches Supabase; syncUpsert marks
           // the rest unsynced again until their saves are confirmed.
           set({ tasks: recalcAll(tasks), unsynced: {} });
@@ -414,9 +515,10 @@ export const useTaskStore = create<TaskStore>()(
             const existing = state.tasks.find((t) => t.id === task.id);
             // Last-write-wins, and skips echoes of our own just-applied write.
             if (existing && Date.parse(existing.updatedAt) >= Date.parse(task.updatedAt)) return {};
+            const incoming = normalizePersistedTasks([keepLocalOnlyFields(task, existing)])[0];
             const merged = existing
-              ? state.tasks.map((t) => (t.id === task.id ? task : t))
-              : [task, ...state.tasks];
+              ? state.tasks.map((t) => (t.id === task.id ? incoming : t))
+              : [incoming, ...state.tasks];
             return { tasks: recalcAll(merged) };
           });
         });
@@ -452,18 +554,60 @@ export const useTaskStore = create<TaskStore>()(
           else await stashUnsynced(owner, tasks, unsynced);
         }
         set({ tasks: [], syncUserId: null, unsynced: {}, ownerId: null });
-        // The phone would otherwise keep firing alerts about the departing
+        // The phone would otherwise keep firing reminders about the departing
         // account's tasks, titles and all.
-        await syncOverdueAlerts([]);
+        await clearAllNotifications();
         await AsyncStorage.removeItem("nexdo-tasks");
       },
 
       addTask: (input) => {
+        // Idempotent for a given id: adding the same preview card twice (a
+        // double tap, a retry) finds the task already there.
+        if (input.id && get().tasks.some((t) => t.id === input.id)) return input.id;
         const now = new Date();
         const task = buildTask(input, now);
         set((state) => ({ tasks: recalcAll([task, ...state.tasks], now) }));
         syncUpsert(get().tasks.find((t) => t.id === task.id)!, get().syncUserId);
         return task.id;
+      },
+
+      confirmSaved: async (taskIds) => {
+        if (!get().syncUserId) return false;
+        const saves = taskIds.map((id) => pendingSaves.get(id)).filter((save): save is Promise<boolean> => !!save);
+        await Promise.race([
+          Promise.all(saves),
+          new Promise((resolve) => setTimeout(resolve, CONFIRM_SAVE_TIMEOUT_MS)),
+        ]);
+        const { unsynced } = get();
+        return taskIds.every((id) => !(id in unsynced));
+      },
+
+      archiveTask: (id) => {
+        get().executeOperation({ kind: "archive", target: { taskIds: [id] } });
+      },
+
+      restoreTask: (id) => {
+        get().executeOperation({ kind: "restore", target: { taskIds: [id] } });
+      },
+
+      // "Skip missed" series (RecurrenceRule.missed): an occurrence left
+      // undone once the next one is due is marked skipped, and the current one
+      // comes in. Runs on launch, after every sync and when the app comes back
+      // to the foreground; occurrence ids are derived from the series and day,
+      // so running it again — here or on another device — changes nothing.
+      applyMissedOccurrences: (now = new Date()) => {
+        const upserts: Task[] = [];
+        let working = get().tasks;
+        for (const task of get().tasks) {
+          const delta = skipMissedDelta(task, now, working);
+          if (!delta) continue;
+          upserts.push(...delta.upserts);
+          const changed = new Map(delta.upserts.map((entry) => [entry.id, entry]));
+          working = [...working.map((entry) => changed.get(entry.id) ?? entry), ...delta.upserts.filter((entry) => !working.some((w) => w.id === entry.id))];
+        }
+        if (upserts.length > 0) get().applyPlan({ upserts, deletes: [] }, now);
+        else set((state) => ({ tasks: recalcAll(state.tasks, now) }));
+        return upserts.length;
       },
 
       // Edits, completion, reopening and deletion all go through the same
@@ -687,11 +831,16 @@ export const useTaskStore = create<TaskStore>()(
         if (updated) syncUpsert(updated, get().syncUserId);
       },
 
+      // The chat's ADD_CONTEXT: the note, plus the model's own re-estimate
+      // when it gave one (taxonomy 2.2/3.3 — scope change or partial
+      // progress), which its reply states. Nothing else is read into the
+      // note: a regex layer used to push the deadline a day on "can't
+      // finish" and reorder steps on "only have N minutes", without a word to
+      // the user — Task Details' reassessment (useReassessStore) is where a
+      // note changes the rest of a task, and it says what it changed.
       addContext: (taskId, note, estimatedMinutesOverride) => {
         const now = new Date();
-        const task = get().tasks.find((t) => t.id === taskId);
-        if (!task) return;
-        const result = applyContextToTask(task, note, now);
+        if (!get().tasks.some((t) => t.id === taskId)) return;
 
         set((state) => ({
           tasks: recalcAll(
@@ -699,16 +848,8 @@ export const useTaskStore = create<TaskStore>()(
               t.id === taskId
                 ? {
                     ...t,
-                    aiContext: { notes: [...t.aiContext.notes, result.noteToStore] },
-                    subtasks: result.updatedSubtasks ?? t.subtasks,
-                    currentStepId: result.updatedSubtasks
-                      ? result.updatedSubtasks.find((s) => s.status === "current")?.id
-                      : t.currentStepId,
-                    // The AI's own re-estimate (taxonomy 2.2/3.3 — scope
-                    // change or partial progress) wins over the generic
-                    // capacity-reorder heuristic below when both apply.
-                    estimatedMinutes: estimatedMinutesOverride ?? result.updatedEstimatedMinutes ?? t.estimatedMinutes,
-                    dueDate: result.newDueDate ?? t.dueDate,
+                    aiContext: { ...t.aiContext, notes: [...t.aiContext.notes, note] },
+                    estimatedMinutes: estimatedMinutesOverride ?? t.estimatedMinutes,
                     updatedAt: now.toISOString(),
                   }
                 : t,
@@ -720,20 +861,69 @@ export const useTaskStore = create<TaskStore>()(
         if (updated) syncUpsert(updated, get().syncUserId);
       },
 
-      // Unlike addContext above, this never reinterprets the notes (no subtask
-      // reordering, no deadline changes) — they're just what the AI reads.
+      // Never reinterprets the notes — they're just what the AI reads.
       setContextNotes: (taskId, notes) => {
         const now = new Date();
         set((state) => ({
           tasks: recalcAll(
             state.tasks.map((t) =>
-              t.id === taskId ? { ...t, aiContext: { notes }, updatedAt: now.toISOString() } : t,
+              t.id === taskId ? { ...t, aiContext: { ...t.aiContext, notes }, updatedAt: now.toISOString() } : t,
             ),
             now,
           ),
         }));
         const updated = get().tasks.find((t) => t.id === taskId);
         if (updated) syncUpsert(updated, get().syncUserId);
+      },
+
+      // Remote first, unlike every other mutation here: the change is shown
+      // to the user as done, so it has to be done before the phone shows it.
+      saveTaskNow: async (taskId, build) => {
+        for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
+          const current = get().tasks.find((task) => task.id === taskId);
+          if (!current) return { ok: false, reason: "missing" };
+          const next = build(current);
+          const userId = get().syncUserId;
+          if (userId) {
+            try {
+              // One row, one statement: the whole new version lands or none of it does.
+              await upsertTaskRows([next], userId);
+            } catch (error) {
+              console.warn("[useTaskStore] save failed", error);
+              return { ok: false, reason: "save-failed" };
+            }
+          }
+
+          const latest = get().tasks.find((task) => task.id === taskId);
+          if (!latest) {
+            // Deleted while the request was out — the row just written would bring it back.
+            if (userId) syncDelete(taskId, userId);
+            return { ok: false, reason: "missing" };
+          }
+          // Changed meanwhile — by anything other than this save's own
+          // realtime echo: build again on top of that and save again.
+          if (latest.updatedAt !== current.updatedAt && latest.updatedAt !== next.updatedAt) {
+            if (attempt === MAX_SAVE_ATTEMPTS - 1 && userId) {
+              // Out of retries: put the phone's version back up, so Supabase
+              // doesn't keep one the phone never showed.
+              syncUpsert(latest, userId);
+            }
+            continue;
+          }
+
+          const now = new Date();
+          set((state) => ({
+            tasks: recalcAll(
+              state.tasks.map((task) => (task.id === taskId ? next : task)),
+              now,
+            ),
+            // Signed out, the phone's copy is the save — kept as unsynced
+            // until an account uploads it, like any other change.
+            unsynced: userId ? withoutKeys(state.unsynced, [taskId]) : { ...state.unsynced, [taskId]: next.updatedAt },
+          }));
+          return { ok: true, task: get().tasks.find((task) => task.id === taskId) ?? next };
+        }
+        return { ok: false, reason: "conflict" };
       },
 
       skipTask: (taskId, reason) => {
@@ -860,9 +1050,11 @@ export const useTaskStore = create<TaskStore>()(
           case "CREATE_TASK": {
             const ids = action.drafts.map((draft) =>
               get().addTask({
+                id: draft.candidateId ? taskIdForCandidate(draft.candidateId) : undefined,
                 title: draft.title,
                 estimatedMinutes: draft.estimatedMinutes,
                 dueDate: draft.dueDate,
+                dueHasTime: draft.dueHasTime ?? false,
                 priorityLevel: draft.priorityLevel,
                 steps: draft.steps?.map((step, index) => ({
                   id: `subtask-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`,

@@ -1,26 +1,32 @@
 import { useAuth } from "@clerk/expo";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import Animated from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { GemLogo } from "@/components/GemLogo";
+import { AddItemField } from "@/components/AddItemField";
+import { IconButton, PrimaryButton, TextButton } from "@/components/Button";
+import { Chip } from "@/components/Chip";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { SectionHeader } from "@/components/SectionHeader";
 import {
-    computeDeadlineDate,
+    computeDeadline,
     DEADLINE_OPTIONS,
-    DeadlineChip,
     DeadlineDatePicker,
+    deadlineToDraft,
+    draftToDeadline,
     DURATION_OPTIONS,
-    DurationChip,
     PriorityCard,
-    SectionHeader,
+    type DeadlineDraft,
     type DeadlineValue,
 } from "@/components/TaskFormFields";
-import { colors } from "@/constants/theme";
+import { TextField } from "@/components/TextField";
+import { listItemEntering, listItemLayout } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 import type { RuleInput } from "@/lib/recurrence";
@@ -36,14 +42,8 @@ function createStepId(): string {
   return `step-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-function defaultCustomDeadline(): Date {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(18, 0, 0, 0);
-  return date;
-}
-
 export default function Add() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const { isLoaded, isSignedIn } = useAuth();
@@ -61,7 +61,7 @@ export default function Add() {
 
   const [deadlineValue, setDeadlineValue] = useState<DeadlineValue>("tomorrow");
   const [customDeadlineOpen, setCustomDeadlineOpen] = useState(false);
-  const [customDeadline, setCustomDeadline] = useState<Date>(defaultCustomDeadline);
+  const [customDeadline, setCustomDeadline] = useState<DeadlineDraft>(() => deadlineToDraft(undefined));
 
   // Medium by default: most tasks aren't urgent, and starting on "High"
   // pushed every new task to the top of the Next queue unless the user
@@ -87,9 +87,12 @@ export default function Add() {
   };
 
   const handleToggleCustomDeadline = () => {
-    if (!customDeadlineOpen) setCustomDeadline(computeDeadlineDate(deadlineValue) ?? defaultCustomDeadline());
+    if (!customDeadlineOpen) setCustomDeadline(deadlineToDraft(computeDeadline(deadlineValue)));
     setCustomDeadlineOpen((open) => !open);
   };
+
+  // A chip is a day with no time; the calendar adds one only when asked.
+  const chosenDeadline = customDeadlineOpen ? draftToDeadline(customDeadline) : computeDeadline(deadlineValue);
 
   const handleAddStep = () => {
     const label = stepDraftLabel.trim();
@@ -140,8 +143,6 @@ export default function Add() {
       return;
     }
 
-    const dueDate = (customDeadlineOpen ? customDeadline : computeDeadlineDate(deadlineValue))?.toISOString();
-
     // Subtasks still need minutes behind the scenes (the remaining-time math
     // runs on them), so the task's duration is shared out evenly.
     const minutesPerStep = steps.length > 0 ? Math.floor(estimatedMinutes / steps.length) : 0;
@@ -150,7 +151,7 @@ export default function Add() {
     addTask({
       title: trimmedTitle,
       estimatedMinutes,
-      dueDate,
+      deadline: chosenDeadline,
       priorityLevel,
       notes,
       steps: steps.map((step, index) => ({
@@ -163,7 +164,7 @@ export default function Add() {
     posthog.capture("task_created", {
       priority_level: priorityLevel,
       estimated_minutes: estimatedMinutes,
-      has_deadline: Boolean(dueDate),
+      has_deadline: Boolean(chosenDeadline),
       step_count: steps.length,
       recurrence: recurrence?.frequency ?? "none",
     });
@@ -175,228 +176,168 @@ export default function Add() {
     }
   };
 
-  // Cream all the way to the top: the sheet reads as one continuous card as it
-  // slides up, with no dark strip showing above it.
+  // Charcoal at the top, as on the Tasks page. The header covers the modal's
+  // own cream (app/_layout.tsx), so nothing lighter shows as it slides up.
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[50] }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View className="flex-row items-start justify-between px-6 pb-5 pt-6">
-          <View className="flex-row items-center gap-3">
-            <GemLogo size={32} />
-            <View>
-              <Text className="eyebrow text-orange-500">{t.form.eyebrow}</Text>
-              <Text className="text-title text-ink-cream">{t.form.title}</Text>
-            </View>
-          </View>
-          <AnimatedPressable onPress={handleClose} hitSlop={8} className="h-9 w-9 items-center justify-center">
-            <Feather name="x" size={22} color={colors.ink.creamMuted} />
-          </AnimatedPressable>
-        </View>
-        <View className="border-b border-cream-300" />
+        <ScreenHeader
+          title={t.form.title}
+          actions={<IconButton icon="x" variant="header" onPress={handleClose} accessibilityLabel={t.common.close} />}
+        />
 
         <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ padding: 24, gap: 24 }}
+          style={{ backgroundColor: colors.cream[100] }}
+          contentContainerStyle={{ paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="gap-2">
-            <View className="flex-row items-center gap-1">
-              <Text className="eyebrow text-ink-cream">{t.form.taskTitle}</Text>
-              <Text className="eyebrow text-orange-500">*</Text>
+          <View className="gap-6 px-6 pt-4">
+            <View className="gap-2">
+              <SectionHeader label={t.form.taskTitle} required />
+              <TextField
+                value={title}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  if (titleTouched) setTitleTouched(false);
+                }}
+                placeholder={t.form.titlePlaceholder}
+                error={titleTouched}
+              />
+              {titleTouched ? (
+                <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.titleRequired}</Text>
+              ) : null}
             </View>
-            <TextInput
-              value={title}
-              onChangeText={(text) => {
-                setTitle(text);
-                if (titleTouched) setTitleTouched(false);
-              }}
-              placeholder={t.form.titlePlaceholder}
-              placeholderTextColor={colors.ink.creamMuted}
-              style={rtl}
-              className={
-                titleTouched
-                  ? "rounded-2xl border border-overdue-500 bg-cream-50 px-4 py-3.5 font-grotesk-regular text-sm text-ink-cream"
-                  : "rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3.5 font-grotesk-regular text-sm text-ink-cream"
-              }
-            />
-            {titleTouched ? (
-              <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.titleRequired}</Text>
-            ) : null}
-          </View>
 
-          <View className="gap-3">
-            <SectionHeader
-              icon={<Feather name="clock" size={14} color={colors.orange[500]} />}
-              label={t.form.duration}
-              action={{ label: t.form.customDuration, onPress: () => setCustomDurationOpen((open) => !open) }}
-            />
-            <View className="flex-row flex-wrap gap-2">
-              {DURATION_OPTIONS.map((minutes) => (
-                <DurationChip
-                  key={minutes}
-                  label={t.form.durationOptions[minutes]}
-                  selected={!customDurationOpen && durationMinutes === minutes}
-                  onPress={() => {
-                    setDurationMinutes(minutes);
-                    setCustomDurationOpen(false);
-                  }}
-                />
-              ))}
-            </View>
-            {customDurationOpen ? (
-              <View className="flex-row items-center gap-2 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3">
-                <TextInput
+            <View className="gap-3">
+              <SectionHeader
+                icon="clock"
+                label={t.form.duration}
+                action={{ label: t.form.customDuration, onPress: () => setCustomDurationOpen((open) => !open) }}
+              />
+              <View className="flex-row flex-wrap gap-2">
+                {DURATION_OPTIONS.map((minutes) => (
+                  <Chip
+                    key={minutes}
+                    label={t.form.durationOptions[minutes]}
+                    selected={!customDurationOpen && durationMinutes === minutes}
+                    accessibilityRole="radio"
+                    onPress={() => {
+                      setDurationMinutes(minutes);
+                      setCustomDurationOpen(false);
+                    }}
+                  />
+                ))}
+              </View>
+              {customDurationOpen ? (
+                <TextField
                   value={customDurationText}
                   onChangeText={handleCustomDurationChange}
                   placeholder={t.form.minutesPlaceholder}
-                  placeholderTextColor={colors.ink.creamMuted}
                   keyboardType="number-pad"
-                  className="flex-1 font-grotesk-regular text-sm text-ink-cream"
+                  error={customDurationError}
+                  trailing={<Text className="font-grotesk-medium text-sm text-ink-cream-muted">{t.form.minutesUnit}</Text>}
                 />
-                <Text className="font-grotesk-medium text-xs text-ink-cream-muted">{t.form.minutesUnit}</Text>
-              </View>
-            ) : null}
-            {customDurationError ? (
-              <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.durationError}</Text>
-            ) : null}
-          </View>
-
-          <View className="gap-3">
-            <SectionHeader
-              icon={<Feather name="calendar" size={14} color={colors.orange[500]} />}
-              label={t.form.deadline}
-              action={{ label: t.form.pickDate, onPress: handleToggleCustomDeadline }}
-            />
-            <View className="flex-row flex-wrap gap-2">
-              {DEADLINE_OPTIONS.map((value) => (
-                <DeadlineChip
-                  key={value}
-                  label={t.form.deadlines[value]}
-                  selected={!customDeadlineOpen && deadlineValue === value}
-                  onPress={() => {
-                    setDeadlineValue(value);
-                    setCustomDeadlineOpen(false);
-                  }}
-                />
-              ))}
-            </View>
-            {customDeadlineOpen ? (
-              <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} />
-            ) : null}
-          </View>
-
-          <RecurrencePicker
-            value={recurrence}
-            onChange={setRecurrence}
-            dueDate={(customDeadlineOpen ? customDeadline : computeDeadlineDate(deadlineValue))?.toISOString()}
-          />
-
-          <View className="gap-3">
-            <SectionHeader
-              icon={<Ionicons name="flame" size={15} color={colors.orange[500]} />}
-              label={t.form.priority}
-            />
-            <View className="flex-row gap-3">
-              {PRIORITY_OPTIONS.map((level) => (
-                <PriorityCard
-                  key={level}
-                  level={level}
-                  title={t.form.priorities[level]}
-                  selected={priorityLevel === level}
-                  onPress={() => setPriorityLevel(level)}
-                />
-              ))}
-            </View>
-          </View>
-
-          <View className="gap-3 rounded-2xl border border-cream-300 bg-cream-100 p-4">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
-                <Feather name="check-square" size={14} color={colors.ink.cream} />
-                <Text className="font-grotesk-bold text-sm text-ink-cream">{t.form.planSteps(steps.length)}</Text>
-              </View>
-              <Text className="font-grotesk-medium text-xs text-ink-cream-muted">{t.form.optionalPlan}</Text>
+              ) : null}
+              {customDurationError ? (
+                <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.durationError}</Text>
+              ) : null}
             </View>
 
-            <View className="flex-row items-center gap-2">
-              <TextInput
-                value={stepDraftLabel}
-                onChangeText={setStepDraftLabel}
-                onSubmitEditing={handleAddStep}
-                returnKeyType="done"
-                placeholder={t.form.stepPlaceholder}
-                placeholderTextColor={colors.ink.creamMuted}
-                style={rtl}
-                className="flex-1 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3 font-grotesk-regular text-sm text-ink-cream"
+            <View className="gap-3">
+              <SectionHeader
+                icon="calendar"
+                label={t.form.deadline}
+                action={{ label: t.form.pickDate, onPress: handleToggleCustomDeadline }}
               />
-              <AnimatedPressable
-                onPress={handleAddStep}
-                disabled={!stepDraftLabel.trim()}
-                className="h-11 w-11 items-center justify-center rounded-2xl"
-                style={{ backgroundColor: stepDraftLabel.trim() ? colors.orange[500] : colors.cream[200] }}
-              >
-                <Feather
-                  name="plus"
-                  size={18}
-                  color={stepDraftLabel.trim() ? colors.cream[50] : colors.ink.creamMuted}
-                />
-              </AnimatedPressable>
-            </View>
-
-            {steps.length > 0 ? (
-              <View className="gap-2">
-                {steps.map((step, index) => (
-                  <View
-                    key={step.id}
-                    className="flex-row items-center gap-2 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-2.5"
-                  >
-                    <Text className="font-grotesk-bold text-xs text-ink-cream-muted">{index + 1}.</Text>
-                    <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" numberOfLines={1} style={rtl}>
-                      {step.label}
-                    </Text>
-                    <AnimatedPressable onPress={() => handleRemoveStep(step.id)} hitSlop={8}>
-                      <Feather name="x" size={14} color={colors.ink.creamMuted} />
-                    </AnimatedPressable>
-                  </View>
+              <View className="flex-row flex-wrap gap-2">
+                {DEADLINE_OPTIONS.map((value) => (
+                  <Chip
+                    key={value}
+                    label={t.form.deadlines[value]}
+                    selected={!customDeadlineOpen && deadlineValue === value}
+                    accessibilityRole="radio"
+                    onPress={() => {
+                      setDeadlineValue(value);
+                      setCustomDeadlineOpen(false);
+                    }}
+                  />
                 ))}
               </View>
-            ) : null}
-          </View>
-
-          <View className="gap-2">
-            <View className="flex-row items-center gap-2">
-              <Feather name="align-left" size={14} color={colors.ink.cream} />
-              <Text className="eyebrow text-ink-cream">{t.form.notesTitle}</Text>
+              {customDeadlineOpen ? <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} /> : null}
             </View>
-            <TextInput
-              value={notes}
-              onChangeText={setNotes}
-              placeholder={t.form.notesPlaceholder}
-              placeholderTextColor={colors.ink.creamMuted}
-              multiline
-              style={[{ textAlignVertical: "top", minHeight: 90 }, rtl]}
-              className="rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3.5 font-grotesk-regular text-sm text-ink-cream"
-            />
+
+            <RecurrencePicker value={recurrence} onChange={setRecurrence} deadline={chosenDeadline} />
+
+            <View className="gap-3">
+              <SectionHeader icon={<Ionicons name="flame" size={14} color={colors.ink.creamMuted} />} label={t.form.priority} />
+              <View className="flex-row gap-2">
+                {PRIORITY_OPTIONS.map((level) => (
+                  <PriorityCard
+                    key={level}
+                    level={level}
+                    title={t.form.priorities[level]}
+                    selected={priorityLevel === level}
+                    onPress={() => setPriorityLevel(level)}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View className="gap-3">
+              <SectionHeader icon="check-square" label={t.form.planSteps(steps.length)} hint={t.form.optionalPlan} />
+              <AddItemField
+                value={stepDraftLabel}
+                onChangeText={setStepDraftLabel}
+                onAdd={handleAddStep}
+                placeholder={t.form.stepPlaceholder}
+                addLabel={t.breakdown.addStep}
+              />
+              {steps.length > 0 ? (
+                <View className="gap-2">
+                  {steps.map((step, index) => (
+                    <Animated.View key={step.id} entering={listItemEntering(index)} layout={listItemLayout()}>
+                      {/* A step-to-be: the checklist row's card, numbered instead of ticked. */}
+                      <View className="card card--cream-soft min-h-[46px] flex-row items-center gap-3 pl-[16px] pr-1.5">
+                        <Text className="w-[22px] font-grotesk-bold text-sm text-ink-cream-muted">{index + 1}.</Text>
+                        <Text className="flex-1 font-grotesk-semibold text-base text-ink-cream" numberOfLines={1} style={rtl}>
+                          {step.label}
+                        </Text>
+                        <IconButton icon="x" onPress={() => handleRemoveStep(step.id)} accessibilityLabel={t.common.delete} />
+                      </View>
+                    </Animated.View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
+            <View className="gap-3">
+              <SectionHeader icon="align-left" label={t.form.notesTitle} />
+              <TextField
+                value={notes}
+                onChangeText={setNotes}
+                placeholder={t.form.notesPlaceholder}
+                multiline
+                inputStyle={{ minHeight: 90 }}
+              />
+            </View>
           </View>
         </ScrollView>
 
         <View
-          className="gap-4 border-t border-cream-300 bg-cream-50 px-6 pt-4"
-          style={{ paddingBottom: insets.bottom + 24 }}
+          className="gap-3 border-t border-cream-200 bg-cream-50 px-6 pt-3"
+          style={{ paddingBottom: insets.bottom + 21 }}
         >
-          <AnimatedPressable onPress={handleOpenAiChat} className="flex-row items-center justify-center gap-2">
-            <Feather name="message-circle" size={16} color={colors.orange[500]} />
-            <Text className="font-grotesk-semibold text-sm text-orange-500">{t.form.openAiChat}</Text>
-          </AnimatedPressable>
-          <View className="flex-row items-center gap-4">
-            <AnimatedPressable onPress={handleClose} hitSlop={8} className="px-2 py-3.5">
-              <Text className="font-grotesk-semibold text-base text-ink-cream-muted">{t.common.cancel}</Text>
-            </AnimatedPressable>
-            <AnimatedPressable onPress={handleSubmit} className="btn btn--primary flex-1 flex-row gap-2">
-              <Feather name="plus" size={18} color={colors.cream[50]} />
-              <Text className="font-grotesk-bold text-lg text-cream-50">{t.form.addTask}</Text>
-            </AnimatedPressable>
+          <TextButton
+            icon="message-circle"
+            label={t.form.openAiChat}
+            onPress={handleOpenAiChat}
+            tone="accent"
+            className="self-center py-1"
+          />
+          <View className="flex-row items-center gap-5">
+            <TextButton label={t.common.cancel} onPress={handleClose} className="py-3" />
+            <PrimaryButton icon="plus" size="lg" label={t.form.addTask} onPress={handleSubmit} className="flex-1" />
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -1,9 +1,10 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { BottomSheet } from "@/components/BottomSheet";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 // Short, specific reasons — they're stored on the task's skip record, so
@@ -29,14 +30,12 @@ export function StuckSheet({
   onAskAi: () => void;
   onClose: () => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="scrim flex-1 justify-end" onPress={onClose}>
-        <Pressable onPress={() => {}} className="card--cream-elevated gap-1 rounded-t-2xl p-6 pb-10">
-          <Text className="eyebrow text-ink-cream-muted">{t.stuck.title}</Text>
+    <BottomSheet visible={visible} onClose={onClose} title={t.stuck.title} panelClassName="gap-1">
           <Text numberOfLines={1} className="pb-2 font-grotesk-medium text-sm text-ink-cream-muted">
             {taskTitle}
           </Text>
@@ -63,8 +62,6 @@ export function StuckSheet({
             <Ionicons name="bulb-outline" size={16} color={colors.onAccent} />
             <Text className="font-grotesk-bold text-base text-on-accent">{t.stuck.talkToAi}</Text>
           </AnimatedPressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }

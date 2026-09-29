@@ -1,10 +1,23 @@
 import {
+  deadlineFromInstant,
+  deadlineOf,
+  resolveDeadlineInput,
+  sameDeadline,
+  shiftDeadline,
+  withDeadline,
+  type DateShift,
+  type DeadlineInput,
+} from "@/lib/deadline";
+import {
   buildNextOccurrence,
+  buildOccurrence,
   buildRule,
+  latestDueSlot,
+  nextSlot,
   openOccurrence,
   retimeRule,
   seriesOccurrences,
-  slotDueDate,
+  slotDeadline,
   startSeries,
   templateFromTask,
   toLocalDateKey,
@@ -12,7 +25,7 @@ import {
   type RuleInput,
 } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
-import type { Subtask, Task, TaskPriorityLevel } from "@/types/task";
+import type { Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
 
 // The structured task-operation system. Every change the AI asks for — and the
 // store's own complete / reopen / edit / delete — is planned here as pure data
@@ -22,15 +35,20 @@ import type { Subtask, Task, TaskPriorityLevel } from "@/types/task";
 // is told is always what was actually written.
 
 export type { RecurrenceScope } from "@/lib/recurrence";
-
-export type DateShift = { amount: number; unit: "minutes" | "hours" | "days" | "weeks" | "months" };
+export type { DateShift } from "@/lib/deadline";
 
 export type TaskChanges = {
   title?: string;
   notes?: string | null;
-  /** An absolute deadline (ISO), or null to remove it. */
+  /**
+   * A new deadline as a day plus, only if one was given, a time — or null to
+   * remove it. Without a time it's a date-only deadline, unless
+   * `keepTimeOfDay` keeps the time the task already had.
+   */
+  deadline?: DeadlineInput | null;
+  /** An exact deadline at an ISO instant, or null to remove it. `deadline` is preferred. */
   dueDate?: string | null;
-  /** With `dueDate` from a phrase that named no clock time: keep each task's own time of day. */
+  /** With a deadline from a phrase that named no clock time: keep each task's own time of day. */
   keepTimeOfDay?: boolean;
   /** Moves each deadline by this much, keeping its time of day. */
   dueShift?: DateShift;
@@ -39,6 +57,10 @@ export type TaskChanges = {
   priority?: TaskPriorityLevel;
   /** Start or change repeating; null stops it. */
   recurrence?: RuleInput | null;
+  /** Turn this task's reminders off (true) or back on (false). */
+  remindersMuted?: boolean;
+  /** Put the task first on the Next page (true) or back into the ranking (false). */
+  pinned?: boolean;
 };
 
 export type TaskStatusFilter = "pending" | "completed" | "overdue" | "all";
@@ -68,13 +90,19 @@ export type TaskOperation =
   | { kind: "update"; target: TaskTarget; changes: TaskChanges; scope?: RecurrenceScope }
   | { kind: "complete"; target: TaskTarget }
   | { kind: "reopen"; target: TaskTarget }
-  | { kind: "delete"; target: TaskTarget; scope?: RecurrenceScope };
+  | { kind: "delete"; target: TaskTarget; scope?: RecurrenceScope }
+  // Put away / bring back. Archived tasks keep everything but leave lists,
+  // reminders and recommendations until restored; restoring also brings back
+  // a skipped occurrence.
+  | { kind: "archive"; target: TaskTarget }
+  | { kind: "restore"; target: TaskTarget };
 
-export type OutcomeKind = "updated" | "completed" | "reopened" | "deleted" | "skipped" | "unchanged";
+export type OutcomeKind = "updated" | "completed" | "reopened" | "deleted" | "skipped" | "archived" | "restored" | "unchanged";
 
 export type UnchangedReason =
   | "already-completed"
   | "already-open"
+  | "already-archived"
   | "no-deadline"
   | "nothing-to-change"
   | "invalid-change";
@@ -88,10 +116,12 @@ export type TaskOutcome = {
   wasCompleted?: boolean;
   recurring?: boolean;
   /** For a completed or skipped occurrence: the one that replaced it. */
-  next?: { id: string; dueDate?: string };
+  next?: { id: string; dueDate?: string; deadline?: TaskDeadline };
   /** How many occurrences a series-wide delete removed. */
   removedCount?: number;
   newDueDate?: string;
+  /** The deadline an edit moved the task to — what the reply shows (date-only stays date-only). */
+  newDeadline?: TaskDeadline;
 };
 
 export type OperationPlan = {
@@ -120,6 +150,11 @@ export function isOverdue(task: Task, now: Date): boolean {
   return task.status === "pending" && !!task.dueDate && Date.parse(task.dueDate) < now.getTime();
 }
 
+/** Open or done — what the task list shows. Archived tasks and skipped occurrences are kept out of sight. */
+export function isListed(task: Task): boolean {
+  return task.status === "pending" || task.status === "completed";
+}
+
 function fold(text: string): string {
   return text
     .normalize("NFD")
@@ -139,12 +174,14 @@ function inRange(iso: string | undefined, from?: string, to?: string): boolean {
 /** What "all my tasks" means when the request doesn't say: open tasks, except when reopening or deleting. */
 export function defaultStatusFor(kind: TaskOperation["kind"]): TaskStatusFilter {
   if (kind === "reopen") return "completed";
-  if (kind === "delete") return "all";
+  if (kind === "delete" || kind === "archive") return "all";
   return "pending";
 }
 
 export function matchesFilter(task: Task, filter: TaskFilter, now: Date): boolean {
   const status = filter.status ?? "all";
+  // "Everything" means what the user can see on their list.
+  if (!isListed(task)) return false;
   if (status === "pending" && task.status !== "pending") return false;
   if (status === "completed" && task.status !== "completed") return false;
   if (status === "overdue" && !isOverdue(task, now)) return false;
@@ -183,7 +220,7 @@ export function resolveTarget(
 }
 
 // ---------------------------------------------------------------------
-// Date helpers
+// Date helpers (deadlines themselves are moved by lib/deadline.ts)
 // ---------------------------------------------------------------------
 
 /** Adds months on the local calendar, landing on the last day of a shorter month rather than spilling over. */
@@ -220,14 +257,6 @@ export function shiftDate(iso: string, shift: DateShift): string {
   }
 }
 
-/** `target`'s calendar day with `timeSource`'s time of day. */
-function withTimeOf(target: string, timeSource: string): string {
-  const date = new Date(target);
-  const time = new Date(timeSource);
-  date.setHours(time.getHours(), time.getMinutes(), 0, 0);
-  return date.toISOString();
-}
-
 // ---------------------------------------------------------------------
 // Single-task transforms, shared by the store's UI actions and the AI
 // ---------------------------------------------------------------------
@@ -253,23 +282,34 @@ export function completeTaskDelta(task: Task, now: Date, allTasks: Task[], patch
   }
   const nowIso = now.toISOString();
   const completed: Task = { ...task, ...patch, status: "completed", completedAt: nowIso, updatedAt: nowIso };
-  const next = buildNextOccurrence(completed, now);
+  // Done means off the Next page's pinned spot, and out of the archive if it was there.
+  delete completed.pinnedAt;
+  delete completed.closedAt;
+  let next = buildNextOccurrence(completed, now);
+  let existing = next ? allTasks.find((candidate) => candidate.id === next!.id) : undefined;
+  // That day's occurrence may already be closed (done early, or skipped):
+  // the series moves on to the first day that's free, rather than stalling
+  // with nothing open.
+  for (let guard = 0; next && existing && existing.status !== "pending" && guard < 50; guard += 1) {
+    const following = nextSlot(completed.recurrence!.rule, next.recurrence!.occurrenceDate);
+    next = following ? buildOccurrence(completed, following, now) : null;
+    existing = next ? allTasks.find((candidate) => candidate.id === next!.id) : undefined;
+  }
   if (!next) {
     return { upserts: [completed], deletes: [], outcome: outcomeFor(task, "completed") };
   }
-  const existing = allTasks.find((candidate) => candidate.id === next.id);
   if (existing) {
     return {
       upserts: [completed],
       deletes: [],
-      outcome: outcomeFor(task, "completed", { next: { id: existing.id, dueDate: existing.dueDate } }),
+      outcome: outcomeFor(task, "completed", { next: { id: existing.id, dueDate: existing.dueDate, deadline: existing.deadline } }),
     };
   }
   completed.recurrence = { ...completed.recurrence!, nextOccurrenceId: next.id };
   return {
     upserts: [completed, next],
     deletes: [],
-    outcome: outcomeFor(task, "completed", { next: { id: next.id, dueDate: next.dueDate } }),
+    outcome: outcomeFor(task, "completed", { next: { id: next.id, dueDate: next.dueDate, deadline: next.deadline } }),
   };
 }
 
@@ -312,6 +352,58 @@ export function reopenTaskDelta(task: Task, now: Date, allTasks: Task[]): TaskDe
   return { upserts: [reopened], deletes, outcome: outcomeFor(task, "reopened") };
 }
 
+/**
+ * Puts a task away: it keeps everything, but leaves the list, its reminders
+ * and the Next page until restored. An archived open occurrence also stops
+ * its series from bringing in new ones — nothing is open to complete.
+ */
+export function archiveTaskDelta(task: Task, now: Date): TaskDelta {
+  if (task.status === "archived") {
+    return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "already-archived" }) };
+  }
+  const nowIso = now.toISOString();
+  const archived: Task = { ...task, status: "archived", closedAt: nowIso, updatedAt: nowIso };
+  delete archived.pinnedAt;
+  return { upserts: [archived], deletes: [], outcome: outcomeFor(task, "archived") };
+}
+
+/** Brings an archived task — or a skipped occurrence — back onto the list as an open task. */
+export function restoreTaskDelta(task: Task, now: Date): TaskDelta {
+  if (task.status !== "archived" && task.status !== "skipped") {
+    return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "already-open" }) };
+  }
+  const restored: Task = { ...task, status: "pending", updatedAt: now.toISOString() };
+  delete restored.closedAt;
+  return { upserts: [restored], deletes: [], outcome: outcomeFor(task, "restored") };
+}
+
+/**
+ * The "skip missed" rule (RecurrenceRule.missed) applied to one open
+ * occurrence: once a later occurrence of its series has come due and this one
+ * is still undone and past its deadline, it's marked skipped and the current
+ * one takes its place. Null when there's nothing to do. Occurrence ids are
+ * derived from the series and day, so running this twice — or on two devices
+ * — lands on the same rows.
+ */
+export function skipMissedDelta(task: Task, now: Date, allTasks: Task[]): TaskDelta | null {
+  const recurrence = task.recurrence;
+  if (!recurrence || recurrence.rule.missed !== "skip" || task.status !== "pending") return null;
+  if (!isOverdue(task, now)) return null;
+  const today = toLocalDateKey(now);
+  const slot = latestDueSlot(recurrence.rule, recurrence.occurrenceDate, today);
+  if (!slot) return null;
+  const nowIso = now.toISOString();
+  const skipped: Task = { ...task, status: "skipped", closedAt: nowIso, updatedAt: nowIso };
+  delete skipped.pinnedAt;
+  const current = buildOccurrence(task, slot, now);
+  const exists = current ? allTasks.some((candidate) => candidate.id === current.id) : true;
+  return {
+    upserts: exists || !current ? [skipped] : [skipped, current],
+    deletes: [],
+    outcome: outcomeFor(task, "skipped", current ? { next: { id: current.id, dueDate: current.dueDate, deadline: current.deadline } } : {}),
+  };
+}
+
 /** Removes one occurrence and brings in the one after it — "skip this week's". */
 export function skipOccurrenceDelta(task: Task, now: Date, allTasks: Task[]): TaskDelta {
   if (!task.recurrence || task.status === "completed") {
@@ -324,7 +416,7 @@ export function skipOccurrenceDelta(task: Task, now: Date, allTasks: Task[]): Ta
     upserts: existing ? [] : [next],
     deletes: [task.id],
     outcome: outcomeFor(task, "skipped", {
-      next: { id: next.id, dueDate: (existing ?? next).dueDate },
+      next: { id: next.id, dueDate: (existing ?? next).dueDate, deadline: (existing ?? next).deadline },
     }),
   };
 }
@@ -370,27 +462,48 @@ export function editTaskDelta(
     }
   }
 
-  if (changes.dueDate !== undefined) {
-    if (changes.dueDate === null) {
+  // Every deadline change sets `deadline` and its `dueDate` together
+  // (withDeadline), so the two never disagree.
+  const currentDeadline = deadlineOf(task);
+  const deadlineChange = changes.deadline !== undefined ? changes.deadline : changes.dueDate;
+  if (deadlineChange !== undefined) {
+    if (deadlineChange === null) {
       // A repeating occurrence always has a day; removing it would orphan the series.
-      if (!task.recurrence && task.dueDate) {
-        next.dueDate = undefined;
+      if (!task.recurrence && currentDeadline) {
+        next = withDeadline(next, undefined);
         changed = dueChanged = true;
       }
-    } else if (!Number.isNaN(Date.parse(changes.dueDate))) {
-      const due = changes.keepTimeOfDay && task.dueDate ? withTimeOf(changes.dueDate, task.dueDate) : changes.dueDate;
-      if (due !== task.dueDate) {
-        next.dueDate = due;
+    } else {
+      const deadline =
+        typeof deadlineChange === "string"
+          ? exactOrKeptTime(currentDeadline, deadlineChange, !!changes.keepTimeOfDay)
+          : resolveDeadlineInput(currentDeadline, deadlineChange, !!changes.keepTimeOfDay);
+      if (deadline && !sameDeadline(deadline, currentDeadline)) {
+        next = withDeadline(next, deadline);
         changed = dueChanged = true;
       }
     }
   } else if (changes.dueShift && Number.isFinite(changes.dueShift.amount) && changes.dueShift.amount !== 0) {
-    if (task.dueDate) {
-      next.dueDate = shiftDate(task.dueDate, changes.dueShift);
-      changed = dueChanged = true;
+    if (currentDeadline) {
+      const shifted = shiftDeadline(currentDeadline, changes.dueShift);
+      if (shifted && !sameDeadline(shifted, currentDeadline)) {
+        next = withDeadline(next, shifted);
+        changed = dueChanged = true;
+      }
     } else {
       skippedForNoDeadline = true;
     }
+  }
+
+  if (changes.remindersMuted !== undefined && changes.remindersMuted !== !!task.reminders?.muted) {
+    if (changes.remindersMuted) next.reminders = { ...task.reminders, muted: true };
+    else delete next.reminders;
+    changed = true;
+  }
+  if (changes.pinned !== undefined && changes.pinned !== !!task.pinnedAt && task.status === "pending") {
+    if (changes.pinned) next.pinnedAt = nowIso;
+    else delete next.pinnedAt;
+    changed = true;
   }
 
   let templateMinutes: number | undefined;
@@ -426,7 +539,7 @@ export function editTaskDelta(
         changed = true;
       }
     } else {
-      const rule = buildRule(changes.recurrence, next.dueDate, now);
+      const rule = buildRule(changes.recurrence, deadlineOf(next), now);
       if (rule) {
         const seriesId = task.recurrence?.seriesId;
         const started = startSeries({ ...next, recurrence: undefined }, rule, seriesId);
@@ -445,10 +558,10 @@ export function editTaskDelta(
     const template = { ...task.recurrence.template, ...pickTemplateChanges(next, task) };
     if (templateMinutes !== undefined) template.estimatedMinutes = templateMinutes;
     let recurrence = { ...next.recurrence, template };
-    if (dueChanged && next.dueDate) {
-      const rule = retimeRule(recurrence.rule, recurrence.occurrenceDate, new Date(next.dueDate));
-      recurrence = { ...recurrence, rule, occurrenceDate: toLocalDateKey(new Date(next.dueDate)) };
-      next.dueDate = slotDueDate(rule, recurrence.occurrenceDate);
+    if (dueChanged && next.deadline) {
+      const rule = retimeRule(recurrence.rule, recurrence.occurrenceDate, next.deadline);
+      recurrence = { ...recurrence, rule, occurrenceDate: next.deadline.date };
+      next = withDeadline(next, slotDeadline(rule, recurrence.occurrenceDate));
     }
     next.recurrence = recurrence;
   }
@@ -488,8 +601,20 @@ export function editTaskDelta(
     outcome: outcomeFor(task, "updated", {
       wasCompleted: task.status === "completed",
       newDueDate: dueChanged ? next.dueDate : undefined,
+      newDeadline: dueChanged ? next.deadline : undefined,
     }),
   };
+}
+
+/**
+ * The deadline an ISO instant stands for in an edit: that exact time — or,
+ * with `keepTimeOfDay`, its day at the time the task already had (none, for a
+ * date-only task).
+ */
+function exactOrKeptTime(current: TaskDeadline | undefined, iso: string, keepTimeOfDay: boolean) {
+  const exact = deadlineFromInstant(iso);
+  if (!exact || !keepTimeOfDay || !current) return exact;
+  return resolveDeadlineInput(current, { date: exact.date }, true);
 }
 
 /** The template fields this edit changed, compared with the task before it. */
@@ -499,6 +624,7 @@ function pickTemplateChanges(next: Task, before: Task): Partial<ReturnType<typeo
   if (next.notes !== before.notes) patch.notes = next.notes;
   if (next.importance !== before.importance) patch.importance = next.importance;
   if (next.estimatedMinutes !== before.estimatedMinutes) patch.estimatedMinutes = next.estimatedMinutes;
+  if (!!next.reminders?.muted !== !!before.reminders?.muted) patch.reminders = next.reminders?.muted ? { muted: true } : undefined;
   return patch;
 }
 
@@ -561,6 +687,12 @@ export function planOperation(tasks: Task[], operation: TaskOperation, now: Date
       case "delete":
         delta = deleteTaskDelta(current, operation.scope, now, list);
         break;
+      case "archive":
+        delta = archiveTaskDelta(current, now);
+        break;
+      case "restore":
+        delta = restoreTaskDelta(current, now);
+        break;
       case "update": {
         // A rule change on a finished occurrence belongs to the series' open one.
         const recurrenceTarget =
@@ -602,7 +734,8 @@ export function planOperation(tasks: Task[], operation: TaskOperation, now: Date
  * once — see bulkRecurrenceScope.
  */
 export function needsRecurrenceScope(operation: TaskOperation, targets: Task[]): boolean {
-  if (operation.kind === "complete" || operation.kind === "reopen" || operation.scope) return false;
+  if (operation.kind !== "update" && operation.kind !== "delete") return false;
+  if (operation.scope) return false;
   if (targets.length !== 1 || !targets.some((task) => task.recurrence && task.status === "pending")) return false;
   if (operation.kind === "delete") return true;
   // Starting/stopping repeating is inherently about the series; anything
@@ -629,6 +762,19 @@ export function effectiveChanges(task: Task, changes: TaskChanges): TaskChanges 
     delete result.dueDate;
     delete result.keepTimeOfDay;
   }
+  if (result.deadline !== undefined) {
+    const current = deadlineOf(task);
+    const same =
+      result.deadline === null
+        ? !current
+        : sameDeadline(resolveDeadlineInput(current, result.deadline, !!result.keepTimeOfDay), current);
+    if (same) {
+      delete result.deadline;
+      delete result.keepTimeOfDay;
+    }
+  }
+  if (result.remindersMuted !== undefined && result.remindersMuted === !!task.reminders?.muted) delete result.remindersMuted;
+  if (result.pinned !== undefined && result.pinned === !!task.pinnedAt) delete result.pinned;
   return result;
 }
 
@@ -642,7 +788,7 @@ export function effectiveChanges(task: Task, changes: TaskChanges): TaskChanges 
  * which of these applies instead (describeConfirmation).
  */
 export function bulkRecurrenceScope(operation: TaskOperation, targets: Task[]): RecurrenceScope | undefined {
-  if (operation.kind === "complete" || operation.kind === "reopen") return undefined;
+  if (operation.kind !== "update" && operation.kind !== "delete") return undefined;
   if (operation.scope || targets.length < 2) return operation.scope;
   if (!targets.some((task) => task.recurrence && task.status === "pending")) return undefined;
   return operation.kind === "delete" ? "future" : "this";

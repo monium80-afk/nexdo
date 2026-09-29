@@ -69,7 +69,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Nexdo to access your microphone to record voice notes for your inbox."
+          "microphonePermission": "Allow Nexdo to access your microphone to record voice notes and to add or change tasks by voice."
         }
       ],
       "@react-native-community/datetimepicker",

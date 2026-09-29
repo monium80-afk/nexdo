@@ -42,6 +42,8 @@
   /* Overdue — distinct from orange so it never competes with the CTA accent */
   --color-overdue-500: #b5432f;
   --color-overdue-100: #f2dcd5;
+  /* Overdue ink on charcoal — 500 is too dark to read there (~3:1). */
+  --color-overdue-300: #e8907c;
 
   /* Success — a finished step in a running session */
   --color-success-500: #3e9b5f;
@@ -89,6 +91,22 @@
  * shape) repeats across 2+ screens — not before.
  * ============================================================= */
 
+/* Screen layout -------------------------------------------------- */
+
+/* The cream page under a screen's charcoal header (Next, Tasks, Task
+   Details, Settings, Live voice), wrapped around its ScrollView. The top
+   corners curve away from the charcoal — the SafeAreaView's charcoal shows
+   through them — and overflow hidden clips the scrolling content to the
+   curves too, not just the fill. 28px: one step rounder than the 24px Next
+   card, so a card never looks rounder than the page it sits on. */
+@utility screen-body {
+  flex: 1;
+  overflow: hidden;
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  background-color: var(--color-cream-100);
+}
+
 /* Surface cards -------------------------------------------------- */
 
 @utility card {
@@ -100,6 +118,24 @@
   background-color: var(--color-cream-50);
   border-color: var(--color-cream-300);
   box-shadow: var(--shadow-card);
+}
+
+/* The task list's resting card — a softer edge than card--cream, so a long
+   list reads as calm rows rather than a stack of outlined boxes. The same
+   card holds every grouped block that sits on the cream page (Task Details
+   sections, Settings groups, checklist rows). */
+@utility card--cream-soft {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-card);
+}
+
+/* A block nested inside a card--cream-soft (a saved AI note, a planned step,
+   the repeat options inside Task Details' repeat card) — sunk one step into
+   the page colour instead of lifted, so it doesn't read as a card on a card. */
+@utility card--cream-inset {
+  background-color: var(--color-cream-100);
+  border-color: var(--color-cream-200);
 }
 
 @utility card--cream-elevated {
@@ -222,10 +258,12 @@
   background-color: var(--color-overdue-100);
 }
 
-/* Chips (selectable pill toggles: time/duration options, filter pills,
- * suggestion chips) — pair with the caller's own text/icon color classes,
- * since the selected tint varies (orange for active filters, charcoal for
- * the energy-level picker). */
+/* Chips (selectable pill toggles) — the base shape. On cream, every set of
+ * options (the Tasks toolbar, durations, deadlines, repeat, theme, language)
+ * goes through components/Chip.tsx, which picks the colours from the Tasks
+ * page: cream-50 / cream-200 edge at rest, orange-100 / orange-500 edge when
+ * picked. chip--idle is the older, stronger-edged recipe the AI chat's
+ * suggestion chips still use. */
 
 @utility chip {
   border-radius: 9999px;
@@ -235,11 +273,6 @@
 @utility chip--idle {
   background-color: var(--color-cream-50);
   border-color: var(--color-cream-300);
-}
-
-@utility chip--selected {
-  background-color: var(--color-orange-100);
-  border-color: var(--color-orange-500);
 }
 
 /* Same chip recipe on a charcoal surface — tints with white instead of
@@ -255,42 +288,6 @@
   border-color: rgb(226 98 46 / 0.55);
 }
 
-/* Choices (a row or grid of mutually exclusive buttons: Next's time and
- * energy pickers, Settings' theme and language pickers). The squarer
- * sibling of .chip — a 12px corner instead of a full pill, so a set of
- * them reads as buttons rather than tags. */
-
-@utility choice {
-  border-radius: 12px;
-  border-width: 1px;
-}
-
-@utility choice--idle {
-  background-color: var(--color-cream-50);
-  border-color: var(--color-cream-300);
-}
-
-@utility choice--selected-orange {
-  background-color: var(--color-orange-500);
-  border-color: var(--color-orange-500);
-}
-
-@utility choice--selected-charcoal {
-  background-color: var(--color-charcoal-900);
-  border-color: var(--color-charcoal-900);
-}
-
-/* Same recipe on a charcoal surface. */
-@utility choice--charcoal {
-  background-color: rgb(255 255 255 / 0.05);
-  border-color: rgb(255 255 255 / 0.1);
-}
-
-@utility choice--charcoal-selected {
-  background-color: rgb(226 98 46 / 0.12);
-  border-color: var(--color-orange-500);
-}
-
 /* Scrim (modal overlay) -------------------------------------------- */
 
 @utility scrim {
@@ -299,6 +296,16 @@
 
 /* Form fields -------------------------------------------------------- */
 
+/* A text input on the cream page (TextField). The shape of the Tasks
+   page's search field, in cream; pair with border-cream-200, or
+   border-overdue-500 when the value needs fixing. */
+@utility input {
+  border-radius: 14px;
+  border-width: 1px;
+  background-color: var(--color-cream-50);
+}
+
+/* The sign-in / sign-up field (AuthTextField), label inside the box. */
 @utility field {
   border-radius: 14px;
   border-width: 1px;

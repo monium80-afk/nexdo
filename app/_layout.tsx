@@ -117,6 +117,15 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
+              {/* Live voice slides up over the Tasks page the same way. */}
+              <Stack.Screen
+                name="live-voice"
+                options={{
+                  presentation: "modal",
+                  animation: "slide_from_bottom",
+                  contentStyle: { backgroundColor: colors.cream[50] },
+                }}
+              />
             </Stack>
           </View>
         </View>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 
 type AuthTextFieldProps = {
   label: string;
@@ -22,6 +22,7 @@ export function AuthTextField({
   keyboardType = "default",
   autoComplete,
 }: AuthTextFieldProps) {
+  const colors = useColors();
   const [hidden, setHidden] = useState(secureEntry);
 
   return (

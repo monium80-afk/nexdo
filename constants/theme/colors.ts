@@ -37,6 +37,7 @@ export const colors = {
   },
   overdue: {
     500: "#B5432F",
+    300: "#E8907C",
     100: "#F2DCD5",
   },
   success: {
@@ -49,6 +50,7 @@ export const colors = {
     charcoal: "#F5F1E6",
     charcoalMuted: "#A39D8A",
   },
+  logoInk: "#211E19",
   // Icon-only colors for the AI Chat quick-action chips (no CSS utility needed).
   quickAction: {
     add: "#E2622E",
@@ -64,3 +66,7 @@ export const colors = {
   scrim: "rgba(30, 28, 25, 0.5)",
   hairlineCharcoal: "rgba(255, 255, 255, 0.08)",
 } as const;
+
+// Onboarding uses these values for shadow contrast. Keep the alias while the
+// app's active palette remains the shared Warm Signal token set.
+export const lightColors = colors;

@@ -3,7 +3,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 type ProfileCardProps = {
@@ -16,6 +16,7 @@ type ProfileCardProps = {
  * straight off the Clerk user. Tapping it opens AccountSheet.
  */
 export function ProfileCard({ onPress }: ProfileCardProps) {
+  const colors = useColors();
   const t = useTranslation();
   const { user } = useUser();
 
@@ -26,13 +27,15 @@ export function ProfileCard({ onPress }: ProfileCardProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={t.profile.editAccount}
-      className="card card--charcoal flex-row items-center gap-4 p-4"
+      scaleTo={0.98}
+      className="card card--cream-soft flex-row items-center gap-3 p-[16px]"
     >
+      {/* Drawn like a task card: title-weight name, muted detail, chevron. */}
       {user?.hasImage ? (
-        <Image source={{ uri: user.imageUrl }} className="h-14 w-14 rounded-full border-2 border-orange-500" />
+        <Image source={{ uri: user.imageUrl }} className="h-12 w-12 rounded-full border border-cream-200" />
       ) : (
-        <View className="h-14 w-14 items-center justify-center rounded-full border-2 border-orange-500 bg-charcoal-600">
-          <Feather name="user" size={22} color={colors.ink.charcoal} />
+        <View className="h-12 w-12 items-center justify-center rounded-full bg-cream-200">
+          <Feather name="user" size={20} color={colors.ink.creamMuted} />
         </View>
       )}
 
@@ -41,18 +44,18 @@ export function ProfileCard({ onPress }: ProfileCardProps) {
           numberOfLines={1}
           className={
             displayName
-              ? "font-grotesk-semibold text-base text-ink-charcoal"
-              : "font-grotesk-semibold text-base text-ink-charcoal-muted"
+              ? "font-grotesk-semibold text-[17px] leading-[22px] text-ink-cream"
+              : "font-grotesk-semibold text-[17px] leading-[22px] text-ink-cream-muted"
           }
         >
           {displayName || t.profile.addName}
         </Text>
-        <Text numberOfLines={1} className="font-grotesk-regular text-sm text-ink-charcoal-muted">
+        <Text numberOfLines={1} className="font-grotesk-medium text-sm text-ink-cream-muted">
           {user?.primaryEmailAddress?.emailAddress ?? ""}
         </Text>
       </View>
 
-      <Feather name="chevron-right" size={20} color={colors.ink.charcoalMuted} />
+      <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
     </AnimatedPressable>
   );
 }

@@ -17,15 +17,16 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AuthTextField } from "@/components/AuthTextField";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
-import { colors } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
 const REVEAL_LAYOUT = LinearTransition.duration(250);
 
 export default function SignIn() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();

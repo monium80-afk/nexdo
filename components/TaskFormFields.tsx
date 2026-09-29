@@ -1,12 +1,16 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Alert, Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { Chip } from "@/components/Chip";
 import { colors } from "@/constants/theme";
+import { useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import type { TaskPriorityLevel } from "@/types/task";
+import { deadlineToLocalDate, makeDeadline, type DeadlineInput } from "@/lib/deadline";
+import { pad, toLocalDateKey } from "@/lib/localDate";
+import type { TaskDeadline, TaskPriorityLevel } from "@/types/task";
 
 export type DeadlineValue = "today" | "tomorrow" | "friday" | "weekend" | "nextWeek" | "none";
 
@@ -15,140 +19,66 @@ export const DURATION_OPTIONS: number[] = [15, 30, 45, 60, 90, 120, 180];
 
 export const DEADLINE_OPTIONS: DeadlineValue[] = ["today", "tomorrow", "friday", "weekend", "nextWeek", "none"];
 
-// "This Friday"/"This Weekend" resolve to the nearest upcoming Fri/Sat, today included.
-export function computeDeadlineDate(value: DeadlineValue): Date | undefined {
-  const now = new Date();
-
+/**
+ * The day a deadline chip stands for — a date-only deadline: the chips name a
+ * day, never a time, so none is invented. "This Friday"/"This Weekend" are
+ * the nearest upcoming Friday/Saturday, today included. Undefined for "No deadline".
+ */
+export function computeDeadline(value: DeadlineValue, now: Date = new Date()): DeadlineInput | undefined {
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   switch (value) {
-    case "today": {
-      const date = new Date(now);
-      date.setHours(18, 0, 0, 0);
-      // Chosen after 6pm, a flat 18:00 is already behind us and the task would
-      // be created overdue. The end of the day is still today, and isn't.
-      if (date.getTime() <= now.getTime()) date.setHours(23, 59, 0, 0);
-      return date;
-    }
-    case "tomorrow": {
-      const date = new Date(now);
+    case "today":
+      break;
+    case "tomorrow":
       date.setDate(date.getDate() + 1);
-      date.setHours(18, 0, 0, 0);
-      return date;
-    }
-    case "friday": {
-      const date = new Date(now);
-      const daysUntilFriday = (5 - date.getDay() + 7) % 7;
-      date.setDate(date.getDate() + daysUntilFriday);
-      date.setHours(18, 0, 0, 0);
-      if (daysUntilFriday === 0 && date.getTime() <= now.getTime()) date.setDate(date.getDate() + 7);
-      return date;
-    }
-    case "weekend": {
-      const date = new Date(now);
-      const daysUntilSaturday = (6 - date.getDay() + 7) % 7;
-      date.setDate(date.getDate() + daysUntilSaturday);
-      date.setHours(12, 0, 0, 0);
-      if (daysUntilSaturday === 0 && date.getTime() <= now.getTime()) date.setDate(date.getDate() + 7);
-      return date;
-    }
-    case "nextWeek": {
-      const date = new Date(now);
+      break;
+    case "friday":
+      date.setDate(date.getDate() + ((5 - date.getDay() + 7) % 7));
+      break;
+    case "weekend":
+      date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7));
+      break;
+    case "nextWeek":
       date.setDate(date.getDate() + 7);
-      date.setHours(18, 0, 0, 0);
-      return date;
-    }
+      break;
     case "none":
     default:
       return undefined;
   }
+  return { date: toLocalDateKey(date) };
 }
 
-export function SectionHeader({
-  icon,
-  label,
-  action,
-}: {
-  icon: ReactNode;
-  label: string;
-  action?: { label: string; onPress: () => void };
-}) {
-  return (
-    <View className="flex-row items-center justify-between">
-      <View className="flex-row items-center gap-2">
-        {icon}
-        <Text className="eyebrow text-ink-cream">{label}</Text>
-      </View>
-      {action ? (
-        <AnimatedPressable onPress={action.onPress} hitSlop={8}>
-          <Text className="font-grotesk-semibold text-sm text-orange-500">{action.label}</Text>
-        </AnimatedPressable>
-      ) : null}
-    </View>
-  );
+/** What the calendar is showing: a day, and whether a time was added to it. */
+export type DeadlineDraft = { date: Date; hasTime: boolean };
+
+/** The deadline a calendar pick stands for — its day, and its time only if one was added. */
+export function draftToDeadline(draft: DeadlineDraft): DeadlineInput {
+  return {
+    date: toLocalDateKey(draft.date),
+    time: draft.hasTime ? `${pad(draft.date.getHours())}:${pad(draft.date.getMinutes())}` : undefined,
+  };
 }
 
-export function DurationChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      className={
-        selected
-          ? "rounded-2xl border border-orange-500 bg-orange-500 px-3.5 py-2"
-          : "rounded-2xl border border-cream-300 bg-cream-50 px-3.5 py-2"
-      }
-    >
-      <Text
-        className={
-          selected ? "font-grotesk-bold text-sm text-cream-50" : "font-grotesk-medium text-sm text-ink-cream"
-        }
-      >
-        {label}
-      </Text>
-    </AnimatedPressable>
-  );
+/** The calendar's starting point for a deadline (or tomorrow, date-only, without one). */
+export function deadlineToDraft(deadline: TaskDeadline | DeadlineInput | undefined): DeadlineDraft {
+  if (deadline) {
+    const made = makeDeadline(deadline);
+    if (made) return { date: deadlineToLocalDate(made), hasTime: !!made.time };
+  }
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(0, 0, 0, 0);
+  return { date, hasTime: false };
 }
 
-export function DeadlineChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      className={
-        selected
-          ? "rounded-2xl border border-charcoal-900 bg-charcoal-900 px-3.5 py-2"
-          : "rounded-2xl border border-cream-300 bg-cream-50 px-3.5 py-2"
-      }
-    >
-      <Text
-        className={
-          selected ? "font-grotesk-bold text-sm text-ink-charcoal" : "font-grotesk-medium text-sm text-ink-cream"
-        }
-      >
-        {label}
-      </Text>
-    </AnimatedPressable>
-  );
-}
-
-// Each level keeps its own color whether picked or not, so the three read
-// apart at a glance: high = overdue red, medium = amber, low = olive.
-const PRIORITY_STYLES: Record<TaskPriorityLevel, { idle: string; selected: string; text: string; color: string }> = {
-  high: {
-    idle: "flex-1 gap-2 rounded-2xl border border-overdue-500/40 bg-overdue-100 p-3.5",
-    selected: "flex-1 gap-2 rounded-2xl border-2 border-overdue-500 bg-overdue-500 p-3.5",
-    text: "font-grotesk-bold text-sm text-overdue-500",
-    color: colors.overdue[500],
-  },
-  medium: {
-    idle: "flex-1 gap-2 rounded-2xl border border-amber-500/40 bg-amber-100 p-3.5",
-    selected: "flex-1 gap-2 rounded-2xl border-2 border-amber-500 bg-amber-500 p-3.5",
-    text: "font-grotesk-bold text-sm text-amber-500",
-    color: colors.amber[500],
-  },
-  low: {
-    idle: "flex-1 gap-2 rounded-2xl border border-olive-500/40 bg-olive-100 p-3.5",
-    selected: "flex-1 gap-2 rounded-2xl border-2 border-olive-500 bg-olive-500 p-3.5",
-    text: "font-grotesk-bold text-sm text-olive-500",
-    color: colors.olive[500],
-  },
+// Each level keeps its own colour on its icon whether picked or not, so the
+// three read apart at a glance: high = overdue red, medium = amber, low =
+// olive. Picked, the card takes that colour's tint and edge — the same way
+// the task list tints a deadline that's due — with the label kept dark.
+const PRIORITY_STYLES: Record<TaskPriorityLevel, { selected: string; color: string }> = {
+  high: { selected: "border-overdue-500 bg-overdue-100", color: colors.overdue[500] },
+  medium: { selected: "border-amber-500 bg-amber-100", color: colors.amber[500] },
+  low: { selected: "border-olive-500 bg-olive-100", color: colors.olive[500] },
 };
 
 const PRIORITY_ICONS: Record<TaskPriorityLevel, keyof typeof Ionicons.glyphMap> = {
@@ -175,104 +105,161 @@ export function PriorityCard({
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      className={selected ? style.selected : style.idle}
+      className={`card flex-1 gap-2 p-[14px] ${selected ? style.selected : "border-cream-200 bg-cream-50"}`}
     >
-      <Ionicons name={PRIORITY_ICONS[level]} size={18} color={selected ? colors.cream[50] : style.color} />
-      <Text className={selected ? "font-grotesk-bold text-sm text-cream-50" : style.text}>{title}</Text>
+      <Ionicons name={PRIORITY_ICONS[level]} size={18} color={style.color} />
+      <Text className={selected ? "font-grotesk-bold text-sm text-ink-cream" : "font-grotesk-semibold text-sm text-ink-cream"}>
+        {title}
+      </Text>
     </AnimatedPressable>
   );
 }
 
+function isInPast(draft: DeadlineDraft): boolean {
+  if (draft.hasTime) return draft.date.getTime() < Date.now();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return draft.date.getTime() < today.getTime();
+}
+
 /**
- * A calendar for the deadline. iOS shows it inline; Android opens its native
- * date dialog, then the time dialog, and shows the result as a tappable row.
+ * A calendar for the deadline. It picks a day; a time is only part of the
+ * deadline once "Add a time" is used, so a picked day never turns into that
+ * day at some hour nobody chose. iOS shows the calendar inline; Android opens
+ * its native dialogs and shows the result as a tappable row.
  */
-export function DeadlineDatePicker({ value, onChange }: { value: Date; onChange: (date: Date) => void }) {
+export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; onChange: (next: DeadlineDraft) => void }) {
+  const scheme = useThemeScheme();
   const t = useTranslation();
-  // Android opens onto the date dialog immediately and only commits once a valid
-  // time has been picked. Keep the selected date pending until the final deadline
-  // is valid, so cancelling the time picker leaves the current value alone.
+  // Android opens onto the date dialog straight away — the reason this
+  // calendar was opened — and the time dialog only when asked for.
   const [androidPicker, setAndroidPicker] = useState<"date" | "time" | null>("date");
-  const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
-  const handleChange = (event: DateTimePickerEvent, selected?: Date) => {
-    const mode = androidPicker;
-    if (Platform.OS === "android") setAndroidPicker(null);
-    if (event.type === "dismissed" || !selected) {
-      if (Platform.OS === "android") {
-        setPendingDate(null);
-      }
+  const commit = (next: DeadlineDraft) => {
+    if (isInPast(next)) {
+      // Said out loud rather than swallowed: the dialog closing with the row
+      // unchanged reads as the app having ignored the tap.
+      Alert.alert(t.form.deadlineInPast);
       return;
     }
-
-    if (Platform.OS === "android") {
-      const baseDate = pendingDate ?? value;
-
-      if (mode === "date") {
-        const nextPending = new Date(baseDate);
-        nextPending.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-        setPendingDate(nextPending);
-        setAndroidPicker("time");
-        return;
-      }
-
-      const next = new Date(baseDate);
-      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      if (next.getTime() < Date.now()) {
-        // Said out loud rather than swallowed: the dialog closing with the row
-        // unchanged reads as the app having ignored the tap.
-        setPendingDate(null);
-        Alert.alert(t.form.deadlineInPast);
-        return;
-      }
-
-      setPendingDate(null);
-      onChange(next);
-      return;
-    }
-
-    const next = new Date(value);
-    next.setTime(selected.getTime());
     onChange(next);
   };
 
+  const setDay = (selected: Date) => {
+    const date = new Date(value.date);
+    date.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    commit({ date, hasTime: value.hasTime });
+  };
+
+  const setTime = (selected: Date) => {
+    const date = new Date(value.date);
+    date.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    commit({ date, hasTime: true });
+  };
+
+  const addTime = () => {
+    // Starts on the next full hour of that day, as a reasonable place for the wheel.
+    const date = new Date(value.date);
+    const next = new Date();
+    date.setHours(Math.min(23, next.getHours() + 1), 0, 0, 0);
+    if (Platform.OS === "android") {
+      onChange({ date, hasTime: value.hasTime });
+      setAndroidPicker("time");
+      return;
+    }
+    commit({ date, hasTime: true });
+  };
+
+  const removeTime = () => {
+    const date = new Date(value.date);
+    date.setHours(0, 0, 0, 0);
+    onChange({ date, hasTime: false });
+  };
+
+  const handleAndroidChange = (event: DateTimePickerEvent, selected?: Date) => {
+    const mode = androidPicker;
+    setAndroidPicker(null);
+    if (event.type === "dismissed" || !selected) return;
+    if (mode === "date") setDay(selected);
+    else setTime(selected);
+  };
+
+  const timeLabel = value.date.toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
+  const timeControls = value.hasTime ? (
+    <View className="flex-row flex-wrap items-center gap-2">
+      {Platform.OS === "ios" ? (
+        <DateTimePicker
+          value={value.date}
+          mode="time"
+          display="compact"
+          accentColor={colors.orange[500]}
+          themeVariant={scheme}
+          onChange={(event, selected) => {
+            if (event.type !== "dismissed" && selected) setTime(selected);
+          }}
+        />
+      ) : (
+        <Chip
+          label={timeLabel}
+          selected
+          icon={(color) => <Feather name="clock" size={14} color={color} />}
+          onPress={() => setAndroidPicker("time")}
+        />
+      )}
+      <Chip label={t.form.removeTime} onPress={removeTime} />
+    </View>
+  ) : (
+    <View className="flex-row">
+      <Chip label={t.form.addTime} icon={(color) => <Feather name="clock" size={14} color={color} />} onPress={addTime} />
+    </View>
+  );
+
   if (Platform.OS === "ios") {
     return (
-      <View className="overflow-hidden rounded-2xl border border-cream-300 bg-cream-50 px-2">
-        <DateTimePicker
-          value={value}
-          mode="datetime"
-          display="inline"
-          minimumDate={new Date()}
-          accentColor={colors.orange[500]}
-          themeVariant="light"
-          onChange={handleChange}
-        />
+      <View className="gap-3">
+        <View className="input overflow-hidden border-cream-200 px-2">
+          <DateTimePicker
+            value={value.date}
+            mode="date"
+            display="inline"
+            minimumDate={new Date()}
+            accentColor={colors.orange[500]}
+            themeVariant={scheme}
+            onChange={(event, selected) => {
+              if (event.type !== "dismissed" && selected) setDay(selected);
+            }}
+          />
+        </View>
+        {timeControls}
       </View>
     );
   }
 
-  const label = `${value.toLocaleDateString(t.locale, { weekday: "short", month: "short", day: "numeric" })} · ${value.toLocaleTimeString(t.locale, { hour: "2-digit", minute: "2-digit" })}`;
+  const dayLabel = value.date.toLocaleDateString(t.locale, { weekday: "short", month: "short", day: "numeric" });
+  const label = value.hasTime ? `${dayLabel} · ${timeLabel}` : dayLabel;
 
   return (
-    <>
+    <View className="gap-3">
+      {/* A field showing the picked date, in the picked-chip colours: it's the choice in force. */}
       <AnimatedPressable
         onPress={() => setAndroidPicker("date")}
-        className="flex-row items-center gap-3 rounded-2xl border border-orange-500 bg-orange-100 px-4 py-3.5"
+        accessibilityRole="button"
+        className="min-h-[44px] flex-row items-center gap-2 rounded-[14px] border border-orange-500 bg-orange-100 px-4"
       >
-        <Feather name="calendar" size={16} color={colors.orange[600]} />
-        <Text className="flex-1 font-grotesk-semibold text-sm text-orange-600">{label}</Text>
-        <Text className="font-grotesk-semibold text-xs text-orange-600">{t.form.changeDate}</Text>
+        <Feather name="calendar" size={14} color={colors.orange[600]} />
+        <Text className="flex-1 font-grotesk-bold text-sm text-orange-600">{label}</Text>
+        <Text className="font-grotesk-semibold text-sm text-orange-600">{t.form.changeDate}</Text>
       </AnimatedPressable>
+      {timeControls}
       {androidPicker ? (
         <DateTimePicker
-          value={pendingDate ?? value}
+          value={value.date}
           mode={androidPicker}
           display="default"
           minimumDate={androidPicker === "date" ? new Date() : undefined}
-          onChange={handleChange}
+          onChange={handleAndroidChange}
         />
       ) : null}
-    </>
+    </View>
   );
 }

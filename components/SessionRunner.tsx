@@ -9,8 +9,8 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SessionDotConnector, SessionRunTaskCard } from "@/components/SessionRunTaskCard";
 import { SessionTimerCard } from "@/components/SessionTimerCard";
 import { StuckSheet } from "@/components/StuckSheet";
-import { colors } from "@/constants/theme";
 import { useSessionCountdown } from "@/hooks/useSessionCountdown";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -36,6 +36,7 @@ import { useTaskStore } from "@/store/useTaskStore";
  * this screen only has to render and advance it.
  */
 export function SessionRunner() {
+  const colors = useColors();
   const t = useTranslation();
   const router = useRouter();
 

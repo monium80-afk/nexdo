@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { BottomSheet } from "@/components/BottomSheet";
+import { useColors } from "@/hooks/useTheme";
 
 type FilterOption<T extends string> = { label: string; value: T; count?: number };
 
@@ -23,44 +24,40 @@ export function FilterSheet<T extends string>({
   onSelect,
   onClose,
 }: FilterSheetProps<T>) {
+  const colors = useColors();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="scrim flex-1 justify-end" onPress={onClose}>
-        <Pressable onPress={() => {}} className="card--cream-elevated gap-1 rounded-t-2xl p-6 pb-10">
-          <Text className="eyebrow mb-3 text-ink-cream-muted">{title}</Text>
-          {options.map((option) => {
-            const isSelected = option.value === selected;
-            return (
-              <AnimatedPressable
-                key={option.value}
-                onPress={() => {
-                  onSelect(option.value);
-                  onClose();
-                }}
-                className="flex-row items-center justify-between rounded-2xl px-2 py-3.5"
-              >
-                <Text
-                  className={
-                    isSelected
-                      ? "font-grotesk-semibold text-base text-orange-500"
-                      : "font-grotesk-medium text-base text-ink-cream"
-                  }
-                >
-                  {option.label}
-                </Text>
-                <View className="flex-row items-center gap-2.5">
-                  {option.count !== undefined ? (
-                    <View className="rounded-xl bg-cream-200 px-2 py-0.5">
-                      <Text className="font-grotesk-bold text-xs text-ink-cream-muted">{option.count}</Text>
-                    </View>
-                  ) : null}
-                  {isSelected ? <Feather name="check" size={18} color={colors.orange[500]} /> : null}
+    <BottomSheet visible={visible} onClose={onClose} title={title} panelClassName="gap-1">
+      {options.map((option) => {
+        const isSelected = option.value === selected;
+        return (
+          <AnimatedPressable
+            key={option.value}
+            onPress={() => {
+              onSelect(option.value);
+              onClose();
+            }}
+            className="flex-row items-center justify-between rounded-2xl px-2 py-3.5"
+          >
+            <Text
+              className={
+                isSelected
+                  ? "font-grotesk-semibold text-base text-orange-500"
+                  : "font-grotesk-medium text-base text-ink-cream"
+              }
+            >
+              {option.label}
+            </Text>
+            <View className="flex-row items-center gap-2.5">
+              {option.count !== undefined ? (
+                <View className="rounded-xl bg-cream-200 px-2 py-0.5">
+                  <Text className="font-grotesk-bold text-xs text-ink-cream-muted">{option.count}</Text>
                 </View>
-              </AnimatedPressable>
-            );
-          })}
-        </Pressable>
-      </Pressable>
-    </Modal>
+              ) : null}
+              {isSelected ? <Feather name="check" size={18} color={colors.orange[500]} /> : null}
+            </View>
+          </AnimatedPressable>
+        );
+      })}
+    </BottomSheet>
   );
 }

@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 
 /** Long enough for Clerk to finish the sign-in over a slow connection. */
 const GIVE_UP_AFTER_MS = 8_000;
@@ -20,6 +20,7 @@ const GIVE_UP_AFTER_MS = 8_000;
  * than spinning forever; a session that arrives late still redirects from there.
  */
 export default function SSOCallback() {
+  const colors = useColors();
   const router = useRouter();
 
   useEffect(() => {

@@ -20,7 +20,7 @@ export function SuggestionChip({ emoji, icon, label, onPress, fullWidth = false 
       className={
         fullWidth
           ? "chip chip--idle flex-row items-center gap-2 self-stretch px-4 py-3"
-          : "chip chip--idle flex-row items-center gap-1.5 px-3.5 py-2"
+          : "chip chip--idle flex-row items-center gap-1.5 px-3 py-[6px]"
       }
     >
       {icon ? (

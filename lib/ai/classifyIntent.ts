@@ -1,13 +1,20 @@
 import type { InboxAction, InboxFilter, InboxRecurrence, InboxRequestBody, InboxResponseBody } from "@/app/api/inbox+api";
 import { stripAttachmentBlocks } from "@/lib/ai/attachmentMessage";
-import { selectRelevantTasks, taskToContext } from "@/lib/ai/context";
-import { extractTasks } from "@/lib/ai/extractTasks";
-import { hasExplicitTime, parseDatePhrase, parseDateRange } from "@/lib/ai/parseDate";
+import { describeNow, selectRelevantTasks, taskToContext } from "@/lib/ai/context";
+import { createCandidateId, extractTasks } from "@/lib/ai/extractTasks";
+import {
+  isAmbiguousDate,
+  looksLikeDate,
+  parseDateRange,
+  parseDeadlinePhrase,
+  type ParsedDeadline,
+} from "@/lib/ai/parseDate";
 import { resolveTaskReference } from "@/lib/ai/resolveTaskReference";
 import type { StructuredAction } from "@/lib/ai/types";
 import { apiPost } from "@/lib/api";
+import { deadlineInstant, makeDeadline } from "@/lib/deadline";
 import { getLanguage, translate } from "@/lib/i18n";
-import { toLocalDateKey, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
+import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { rankTasksForNext } from "@/lib/scoring";
 import type { TaskChanges, TaskFilter, TaskOperation, TaskStatusFilter, TaskTarget } from "@/lib/taskOperations";
 import type { AppLanguage } from "@/types/settings";
@@ -56,16 +63,6 @@ function buildAliases(tasks: Task[]) {
   return { toAlias, fromAlias };
 }
 
-/** "Wednesday, October 7, 2026, 10:00 (UTC+02:00)" — so the model knows what "today" is, for questions. */
-function describeNow(now: Date): string {
-  const date = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const time = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const offset = -now.getTimezoneOffset();
-  const hours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0");
-  const minutes = (Math.abs(offset) % 60).toString().padStart(2, "0");
-  return `${date}, ${time} (UTC${offset >= 0 ? "+" : "-"}${hours}:${minutes})`;
-}
-
 type MapContext = {
   now: Date;
   language: AppLanguage;
@@ -74,34 +71,50 @@ type MapContext = {
   realId: (alias: string | null) => string | null;
 };
 
+type ResolvedDeadline = {
+  deadline?: ParsedDeadline;
+  /** A deadline was named but can't be pinned down ("3/4", "the 3rd week of term") — ask, don't guess. */
+  unclear?: string;
+};
+
 /**
  * The deadline an action names, worked out here on the device — in the
  * user's time zone, which the server doesn't know. The model's English phrase
  * is read with every language's rules (as it always was); the user's own
- * words, when the server fell back to them, in the app language.
+ * words, when the server fell back to them, in the app language. A day
+ * without a clock time stays a date-only deadline: "October 15" is never
+ * saved as October 15 at some hour nobody said.
  */
-function resolveDeadline(fields: InboxAction["fields"], ctx: MapContext): { dueDate?: string; hasTime: boolean } {
+function resolveDeadline(fields: InboxAction["fields"], ctx: MapContext): ResolvedDeadline {
+  if (fields.dueDateAmbiguous) return { unclear: fields.dueDatePhrase ?? fields.dueDateText ?? "" };
   if (fields.dueDateText) {
-    const dueDate = parseDatePhrase(fields.dueDateText, ctx.now, ctx.language);
-    if (dueDate) return { dueDate, hasTime: hasExplicitTime(fields.dueDateText, ctx.language) };
+    const deadline = parseDeadlinePhrase(fields.dueDateText, ctx.now, ctx.language);
+    if (deadline) return { deadline };
   }
   if (fields.dueDatePhrase) {
-    const dueDate = parseDatePhrase(fields.dueDatePhrase, ctx.now);
-    if (dueDate) return { dueDate, hasTime: hasExplicitTime(fields.dueDatePhrase) };
+    const deadline = parseDeadlinePhrase(fields.dueDatePhrase, ctx.now);
+    if (deadline) return { deadline };
+    if (isAmbiguousDate(fields.dueDatePhrase) || looksLikeDate(fields.dueDatePhrase)) return { unclear: fields.dueDatePhrase };
   }
-  return { hasTime: false };
+  return {};
+}
+
+/** A clarifying question about a deadline that couldn't be read — the tasks wait for the answer. */
+function askAboutDate(unclear: string): StructuredAction {
+  const t = translate();
+  return { type: "CLARIFY", question: unclear ? t.ops.dateUnclear(unclear) : t.ops.whichDates, candidates: [], confirmationTier: "safe" };
 }
 
 function toRuleInput(recurrence: InboxRecurrence | undefined, ctx: MapContext): RuleInput | null | undefined {
   if (!recurrence) return undefined;
   if (recurrence.frequency === "none") return null;
-  const end = recurrence.endDatePhrase ? parseDatePhrase(recurrence.endDatePhrase, ctx.now) : undefined;
+  const end = recurrence.endDatePhrase ? parseDeadlinePhrase(recurrence.endDatePhrase, ctx.now) : undefined;
   return {
     frequency: recurrence.frequency,
     interval: recurrence.interval,
     weekdays: recurrence.weekdays?.filter((day): day is Weekday => day >= 0 && day <= 6),
     monthDay: recurrence.monthDay,
-    endDate: end ? toLocalDateKey(new Date(end)) : undefined,
+    endDate: end?.date,
   };
 }
 
@@ -145,11 +158,12 @@ function buildChanges(action: InboxAction, ctx: MapContext, bulk: boolean): Task
   if (fields.dueDateShift) {
     changes.dueShift = fields.dueDateShift;
   } else {
-    const deadline = resolveDeadline(fields, ctx);
-    if (deadline.dueDate) {
-      changes.dueDate = deadline.dueDate;
-      // "Move it to Friday" keeps the time it was due at; "Friday at 3" doesn't.
-      changes.keepTimeOfDay = !deadline.hasTime;
+    const { deadline } = resolveDeadline(fields, ctx);
+    if (deadline) {
+      changes.deadline = deadline;
+      // "Move it to Friday" keeps the time it was due at (none for a
+      // date-only task); "Friday at 3" sets one.
+      changes.keepTimeOfDay = !deadline.time;
     }
   }
   const recurrence = toRuleInput(fields.recurrence, ctx);
@@ -218,15 +232,18 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
     const priorityLevel = VALID_PRIORITIES.includes(action.fields.priority as TaskPriorityLevel)
       ? (action.fields.priority as TaskPriorityLevel)
       : "medium";
-    const deadline = resolveDeadline(action.fields, ctx);
+    const { deadline, unclear } = resolveDeadline(action.fields, ctx);
+    if (unclear !== undefined) return askAboutDate(unclear);
+    const saved = deadline ? makeDeadline(deadline) : undefined;
     return {
       type: "CREATE_TASK",
       drafts: [
         {
+          candidateId: createCandidateId(),
           title: action.fields.title,
           estimatedMinutes: action.fields.estimatedMinutes ?? 30,
-          dueDate: deadline.dueDate,
-          dueHasTime: deadline.dueDate ? deadline.hasTime : undefined,
+          dueDate: saved ? deadlineInstant(saved).toISOString() : undefined,
+          dueHasTime: saved ? !!saved.time : undefined,
           priorityLevel,
           steps: action.fields.steps,
           recurrence: toRuleInput(action.fields.recurrence, ctx) ?? undefined,
@@ -240,6 +257,10 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
   if (singleKind) {
     const target = singleTarget(action, ctx);
     if (!target) return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
+    if (singleKind === "update" && !action.fields.dueDateShift) {
+      const { unclear } = resolveDeadline(action.fields, ctx);
+      if (unclear !== undefined) return askAboutDate(unclear);
+    }
     return {
       type: "OPERATE",
       operation: operationFor(singleKind, target, action, ctx, false),
@@ -286,12 +307,52 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
   return null;
 }
 
+/**
+ * One action in /api/inbox's shape, turned into what the app carries out —
+ * for live voice (lib/liveVoiceTools.ts), whose tool calls arrive in that
+ * same shape, so a spoken change is resolved exactly like a typed one.
+ */
+export function toStructuredAction(
+  action: InboxAction,
+  options: { now: Date; realId: (alias: string | null) => string | null },
+): StructuredAction | null {
+  return mapSingleAction(action, {
+    now: options.now,
+    language: getLanguage(),
+    fallbackNote: action.fields.note ?? "",
+    realId: options.realId,
+  });
+}
+
+/** Titles compared the way a person would: case, accents and spacing aside. */
+function titleKey(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
 function mapInboxResponse(response: InboxResponseBody, ctx: MapContext): ClassifiedTurn {
   const actions: StructuredAction[] = [];
   const replies: (string | null)[] = [];
+  // The same task said twice in one message ("…call mum, and don't forget to
+  // call mum") is one task: only its first mention becomes a card.
+  const newTitles = new Set<string>();
   for (const action of response.actions) {
     const mapped = mapSingleAction(action, ctx);
     if (!mapped) continue;
+    if (mapped.type === "CREATE_TASK") {
+      const drafts = mapped.drafts.filter((draft) => {
+        const key = titleKey(draft.title);
+        if (newTitles.has(key)) return false;
+        newTitles.add(key);
+        return true;
+      });
+      if (drafts.length === 0) continue;
+      mapped.drafts = drafts;
+    }
     actions.push(mapped);
     replies.push(action.reply?.trim() || null);
   }
@@ -385,12 +446,12 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 
   if (RESCHEDULE_PATTERN.test(text)) {
     const ref = resolveTaskReference(text, referenceCtx, { includeCompleted: true });
-    const dueDate = parseDatePhrase(text, now, getLanguage());
-    if (ref.status === "resolved" && dueDate) {
+    const deadline = parseDeadlinePhrase(text, now, getLanguage());
+    if (ref.status === "resolved" && deadline) {
       return operate({
         kind: "update",
         target: { taskIds: [ref.taskId] },
-        changes: { dueDate, keepTimeOfDay: !hasExplicitTime(text, getLanguage()) },
+        changes: { deadline, keepTimeOfDay: !deadline.time },
       });
     }
     if (ref.status === "ambiguous") return askWhich(ref.candidates);

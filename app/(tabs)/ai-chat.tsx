@@ -45,28 +45,11 @@ const QUICK_ACTION_ICONS: Record<string, ReactNode> = {
   prioritize: <Feather name="target" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.prioritize} />,
 };
 
-function formatTime(iso: string, locale: string) {
-  return new Date(iso).toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-/** The signed-in account's photo, or a person icon when there isn't one. */
-function AccountAvatar({ size }: { size: "sm" | "md" }) {
-  const { user } = useUser();
-  const boxClass = size === "md" ? "h-11 w-11 rounded-full" : "h-8 w-8 rounded-full";
-
-  if (user?.hasImage) {
-    return <Image source={{ uri: user.imageUrl }} className={boxClass} />;
-  }
-  return (
-    <View className={`${boxClass} items-center justify-center bg-charcoal-900`}>
-      <Feather name="user" size={size === "md" ? 20 : 16} color={colors.ink.charcoal} />
-    </View>
-  );
-}
+// Both sides share one bubble shape; the corner nearest the speaker is
+// tighter, so it points at them. No avatars and no timestamps: which side a
+// bubble sits on says who said it.
+const USER_BUBBLE = "rounded-[15px] rounded-br-[6px] bg-charcoal-800 px-[13px] py-[9px]";
+const AI_BUBBLE = "card--cream rounded-[15px] rounded-bl-[6px] border px-[13px] py-[9px]";
 
 /** An image the user sent, shown inside their bubble like a regular chat attachment. */
 function ChatImage({ attachment }: { attachment: ChatAttachment }) {
@@ -110,7 +93,7 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
         scaleTo={0.98}
         accessibilityRole="imagebutton"
         accessibilityLabel={t.chat.viewPhoto}
-        className="mb-2.5 overflow-hidden rounded-xl bg-white/10"
+        className="overflow-hidden rounded-xl bg-white/10"
         style={{ aspectRatio }}
       >
         {uri ? (
@@ -133,7 +116,7 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
 function AttachmentChip({ attachment }: { attachment: ChatAttachment }) {
   const t = useTranslation();
   return (
-    <View className="mb-2 flex-row items-center gap-2 self-start rounded-lg bg-white/10 px-2.5 py-1.5">
+    <View className="flex-row items-center gap-2 self-start rounded-lg bg-white/10 px-2.5 py-1.5">
       <Feather
         name={attachment.kind === "voice" ? "mic" : "paperclip"}
         size={13}
@@ -152,17 +135,11 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   if (message.role === "ai") {
     return (
-      <Animated.View entering={FadeInUp.duration(240)} className="flex-row items-start gap-2.5 pr-1">
-        <View className="h-8 w-8 items-center justify-center rounded-full bg-cream-200">
-          <GemLogo size={16} />
-        </View>
-        <View className="card card--cream-elevated flex-1 gap-2.5 p-4">
+      <Animated.View entering={FadeInUp.duration(240)} className="items-start">
+        <View className={`max-w-[88%] ${AI_BUBBLE}`}>
           {/* The welcome message is app copy, so it follows the current language. */}
           <Text className="text-quote text-ink-cream" style={rtl}>
             {message.id === "welcome" ? t.chat.welcome : message.text}
-          </Text>
-          <Text className="self-end font-grotesk-medium text-xs text-ink-cream-muted">
-            {formatTime(message.createdAt, t.locale)}
           </Text>
         </View>
       </Animated.View>
@@ -172,10 +149,13 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   // Images render as themselves, everything else as a chip. Either way the
   // user's own text is what's shown as text — never a file name.
   const attachments = messageAttachments(message);
+  // A photo has no width of its own to size the bubble by, so a bubble
+  // carrying one takes a set width; text alone sizes its bubble to fit.
+  const hasImage = attachments.some(isImageAttachment);
 
   return (
-    <Animated.View entering={FadeInDown.duration(220)} className="flex-row items-center justify-end gap-2 pl-1">
-      <View className="flex-1 rounded-2xl bg-charcoal-900 px-4 py-3">
+    <Animated.View entering={FadeInDown.duration(220)} className="items-end">
+      <View className={`${hasImage ? "w-[80%]" : "max-w-[85%]"} gap-2 ${USER_BUBBLE}`}>
         {attachments.map((attachment, index) =>
           isImageAttachment(attachment) ? (
             <ChatImage key={`${attachment.uri}-${index}`} attachment={attachment} />
@@ -184,15 +164,11 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           ),
         )}
         {message.text ? (
-          <Text className="font-grotesk-medium text-sm text-ink-charcoal" style={rtl}>
+          <Text className="font-grotesk-medium text-[13.5px] leading-[19px] text-ink-charcoal" style={rtl}>
             {message.text}
           </Text>
         ) : null}
-        <Text className="mt-1 self-end font-grotesk-medium text-xs text-ink-charcoal-muted">
-          {formatTime(message.createdAt, t.locale)}
-        </Text>
       </View>
-      <AccountAvatar size="sm" />
     </Animated.View>
   );
 }
@@ -201,11 +177,8 @@ function TypingBubble() {
   const t = useTranslation();
 
   return (
-    <Animated.View entering={FadeInUp.duration(200)} className="flex-row items-center gap-2.5 pr-1">
-      <View className="h-8 w-8 items-center justify-center rounded-full bg-cream-200">
-        <GemLogo size={16} />
-      </View>
-      <View className="card card--cream-elevated px-4 py-3.5">
+    <Animated.View entering={FadeInUp.duration(200)} className="items-start">
+      <View className={AI_BUBBLE}>
         <Text className="text-quote text-ink-cream-muted">{t.chat.typing}</Text>
       </View>
     </Animated.View>
@@ -214,6 +187,7 @@ function TypingBubble() {
 
 function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: string; availableMinutes?: number }) {
   const t = useTranslation();
+  const rtl = useRtlText();
   const router = useRouter();
   const { user } = useUser();
   const messages = useChatStore((state) => state.messages);
@@ -449,40 +423,45 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           {isAiTyping ? <TypingBubble /> : null}
 
           {pendingActions.length > 0 ? (
-            <Animated.View entering={FadeInUp.duration(240)} className="flex-row items-start gap-2.5 pr-1">
-              {/* Mirrors the avatar column in ChatBubble so this card's left
-                  edge lands exactly where the AI bubbles' do. */}
-              <View className="h-8 w-8" />
-              <View className="flex-1 gap-3">
-                {pendingActions.flatMap((pending, index) =>
-                  pending.action.type === "CREATE_TASK"
-                    ? pending.action.drafts.map((draft, draftIndex) => (
+            <Animated.View entering={FadeInUp.duration(240)} className="gap-3">
+              {/* Plain text, not a message: nothing has been added yet. */}
+              {pendingDraftCount > 0 ? (
+                <Text className="font-grotesk-medium text-[13.5px] text-ink-cream-muted" style={rtl}>
+                  {t.chat.foundTasks(pendingDraftCount)}
+                </Text>
+              ) : null}
+              {pendingActions.flatMap((pending, index) =>
+                pending.action.type === "CREATE_TASK"
+                  ? pending.action.drafts.map((draft, draftIndex) => {
+                      // Every queued draft has one (useChatStore); the fallback is only for the type.
+                      const candidateId = draft.candidateId ?? `${index}-${draftIndex}`;
+                      return (
                         <TaskConfirmationCard
-                          key={`${index}-${draftIndex}`}
+                          key={candidateId}
                           draft={draft}
-                          onAdd={() => confirmPendingDraft(index, draftIndex)}
-                          onDismiss={() => dismissPendingDraft(index, draftIndex)}
-                          onChange={(patch) => updatePendingDraft(index, draftIndex, patch)}
+                          onAdd={() => void confirmPendingDraft(candidateId)}
+                          onDismiss={() => dismissPendingDraft(candidateId)}
+                          onChange={(patch) => updatePendingDraft(candidateId, patch)}
                         />
-                      ))
-                    : [],
-                )}
-                {pendingDraftCount > 1 ? (
-                  <AnimatedPressable
-                    onPress={confirmAllPendingDrafts}
-                    className="flex-row items-center justify-center gap-2 self-end rounded-full bg-orange-500 px-4 py-2.5"
-                  >
-                    <Feather name="check-circle" size={16} color={colors.cream[50]} />
-                    <Text className="font-grotesk-bold text-sm text-cream-50">{t.chat.addAll(pendingDraftCount)}</Text>
-                  </AnimatedPressable>
-                ) : null}
-                {pendingActions.some((pending) => pending.action.type !== "CREATE_TASK") ? (
-                  <View className="flex-row gap-2">
-                    <SuggestionChip emoji="✅" label={t.chat.yesDoIt} onPress={confirmPendingActions} />
-                    <SuggestionChip emoji="✕" label={t.common.cancel} onPress={cancelPendingActions} />
-                  </View>
-                ) : null}
-              </View>
+                      );
+                    })
+                  : [],
+              )}
+              {pendingDraftCount > 1 ? (
+                <AnimatedPressable
+                  onPress={() => void confirmAllPendingDrafts()}
+                  className="flex-row items-center justify-center gap-2 self-end rounded-full bg-orange-500 px-4 py-2.5"
+                >
+                  <Feather name="check-circle" size={16} color={colors.cream[50]} />
+                  <Text className="font-grotesk-bold text-sm text-cream-50">{t.chat.addAll(pendingDraftCount)}</Text>
+                </AnimatedPressable>
+              ) : null}
+              {pendingActions.some((pending) => pending.action.type !== "CREATE_TASK") ? (
+                <View className="flex-row gap-2">
+                  <SuggestionChip emoji="✅" label={t.chat.yesDoIt} onPress={confirmPendingActions} />
+                  <SuggestionChip emoji="✕" label={t.common.cancel} onPress={cancelPendingActions} />
+                </View>
+              ) : null}
             </Animated.View>
           ) : null}
 

@@ -9,11 +9,18 @@ import type { Task, TaskComplexity, TaskPriorityLevel } from "@/types/task";
 export type ConfirmationTier = "safe" | "immediate" | "confirm-required";
 
 export type ExtractedTaskDraft = {
+  /**
+   * Stable for the life of the preview card: "Add Task" acts on this id, not
+   * on the card's position, and the task it creates is given an id derived
+   * from it — so a double tap or a retried save can't add it twice.
+   */
+  candidateId?: string;
   title: string;
   estimatedMinutes: number;
+  /** The instant the deadline passes (lib/deadline.ts); absent means no deadline. */
   dueDate?: string;
-  // True only when the user said a clock time ("at 7 p.m.") — otherwise
-  // dueDate's hour is just a default and the preview shows the date alone.
+  // True only when the user said a clock time ("at 7 p.m.") — otherwise the
+  // deadline is date-only: saved without a time and previewed as a date.
   dueHasTime?: boolean;
   // Feeds `importance` in lib/scoring.ts. Without it every extracted task
   // landed on medium, which — combined with no deadline — pinned every

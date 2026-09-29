@@ -3,7 +3,7 @@ import type { TaskContext } from "@/lib/ai/context";
 import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/ai/extractTasks";
 import { GeminiHttpError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
-import { hasExplicitTime, parseDatePhrase } from "@/lib/ai/parseDate";
+import { hasExplicitTime, isAmbiguousDate, parseDatePhrase } from "@/lib/ai/parseDate";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -87,6 +87,8 @@ export type InboxAction = {
     dueDatePhrase?: string;
     /** The user's own words, when the model's phrase missed the deadline or its time; read in the app language. */
     dueDateText?: string;
+    /** The user's own words hold a date that reads two ways ("3/4") — the app asks rather than using the model's guess. */
+    dueDateAmbiguous?: boolean;
     dueDateShift?: { amount: number; unit: "minutes" | "hours" | "days" | "weeks" | "months" };
     estimatedMinutesDelta?: number;
     priority?: string;
@@ -445,6 +447,10 @@ function fillMissingTaskFields(action: InboxAction, text: string, now: Date, lan
   // altogether — then the user's own words are what the device reads. Only
   // whether a phrase *has* a date or a time is checked here: the date itself
   // is worked out on the device, in the user's time zone.
+  // "Due 3/4" is March 4th or April 3rd depending on who wrote it. Whatever
+  // the model made of it is a guess, so the app asks instead (classifyIntent).
+  if (isAmbiguousDate(text, language)) action.fields.dueDateAmbiguous = true;
+
   const phrase = action.fields.dueDatePhrase;
   const phraseHasTime = phrase ? hasExplicitTime(phrase) : false;
   const phraseParses = phrase ? parseDatePhrase(phrase, now) !== undefined : false;

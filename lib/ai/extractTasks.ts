@@ -1,5 +1,6 @@
-import { hasExplicitTime, parseDatePhrase } from "@/lib/ai/parseDate";
+import { parseDeadlinePhrase } from "@/lib/ai/parseDate";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import { deadlineInstant, makeDeadline } from "@/lib/deadline";
 import type { AppLanguage } from "@/types/settings";
 import type { TaskPriorityLevel } from "@/types/task";
 
@@ -71,6 +72,11 @@ const DURATION_WORDS: Record<string, number> = {
 // "nicht dringend" all contain a high-priority word.
 const LOW_PRIORITY_KEYWORDS =
   /\b(someday|eventually|whenever|sometime|no rush|not urgent|not important|low priority|low importance|if i have time|maybe|at some point|pas urgente?|pas important|pas press|rien ne presse|un jour|quand j'ai le temps|si j'ai le temps|peut-[eê]tre|priorit[ée] basse|no (?:es )?urgente|no es importante|sin prisa|no (?:hay|corre) prisa|alg[úu]n d[íi]a|cuando (?:pueda|tenga tiempo)|si tengo tiempo|tal vez|quiz[áa]s|a lo mejor|prioridad baja|baja prioridad|nicht (?:so )?(?:dringend|wichtig|eilig)|unwichtig|keine eile|eilt nicht|hat zeit|irgendwann|(?:wenn|falls) ich zeit habe|vielleicht|niedrige priorit[äa]t)\b/i;
+
+/** Identifies one preview card for its whole life — see ExtractedTaskDraft.candidateId. */
+export function createCandidateId(): string {
+  return `cand-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const DEFAULT_MINUTES = 30;
 const LONG_TASK_MINUTES = 60;
@@ -183,15 +189,18 @@ export function extractTasks(text: string, now: Date = new Date(), language?: Ap
       // With a single task in the message, a deadline anywhere in it belongs
       // to that task — including in a clause dropped as a continuation
       // ("pay the electricity bill, it was due last week").
-      const ownDueDate = parseDatePhrase(fragment, now, language);
-      const dueDate = ownDueDate ?? (fragments.length === 1 ? parseDatePhrase(text, now, language) : undefined);
-      const dueHasTime = dueDate ? hasExplicitTime(ownDueDate ? fragment : text, language) : undefined;
+      const parsed =
+        parseDeadlinePhrase(fragment, now, language) ??
+        (fragments.length === 1 ? parseDeadlinePhrase(text, now, language) : undefined);
+      // A day with no clock time stays date-only (lib/deadline.ts).
+      const deadline = parsed ? makeDeadline(parsed) : undefined;
       const title = cleanTitle(fragment);
       return {
+        candidateId: createCandidateId(),
         title,
         estimatedMinutes: guessDuration(fragment),
-        dueDate,
-        dueHasTime,
+        dueDate: deadline ? deadlineInstant(deadline).toISOString() : undefined,
+        dueHasTime: deadline ? !!deadline.time : undefined,
         priorityLevel: guessPriorityLevel(fragment),
       };
     })

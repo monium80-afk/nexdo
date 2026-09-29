@@ -18,7 +18,7 @@ import Svg, { Path } from "react-native-svg";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
 import { extractTasks } from "@/lib/ai/extractTasks";
@@ -92,6 +92,7 @@ function AnalyzingMark() {
  * visibly becomes the other.
  */
 function AnalyzingStep({ label, state }: { label: string; state: "done" | "active" | "waiting" }) {
+  const colors = useColors();
   // 0 = the active dot, 1 = the full disc. Sprung, so it lands with a bounce.
   const grow = useSharedValue(0);
   // 0 = no tick, 1 = the tick fully drawn.
@@ -155,7 +156,7 @@ function AnalyzingStep({ label, state }: { label: string; state: "done" | "activ
               <AnimatedPath
                 d={CHECK_PATH}
                 fill="none"
-                stroke={colors.cream[50]}
+                stroke={colors.onAccent}
                 strokeWidth={2.4}
                 strokeLinecap="round"
                 strokeLinejoin="round"

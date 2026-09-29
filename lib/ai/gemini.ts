@@ -18,7 +18,8 @@
 // A small thinking budget (see thinkingConfig below) gives it that outlet
 // back and fixed this completely in testing.
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
-const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta";
+const GEMINI_ORIGIN = "https://generativelanguage.googleapis.com";
+const GEMINI_API = `${GEMINI_ORIGIN}/v1beta`;
 const GEMINI_URL = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent`;
 
 // Google answers "503: this model is currently experiencing high demand" in
@@ -41,11 +42,14 @@ type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: str
  * sending more requests only helps with the second.
  */
 export class GeminiHttpError extends Error {
-  constructor(
-    readonly status: number,
-    body: string,
-  ) {
+  // A plain field rather than a constructor parameter property: `npm test`
+  // runs under Node's type stripping, which can't compile those, and the
+  // reassess route's tests load this file.
+  readonly status: number;
+
+  constructor(status: number, body: string) {
     super(`Gemini request failed: ${status} ${body}`);
+    this.status = status;
   }
 }
 
@@ -306,6 +310,57 @@ export async function generateStructuredJson(params: {
     text = await callGemini({ ...call, systemPrompt: params.systemPrompt });
   }
   return JSON.parse(text);
+}
+
+// ---------------------------------------------------------------------
+// Live sessions
+// ---------------------------------------------------------------------
+// Live voice streams the microphone from the phone straight to Google over a
+// WebSocket, and the phone can't be given GEMINI_API_KEY. The server mints a
+// single-use "ephemeral token" instead, with the session's whole setup baked
+// in, so the token opens that one kind of session and nothing else.
+//
+// Google's docs create tokens on v1beta while its own JS SDK still uses
+// v1alpha, so both are tried; the socket must use the version that answered.
+const LIVE_TOKEN_VERSIONS = ["v1beta", "v1alpha"] as const;
+/** How long the phone has to open the socket once it has the token. */
+const LIVE_CONNECT_WINDOW_MS = 60 * 1000;
+
+export async function createLiveSessionToken(params: {
+  /** The BidiGenerateContent setup — model, transcription options — the session is locked to. */
+  setup: Record<string, unknown>;
+  /** After this the token is dead — the ceiling on one session's length (and bill). */
+  sessionMinutes: number;
+}): Promise<{ websocketUrl: string }> {
+  const now = Date.now();
+  // The setup's own fields go straight into bidiGenerateContentSetup —
+  // wrapped in { setup } (as the SDK's converter source suggests) Google
+  // answers 400 "Unknown name setup" (checked 2026-09-29).
+  const body = JSON.stringify({
+    uses: 1,
+    newSessionExpireTime: new Date(now + LIVE_CONNECT_WINDOW_MS).toISOString(),
+    expireTime: new Date(now + params.sessionMinutes * 60 * 1000).toISOString(),
+    bidiGenerateContentSetup: params.setup,
+  });
+
+  let notFound: GeminiHttpError | null = null;
+  for (const version of LIVE_TOKEN_VERSIONS) {
+    const response = await fetch(`${GEMINI_ORIGIN}/${version}/auth_tokens`, { method: "POST", headers: geminiHeaders(), body });
+    if (response.status === 404) {
+      notFound = new GeminiHttpError(404, await response.text());
+      continue;
+    }
+    if (!response.ok) throw new GeminiHttpError(response.status, await response.text());
+    const { name } = (await response.json()) as { name?: string };
+    if (!name) throw new Error("Gemini returned no live session token");
+    console.info(`[gemini] live token issued (${version})`);
+    // A token rather than a key: the "Constrained" endpoint, with it as
+    // access_token — as the SDK does for any key starting "auth_tokens/".
+    return {
+      websocketUrl: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${version}.GenerativeService.BidiGenerateContentConstrained?access_token=${name}`,
+    };
+  }
+  throw notFound ?? new Error("No live token endpoint answered");
 }
 
 // Multimodal extraction (photo/voice/document -> plain text) for the AI

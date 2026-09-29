@@ -2,8 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
 import type { SessionCountdown } from "@/hooks/useSessionCountdown";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 export function SessionTimerCard({
@@ -15,6 +15,7 @@ export function SessionTimerCard({
   onToggleRunning: () => void;
   onReset: () => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const { clock, caption, progress, isRunning, isOvertime } = countdown;
 

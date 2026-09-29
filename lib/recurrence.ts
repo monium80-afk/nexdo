@@ -1,82 +1,56 @@
+import { deadlineFromInstant, deadlineInstant, makeDeadline, withDeadline } from "@/lib/deadline";
 import type { Translations } from "@/lib/i18n";
+import {
+  addDaysToKey,
+  dayNumber,
+  daysInMonth,
+  fromDayNumber,
+  isLocalDateKey,
+  keyParts as parts,
+  pad,
+  toLocalDateKey,
+  weekdayOf,
+  type LocalDate,
+} from "@/lib/localDate";
 import type {
   RecurrenceFrequency,
   RecurrenceRule,
   SeriesTemplate,
   Subtask,
   Task,
+  TaskDeadline,
   TaskRecurrence,
   Weekday,
 } from "@/types/task";
 
-// Repeating tasks. Pure functions only (type imports above, nothing else), so
-// the date math can be tested on its own — see tests/recurrence.test.ts.
+// Repeating tasks. Pure functions only (types, lib/localDate, lib/deadline),
+// so the date math can be tested on its own — see tests/recurrence.test.ts.
 //
-// Every date here is a local calendar day written "YYYY-MM-DD". Day arithmetic
-// is done on those keys through Date.UTC, never by adding 24 hours to a
-// timestamp, so a daylight-saving change can't shift an occurrence onto the
-// wrong day. The time of day lives on the rule (hour/minute, local wall-clock
-// time) and is applied last, with the local Date constructor: a task due at
-// 9:00 stays due at 9:00 on both sides of a clock change.
+// Every date here is a local calendar day written "YYYY-MM-DD" (lib/localDate),
+// never a timestamp plus 24 hours, so a daylight-saving change can't shift an
+// occurrence onto the wrong day. The time of day lives on the rule
+// (hour/minute, local wall-clock time) and is applied last: a task due at
+// 9:00 stays due at 9:00 on both sides of a clock change. An "all day" rule
+// has no time at all — its occurrences have date-only deadlines.
 //
-// A series is only ever one open occurrence at a time. Completing (or skipping)
-// it creates the next one; missed days are not back-filled, so a daily task
-// that's been left for a week is one overdue task, not seven.
+// The series definition (rule + template) travels on each occurrence, and
+// each occurrence is its own task row with its own status, deadline and
+// reminders; its id is derived from the series id and its day, so generating
+// it twice (two devices, a retried sync) writes one row. A series has one open
+// occurrence at a time: completing it — or, under the "skip missed" rule, the
+// next one coming due — brings in the next. Missed days are never back-filled,
+// so a daily task left for a week is one task, not seven.
 
-export type LocalDate = string;
+export type { LocalDate } from "@/lib/localDate";
+export { addDaysToKey, isLocalDateKey, toLocalDateKey, weekdayOf } from "@/lib/localDate";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_INTERVAL = 365;
 const WEEKDAY_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
-/** Default time for a repeating task created without one — the same 18:00 the rest of the app uses. */
+/** Stored hour of an all-day rule. Never shown or used for timing — `allDay` wins. */
 export const DEFAULT_RECURRENCE_HOUR = 18;
 
 export type RecurrenceScope = "this" | "future" | "series";
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-export function toLocalDateKey(date: Date): LocalDate {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-export function isLocalDateKey(value: unknown): value is LocalDate {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number);
-  return m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(y, m);
-}
-
-function parts(key: LocalDate): { y: number; m: number; d: number } {
-  const [y, m, d] = key.split("-").map(Number);
-  return { y, m, d };
-}
-
-/** Days since 1970-01-01 for a calendar day — no time zone involved. */
-function dayNumber(key: LocalDate): number {
-  const { y, m, d } = parts(key);
-  return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
-}
-
-function fromDayNumber(day: number): LocalDate {
-  const date = new Date(day * DAY_MS);
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
-}
-
-export function addDaysToKey(key: LocalDate, days: number): LocalDate {
-  return fromDayNumber(dayNumber(key) + days);
-}
-
-/** 1-based month. */
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
-export function weekdayOf(key: LocalDate): Weekday {
-  const { y, m, d } = parts(key);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() as Weekday;
-}
 
 /** Weeks run Monday to Sunday, as they do in most of the app's languages. */
 function mondayOf(key: LocalDate): number {
@@ -118,6 +92,8 @@ export function normalizeRule(raw: Partial<RecurrenceRule> | null | undefined): 
     rule.monthDay = clampInt(raw.monthDay, 1, 31, parts(raw.anchorDate).d);
   }
   if (isLocalDateKey(raw.endDate)) rule.endDate = raw.endDate;
+  if (raw.allDay === true) rule.allDay = true;
+  if (raw.missed === "skip") rule.missed = "skip";
   return rule;
 }
 
@@ -205,10 +181,14 @@ export function firstSlotOnOrAfter(rule: RecurrenceRule, from: LocalDate): Local
   return nextSlot(rule, addDaysToKey(from, -1));
 }
 
-/** The instant an occurrence on `key` is due, at the rule's local time. */
-export function slotDueDate(rule: Pick<RecurrenceRule, "hour" | "minute">, key: LocalDate): string {
-  const { y, m, d } = parts(key);
-  return new Date(y, m - 1, d, rule.hour, rule.minute, 0, 0).toISOString();
+/** An occurrence's deadline: its day, at the rule's local time — or date-only for an all-day rule. */
+export function slotDeadline(rule: Pick<RecurrenceRule, "hour" | "minute" | "allDay">, key: LocalDate): TaskDeadline {
+  return makeDeadline({ date: key, time: rule.allDay ? undefined : `${pad(rule.hour)}:${pad(rule.minute)}` })!;
+}
+
+/** The instant an occurrence on `key` is due: the rule's local time, or the end of the day for an all-day rule. */
+export function slotDueDate(rule: Pick<RecurrenceRule, "hour" | "minute" | "allDay">, key: LocalDate): string {
+  return deadlineInstant(slotDeadline(rule, key)).toISOString();
 }
 
 export function occurrenceIdFor(seriesId: string, key: LocalDate): string {
@@ -251,27 +231,34 @@ export type RuleInput = {
   weekdays?: Weekday[];
   monthDay?: number;
   endDate?: string;
+  /** What happens to a missed occurrence — see RecurrenceRule.missed. Keep when absent. */
+  missed?: "keep" | "skip";
 };
 
 /**
- * A rule for a task due at `dueDate` (or, with none, today at 18:00 — or the
- * end of today once 18:00 has passed, like the Add form's "Today"). It takes
- * that time of day, and is anchored on its first occurrence on or after the
- * due day — never on a day already gone, and never on an occurrence whose time
- * has already passed ("every day at 9" set up at 15:00 starts tomorrow).
+ * A rule for a task with deadline `due` (a TaskDeadline, or an ISO instant as
+ * older callers pass). It takes that time of day — or, for a date-only
+ * deadline or none at all, no time: the occurrences are due on their day
+ * ("memorize Qur'an every day" is today, not today at 18:00). It is anchored
+ * on its first occurrence on or after the due day (today without one) — never
+ * on a day already gone, and never on an occurrence whose time has already
+ * passed ("every day at 9" set up at 15:00 starts tomorrow).
  */
-export function buildRule(input: RuleInput, dueDate: string | undefined, now: Date): RecurrenceRule | null {
-  const due = dueDate ? new Date(dueDate) : undefined;
-  const base = due && !Number.isNaN(due.getTime()) ? due : defaultDue(now);
+export function buildRule(input: RuleInput, due: TaskDeadline | string | undefined, now: Date): RecurrenceRule | null {
+  const deadline = typeof due === "string" ? deadlineFromInstant(due) : due;
+  const time = deadline?.time;
+  const [hour, minute] = time ? time.split(":").map(Number) : [DEFAULT_RECURRENCE_HOUR, 0];
   const draft = normalizeRule({
     frequency: input.frequency,
     interval: input.interval,
     weekdays: input.weekdays,
     monthDay: input.monthDay,
     endDate: input.endDate,
-    anchorDate: toLocalDateKey(base),
-    hour: base.getHours(),
-    minute: base.getMinutes(),
+    anchorDate: deadline?.date ?? toLocalDateKey(now),
+    hour,
+    minute,
+    allDay: !time,
+    missed: input.missed,
   });
   if (!draft) return null;
   const today = toLocalDateKey(now);
@@ -280,13 +267,6 @@ export function buildRule(input: RuleInput, dueDate: string | undefined, now: Da
     rule = anchorRuleOnOrAfter(rule, addDaysToKey(rule.anchorDate, 1));
   }
   return rule;
-}
-
-function defaultDue(now: Date): Date {
-  const date = new Date(now);
-  date.setHours(DEFAULT_RECURRENCE_HOUR, 0, 0, 0);
-  if (date.getTime() <= now.getTime()) date.setHours(23, 59, 0, 0);
-  return date;
 }
 
 /** Everything a new occurrence copies. The duration is the full job, not what was left of it. */
@@ -304,18 +284,18 @@ export function templateFromTask(task: Task): SeriesTemplate {
     importance: task.importance,
     notes: task.notes,
     steps,
+    ...(task.reminders?.muted ? { reminders: { muted: true } } : {}),
   };
 }
 
 /**
  * Makes `task` the first occurrence of a new series (or re-times an existing
- * one when `seriesId` is passed): its due date moves onto the rule's first
+ * one when `seriesId` is passed): its deadline moves onto the rule's first
  * occurrence, and the rest of it becomes the template.
  */
 export function startSeries(task: Task, rule: RecurrenceRule, seriesId: string = createSeriesId()): Task {
   return {
-    ...task,
-    dueDate: slotDueDate(rule, rule.anchorDate),
+    ...withDeadline(task, slotDeadline(rule, rule.anchorDate)),
     recurrence: {
       seriesId,
       occurrenceDate: rule.anchorDate,
@@ -340,7 +320,13 @@ export function buildNextOccurrence(task: Task, now: Date): Task | null {
   if (!recurrence) return null;
   const date = nextOccurrenceDate(recurrence, now);
   if (!date) return null;
+  return buildOccurrence(task, date, now);
+}
 
+/** The series' occurrence on `date`, built fresh from the template — with the id every device derives for it. */
+export function buildOccurrence(task: Task, date: LocalDate, now: Date): Task | null {
+  const recurrence = task.recurrence;
+  if (!recurrence) return null;
   const id = occurrenceIdFor(recurrence.seriesId, date);
   const { template, rule } = recurrence;
   const subtasks: Subtask[] | undefined = template.steps?.length
@@ -354,11 +340,10 @@ export function buildNextOccurrence(task: Task, now: Date): Task | null {
     : undefined;
   const nowIso = now.toISOString();
 
-  return {
+  const occurrence: Task = {
     id,
     title: template.title,
     status: "pending",
-    dueDate: slotDueDate(rule, date),
     estimatedMinutes: template.estimatedMinutes,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -371,17 +356,49 @@ export function buildNextOccurrence(task: Task, now: Date): Task | null {
     complexity: task.complexity,
     aiContext: { notes: [] },
     recurrence: { seriesId: recurrence.seriesId, occurrenceDate: date, rule, template },
+    ...(template.reminders?.muted ? { reminders: { muted: true } } : {}),
   };
+  return withDeadline(occurrence, slotDeadline(rule, date));
+}
+
+/**
+ * The newest slot that has come due by `today` and is later than the
+ * occurrence `after` — what a series under "skip missed" should be showing
+ * now — or null when no later slot has arrived yet.
+ */
+export function latestDueSlot(rule: RecurrenceRule, after: LocalDate, today: LocalDate): LocalDate | null {
+  // Start one full cycle back from today, so the walk forward below is short
+  // however long the series has been left.
+  const cycleDays =
+    rule.frequency === "daily"
+      ? rule.interval
+      : rule.frequency === "weekly"
+        ? rule.interval * 7
+        : rule.frequency === "monthly"
+          ? rule.interval * 31
+          : rule.interval * 366;
+  const from = addDaysToKey(today, -cycleDays - 1);
+  let slot = nextSlot(rule, from > after ? from : after);
+  if (!slot || slot > today) return null;
+  for (let guard = 0; guard < 400; guard += 1) {
+    const following = nextSlot(rule, slot);
+    if (!following || following > today) break;
+    slot = following;
+  }
+  return slot;
 }
 
 /**
  * Re-times the series around a moved occurrence ("from now on it's on
- * Tuesdays at 7"): the new day and time become the rule's, and a weekly rule
- * swaps the old weekday for the new one.
+ * Tuesdays at 7"): the new day and time become the rule's (a date-only
+ * deadline makes the series all-day), and a weekly rule swaps the old weekday
+ * for the new one.
  */
-export function retimeRule(rule: RecurrenceRule, fromKey: LocalDate, newDue: Date): RecurrenceRule {
-  const newKey = toLocalDateKey(newDue);
-  const next: RecurrenceRule = { ...rule, anchorDate: newKey, hour: newDue.getHours(), minute: newDue.getMinutes() };
+export function retimeRule(rule: RecurrenceRule, fromKey: LocalDate, newDeadline: TaskDeadline): RecurrenceRule {
+  const newKey = newDeadline.date;
+  const [hour, minute] = newDeadline.time ? newDeadline.time.split(":").map(Number) : [rule.hour, rule.minute];
+  const next: RecurrenceRule = { ...rule, anchorDate: newKey, hour, minute, allDay: !newDeadline.time };
+  if (!next.allDay) delete next.allDay;
   if (rule.frequency === "weekly") {
     const oldDay = weekdayOf(fromKey);
     const days = (rule.weekdays ?? [oldDay]).filter((day) => day !== oldDay);
@@ -418,6 +435,7 @@ export function normalizeRecurrence(raw: unknown): TaskRecurrence | undefined {
               !!step && typeof step.label === "string" && typeof step.estimatedMinutes === "number",
           )
         : undefined,
+      ...(template.reminders?.muted === true ? { reminders: { muted: true } } : {}),
     },
     nextOccurrenceId: typeof value.nextOccurrenceId === "string" ? value.nextOccurrenceId : undefined,
   };
@@ -498,5 +516,7 @@ export function describeRuleForAi(rule: RecurrenceRule): string {
       label = `${every("year")} on ${rule.anchorDate.slice(5)}`;
       break;
   }
-  return `${label} at ${time}${rule.endDate ? `, until ${rule.endDate}` : ""}`;
+  const when = rule.allDay ? ", any time on the day" : ` at ${time}`;
+  const missed = rule.missed === "skip" ? ", missed occurrences are skipped" : "";
+  return `${label}${when}${rule.endDate ? `, until ${rule.endDate}` : ""}${missed}`;
 }

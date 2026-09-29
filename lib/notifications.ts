@@ -4,15 +4,22 @@ import { Platform } from "react-native";
 
 import { colors } from "@/constants/theme";
 import { translate } from "@/lib/i18n";
-import type { Task } from "@/types/task";
+import {
+  diffNotifications,
+  LEGACY_NOTIFICATION_ID_PREFIX,
+  NOTIFICATION_ID_PREFIX,
+  type PlannedNotification,
+  type ReminderChannel,
+} from "@/lib/reminders";
 
-// Local notifications only: the phone schedules each alert itself, so it
-// arrives at the deadline even when Nexdo is closed — no server, no push
-// tokens. The web build has no scheduler, so everything here is a no-op there.
-// Expo Go on Android is a no-op too: since SDK 53, merely importing
-// expo-notifications there throws (it wires up push tokens on load), so the
-// module is only loaded where it works. Test alerts on Android in a
-// development build.
+// Local notifications only: the phone schedules each one itself, so it
+// arrives on time even when Nexdo is closed — no server, no push tokens. What
+// to schedule is decided by lib/reminders.ts; this file only makes the phone
+// match that plan. The web build has no scheduler, so everything here is a
+// no-op there. Expo Go on Android is a no-op too: since SDK 53, merely
+// importing expo-notifications there throws (it wires up push tokens on
+// load), so the module is only loaded where it works. Test reminders on
+// Android in a development build.
 const isSupported = Platform.OS !== "web" && !(Platform.OS === "android" && isRunningInExpoGo());
 
 // Only ever read after an isSupported check, so it's never actually null then.
@@ -22,16 +29,17 @@ const Notifications: typeof import("expo-notifications") = isSupported
     require("expo-notifications")
   : (null as never);
 
-const OVERDUE_CHANNEL_ID = "overdue";
+/** The "Mark as done" button a task reminder carries. */
+const TASK_CATEGORY_ID = "nexdo-task";
+export const COMPLETE_ACTION_ID = "complete";
 
-// Every overdue alert's id starts with this, so a sync can find and cancel its
-// own alerts without touching other kinds of notification added later.
-const OVERDUE_ID_PREFIX = "overdue-";
+const CHANNEL_IDS: Record<ReminderChannel, string> = {
+  reminders: "reminders",
+  overdue: "overdue",
+  planning: "planning",
+};
 
-// iOS keeps at most 64 pending notifications per app and quietly drops the
-// rest. The soonest deadlines win; later ones get their turn on a later sync
-// (every launch and every task edit runs one).
-const MAX_OVERDUE_ALERTS = 50;
+export type NotificationPermission = "granted" | "denied" | "undetermined" | "unsupported";
 
 /** Call once at startup, before any notification can arrive. */
 export function configureNotifications() {
@@ -49,15 +57,44 @@ export function configureNotifications() {
 }
 
 // Android 8+ files every notification under a channel the user can mute in
-// the phone's settings, where this name is shown. Setting it again just
-// renames it — that's how it follows a language change.
-async function ensureOverdueChannel() {
-  if (Platform.OS !== "android") return;
-  await Notifications.setNotificationChannelAsync(OVERDUE_CHANNEL_ID, {
-    name: translate().notifications.overdueChannel,
-    importance: Notifications.AndroidImportance.HIGH,
-    lightColor: colors.orange[500],
-  });
+// the phone's settings, where these names are shown. Setting one again just
+// renames it — that's how they follow a language change. The action button's
+// label is set the same way.
+async function ensureChannelsAndActions() {
+  const t = translate();
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.reminders, {
+      name: t.notifications.remindersChannel,
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: colors.orange[500],
+    });
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.overdue, {
+      name: t.notifications.overdueChannel,
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: colors.orange[500],
+    });
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.planning, {
+      name: t.notifications.planningChannel,
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+  // Opens the app to do it: the completion goes through the task store like
+  // any other, is saved to the account, and is checked against the task as
+  // it is now (see hooks/useNotifications.ts) — not handled blind in the background.
+  await Notifications.setNotificationCategoryAsync(TASK_CATEGORY_ID, [
+    { identifier: COMPLETE_ACTION_ID, buttonTitle: t.notifications.completeAction, options: { opensAppToForeground: true } },
+  ]);
+}
+
+export async function getNotificationPermission(): Promise<NotificationPermission> {
+  if (!isSupported) return "unsupported";
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted) return "granted";
+    return current.canAskAgain ? "undetermined" : "denied";
+  } catch {
+    return "unsupported";
+  }
 }
 
 /** Shows the system prompt if the user hasn't answered it yet. Resolves true when Nexdo may notify. */
@@ -65,7 +102,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (!isSupported) return false;
   try {
     // Android 13+ only shows the prompt once the app has a channel.
-    await ensureOverdueChannel();
+    await ensureChannelsAndActions();
     const current = await Notifications.getPermissionsAsync();
     if (current.granted) return true;
     // Denied before: the phone won't ask again, only its settings can change it.
@@ -78,109 +115,112 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-function overdueAlertId(taskId: string): string {
-  return `${OVERDUE_ID_PREFIX}${taskId}`;
+function isOurs(identifier: string): boolean {
+  return identifier.startsWith(NOTIFICATION_ID_PREFIX) || identifier.startsWith(LEGACY_NOTIFICATION_ID_PREFIX);
 }
 
-/** When an open task's deadline passes, in ms — null for finished tasks and ones without a deadline. */
-function openDeadline(task: Task): number | null {
-  if (task.status !== "pending" || !task.dueDate) return null;
-  const time = Date.parse(task.dueDate);
-  return Number.isNaN(time) ? null : time;
-}
-
-async function runOverdueSync(tasks: Task[]) {
-  const now = Date.now();
-  const upcoming: { task: Task; dueAt: number }[] = [];
-  const overdueIds = new Set<string>();
-  for (const task of tasks) {
-    const dueAt = openDeadline(task);
-    if (dueAt === null) continue;
-    if (dueAt > now) upcoming.push({ task, dueAt });
-    else overdueIds.add(overdueAlertId(task.id));
-  }
-
-  // Start from a clean slate: cancel every alert the last sync scheduled...
+async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<string>) {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  for (const request of scheduled) {
-    if (request.identifier.startsWith(OVERDUE_ID_PREFIX)) {
-      await Notifications.cancelScheduledNotificationAsync(request.identifier);
-    }
-  }
+  const { cancel, schedule } = diffNotifications(
+    desired,
+    scheduled.map((request) => ({
+      id: request.identifier,
+      signature: typeof request.content.data?.signature === "string" ? request.content.data.signature : undefined,
+    })),
+  );
+  for (const id of cancel) await Notifications.cancelScheduledNotificationAsync(id);
 
-  // ...take back alerts already on screen for tasks that aren't overdue any
-  // more (finished, deleted or given a new deadline)...
+  // Take back reminders already on screen about tasks that no longer need
+  // them (finished, deleted, archived, or no longer due).
   const presented = await Notifications.getPresentedNotificationsAsync();
   for (const notification of presented) {
     const id = notification.request.identifier;
-    if (id.startsWith(OVERDUE_ID_PREFIX) && !overdueIds.has(id)) {
+    const taskId = notification.request.content.data?.taskId;
+    if (!isOurs(id)) continue;
+    if (id.startsWith(LEGACY_NOTIFICATION_ID_PREFIX) || (typeof taskId === "string" && !openTaskIds.has(taskId))) {
       await Notifications.dismissNotificationAsync(id);
     }
   }
 
-  // ...then schedule one alert per open task, for the moment its deadline passes.
-  if (upcoming.length === 0) return;
+  if (schedule.length === 0) return;
   const { granted } = await Notifications.getPermissionsAsync();
   if (!granted) return;
-  await ensureOverdueChannel();
-
-  const t = translate();
-  upcoming.sort((a, b) => a.dueAt - b.dueAt);
-  for (const { task, dueAt } of upcoming.slice(0, MAX_OVERDUE_ALERTS)) {
+  await ensureChannelsAndActions();
+  for (const entry of schedule) {
     await Notifications.scheduleNotificationAsync({
-      identifier: overdueAlertId(task.id),
+      identifier: entry.id,
       content: {
-        title: t.notifications.overdueTitle(task.title),
-        body: t.notifications.overdueBody,
+        title: entry.title,
+        body: entry.body,
         sound: "default",
-        // The screen a tap opens — see hooks/useNotifications.ts.
-        data: { url: `/task/${task.id}` },
+        data: entry.data,
+        categoryIdentifier: entry.completable ? TASK_CATEGORY_ID : undefined,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: dueAt,
-        channelId: OVERDUE_CHANNEL_ID,
+        date: entry.fireAt,
+        channelId: CHANNEL_IDS[entry.channel],
       },
     });
   }
 }
 
-// Syncs run one at a time, in order. Two overlapping runs could interleave
-// their cancels and schedules and leave an alert behind for a task that no
-// longer needs one.
-let syncQueue: Promise<void> = Promise.resolve();
+// Runs one at a time, in order: two overlapping runs could interleave their
+// cancels and schedules and leave a reminder behind that no longer applies.
+let reconcileQueue: Promise<void> = Promise.resolve();
 
 /**
- * Makes the phone's scheduled overdue alerts match `tasks`: one per open task
- * whose deadline is still ahead, and none for anything else. Pass an empty
- * list to clear them all.
+ * Makes the phone's scheduled notifications exactly `desired` (from
+ * lib/reminders.ts planNotifications). Pass an empty list to clear them all.
+ * `openTaskIds`: tasks still open, whose reminders on screen may stay.
  */
-export function syncOverdueAlerts(tasks: Task[]): Promise<void> {
+export function reconcileNotifications(desired: PlannedNotification[], openTaskIds: Set<string> = new Set()): Promise<void> {
   if (!isSupported) return Promise.resolve();
-  syncQueue = syncQueue
-    .then(() => runOverdueSync(tasks))
-    .catch((error) => console.warn("[notifications] couldn't sync overdue alerts", error));
-  return syncQueue;
+  reconcileQueue = reconcileQueue
+    .then(() => runReconcile(desired, openTaskIds))
+    .catch((error) => console.warn("[notifications] couldn't update scheduled reminders", error));
+  return reconcileQueue;
 }
 
+/** Clears every reminder this app scheduled — signing out. */
+export function clearAllNotifications(): Promise<void> {
+  return reconcileNotifications([]);
+}
+
+export type NotificationTap = {
+  /** "complete" when the user pressed "Mark as done", otherwise a plain tap. */
+  action: "open" | "complete";
+  url?: string;
+  taskId?: string;
+  /** The deadline the notification was scheduled for ("YYYY-MM-DD|HH:MM"). */
+  deadline?: string;
+};
+
 /**
- * Calls `open` with the screen a tapped alert points to, starting with the tap
- * that launched Nexdo if there was one. Returns a function that stops listening.
+ * Calls `handle` for each notification the user acts on, starting with the
+ * one that launched Nexdo if there was one. Returns a function that stops listening.
  */
-export function listenForNotificationTaps(open: (url: string) => void): () => void {
+export function listenForNotificationTaps(handle: (tap: NotificationTap) => void): () => void {
   if (!isSupported) return () => {};
 
-  const openFromNotification = (response: NotificationResponse) => {
-    const url = response.notification.request.content.data?.url;
-    if (typeof url === "string") open(url);
-    // Handled — otherwise the next listener would open it again.
+  const onResponse = (response: NotificationResponse) => {
+    const data = response.notification.request.content.data ?? {};
+    handle({
+      action: response.actionIdentifier === COMPLETE_ACTION_ID ? "complete" : "open",
+      url: typeof data.url === "string" ? data.url : undefined,
+      taskId: typeof data.taskId === "string" ? data.taskId : undefined,
+      deadline: typeof data.deadline === "string" ? data.deadline : undefined,
+    });
+    // The notification that was acted on goes from the tray.
+    Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});
+    // Handled — otherwise the next listener would act on it again.
     Notifications.clearLastNotificationResponse();
   };
 
   // A tap that launched the app happened before this listener existed.
   const launchResponse = Notifications.getLastNotificationResponse();
-  if (launchResponse) openFromNotification(launchResponse);
+  if (launchResponse) onResponse(launchResponse);
 
-  const subscription = Notifications.addNotificationResponseReceivedListener(openFromNotification);
+  const subscription = Notifications.addNotificationResponseReceivedListener(onResponse);
   return () => subscription.remove();
 }

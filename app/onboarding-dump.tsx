@@ -21,8 +21,8 @@ import Animated, {
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { extractAttachmentText } from "@/lib/ai/media";
 import { isTrialUsed } from "@/lib/aiTrial";
@@ -60,7 +60,7 @@ function WaveBar({ level, gain }: { level: SharedValue<number>; gain: number }) 
     transform: [{ scaleY: 0.18 + level.value * gain }],
   }));
 
-  return <Animated.View className="h-12 w-1 rounded-full bg-cream-50" style={barStyle} />;
+  return <Animated.View className="h-12 w-1 rounded-full bg-on-accent" style={barStyle} />;
 }
 
 type DumpMode = "idle" | "recording" | "transcribing" | "ready";
@@ -81,6 +81,7 @@ function DumpControl({
   onMicPress: () => void;
   onOrganize: () => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   // The width to stretch to, measured rather than assumed: the morph animates
   // a real number of pixels, and "100%" is not something it can animate to.
@@ -144,7 +145,7 @@ function DumpControl({
           </Animated.View>
 
           <Animated.View className="absolute flex-row items-center gap-3" style={buttonStyle}>
-            <Text className="font-grotesk-bold text-xl text-cream-50">{t.onboardingDump.organize}</Text>
+            <Text className="font-grotesk-bold text-xl text-on-accent">{t.onboardingDump.organize}</Text>
             <Feather name="arrow-right" size={20} color={colors.onAccent} />
           </Animated.View>
         </AnimatedPressable>
@@ -154,6 +155,7 @@ function DumpControl({
 }
 
 export default function OnboardingDump() {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();

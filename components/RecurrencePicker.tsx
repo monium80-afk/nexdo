@@ -4,13 +4,14 @@ import { useState } from "react";
 import { Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { DeadlineChip, SectionHeader } from "@/components/TaskFormFields";
-import { colors } from "@/constants/theme";
+import { Chip } from "@/components/Chip";
+import { SectionHeader } from "@/components/SectionHeader";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { formatWhen } from "@/lib/operationMessages";
-import { buildRule, describeRule, slotDueDate, toLocalDateKey, weekdayName, type RuleInput } from "@/lib/recurrence";
-import type { RecurrenceFrequency, Weekday } from "@/types/task";
+import { formatDeadline, makeDeadline, type DeadlineInput } from "@/lib/deadline";
+import { buildRule, describeRule, slotDeadline, toLocalDateKey, weekdayName, weekdayOf, type RuleInput } from "@/lib/recurrence";
+import type { RecurrenceFrequency, TaskDeadline, Weekday } from "@/types/task";
 
 const FREQUENCIES: (RecurrenceFrequency | "none")[] = ["none", "daily", "weekly", "monthly", "yearly"];
 const WEEK_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
@@ -22,26 +23,37 @@ function keyToDate(key: string): Date {
 }
 
 /**
- * The repeat settings for a task: how often, which weekdays, and an optional
- * last day. `dueDate` is the deadline the task would have, which sets the
- * time of day and — unless weekdays are picked — the day the pattern follows;
- * the caption shows the first occurrence that works out to.
+ * The repeat settings for a task: how often, which weekdays, an optional last
+ * day, and what happens to a missed occurrence. `deadline` is the deadline
+ * the task would have, which sets the time of day (none for a date-only one)
+ * and — unless weekdays are picked — the day the pattern follows; the caption
+ * shows the first occurrence that works out to.
  */
 export function RecurrencePicker({
   value,
   onChange,
-  dueDate,
+  deadline,
+  nested = false,
 }: {
   value: RuleInput | null;
   onChange: (value: RuleInput | null) => void;
-  dueDate: string | undefined;
+  deadline: TaskDeadline | DeadlineInput | undefined;
+  /**
+   * Inside a card that already has its own "Repeats" title (Task Details):
+   * no title of its own, and the options sit in an inset rather than a
+   * second card.
+   */
+  nested?: boolean;
 }) {
+  const colors = useColors();
+  const scheme = useThemeScheme();
   const t = useTranslation();
   const rtl = useRtlText();
   const [endPickerOpen, setEndPickerOpen] = useState(false);
 
   const now = new Date();
-  const preview = value ? buildRule(value, dueDate, now) : null;
+  const due = makeDeadline(deadline);
+  const preview = value ? buildRule(value, due, now) : null;
 
   const selectFrequency = (frequency: RecurrenceFrequency | "none") => {
     if (frequency === "none") {
@@ -49,12 +61,13 @@ export function RecurrencePicker({
       return;
     }
     // Weekly starts on the deadline's own weekday, so the picker never opens empty.
-    const baseDay = dueDate ? new Date(dueDate) : now;
+    const baseDay = due ? weekdayOf(due.date) : (now.getDay() as Weekday);
     onChange({
       frequency,
       interval: value?.frequency === frequency ? value.interval : 1,
-      weekdays: frequency === "weekly" ? (value?.weekdays?.length ? value.weekdays : [baseDay.getDay() as Weekday]) : undefined,
+      weekdays: frequency === "weekly" ? (value?.weekdays?.length ? value.weekdays : [baseDay]) : undefined,
       endDate: value?.endDate,
+      missed: value?.missed,
     });
   };
 
@@ -82,42 +95,43 @@ export function RecurrencePicker({
 
   return (
     <View className="gap-3">
-      <SectionHeader icon={<Feather name="repeat" size={14} color={colors.orange[500]} />} label={t.recurrence.title} />
+      {nested ? null : <SectionHeader icon="repeat" label={t.recurrence.title} />}
 
       <View className="flex-row flex-wrap gap-2">
         {FREQUENCIES.map((frequency) => (
-          <DeadlineChip
+          <Chip
             key={frequency}
             label={t.recurrence.frequencies[frequency]}
             selected={frequency === "none" ? !value : value?.frequency === frequency}
             onPress={() => selectFrequency(frequency)}
+            accessibilityRole="radio"
           />
         ))}
       </View>
 
       {value ? (
-        <View className="gap-4 rounded-2xl border border-cream-300 bg-cream-50 p-4">
+        <View className={nested ? "card card--cream-inset gap-4 p-[14px]" : "card card--cream-soft gap-4 p-[16px]"}>
           <View className="flex-row items-center gap-3">
             <Text className="font-grotesk-semibold text-sm text-ink-cream">{t.recurrence.every}</Text>
+            {/* Round steppers in the idle chip's colours, like every other control here. */}
             <View className="flex-row items-center gap-2">
               <AnimatedPressable
                 onPress={() => setInterval(interval - 1)}
                 disabled={interval <= 1}
                 accessibilityRole="button"
                 accessibilityLabel={t.recurrence.decrease}
-                className="h-9 w-9 items-center justify-center rounded-xl border border-cream-300 bg-cream-100"
-                style={interval <= 1 ? { opacity: 0.4 } : undefined}
+                className={`h-[34px] w-[34px] items-center justify-center rounded-full border border-cream-200 bg-cream-50 ${interval <= 1 ? "opacity-40" : ""}`}
               >
-                <Feather name="minus" size={16} color={colors.ink.cream} />
+                <Feather name="minus" size={15} color={colors.ink.cream} />
               </AnimatedPressable>
               <Text className="min-w-[28px] text-center font-grotesk-bold text-base text-ink-cream">{interval}</Text>
               <AnimatedPressable
                 onPress={() => setInterval(interval + 1)}
                 accessibilityRole="button"
                 accessibilityLabel={t.recurrence.increase}
-                className="h-9 w-9 items-center justify-center rounded-xl border border-cream-300 bg-cream-100"
+                className="h-[34px] w-[34px] items-center justify-center rounded-full border border-cream-200 bg-cream-50"
               >
-                <Feather name="plus" size={16} color={colors.ink.cream} />
+                <Feather name="plus" size={15} color={colors.ink.cream} />
               </AnimatedPressable>
             </View>
             <Text className="font-grotesk-medium text-sm text-ink-cream">{t.recurrence.unit(value.frequency, interval)}</Text>
@@ -138,13 +152,13 @@ export function RecurrencePicker({
                       accessibilityLabel={weekdayName(day, t.locale, "long")}
                       className={
                         selected
-                          ? "h-10 w-10 items-center justify-center rounded-full bg-orange-500"
-                          : "h-10 w-10 items-center justify-center rounded-full border border-cream-300 bg-cream-100"
+                          ? "h-[36px] w-[36px] items-center justify-center rounded-full border border-orange-500 bg-orange-100"
+                          : "h-[36px] w-[36px] items-center justify-center rounded-full border border-cream-200 bg-cream-50"
                       }
                     >
                       <Text
                         className={
-                          selected ? "font-grotesk-bold text-xs text-on-accent" : "font-grotesk-medium text-xs text-ink-cream"
+                          selected ? "font-grotesk-bold text-sm text-orange-600" : "font-grotesk-semibold text-sm text-ink-cream"
                         }
                       >
                         {weekdayName(day, t.locale, "narrow")}
@@ -159,15 +173,16 @@ export function RecurrencePicker({
           <View className="gap-2">
             <Text className="eyebrow text-ink-cream-muted">{t.recurrence.ends}</Text>
             <View className="flex-row flex-wrap gap-2">
-              <DeadlineChip
+              <Chip
                 label={t.recurrence.endsNever}
                 selected={!value.endDate}
                 onPress={() => {
                   onChange({ ...value, endDate: undefined });
                   setEndPickerOpen(false);
                 }}
+                accessibilityRole="radio"
               />
-              <DeadlineChip
+              <Chip
                 label={
                   value.endDate
                     ? keyToDate(value.endDate).toLocaleDateString(t.locale, { month: "short", day: "numeric", year: "numeric" })
@@ -175,6 +190,7 @@ export function RecurrencePicker({
                 }
                 selected={!!value.endDate}
                 onPress={() => setEndPickerOpen((open) => !open)}
+                accessibilityRole="radio"
               />
             </View>
             {endPickerOpen ? (
@@ -184,10 +200,31 @@ export function RecurrencePicker({
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 minimumDate={now}
                 accentColor={colors.orange[500]}
-                themeVariant="light"
+                themeVariant={scheme}
                 onChange={handleEndChange}
               />
             ) : null}
+          </View>
+
+          <View className="gap-2">
+            <Text className="eyebrow text-ink-cream-muted">{t.recurrence.ifMissed}</Text>
+            <View className="flex-row flex-wrap gap-2">
+              <Chip
+                label={t.recurrence.missedKeep}
+                selected={value.missed !== "skip"}
+                onPress={() => onChange({ ...value, missed: undefined })}
+                accessibilityRole="radio"
+              />
+              <Chip
+                label={t.recurrence.missedSkip}
+                selected={value.missed === "skip"}
+                onPress={() => onChange({ ...value, missed: "skip" })}
+                accessibilityRole="radio"
+              />
+            </View>
+            <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+              {value.missed === "skip" ? t.recurrence.missedSkipHint : t.recurrence.missedKeepHint}
+            </Text>
           </View>
 
           {preview ? (
@@ -195,8 +232,8 @@ export function RecurrencePicker({
               <Text className="font-grotesk-semibold text-sm text-orange-600" style={rtl}>
                 {t.recurrence.summary(describeRule(preview, t))}
               </Text>
-              <Text className="font-grotesk-medium text-xs text-ink-cream-muted" style={rtl}>
-                {t.recurrence.firstOn(formatWhen(slotDueDate(preview, preview.anchorDate), t))}
+              <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                {t.recurrence.firstOn(formatDeadline(slotDeadline(preview, preview.anchorDate), t.locale))}
               </Text>
             </View>
           ) : null}

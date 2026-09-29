@@ -5,9 +5,10 @@ import { Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Translations } from "@/lib/i18n";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 // Derived from Tabs itself so this always matches whatever prop shape expo-router expects.
@@ -47,31 +48,36 @@ function TabIcon({
   }
 }
 
+// A plus that opens the Add Task form, or — with "Talk instead of type" on in
+// Settings — a microphone that opens Live voice. Same button either way.
 function AddTabButton() {
+  const colors = useColors();
   const router = useRouter();
   const t = useTranslation();
+  const voice = useSettingsStore((state) => state.voiceAddButton);
 
   return (
     <AnimatedPressable
-      onPress={() => router.push("/add")}
+      onPress={() => router.push(voice ? "/live-voice" : "/add")}
       scaleTo={0.92}
+      hitSlop={6}
       accessibilityRole="button"
-      accessibilityLabel={t.tabs.addTask}
-      className="items-center -mt-3"
+      accessibilityLabel={voice ? t.live.open : t.tabs.addTask}
+      className="items-center"
     >
       <View
         style={Platform.select({
           ios: {
             shadowColor: colors.orange[600],
-            shadowOffset: { width: 0, height: 5 },
-            shadowOpacity: 0.45,
-            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
           },
-          android: { elevation: 6 },
+          android: { elevation: 3 },
         })}
-        className="h-12 w-12 items-center justify-center rounded-full bg-orange-500"
+        className="h-[36px] w-[36px] items-center justify-center rounded-full bg-orange-500"
       >
-        <Feather name="plus" size={20} color={colors.ink.charcoal} />
+        <Feather name={voice ? "mic" : "plus"} size={18} color={colors.onAccent} />
       </View>
     </AnimatedPressable>
   );
@@ -89,8 +95,11 @@ function StandardTabButton({
   /** Extra padding nudging the icon away from the centered Add button. */
   edgeClassName?: string;
 }) {
+  const colors = useColors();
   const t = useTranslation();
-  const tintColor = focused ? colors.orange[500] : colors.ink.charcoalMuted;
+  // Orange is kept for the Add button and the small dot under the active tab,
+  // so the selected icon doesn't compete with Add for attention.
+  const tintColor = focused ? colors.ink.charcoal : colors.ink.charcoalMuted;
   const pendingTaskCount = useTaskStore((state) =>
     state.tasks.filter((task) => task.status === "pending").length,
   );
@@ -102,15 +111,24 @@ function StandardTabButton({
       accessibilityRole="tab"
       accessibilityLabel={t.tabs[TAB_LABEL_KEYS[routeName]]}
       accessibilityState={{ selected: focused }}
-      className={`flex-1 items-center justify-center ${edgeClassName ?? ""}`}
+      // Full bar height, so the whole column is the touch target, not just the icon.
+      className={`flex-1 items-center justify-center self-stretch ${edgeClassName ?? ""}`}
     >
       <View>
-        <TabIcon routeName={routeName} color={tintColor} size={24} />
-        {routeName === "tasks" && (
-          <View className="absolute -right-3 -top-2 min-w-[18px] items-center rounded-full bg-orange-500 px-1">
-            <Text className="font-grotesk-bold text-[10px] text-ink-charcoal">
-              {pendingTaskCount}
+        <TabIcon routeName={routeName} color={tintColor} size={22} />
+        {/* The pending count — neutral so it informs without shouting, ringed
+            in the bar's colour to lift it off the icon. Nothing to count, no badge. */}
+        {routeName === "tasks" && pendingTaskCount > 0 && (
+          <View className="absolute -right-[10px] -top-[7px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-charcoal-900 bg-charcoal-600 px-[3px]">
+            <Text className="font-grotesk-bold text-[9.5px] leading-[12px] text-ink-charcoal">
+              {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
             </Text>
+          </View>
+        )}
+        {/* Out of flow so every icon sits on the same line as the Add button. */}
+        {focused && (
+          <View className="absolute left-0 right-0 top-[28px] items-center">
+            <View className="h-[4px] w-[4px] rounded-full bg-orange-500" />
           </View>
         )}
       </View>
@@ -118,14 +136,11 @@ function StandardTabButton({
   );
 }
 
-// The floating Add button pokes up above the bar's own background (see its
-// -mt-5 offset) via a negative margin, which overflows outside its parent's
-// measured box without adding to it. React Navigation sizes each screen's
-// bottom safe-content padding off that measured box, so without this reserve
-// the poked-up button would visually overlap screen content sitting just
-// above the tab bar (e.g. the AI chat input).
-const BAR_HEIGHT = 52;
-const FAB_RESERVE = 14;
+// Everything, the Add button included, sits inside the bar on one centre line
+// — nothing pokes above it — so the height React Navigation measures here is
+// the height the bar really takes, and screen content (e.g. the AI chat input)
+// is padded clear of it.
+const BAR_HEIGHT = 58;
 
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
@@ -163,21 +178,14 @@ export function TabBar({ state, navigation }: TabBarProps) {
   // crowded against the middle.
   const [first, second, third, fourth] = state.routes;
 
-  // The reserve and the icon row share one uninterrupted charcoal fill and
-  // one border — only at the very top of this outer box — so the whole
-  // thing reads as a single tall bar with headroom for the poked-up Add
-  // button, not two stacked bars. A border between the two zones (or a
-  // fill that only covers one of them) is what makes it look like a
-  // separate slab sitting above the "real" bar — that was the bug.
+  // One charcoal fill with one hairline at the very top, running down under
+  // the system navigation area so the bar reads as a single piece.
   return (
     <View
       className="border-t border-white/10 bg-charcoal-900"
-      style={{ height: BAR_HEIGHT + FAB_RESERVE + insets.bottom }}
+      style={{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }}
     >
-      <View
-        className="absolute inset-x-0 bottom-0 flex-row items-center px-4"
-        style={{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }}
-      >
+      <View className="flex-1 flex-row items-center px-4">
         {renderRoute(first, 0)}
         {renderRoute(second, 1, "pr-3")}
         <AddTabButton />

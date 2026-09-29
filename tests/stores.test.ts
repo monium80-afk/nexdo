@@ -297,6 +297,33 @@ describe("AI chat: the reply matches what was written", () => {
     assert.equal(task(other)!.status, "pending");
   });
 
+  it("previews a new task with no message, and says Added only once it is added", async () => {
+    modelAnswers([
+      action({
+        type: "CREATE_TASK",
+        fields: { title: "Call the plumber", estimatedMinutes: 15 },
+        confirmationRequired: true,
+        reply: "Added “Call the plumber” (~15m).",
+      }),
+    ]);
+    useChatStore.getState().sendMessage("call the plumber");
+    for (let i = 0; i < 50 && useChatStore.getState().isAiTyping; i += 1) await flush();
+    await flush();
+    // The card is the preview (under "Found 1 task" on screen) — no reply
+    // goes into the thread claiming it was added.
+    assert.deepEqual(useChatStore.getState().messages.map((message) => message.role), ["user"]);
+    assert.equal(useChatStore.getState().isAiTyping, false);
+    assert.equal(useChatStore.getState().pendingActions.length, 1);
+    assert.equal(useTaskStore.getState().tasks.length, 0);
+
+    const draft = useChatStore.getState().pendingActions[0].action;
+    assert.equal(draft.type, "CREATE_TASK");
+    await useChatStore.getState().confirmPendingDraft(draft.type === "CREATE_TASK" ? draft.drafts[0].candidateId! : "");
+    await flush();
+    assert.equal(useChatStore.getState().messages.at(-1)?.text, 'Added "Call the plumber" to your tasks.');
+    assert.equal(useTaskStore.getState().tasks[0].title, "Call the plumber");
+  });
+
   it("lists completed tasks from the whole list, not just what the model saw", async () => {
     for (let i = 0; i < 3; i += 1) {
       const id = seed({ title: `Done ${i}`, estimatedMinutes: 10, priorityLevel: "low" });

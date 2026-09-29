@@ -3,7 +3,7 @@ import { Text } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GoogleIcon } from "@/components/icons/GoogleIcon";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
 type SocialAuthButtonProps = {
@@ -12,6 +12,7 @@ type SocialAuthButtonProps = {
 };
 
 export function SocialAuthButton({ provider, onPress }: SocialAuthButtonProps) {
+  const colors = useColors();
   const t = useTranslation();
   const isApple = provider === "apple";
 

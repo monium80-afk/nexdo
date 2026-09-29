@@ -1,26 +1,27 @@
-import { Feather } from "@expo/vector-icons";
 import { useImperativeHandle, useState, type Ref } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Text, View } from "react-native";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { PrimaryButton, TextButton } from "@/components/Button";
+import { Chip } from "@/components/Chip";
+import { SectionHeader } from "@/components/SectionHeader";
 import {
-  computeDeadlineDate,
+  computeDeadline,
   DEADLINE_OPTIONS,
-  DeadlineChip,
   DeadlineDatePicker,
+  deadlineToDraft,
+  draftToDeadline,
   DURATION_OPTIONS,
-  DurationChip,
-  SectionHeader,
+  type DeadlineDraft,
   type DeadlineValue,
 } from "@/components/TaskFormFields";
-import { colors } from "@/constants/theme";
-import { useRtlText } from "@/hooks/useRtlText";
+import { TextField } from "@/components/TextField";
 import { useTranslation } from "@/hooks/useTranslation";
+import { makeDeadline, withDeadline, type DeadlineInput } from "@/lib/deadline";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { TaskChanges } from "@/lib/taskOperations";
 import type { Task } from "@/types/task";
 
-export type TaskEditChanges = Pick<TaskChanges, "title" | "estimatedMinutes" | "dueDate">;
+export type TaskEditChanges = Pick<TaskChanges, "title" | "estimatedMinutes" | "deadline">;
 
 /** Lets Task Details' "Save Changes" button save these drafts too. */
 export type TaskEditPanelHandle = {
@@ -31,11 +32,10 @@ export type TaskEditPanelHandle = {
 // "keep" leaves the deadline untouched until the user picks something else.
 type DeadlineChoice = DeadlineValue | "keep" | "custom";
 
-// The calendar opens on the task's own deadline while it's still ahead, otherwise tomorrow evening.
-function initialCustomDeadline(dueDate: string | undefined): Date {
-  const current = dueDate ? new Date(dueDate) : undefined;
-  if (current && current.getTime() > Date.now()) return current;
-  return computeDeadlineDate("tomorrow") ?? new Date();
+// The calendar opens on the task's own deadline while it's still ahead, otherwise tomorrow.
+function initialCustomDeadline(task: Task): DeadlineDraft {
+  if (task.deadline && task.dueDate && Date.parse(task.dueDate) > Date.now()) return deadlineToDraft(task.deadline);
+  return deadlineToDraft(undefined);
 }
 
 /**
@@ -54,7 +54,6 @@ export function TaskEditPanel({
   ref?: Ref<TaskEditPanelHandle>;
 }) {
   const t = useTranslation();
-  const rtl = useRtlText();
   const isPresetDuration = DURATION_OPTIONS.includes(task.estimatedMinutes);
 
   const [title, setTitle] = useState(task.title);
@@ -66,20 +65,20 @@ export function TaskEditPanel({
   const [durationError, setDurationError] = useState(false);
 
   const [deadline, setDeadline] = useState<DeadlineChoice>("keep");
-  const [customDeadline, setCustomDeadline] = useState(() => initialCustomDeadline(task.dueDate));
+  const [customDeadline, setCustomDeadline] = useState(() => initialCustomDeadline(task));
 
   // Previewed as if pending, so a completed task shows a date instead of "Completed".
-  const describeDeadline = (dueDate: string | undefined) =>
-    getDueInfo({ ...task, status: "pending", dueDate }).pillLabel;
+  const describeDeadline = (input: DeadlineInput | undefined) =>
+    getDueInfo(withDeadline({ ...task, status: "pending" }, makeDeadline(input))).pillLabel;
 
   const deadlineCaption =
     deadline === "keep"
-      ? t.form.editCurrentDeadline(describeDeadline(task.dueDate))
+      ? t.form.editCurrentDeadline(getDueInfo({ ...task, status: "pending" }).pillLabel)
       : deadline === "custom"
-        ? t.form.newDeadline(describeDeadline(customDeadline.toISOString()))
+        ? t.form.newDeadline(describeDeadline(draftToDeadline(customDeadline)))
         : deadline === "none"
           ? t.form.deadlineRemoved
-          : t.form.newDeadline(describeDeadline(computeDeadlineDate(deadline)?.toISOString()));
+          : t.form.newDeadline(describeDeadline(computeDeadline(deadline)));
 
   const handleSave = (): boolean => {
     const trimmedTitle = title.trim();
@@ -97,10 +96,10 @@ export function TaskEditPanel({
     const changes: TaskEditChanges = { title: trimmedTitle, estimatedMinutes };
 
     if (deadline === "custom") {
-      changes.dueDate = customDeadline.toISOString();
+      changes.deadline = draftToDeadline(customDeadline);
     } else if (deadline !== "keep") {
       // "No deadline" is null: remove it.
-      changes.dueDate = computeDeadlineDate(deadline)?.toISOString() ?? null;
+      changes.deadline = computeDeadline(deadline) ?? null;
     }
 
     onSave(changes);
@@ -110,47 +109,37 @@ export function TaskEditPanel({
   useImperativeHandle(ref, () => ({ save: handleSave }));
 
   return (
-    <View className="gap-6 rounded-2xl border border-cream-300 bg-cream-50 p-4">
-      <View className="flex-row items-center gap-2">
-        <Feather name="edit-2" size={13} color={colors.orange[500]} />
-        <Text className="eyebrow text-orange-500">{t.form.editEyebrow}</Text>
-      </View>
+    <View className="card card--cream-soft gap-5 p-[16px]">
+      <SectionHeader icon="edit-2" label={t.form.editEyebrow} />
 
       <View className="gap-2">
-        <Text className="eyebrow text-ink-cream">{t.form.taskTitle}</Text>
-        <TextInput
+        <SectionHeader label={t.form.taskTitle} required />
+        <TextField
           value={title}
           onChangeText={(text) => {
             setTitle(text);
             setTitleError(false);
           }}
           placeholder={t.form.editTitlePlaceholder}
-          placeholderTextColor={colors.ink.creamMuted}
           returnKeyType="done"
-          style={rtl}
-          className={
-            titleError
-              ? "rounded-2xl border border-overdue-500 bg-cream-50 px-4 py-3 font-grotesk-semibold text-base text-ink-cream"
-              : "rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3 font-grotesk-semibold text-base text-ink-cream"
-          }
+          error={titleError}
         />
-        {titleError ? (
-          <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.titleRequired}</Text>
-        ) : null}
+        {titleError ? <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.titleRequired}</Text> : null}
       </View>
 
       <View className="gap-3">
         <SectionHeader
-          icon={<Feather name="clock" size={14} color={colors.orange[500]} />}
+          icon="clock"
           label={t.form.duration}
           action={{ label: t.form.customDuration, onPress: () => setCustomDurationOpen((open) => !open) }}
         />
         <View className="flex-row flex-wrap gap-2">
           {DURATION_OPTIONS.map((minutes) => (
-            <DurationChip
+            <Chip
               key={minutes}
               label={t.form.durationOptions[minutes]}
               selected={!customDurationOpen && durationMinutes === minutes}
+              accessibilityRole="radio"
               onPress={() => {
                 setDurationMinutes(minutes);
                 setCustomDurationOpen(false);
@@ -160,29 +149,24 @@ export function TaskEditPanel({
           ))}
         </View>
         {customDurationOpen ? (
-          <View className="flex-row items-center gap-2 rounded-2xl border border-cream-300 bg-cream-50 px-4 py-3">
-            <TextInput
-              value={customDurationText}
-              onChangeText={(text) => {
-                setCustomDurationText(text);
-                setDurationError(false);
-              }}
-              placeholder={t.form.minutesPlaceholder}
-              placeholderTextColor={colors.ink.creamMuted}
-              keyboardType="number-pad"
-              className="flex-1 font-grotesk-regular text-sm text-ink-cream"
-            />
-            <Text className="font-grotesk-medium text-xs text-ink-cream-muted">{t.form.minutesUnit}</Text>
-          </View>
+          <TextField
+            value={customDurationText}
+            onChangeText={(text) => {
+              setCustomDurationText(text);
+              setDurationError(false);
+            }}
+            placeholder={t.form.minutesPlaceholder}
+            keyboardType="number-pad"
+            error={durationError}
+            trailing={<Text className="font-grotesk-medium text-sm text-ink-cream-muted">{t.form.minutesUnit}</Text>}
+          />
         ) : null}
-        {durationError ? (
-          <Text className="font-grotesk-medium text-xs text-overdue-500">{t.form.durationError}</Text>
-        ) : null}
+        {durationError ? <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.durationError}</Text> : null}
       </View>
 
       <View className="gap-3">
         <SectionHeader
-          icon={<Feather name="calendar" size={14} color={colors.orange[500]} />}
+          icon="calendar"
           label={t.form.deadline}
           action={{
             label: t.form.specificDate,
@@ -191,26 +175,22 @@ export function TaskEditPanel({
         />
         <View className="flex-row flex-wrap gap-2">
           {DEADLINE_OPTIONS.map((value) => (
-            <DeadlineChip
+            <Chip
               key={value}
               label={t.form.deadlines[value]}
               selected={deadline === value}
+              accessibilityRole="radio"
               onPress={() => setDeadline(value)}
             />
           ))}
         </View>
         {deadline === "custom" ? <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} /> : null}
-        <Text className="font-grotesk-medium text-xs text-ink-cream-muted">{deadlineCaption}</Text>
+        <Text className="font-grotesk-medium text-sm text-ink-cream-muted">{deadlineCaption}</Text>
       </View>
 
-      <View className="flex-row items-center justify-end gap-4">
-        <AnimatedPressable onPress={onCancel} hitSlop={8} accessibilityRole="button" className="px-2 py-3">
-          <Text className="font-grotesk-semibold text-sm text-ink-cream-muted">{t.common.cancel}</Text>
-        </AnimatedPressable>
-        <AnimatedPressable onPress={handleSave} accessibilityRole="button" className="btn btn--primary flex-row gap-2 px-5 py-3">
-          <Feather name="check" size={16} color={colors.cream[50]} />
-          <Text className="font-grotesk-bold text-sm text-cream-50">{t.form.saveChanges}</Text>
-        </AnimatedPressable>
+      <View className="flex-row items-center justify-end gap-5">
+        <TextButton label={t.common.cancel} onPress={onCancel} />
+        <PrimaryButton icon="check" label={t.form.saveChanges} onPress={handleSave} />
       </View>
     </View>
   );

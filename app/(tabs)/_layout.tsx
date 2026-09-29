@@ -5,11 +5,13 @@ import { useEffect } from "react";
 import { TabBar } from "@/components/TabBar";
 import { useAuthSync } from "@/hooks/useAuthSync";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
 export default function TabsLayout() {
   const t = useTranslation();
+  const colors = useColors();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   useAuthSync();
@@ -37,7 +39,9 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      screenOptions={{ headerShown: false, animation: "fade" }}
+      // The page colour behind the screens, so the fade between tabs doesn't
+      // pass through React Navigation's own light grey.
+      screenOptions={{ headerShown: false, animation: "fade", sceneStyle: { backgroundColor: colors.cream[100] } }}
       tabBar={(props) => <TabBar {...props} />}
     >
       <Tabs.Screen name="index" options={{ title: t.tabs.next }} />

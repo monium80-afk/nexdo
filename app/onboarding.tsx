@@ -5,7 +5,8 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { colors } from "@/constants/theme";
+import { lightColors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -19,6 +20,7 @@ const STICKY_NOTES = [
 
 export default function Onboarding() {
   const t = useTranslation();
+  const colors = useColors();
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -107,26 +109,27 @@ export default function Onboarding() {
   );
 }
 
+// Fixed, not themed: a shadow stays dark, and the glow is the one orange both themes share.
 const styles = StyleSheet.create({
   logoShadow: Platform.select({
     ios: {
-      shadowColor: colors.ink.cream,
+      shadowColor: lightColors.ink.cream,
       shadowOffset: { width: 0, height: 3 },
       shadowOpacity: 0.08,
       shadowRadius: 8,
     },
-    android: { shadowColor: colors.ink.cream, elevation: 3 },
+    android: { shadowColor: lightColors.ink.cream, elevation: 3 },
     default: {},
   }),
   cardGlow: Platform.select({
     ios: {
-      shadowColor: colors.orange[500],
+      shadowColor: lightColors.orange[500],
       shadowOffset: { width: 0, height: 10 },
       shadowOpacity: 0.5,
       shadowRadius: 28,
     },
     android: {
-      shadowColor: colors.orange[500],
+      shadowColor: lightColors.orange[500],
       elevation: 20,
     },
     default: {},

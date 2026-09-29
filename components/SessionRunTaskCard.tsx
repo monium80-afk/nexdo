@@ -6,9 +6,9 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { HighlightedText } from "@/components/HighlightedText";
-import { colors } from "@/constants/theme";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Subtask, Task } from "@/types/task";
 
@@ -97,6 +97,7 @@ function SubtaskRow({
   interactive: boolean;
   onPress: () => void;
 }) {
+  const colors = useColors();
   const done = subtask.status === "completed";
 
   return (
@@ -157,6 +158,7 @@ export function SessionRunTaskCard({
   onStuck: () => void;
   onToggleSubtask: (subtaskId: string) => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const done = task.status === "completed";
