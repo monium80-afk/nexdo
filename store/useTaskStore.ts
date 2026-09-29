@@ -28,8 +28,9 @@ import type { Subtask, Task, TaskDeadline, TaskPriorityLevel, TaskStep } from "@
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
 // the change to Supabase fire-and-forget. Failures are logged, not surfaced
-// to the user — but every save is tracked in `unsynced` until Supabase
-// confirms it, so a failed one is retried rather than forgotten.
+// to the user — but every save is tracked in `unsynced` (and every delete in
+// `pendingDeletes`) until Supabase confirms it, so a failed one is retried
+// rather than forgotten.
 let realtimeChannel: RealtimeChannel | null = null;
 
 function withoutKeys(record: Record<string, string>, keys: string[]): Record<string, string> {
@@ -46,13 +47,38 @@ function withoutKeys(record: Record<string, string>, keys: string[]): Record<str
 // assuming it. Resolves to whether that save went through.
 const pendingSaves = new Map<string, Promise<boolean>>();
 
+// The last request sent for each task. A save or delete of a task waits for
+// the one before it, so Supabase applies them in the order they were made —
+// otherwise an edit landing after the task's delete would bring its row back,
+// or a delete landing after an undo's save would remove it again.
+const lastRequest = new Map<string, Promise<void>>();
+
+function inOrder<T>(taskIds: string[], send: () => Promise<T>): Promise<T> {
+  const earlier = taskIds.map((id) => lastRequest.get(id)).filter((request): request is Promise<void> => !!request);
+  const request = Promise.all(earlier).then(send);
+  const settled = request.then(
+    () => undefined,
+    () => undefined,
+  );
+  taskIds.forEach((id) => lastRequest.set(id, settled));
+  void settled.then(() =>
+    taskIds.forEach((id) => {
+      if (lastRequest.get(id) === settled) lastRequest.delete(id);
+    }),
+  );
+  return request;
+}
+
 function syncUpsertMany(tasks: Task[], userId: string | null): Promise<void> {
   if (tasks.length === 0) return Promise.resolve();
+  const ids = tasks.map((task) => task.id);
   useTaskStore.setState((state) => ({
     unsynced: { ...state.unsynced, ...Object.fromEntries(tasks.map((task) => [task.id, task.updatedAt])) },
+    // Back again (an undo, a card added twice): no longer to be deleted.
+    pendingDeletes: withoutKeys(state.pendingDeletes, ids),
   }));
   if (!userId) return Promise.resolve();
-  const request = upsertTaskRows(tasks, userId)
+  const request = inOrder(ids, () => upsertTaskRows(tasks, userId))
     .then(() => {
       // Only if this is still the newest version — an edit made while the
       // request was in flight has its own save to wait for.
@@ -79,42 +105,67 @@ function syncUpsert(task: Task, userId: string | null): Promise<void> {
   return syncUpsertMany([task], userId);
 }
 
-function syncDeleteMany(taskIds: string[], userId: string | null) {
-  if (taskIds.length === 0) return;
-  useTaskStore.setState((state) =>
-    taskIds.some((id) => id in state.unsynced) ? { unsynced: withoutKeys(state.unsynced, taskIds) } : {},
-  );
-  if (!userId) return;
-  deleteTaskRows(taskIds, userId).catch((error) => console.warn("[useTaskStore] delete failed", error));
+// A delete is remembered in `pendingDeletes` until Supabase confirms it, so
+// one made offline (or a request that failed) is sent again rather than the
+// row coming back with the next sync. Only a task that belongs to an account
+// can have a row; one made signed out never left the phone.
+function syncDeleteMany(taskIds: string[], userId: string | null): Promise<void> {
+  if (taskIds.length === 0) return Promise.resolve();
+  const owned = !!(userId ?? useTaskStore.getState().ownerId);
+  const deletedAt = new Date().toISOString();
+  useTaskStore.setState((state) => ({
+    unsynced: withoutKeys(state.unsynced, taskIds),
+    pendingDeletes: owned
+      ? { ...state.pendingDeletes, ...Object.fromEntries(taskIds.map((id) => [id, deletedAt])) }
+      : state.pendingDeletes,
+  }));
+  if (!userId) return Promise.resolve();
+  return inOrder(taskIds, () => deleteTaskRows(taskIds, userId))
+    .then(() => {
+      // Only if the task wasn't brought back and deleted again meanwhile —
+      // that delete has its own confirmation to wait for.
+      useTaskStore.setState((state) => {
+        const done = taskIds.filter((id) => state.pendingDeletes[id] === deletedAt);
+        return done.length > 0 ? { pendingDeletes: withoutKeys(state.pendingDeletes, done) } : {};
+      });
+    })
+    .catch((error) => console.warn("[useTaskStore] delete failed", error));
 }
 
 function syncDelete(taskId: string, userId: string | null) {
-  syncDeleteMany([taskId], userId);
+  return syncDeleteMany([taskId], userId);
 }
 
 // Signing out clears this phone's copy of the list — the account's tasks live
-// in Supabase and come back on the next sign-in. The exception is a task
+// in Supabase and come back on the next sign-in. The exception is a change
 // Supabase never confirmed (offline, the app closed mid-save, a row the
 // database rejected): the phone holds the only copy, so it is set aside here
-// under the account it belongs to and uploaded the next time that account
-// signs in on this phone. Never shown to, or mixed into, another account.
+// under the account it belongs to and sent the next time that account signs
+// in on this phone — a task's newest version, or its delete. Never shown to,
+// or mixed into, another account.
 const stashKey = (userId: string) => `nexdo-unsynced-tasks:${userId}`;
+const deletesStashKey = (userId: string) => `nexdo-unsynced-deletes:${userId}`;
 
-async function stashUnsynced(userId: string, tasks: Task[], unsynced: Record<string, string>) {
+async function stashUnsynced(userId: string, tasks: Task[], unsynced: Record<string, string>, deletedIds: string[]) {
   const pending = tasks.filter((task) => task.id in unsynced);
-  if (pending.length === 0) return;
-  const earlier = await takeStash(userId);
-  const ids = new Set(pending.map((task) => task.id));
-  await AsyncStorage.setItem(stashKey(userId), JSON.stringify([...pending, ...earlier.filter((task) => !ids.has(task.id))]));
+  if (pending.length > 0) {
+    const earlier = await readStash<Task>(stashKey(userId));
+    const ids = new Set(pending.map((task) => task.id));
+    await AsyncStorage.setItem(stashKey(userId), JSON.stringify([...pending, ...earlier.filter((task) => !ids.has(task.id))]));
+  }
+  if (deletedIds.length > 0) {
+    const earlier = await readStash<string>(deletesStashKey(userId));
+    await AsyncStorage.setItem(deletesStashKey(userId), JSON.stringify([...new Set([...deletedIds, ...earlier])]));
+  }
 }
 
-async function takeStash(userId: string): Promise<Task[]> {
+async function readStash<T>(key: string): Promise<T[]> {
   try {
-    const raw = await AsyncStorage.getItem(stashKey(userId));
+    const raw = await AsyncStorage.getItem(key);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as Task[]) : [];
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch (error) {
-    console.warn("[useTaskStore] couldn't read unsynced tasks", error);
+    console.warn("[useTaskStore] couldn't read unsynced changes", error);
     return [];
   }
 }
@@ -369,6 +420,8 @@ type TaskStore = {
   syncUserId: string | null;
   /** Tasks whose newest local version Supabase hasn't confirmed yet: id → that version's updatedAt. */
   unsynced: Record<string, string>;
+  /** Tasks deleted on this phone whose rows Supabase hasn't confirmed deleted yet: id → when. */
+  pendingDeletes: Record<string, string>;
   /** The account the local list belongs to — persisted, so it outlives an app restart. */
   ownerId: string | null;
   hydrateFromSupabase: (userId: string) => Promise<void>;
@@ -376,8 +429,8 @@ type TaskStore = {
   unsubscribeFromRealtime: () => void;
   /**
    * Call while still signed in, right before signing out: tries once more to
-   * save every task Supabase hasn't confirmed. Resolves to how many are still
-   * unsaved — those stay on this phone (see handleSignOut), not lost.
+   * save every task (and delete) Supabase hasn't confirmed. Resolves to how
+   * many are still unsaved — those stay on this phone (see handleSignOut), not lost.
    */
   saveUnsyncedTasks: () => Promise<number>;
   handleSignOut: (options?: { accountDeleted?: boolean }) => Promise<void>;
@@ -452,6 +505,7 @@ export const useTaskStore = create<TaskStore>()(
       tasks: [],
       syncUserId: null,
       unsynced: {},
+      pendingDeletes: {},
       ownerId: null,
 
       // Supabase decides which tasks a signed-in user has, but a task the
@@ -469,11 +523,11 @@ export const useTaskStore = create<TaskStore>()(
           // signing out here) is set aside for that account, never merged in.
           const { ownerId } = get();
           if (ownerId && ownerId !== userId) {
-            await stashUnsynced(ownerId, get().tasks, get().unsynced);
-            set({ tasks: [], unsynced: {} });
+            await stashUnsynced(ownerId, get().tasks, get().unsynced, Object.keys(get().pendingDeletes));
+            set({ tasks: [], unsynced: {}, pendingDeletes: {} });
           }
-          // Tasks this account had set aside when it last signed out here.
-          const stashed = (await takeStash(userId)).filter((task) => !isSampleTask(task));
+          // Changes this account had set aside when it last signed out here.
+          const stashed = (await readStash<Task>(stashKey(userId))).filter((task) => !isSampleTask(task));
           if (stashed.length > 0) {
             set((state) => {
               const present = new Set(state.tasks.map((task) => task.id));
@@ -484,12 +538,23 @@ export const useTaskStore = create<TaskStore>()(
               };
             });
           }
+          const stashedDeletes = (await readStash<string>(deletesStashKey(userId))).filter((id) => typeof id === "string");
+          if (stashedDeletes.length > 0) {
+            const deletedAt = new Date().toISOString();
+            set((state) => ({
+              pendingDeletes: { ...state.pendingDeletes, ...Object.fromEntries(stashedDeletes.map((id) => [id, deletedAt])) },
+            }));
+          }
           set({ ownerId: userId });
           await AsyncStorage.removeItem(stashKey(userId));
+          await AsyncStorage.removeItem(deletesStashKey(userId));
 
           const fetched = await fetchTasks(userId);
           if (get().syncUserId !== userId) return;
-          const remoteTasks = fetched.filter((task) => !isSampleTask(task));
+          // A task deleted here whose delete never reached Supabase stays
+          // deleted: its row is left out, and the delete goes out again below.
+          const { pendingDeletes } = get();
+          const remoteTasks = fetched.filter((task) => !isSampleTask(task) && !(task.id in pendingDeletes));
           const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, get().unsynced);
           const tasks = normalizePersistedTasks(merged);
           // Everything not being pushed now matches Supabase; syncUpsert marks
@@ -499,6 +564,7 @@ export const useTaskStore = create<TaskStore>()(
           get()
             .tasks.filter((task) => pushIds.has(task.id))
             .forEach((task) => syncUpsert(task, userId));
+          syncDeleteMany(Object.keys(pendingDeletes), userId);
           fetched.filter(isSampleTask).forEach((task) => syncDelete(task.id, userId));
         } catch (error) {
           console.warn("[useTaskStore] hydrate failed", error);
@@ -508,10 +574,22 @@ export const useTaskStore = create<TaskStore>()(
       subscribeToRealtime: (userId) => {
         if (realtimeChannel) return;
         realtimeChannel = subscribeToTasks(userId, (task, event) => {
-          set((state) => {
-            if (event === "DELETE") {
-              return { tasks: state.tasks.filter((t) => t.id !== task.id) };
+          if (event === "DELETE") {
+            // An edit this phone hasn't saved yet outlives a delete made on
+            // another device, as it does in hydrateFromSupabase: the task
+            // stays, and goes up again.
+            const local = get().tasks.find((t) => t.id === task.id);
+            if (local && task.id in get().unsynced) {
+              syncUpsert(local, get().syncUserId);
+              return;
             }
+            set((state) => ({ tasks: state.tasks.filter((t) => t.id !== task.id) }));
+            return;
+          }
+          // Deleted here, and that delete is still on its way: a late echo of
+          // an earlier save mustn't bring the task back.
+          if (task.id in get().pendingDeletes) return;
+          set((state) => {
             const existing = state.tasks.find((t) => t.id === task.id);
             // Last-write-wins, and skips echoes of our own just-applied write.
             if (existing && Date.parse(existing.updatedAt) >= Date.parse(task.updatedAt)) return {};
@@ -530,14 +608,16 @@ export const useTaskStore = create<TaskStore>()(
       },
 
       saveUnsyncedTasks: async () => {
-        const { syncUserId, tasks, unsynced } = get();
-        if (!syncUserId) return Object.keys(unsynced).length;
+        const { syncUserId, tasks, unsynced, pendingDeletes } = get();
+        const unsaved = () => Object.keys(get().unsynced).length + Object.keys(get().pendingDeletes).length;
+        if (!syncUserId) return unsaved();
         const saves = tasks.filter((task) => task.id in unsynced).map((task) => syncUpsert(task, syncUserId));
+        saves.push(syncDeleteMany(Object.keys(pendingDeletes), syncUserId));
         await Promise.race([
           Promise.all(saves),
           new Promise((resolve) => setTimeout(resolve, SIGN_OUT_SAVE_TIMEOUT_MS)),
         ]);
-        return Object.keys(get().unsynced).length;
+        return unsaved();
       },
 
       // Clears this phone's copy only — the account's tasks stay in Supabase
@@ -546,14 +626,18 @@ export const useTaskStore = create<TaskStore>()(
       handleSignOut: async (options) => {
         realtimeChannel?.unsubscribe();
         realtimeChannel = null;
-        const { syncUserId, ownerId, tasks, unsynced } = get();
+        const { syncUserId, ownerId, tasks, unsynced, pendingDeletes } = get();
         const owner = syncUserId ?? ownerId;
         if (owner) {
           // A deleted account has nothing to come back to.
-          if (options?.accountDeleted) await AsyncStorage.removeItem(stashKey(owner));
-          else await stashUnsynced(owner, tasks, unsynced);
+          if (options?.accountDeleted) {
+            await AsyncStorage.removeItem(stashKey(owner));
+            await AsyncStorage.removeItem(deletesStashKey(owner));
+          } else {
+            await stashUnsynced(owner, tasks, unsynced, Object.keys(pendingDeletes));
+          }
         }
-        set({ tasks: [], syncUserId: null, unsynced: {}, ownerId: null });
+        set({ tasks: [], syncUserId: null, unsynced: {}, pendingDeletes: {}, ownerId: null });
         // The phone would otherwise keep firing reminders about the departing
         // account's tasks, titles and all.
         await clearAllNotifications();
@@ -887,11 +971,15 @@ export const useTaskStore = create<TaskStore>()(
           if (userId) {
             try {
               // One row, one statement: the whole new version lands or none of it does.
-              await upsertTaskRows([next], userId);
+              await inOrder([taskId], () => upsertTaskRows([next], userId));
             } catch (error) {
               console.warn("[useTaskStore] save failed", error);
               return { ok: false, reason: "save-failed" };
             }
+            // Signed out (or into another account) while the request was out:
+            // the list here isn't this account's any more, so a task missing
+            // from it wasn't deleted — its row must be left alone.
+            if (get().syncUserId !== userId) return { ok: false, reason: "missing" };
           }
 
           const latest = get().tasks.find((task) => task.id === taskId);
@@ -1117,7 +1205,12 @@ export const useTaskStore = create<TaskStore>()(
     {
       name: "nexdo-tasks",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ tasks: state.tasks, unsynced: state.unsynced, ownerId: state.ownerId }),
+      partialize: (state) => ({
+        tasks: state.tasks,
+        unsynced: state.unsynced,
+        pendingDeletes: state.pendingDeletes,
+        ownerId: state.ownerId,
+      }),
       // Version 1 added `unsynced`. An install from before it can't know
       // which of its tasks Supabase ever saved — and task saves were being
       // rejected for a while (the old NOT NULL "category" column) — so every
@@ -1143,6 +1236,7 @@ export const useTaskStore = create<TaskStore>()(
           ...persistedState,
           tasks: normalizePersistedTasks((persistedState.tasks ?? current.tasks).filter((task) => !isSampleTask(task))),
           unsynced: persistedState.unsynced ?? {},
+          pendingDeletes: persistedState.pendingDeletes ?? {},
           ownerId: persistedState.ownerId ?? null,
         };
       },

@@ -848,5 +848,7 @@ export const ar: Translations = {
     checkEmail: "تحقق من بريدك الإلكتروني",
     codeSentTo: "أرسلنا رمزًا من 6 أرقام إلى",
     somethingWrong: "حدث خطأ ما. أعد المحاولة.",
+    showPassword: "إظهار كلمة المرور",
+    hidePassword: "إخفاء كلمة المرور",
   },
 };

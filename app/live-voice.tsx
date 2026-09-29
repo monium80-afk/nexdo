@@ -1,5 +1,6 @@
+import { useAuth } from "@clerk/expo";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
 import Animated, { Easing, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -59,8 +60,19 @@ const WAVES_ROOM = WAVES_GAP + SOUND_WAVES_WIDTH;
  * Live voice: talk, and the list changes as you go. No transcript — Gemini
  * Live acts on each sentence itself (lib/liveVoice.ts), so the list is the
  * only feedback, with a tap of haptics for every change.
+ *
+ * Checks the account before anything else mounts: the screen below opens
+ * the microphone as soon as it appears, and a direct link skips the tabs'
+ * own sign-in check.
  */
 export default function LiveVoiceScreen() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <Redirect href="/onboarding" />;
+  return <LiveVoice />;
+}
+
+function LiveVoice() {
   const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();

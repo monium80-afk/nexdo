@@ -2,12 +2,13 @@ import { Feather } from "@expo/vector-icons";
 import {
     RecordingPresets,
     requestRecordingPermissionsAsync,
-    setAudioModeAsync,
     useAudioRecorder,
     useAudioRecorderState,
 } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect } from "expo-router";
+import { useCallback } from "react";
 import { Alert, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -15,6 +16,7 @@ import { AttachmentPreviewRow } from "@/components/AttachmentPreviewRow";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { beginRecording, endRecording } from "@/lib/recordingMode";
 import type { ChatAttachment } from "@/types/chat";
 
 export type AttachmentKind = "photo" | "voice" | "document";
@@ -69,19 +71,36 @@ export function InboxInput({
   // A staged photo is a message on its own — text alongside it is optional.
   const canSend = value.trim().length > 0 || attachments.length > 0;
 
+  // Leaving the Assistant mid-recording (another tab, or Live voice opening
+  // over it) drops the note — otherwise the phone stays in record mode and
+  // iOS keeps playback quiet for whatever plays next.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        try {
+          if (audioRecorder.isRecording) audioRecorder.stop().catch(() => {});
+        } catch {
+          // Already released along with the screen.
+        }
+        endRecording("voiceNote");
+      },
+      [audioRecorder],
+    ),
+  );
+
   const handleMicPress = async () => {
     if (isRecording) {
       const seconds = Math.max(1, Math.round(recorderState.durationMillis / 1000));
-      await audioRecorder.stop();
+      try {
+        await audioRecorder.stop();
+      } catch (error) {
+        console.warn("[InboxInput] recording stop failed", error);
+        return;
+      } finally {
+        // Back out of record mode once the recorder is done with it.
+        endRecording("voiceNote");
+      }
       const uri = audioRecorder.uri;
-      // Back out of record mode once the recorder is done with it. iOS
-      // otherwise leaves the input route active and keeps playback quiet for
-      // the rest of the session — which is why useSessionAlarm had to undo
-      // this before it could ring. Not allowed to cost us the recording, so
-      // it is fired off rather than awaited.
-      setAudioModeAsync({ allowsRecording: false }).catch((error) =>
-        console.warn("[InboxInput] couldn't leave recording mode", error),
-      );
       if (uri) {
         onAttachment([
           {
@@ -102,9 +121,15 @@ export function InboxInput({
       return;
     }
 
-    await setAudioModeAsync({ allowsRecording: true });
-    await audioRecorder.prepareToRecordAsync();
-    audioRecorder.record();
+    try {
+      await beginRecording("voiceNote");
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    } catch (error) {
+      console.warn("[InboxInput] recording start failed", error);
+      endRecording("voiceNote");
+      Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
+    }
   };
 
   const handleCameraPress = async () => {

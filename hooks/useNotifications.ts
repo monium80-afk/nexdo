@@ -102,7 +102,7 @@ export function useNotifications() {
     return () => clearTimeout(timer);
   }, [userId, taskKey, settingsKey]);
 
-  // Back in the app (and at midnight, while it's open): times that have
+  // Back in the app (and at every midnight, while it's open): times that have
   // passed drop out, the daily planning notes move on a day, and anything
   // another device changed while the app was away is reflected.
   useEffect(() => {
@@ -110,9 +110,17 @@ export function useNotifications() {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void reconcileNow();
     });
-    const now = new Date();
-    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5).getTime() - now.getTime();
-    const midnight = setTimeout(() => void reconcileNow(), nextMidnight);
+    let midnight: ReturnType<typeof setTimeout>;
+    // Each run sets up the next, so an app left open for days keeps moving on.
+    const scheduleMidnight = () => {
+      const now = new Date();
+      const untilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5).getTime() - now.getTime();
+      midnight = setTimeout(() => {
+        void reconcileNow();
+        scheduleMidnight();
+      }, untilMidnight);
+    };
+    scheduleMidnight();
     return () => {
       subscription.remove();
       clearTimeout(midnight);

@@ -6,7 +6,7 @@ process.env.TZ = "Europe/Paris";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isAmbiguousDate, looksLikeDate, parseDeadlinePhrase } from "@/lib/ai/parseDate";
+import { isAmbiguousDate, looksLikeDate, parseDateRange, parseDeadlinePhrase } from "@/lib/ai/parseDate";
 import {
   deadlineFromInstant,
   deadlineInstant,
@@ -66,6 +66,31 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
 
   it("a date already gone stays in the past (overdue), not moved to today", () => {
     assert.deepEqual(parseDeadlinePhrase("September 20", NOW), { date: "2026-09-20", time: undefined });
+  });
+
+  it("a year the user said is kept, not replaced by the nearest one", () => {
+    assert.deepEqual(parseDeadlinePhrase("March 5, 2028", NOW), { date: "2028-03-05", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("5 March 2028 at 7 PM", NOW), { date: "2028-03-05", time: "19:00" });
+    assert.deepEqual(parseDeadlinePhrase("the 3rd of October 2027", NOW), { date: "2027-10-03", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("bis 03.10.2027", NOW, "de"), { date: "2027-10-03", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("el 5 de marzo de 2028", NOW, "es"), { date: "2028-03-05", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("le 5 mars 2028", NOW, "fr"), { date: "2028-03-05", time: undefined });
+    // Without one, a month already gone this year is still next year's.
+    assert.deepEqual(parseDeadlinePhrase("March 5", NOW), { date: "2027-03-05", time: undefined });
+  });
+});
+
+describe("reading a filter's date range", () => {
+  // Friday is 2 October, Monday 5 October.
+  it('"before" and "after" leave the named day out', () => {
+    assert.deepEqual(parseDateRange("before friday", NOW), { to: new Date(2026, 9, 1, 23, 59, 59, 999).toISOString() });
+    assert.deepEqual(parseDateRange("after monday", NOW), { from: local(2026, 10, 6).toISOString() });
+  });
+
+  it('"by", "until" and "from" keep it', () => {
+    assert.deepEqual(parseDateRange("by friday", NOW), { to: new Date(2026, 9, 2, 23, 59, 59, 999).toISOString() });
+    assert.deepEqual(parseDateRange("until friday", NOW), { to: new Date(2026, 9, 2, 23, 59, 59, 999).toISOString() });
+    assert.deepEqual(parseDateRange("from monday", NOW), { from: local(2026, 10, 5).toISOString() });
   });
 });
 

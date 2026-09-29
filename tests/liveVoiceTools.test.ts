@@ -77,6 +77,30 @@ describe("live voice tools", () => {
     assert.equal(runner.undoCount(), 2, "two changes, not three");
   });
 
+  it("adds a task again after it was undone, however soon — that's not an echo", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk" }));
+    runner.run(call("undo_last_change"));
+    assert.equal(byTitle("Buy milk"), undefined);
+    assert.equal(runner.run(call("add_task", { title: "Buy milk" })).ok, true);
+    assert.ok(byTitle("Buy milk"));
+
+    // The same after the Undo button.
+    runner.undo();
+    assert.equal(byTitle("Buy milk"), undefined);
+    runner.run(call("add_task", { title: "Buy milk" }));
+    assert.ok(byTitle("Buy milk"));
+  });
+
+  it("completes a task again after it was reopened, however soon", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("complete_task", { taskId: "t1" }));
+    runner.run(call("reopen_task", { taskId: "t1" }));
+    runner.run(call("complete_task", { taskId: "t1" }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    assert.equal(runner.undoCount(), 3);
+  });
+
   it("completes, reopens, notes and deletes by id", () => {
     const { runner, gym } = withGym();
     runner.run(call("complete_task", { taskId: "t1" }));

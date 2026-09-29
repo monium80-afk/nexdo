@@ -225,7 +225,10 @@ alter table public.ai_trials enable row level security;
 -- 'trial_used' (this id has used its allowance for the route), 'ip_limit'
 -- (too many new ids from one IP today) or 'global_limit' (too many new ids
 -- today overall). The row lock makes the per-id count exact under parallel
--- requests; the two daily ceilings can overshoot by a request or two.
+-- requests. New ids are admitted one at a time (the advisory lock below):
+-- otherwise a burst of first requests from different ids could all count
+-- today's rows before any of them was inserted, and all get past the two
+-- daily ceilings together.
 create or replace function public.claim_ai_trial_call(
   p_trial_id text,
   p_ip_hash text,
@@ -247,6 +250,15 @@ begin
   delete from ai_trials where created_at < now() - interval '90 days';
 
   select calls into v_calls from ai_trials where trial_id = p_trial_id for update;
+
+  if not found then
+    -- Held until this call's transaction ends. Only a first request waits on
+    -- it; an id that already has its row never gets here.
+    perform pg_advisory_xact_lock(hashtext('claim_ai_trial_call'));
+    -- A parallel first request for this same id may have been admitted while
+    -- this one waited.
+    select calls into v_calls from ai_trials where trial_id = p_trial_id for update;
+  end if;
 
   if not found then
     if (select count(*) from ai_trials
@@ -276,3 +288,55 @@ $$;
 
 revoke all on function public.claim_ai_trial_call(text, text, text, int, int, int) from public, anon, authenticated;
 grant execute on function public.claim_ai_trial_call(text, text, text, int, int, int) to service_role;
+
+-- ---------------------------------------------------------------------
+-- ai_usage: a daily ceiling on each signed-in account's AI calls
+-- ---------------------------------------------------------------------
+-- Only the app's server touches this (lib/aiUsageLimit.ts), locked down the
+-- same way as ai_trials. A row is an account's Clerk user id, an AI route and
+-- a UTC day, with how many calls that route took that day — nothing about
+-- what was asked. Rows go after 30 days.
+create table if not exists public.ai_usage (
+  user_id text not null,
+  route text not null,
+  day date not null,
+  calls int not null default 0,
+  primary key (user_id, route, day)
+);
+
+create index if not exists ai_usage_day_idx on public.ai_usage (day);
+
+alter table public.ai_usage enable row level security;
+
+-- Spends one of this account's calls on p_route today (UTC). True when the
+-- call may go ahead, false once today's p_daily_limit is used up. The upsert
+-- locks the row, so parallel requests are counted exactly.
+create or replace function public.claim_ai_user_call(
+  p_user_id text,
+  p_route text,
+  p_daily_limit int
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_today date := (now() at time zone 'utc')::date;
+  v_calls int;
+begin
+  delete from ai_usage where day < v_today - 30;
+
+  insert into ai_usage (user_id, route, day, calls)
+  values (p_user_id, p_route, v_today, 1)
+  on conflict (user_id, route, day) do update
+    set calls = ai_usage.calls + 1
+    where ai_usage.calls < p_daily_limit
+  returning calls into v_calls;
+
+  -- No row comes back when the limit stopped the update.
+  return v_calls is not null;
+end;
+$$;
+
+revoke all on function public.claim_ai_user_call(text, text, int) from public, anon, authenticated;
+grant execute on function public.claim_ai_user_call(text, text, int) to service_role;

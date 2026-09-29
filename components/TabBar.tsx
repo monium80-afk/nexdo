@@ -83,6 +83,25 @@ function AddTabButton() {
   );
 }
 
+// The pending count — neutral so it informs without shouting, ringed in the
+// bar's colour to lift it off the icon. Nothing to count, no badge. Its own
+// component so only the Tasks tab subscribes to the task list, instead of
+// every tab re-counting it on each task change.
+function PendingTaskBadge() {
+  const pendingTaskCount = useTaskStore((state) =>
+    state.tasks.filter((task) => task.status === "pending").length,
+  );
+  if (pendingTaskCount === 0) return null;
+
+  return (
+    <View className="absolute -right-[10px] -top-[7px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-charcoal-900 bg-charcoal-600 px-[3px]">
+      <Text className="font-grotesk-bold text-[9.5px] leading-[12px] text-ink-charcoal">
+        {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
+      </Text>
+    </View>
+  );
+}
+
 function StandardTabButton({
   routeName,
   focused,
@@ -100,9 +119,6 @@ function StandardTabButton({
   // Orange is kept for the Add button and the small dot under the active tab,
   // so the selected icon doesn't compete with Add for attention.
   const tintColor = focused ? colors.ink.charcoal : colors.ink.charcoalMuted;
-  const pendingTaskCount = useTaskStore((state) =>
-    state.tasks.filter((task) => task.status === "pending").length,
-  );
 
   return (
     <AnimatedPressable
@@ -116,15 +132,7 @@ function StandardTabButton({
     >
       <View>
         <TabIcon routeName={routeName} color={tintColor} size={22} />
-        {/* The pending count — neutral so it informs without shouting, ringed
-            in the bar's colour to lift it off the icon. Nothing to count, no badge. */}
-        {routeName === "tasks" && pendingTaskCount > 0 && (
-          <View className="absolute -right-[10px] -top-[7px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-charcoal-900 bg-charcoal-600 px-[3px]">
-            <Text className="font-grotesk-bold text-[9.5px] leading-[12px] text-ink-charcoal">
-              {pendingTaskCount > 99 ? "99+" : pendingTaskCount}
-            </Text>
-          </View>
-        )}
+        {routeName === "tasks" && <PendingTaskBadge />}
         {/* Out of flow so every icon sits on the same line as the Add button. */}
         {focused && (
           <View className="absolute left-0 right-0 top-[28px] items-center">

@@ -25,8 +25,11 @@ export type TaskEditChanges = Pick<TaskChanges, "title" | "estimatedMinutes" | "
 
 /** Lets Task Details' "Save Changes" button save these drafts too. */
 export type TaskEditPanelHandle = {
-  /** Saves the drafts — false when a field needs fixing first. */
-  save: () => boolean;
+  /**
+   * Saves the drafts — false when a field needs fixing first. `onSaved` runs
+   * once they're applied, which for a repeating task waits on the user.
+   */
+  save: (onSaved?: () => void) => boolean;
 };
 
 // "keep" leaves the deadline untouched until the user picks something else.
@@ -49,7 +52,7 @@ export function TaskEditPanel({
   ref,
 }: {
   task: Task;
-  onSave: (changes: TaskEditChanges) => void;
+  onSave: (changes: TaskEditChanges, onSaved?: () => void) => void;
   onCancel: () => void;
   ref?: Ref<TaskEditPanelHandle>;
 }) {
@@ -80,7 +83,7 @@ export function TaskEditPanel({
           ? t.form.deadlineRemoved
           : t.form.newDeadline(describeDeadline(computeDeadline(deadline)));
 
-  const handleSave = (): boolean => {
+  const handleSave = (onSaved?: () => void): boolean => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setTitleError(true);
@@ -102,7 +105,7 @@ export function TaskEditPanel({
       changes.deadline = computeDeadline(deadline) ?? null;
     }
 
-    onSave(changes);
+    onSave(changes, onSaved);
     return true;
   };
 
@@ -190,7 +193,7 @@ export function TaskEditPanel({
 
       <View className="flex-row items-center justify-end gap-5">
         <TextButton label={t.common.cancel} onPress={onCancel} />
-        <PrimaryButton icon="check" label={t.form.saveChanges} onPress={handleSave} />
+        <PrimaryButton icon="check" label={t.form.saveChanges} onPress={() => handleSave()} />
       </View>
     </View>
   );

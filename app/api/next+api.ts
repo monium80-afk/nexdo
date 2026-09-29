@@ -2,6 +2,7 @@ import { EXECUTION_COACH_INTEGRATION_NOTES, EXECUTION_COACH_SYSTEM_PROMPT } from
 import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, languageInstruction } from "@/lib/ai/language";
+import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -143,10 +144,8 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
-  if (!auth.userId) {
-    const trialResponse = await claimTrialCall(request, "next");
-    if (trialResponse) return trialResponse;
-  }
+  const limitResponse = auth.userId ? await claimUserCall(auth.userId, "next") : await claimTrialCall(request, "next");
+  if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
 

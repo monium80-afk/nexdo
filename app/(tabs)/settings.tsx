@@ -345,9 +345,11 @@ export default function Settings() {
     setIsSigningOut(true);
     setSignOutError(null);
     try {
+      await signOut();
+      // Only once it worked: a failed sign-out leaves the user signed in, and
+      // their later events should still carry who they are.
       posthog.capture('user_signed_out')
       posthog.reset()
-      await signOut();
       const cleanupResults = await Promise.allSettled([
         Promise.resolve().then(() => handleChatSignOut()),
         Promise.resolve().then(() => handleTaskSignOut()),

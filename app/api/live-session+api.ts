@@ -2,6 +2,7 @@ import { LIVE_VOICE_SYSTEM_PROMPT } from "@/data/liveVoicePrompt";
 import type { TaskContext } from "@/lib/ai/context";
 import { createLiveSessionToken } from "@/lib/ai/gemini";
 import { languageName } from "@/lib/ai/language";
+import { claimUserCall } from "@/lib/aiUsageLimit";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
 import {
     asObject,
@@ -244,6 +245,11 @@ export async function POST(request: Request) {
     if (error instanceof BadRequestError) return badRequest();
     throw error;
   }
+
+  // Each token is a session of up to SESSION_MINUTES, so the daily count of
+  // tokens is what bounds live voice's cost per account.
+  const limitResponse = await claimUserCall(auth.userId, "live-session");
+  if (limitResponse) return limitResponse;
 
   const setup = liveSetup(parseBody(raw));
   try {

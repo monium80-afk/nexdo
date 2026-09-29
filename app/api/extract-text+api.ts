@@ -1,4 +1,5 @@
 import { extractTextFromMedia } from "@/lib/ai/gemini";
+import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -116,10 +117,10 @@ export async function POST(request: Request) {
   if (!kind || !mimeType || !base64) return badRequest();
   if (!ALLOWED_MIME_TYPES[kind].includes(mimeType.toLowerCase())) return badRequest();
 
-  if (!auth.userId) {
-    const trialResponse = await claimTrialCall(request, "extract-text");
-    if (trialResponse) return trialResponse;
-  }
+  const limitResponse = auth.userId
+    ? await claimUserCall(auth.userId, "extract-text")
+    : await claimTrialCall(request, "extract-text");
+  if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
   const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);

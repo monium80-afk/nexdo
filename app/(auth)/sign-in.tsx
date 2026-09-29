@@ -36,6 +36,7 @@ export default function SignIn() {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
+  const [sendCodeError, setSendCodeError] = useState<string | null>(null);
 
   const handleSocialAuth = async (provider: "google" | "apple") => {
     posthog.capture('sign_in_social_tapped', { provider })
@@ -58,9 +59,18 @@ export default function SignIn() {
 
   const handleLogIn = async () => {
     if (!email) return;
+    setSendCodeError(null);
     const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (!error) setModalVisible(true);
+    if (error) {
+      setSendCodeError(error.longMessage ?? t.auth.sendCodeError);
+      return;
+    }
+    setModalVisible(true);
   };
+
+  // A problem with the address shows as that; anything else (no connection,
+  // too many tries) as what sending the code ran into.
+  const logInError = errors.fields.identifier?.message ?? sendCodeError;
 
   const handleVerifyCode = async (code: string) => {
     const { error } = await signIn.emailCode.verifyCode({ code });
@@ -124,9 +134,9 @@ export default function SignIn() {
                     keyboardType="email-address"
                     autoComplete="email"
                   />
-                  {errors.fields.identifier ? (
+                  {logInError ? (
                     <Text className="text-sm font-grotesk-medium text-overdue-500">
-                      {errors.fields.identifier.message}
+                      {logInError}
                     </Text>
                   ) : null}
                   <AnimatedPressable

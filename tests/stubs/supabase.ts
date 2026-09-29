@@ -4,6 +4,7 @@
 
 type Row = Record<string, unknown> & { id: string };
 type Filter = { column: string; values: unknown[] };
+type Listener = { table: string; handler: (payload: unknown) => void };
 
 export const fakeDb = {
   tables: new Map<string, Map<string, Row>>(),
@@ -13,14 +14,34 @@ export const fakeDb = {
   nextError: null as { code: string; message: string } | null,
   /** Columns the fake "database" doesn't have (PGRST204 when named). */
   missingColumns: new Set<string>(),
+  /** While set, upserts wait for it before landing — a slow request (see holdUpserts). */
+  upsertGate: null as Promise<void> | null,
+  /** Realtime subscriptions still open. */
+  listeners: [] as Listener[],
   reset() {
     this.tables.clear();
     this.writes = [];
     this.nextError = null;
     this.missingColumns.clear();
+    this.upsertGate = null;
   },
   rows(table: string): Row[] {
     return [...(this.tables.get(table)?.values() ?? [])];
+  },
+  /** Every upsert from now on waits until the returned function is called. */
+  holdUpserts(): () => void {
+    let release: () => void = () => {};
+    this.upsertGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      this.upsertGate = null;
+      release();
+    };
+  },
+  /** Delivers a realtime change, as if another device had made it. */
+  emit(table: string, payload: unknown) {
+    this.listeners.filter((listener) => listener.table === table).forEach((listener) => listener.handler(payload));
   },
 };
 
@@ -64,15 +85,16 @@ function query(name: string) {
     },
     upsert(input: Row | Row[]) {
       const rows = Array.isArray(input) ? input : [input];
-      const missing = rows.flatMap((row) => Object.keys(row)).find((key) => fakeDb.missingColumns.has(key));
-      if (missing) {
-        return Promise.resolve({ error: { code: "PGRST204", message: `Could not find the '${missing}' column` } });
-      }
-      const error = takeError();
-      if (error) return Promise.resolve({ error });
-      rows.forEach((row) => table(name).set(row.id, { ...row }));
-      fakeDb.writes.push({ table: name, kind: "upsert", ids: rows.map((row) => row.id) });
-      return Promise.resolve({ error: null });
+      const land = () => {
+        const missing = rows.flatMap((row) => Object.keys(row)).find((key) => fakeDb.missingColumns.has(key));
+        if (missing) return { error: { code: "PGRST204", message: `Could not find the '${missing}' column` } };
+        const error = takeError();
+        if (error) return { error };
+        rows.forEach((row) => table(name).set(row.id, { ...row }));
+        fakeDb.writes.push({ table: name, kind: "upsert", ids: rows.map((row) => row.id) });
+        return { error: null };
+      };
+      return fakeDb.upsertGate ? fakeDb.upsertGate.then(land) : Promise.resolve(land());
     },
     then(resolve: (value: { data?: Row[]; error: unknown }) => void) {
       if (mode === "delete") {
@@ -92,7 +114,19 @@ function query(name: string) {
 export const supabase = {
   from: (name: string) => query(name),
   channel: () => {
-    const channel = { on: () => channel, subscribe: () => channel, unsubscribe: () => undefined };
+    const own: Listener[] = [];
+    const channel = {
+      on: (_type: string, filter: { table: string }, handler: (payload: unknown) => void) => {
+        const listener = { table: filter.table, handler };
+        own.push(listener);
+        fakeDb.listeners.push(listener);
+        return channel;
+      },
+      subscribe: () => channel,
+      unsubscribe: () => {
+        fakeDb.listeners = fakeDb.listeners.filter((listener) => !own.includes(listener));
+      },
+    };
     return channel;
   },
 };

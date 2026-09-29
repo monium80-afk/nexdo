@@ -11,6 +11,8 @@
 // not just the wording of the reply. Not part of `npm test`: it costs money and
 // the model isn't deterministic across versions.
 
+import { isDeepStrictEqual } from "node:util";
+
 import { parseBody, resolveInboxMessage } from "@/app/api/inbox+api";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -84,7 +86,15 @@ type Case = {
 };
 
 const unchanged = (before: Snapshot) =>
-  tasks().length === before.size && tasks().every((task) => before.get(task.id)?.updatedAt === task.updatedAt);
+  tasks().length === before.size && tasks().every((task) => isDeepStrictEqual(task, before.get(task.id)));
+
+/** Exactly the tasks with these titles are gone — every other seeded task is still there. */
+const onlyDeleted = (before: Snapshot, titles: string[]) => {
+  const left = new Set(tasks().map((task) => task.id));
+  const wrong = [...before.values()].filter((task) => left.has(task.id) === titles.includes(task.title));
+  if (wrong.length > 0) return `wrong set deleted (${wrong.map((task) => task.title).join(", ")})`;
+  return left.size === before.size - titles.length ? null : "a task was added";
+};
 
 const daysMoved = (before: Snapshot, title: string) => {
   const now = byTitle(title);
@@ -113,7 +123,7 @@ const CASES: Case[] = [
   {
     name: "single delete",
     say: "delete the groceries task",
-    check: () => (byTitle("Groceries") ? "still there" : null),
+    check: (_, before) => onlyDeleted(before, ["Groceries"]),
   },
   {
     name: "single complete",
@@ -180,8 +190,7 @@ const CASES: Case[] = [
     name: "delete a project's tasks",
     say: "Delete all tasks related to the Smith project.",
     confirm: true,
-    check: () =>
-      !byTitle("Smith project: draft") && !byTitle("Smith project: review") && byTitle("Essay") ? null : "wrong set deleted",
+    check: (_, before) => onlyDeleted(before, ["Smith project: draft", "Smith project: review"]),
   },
   {
     name: "overdue tasks to next Monday, keeping their time",
@@ -236,7 +245,12 @@ const CASES: Case[] = [
   {
     name: "tasks completed this week are listed",
     say: "Show me the tasks I completed this week.",
-    check: (reply) => (/Chemistry assignment/.test(reply) ? null : "not listed"),
+    check: (reply) => {
+      // Finished yesterday — which, on a Monday, was last week (weeks start on Monday, lib/ai/parseDate.ts).
+      const thisWeek = new Date().getDay() !== 1;
+      if (/Chemistry assignment/.test(reply) === thisWeek) return null;
+      return thisWeek ? "not listed" : "listed last week's task";
+    },
   },
   {
     name: "change a completed task's deadline, keeping it completed",
@@ -255,7 +269,7 @@ const CASES: Case[] = [
     name: "delete the completed assignment",
     say: "Delete the completed assignment.",
     confirm: true,
-    check: () => (!byTitle("Chemistry assignment") && byTitle("Math assignment") ? null : "wrong task"),
+    check: (_, before) => onlyDeleted(before, ["Chemistry assignment"]),
   },
   // Repeating tasks.
   {
@@ -290,7 +304,8 @@ async function run() {
     useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: "eval", ownerId: "eval" });
     useChatStore.setState({ messages: [], pendingActions: [], lastUndo: null, recentlyMentionedTaskIds: [], redirectToNext: null });
     seed();
-    const before: Snapshot = new Map(tasks().map((task) => [task.id, task]));
+    // Copies, so a change made in place still shows up against them.
+    const before: Snapshot = new Map(tasks().map((task) => [task.id, structuredClone(task)]));
 
     let reply = await say(testCase.say);
     const firstReply = reply;

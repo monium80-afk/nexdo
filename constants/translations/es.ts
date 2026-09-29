@@ -825,5 +825,7 @@ export const es: Translations = {
     checkEmail: "Revisa tu correo",
     codeSentTo: "Hemos enviado un código de 6 dígitos a",
     somethingWrong: "Algo salió mal. Inténtalo de nuevo.",
+    showPassword: "Mostrar contraseña",
+    hidePassword: "Ocultar contraseña",
   },
 };

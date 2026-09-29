@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { useEffect } from "react";
 
 import { sounds } from "@/constants/sounds";
+import { isRecording } from "@/lib/recordingMode";
 import { sessionElapsedMs, useSessionStore } from "@/store/useSessionStore";
 
 /**
@@ -30,9 +31,11 @@ export function useSessionAlarm() {
     const timer = setTimeout(async () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       try {
-        // An alarm is worth hearing with the ringer off, and recording a
-        // voice note in AI Chat leaves the audio session in record mode.
-        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+        // An alarm is worth hearing with the ringer off. While something is
+        // recording (live voice, a voice note) the session is already in
+        // record mode, which plays through the silent switch and the speaker
+        // anyway — and switching recording off would cut the microphone.
+        if (!isRecording()) await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
         await player.seekTo(0);
         player.play();
       } catch (error) {

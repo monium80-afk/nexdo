@@ -832,5 +832,7 @@ export const fr: Translations = {
     checkEmail: "Vérifiez vos e-mails",
     codeSentTo: "Nous avons envoyé un code à 6 chiffres à",
     somethingWrong: "Une erreur s'est produite. Réessayez.",
+    showPassword: "Afficher le mot de passe",
+    hidePassword: "Masquer le mot de passe",
   },
 };

@@ -4,6 +4,7 @@ import { Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useColors } from "@/hooks/useTheme";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type AuthTextFieldProps = {
   label: string;
@@ -23,6 +24,7 @@ export function AuthTextField({
   autoComplete,
 }: AuthTextFieldProps) {
   const colors = useColors();
+  const t = useTranslation();
   const [hidden, setHidden] = useState(secureEntry);
 
   return (
@@ -40,7 +42,12 @@ export function AuthTextField({
           className="flex-1 font-grotesk-medium text-base text-ink-cream"
         />
         {secureEntry ? (
-          <AnimatedPressable onPress={() => setHidden((prev) => !prev)} hitSlop={8}>
+          <AnimatedPressable
+            onPress={() => setHidden((prev) => !prev)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? t.auth.showPassword : t.auth.hidePassword}
+          >
             <Feather
               name={hidden ? "eye" : "eye-off"}
               size={18}

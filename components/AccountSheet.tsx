@@ -184,21 +184,26 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
             posthog.capture("account_deleted");
             posthog.reset();
             await user.delete();
-
-            // Past this line the session is gone, so the tabs redirect to
-            // onboarding and take Settings — and this sheet — with them.
-            // Nothing below touches component state for that reason; only the
-            // failure path, which leaves the sheet on screen, still does.
-            await signOut();
-            await Promise.allSettled([
-              Promise.resolve().then(() => handleChatSignOut()),
-              Promise.resolve().then(() => handleTaskSignOut({ accountDeleted: true })),
-            ]);
           } catch (deleteError) {
             console.warn("[AccountSheet] account deletion failed", deleteError);
             setError(t.account.deleteError);
             setDeleting(false);
+            return;
           }
+
+          // Past this line the account is gone, so the tabs redirect to
+          // onboarding and take Settings — and this sheet — with them.
+          // Nothing below touches component state for that reason, and a
+          // failed sign-out still clears this phone's copy of the account.
+          try {
+            await signOut();
+          } catch (signOutError) {
+            console.warn("[AccountSheet] sign-out after deletion failed", signOutError);
+          }
+          await Promise.allSettled([
+            Promise.resolve().then(() => handleChatSignOut()),
+            Promise.resolve().then(() => handleTaskSignOut({ accountDeleted: true })),
+          ]);
         },
       },
     ]);
@@ -259,8 +264,9 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
               setName(value);
               setNameStatus(null);
             }}
+            // Blur only: Done blurs a single-line field anyway, so handling
+            // submit as well sent the same update twice.
             onBlur={handleSaveName}
-            onSubmitEditing={handleSaveName}
             returnKeyType="done"
             placeholder={t.account.namePlaceholder}
           />

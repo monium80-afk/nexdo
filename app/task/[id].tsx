@@ -1,5 +1,6 @@
+import { useAuth } from "@clerk/expo";
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -106,6 +107,7 @@ export default function TaskDetail() {
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useTaskStore((state) => state.tasks.find((t) => t.id === id));
   const updateTask = useTaskStore((state) => state.updateTask);
@@ -154,6 +156,11 @@ export default function TaskDetail() {
     const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     return () => clearTimeout(timer);
   }, [reassessStatus]);
+
+  // A direct link skips the tabs' sign-in check, and signing out leaves
+  // unsaved tasks on the phone — so this page checks for itself.
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <Redirect href="/onboarding" />;
 
   if (!task) {
     return (
@@ -230,16 +237,25 @@ export default function TaskDetail() {
   };
 
   // A repeating task asks whether later occurrences should follow — unless
-  // nothing actually changed, which there's no point asking about.
-  const handleSaveEdit = (changes: TaskEditChanges) => {
-    setEditing(false);
+  // nothing actually changed, which there's no point asking about. The panel
+  // stays open until that's answered: cancelling the question cancels the
+  // save, not the edits. `onSaved` runs once the changes are in.
+  const handleSaveEdit = (changes: TaskEditChanges, onSaved?: () => void) => {
+    const done = () => {
+      setEditing(false);
+      onSaved?.();
+    };
     const changed =
       (changes.title !== undefined && changes.title !== task.title) ||
       (changes.estimatedMinutes !== undefined && changes.estimatedMinutes !== task.estimatedMinutes) ||
       changes.deadline !== undefined;
-    if (!changed) return;
+    if (!changed) {
+      done();
+      return;
+    }
     if (!task.recurrence || task.status !== "pending") {
       updateTask(task.id, changes);
+      done();
       return;
     }
     chooseScope(
@@ -252,7 +268,10 @@ export default function TaskDetail() {
         { label: t.taskDetail.scopeSeries, scope: "series" },
       ],
       t.common.cancel,
-      (scope) => updateTask(task.id, changes, scope),
+      (scope) => {
+        updateTask(task.id, changes, scope);
+        done();
+      },
     );
   };
 
@@ -321,9 +340,17 @@ export default function TaskDetail() {
   // still being typed is sent to Nexdo instead, and the page stays open so
   // the user sees what it changed before leaving.
   const handleSaveChanges = () => {
-    // A missing title or a bad duration keeps the page open so the panel can show the error.
-    if (editPanelRef.current && !editPanelRef.current.save()) return;
+    // The edit panel goes first. A missing title or a bad duration keeps the
+    // page open so the panel can show the error, and a repeating task waits
+    // on which occurrences to change — cancelling that keeps it open too.
+    if (editPanelRef.current) {
+      editPanelRef.current.save(saveRestAndClose);
+      return;
+    }
+    saveRestAndClose();
+  };
 
+  const saveRestAndClose = () => {
     if (editingSubtaskId && editingSubtaskText.trim()) updateSubtask(task.id, editingSubtaskId, editingSubtaskText);
     if (subtaskDraft.trim()) addSubtask(task.id, subtaskDraft);
 
@@ -342,8 +369,18 @@ export default function TaskDetail() {
   };
 
   const handleDelete = () => {
+    const repeating = Boolean(task.recurrence) && task.status === "pending";
+    // The web build has no native alert (react-native-web leaves Alert.alert
+    // empty), so it asks with the browser's own confirm — and only ever
+    // deletes this occurrence of a repeating task, the safe default.
+    if (Platform.OS === "web") {
+      if (!window.confirm(`${t.taskDetail.deleteConfirmTitle}\n\n${t.taskDetail.deleteConfirmBody}`)) return;
+      deleteTask(task.id, repeating ? "this" : undefined);
+      router.back();
+      return;
+    }
     // A repeating task: skip just this one (the next takes its place), or the lot.
-    if (task.recurrence && task.status === "pending") {
+    if (repeating) {
       chooseScope(
         t.taskDetail.deleteScopeTitle,
         t.taskDetail.deleteScopeBody,

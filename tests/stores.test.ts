@@ -1,14 +1,15 @@
 /// <reference types="node" />
 // End-to-end through the real stores: what the AI answers → the operation the
 // app builds → the confirmation it asks for → what reaches the (fake)
-// database → the reply the user reads. The model's answers are scripted here;
-// tests/ai-eval.ts checks the real model separately.
+// database → the reply the user reads. The model's answers are scripted here,
+// but still go through the inbox route itself; tests/ai-eval.ts checks the real
+// model separately.
 process.env.TZ = "Europe/Paris";
 
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
-import type { InboxAction, InboxRequestBody } from "@/app/api/inbox+api";
+import { parseBody, resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -36,12 +37,27 @@ function action(partial: Partial<InboxAction> & Pick<InboxAction, "type">): Inbo
   return { taskId: null, taskIds: null, filter: null, fields: {}, confirmationRequired: false, ...partial };
 }
 
-/** The next /api/inbox call answers with these actions. */
+/**
+ * In the next /api/inbox call, the model answers with these actions, one per
+ * turn (none: it has nothing to do). The request goes through the route's own
+ * validator and the answers through the route itself, so a test can't pass on
+ * a request, an action or a confirmation flag the real route would refuse or
+ * change.
+ */
 function modelAnswers(actions: InboxAction[], check?: (body: InboxRequestBody) => void) {
   setApiHandler((path, body) => {
     assert.equal(path, "/api/inbox");
-    check?.(body as InboxRequestBody);
-    return { intent: "test", actions, reply: actions.map((entry) => entry.reply ?? "").join(" ") };
+    const parsed = parseBody(JSON.parse(JSON.stringify(body)));
+    assert.ok(parsed, "the inbox route would reject this request");
+    check?.(parsed);
+    const turns = actions.length > 0 ? actions : [action({ type: "NONE" })];
+    let turn = 0;
+    return resolveInboxMessage(parsed, async () => {
+      const answer = turns[turn];
+      turn += 1;
+      const remainingMessage = turn < turns.length ? `the rest (${turn})` : null;
+      return { intent: "test", action: answer, remainingMessage, reply: answer.reply ?? "" };
+    });
   });
 }
 

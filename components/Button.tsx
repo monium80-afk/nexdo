@@ -123,7 +123,8 @@ export function IconButton({
 }) {
   const style = ICON_BUTTONS[variant];
   // A primary button with nothing to add yet sinks into the page instead of
-  // just fading, so it doesn't read as an orange button that's broken.
+  // just fading, so it doesn't read as an orange button that's broken. The
+  // others fade like every other disabled button.
   const idle = variant === "primary" && disabled;
   return (
     <AnimatedPressable
@@ -133,7 +134,7 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
-      className={`items-center justify-center ${idle ? "h-[44px] w-[44px] rounded-full bg-cream-200" : style.box}`}
+      className={`items-center justify-center ${idle ? "h-[44px] w-[44px] rounded-full bg-cream-200" : style.box} ${disabled && !idle ? "opacity-40" : ""}`}
     >
       <Feather name={icon} size={style.icon} color={idle ? colors.ink.creamSubtle : style.color} />
     </AnimatedPressable>

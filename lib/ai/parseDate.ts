@@ -308,8 +308,12 @@ function normalizeSpanishDatePhrase(lower: string): string {
       .replace(wholeWord(`${spanish} pasado`), `$1last ${english}`)
       .replace(wholeWord(bare), `$1${english}`);
   }
+  // "25 de mayo de 2027" keeps its year.
   for (const [spanish, english] of Object.entries(SPANISH_MONTHS)) {
-    text = text.replace(new RegExp(`(\\d{1,2})º?\\s+de\\s+${spanish}(?![${LETTER}])`, "g"), `$1 ${english}`);
+    text = text.replace(
+      new RegExp(`(\\d{1,2})º?\\s+de\\s+${spanish}(?:\\s+del?\\s+(\\d{4}))?(?![${LETTER}])`, "g"),
+      (_, day: string, year?: string) => `${day} ${english}${year ? ` ${year}` : ""}`,
+    );
   }
 
   return text;
@@ -418,7 +422,7 @@ function normalizeGermanDatePhrase(lower: string): string {
     wholeWord(String.raw`(?:(am|bis(?: zum)?|zum|ab|vom|den)\s+)?(\d{1,2})\.(\d{1,2})\.(\d{4})?`),
     (match: string, lead: string, leadIn?: string, day?: string, month?: string, year?: string) => {
       const name = MONTHS[Number(month) - 1];
-      return name && (leadIn || year) ? `${lead}${day} ${name}` : match;
+      return name && (leadIn || year) ? `${lead}${day} ${name}${year ? ` ${year}` : ""}` : match;
     },
   );
   // "um halb 8" is half past seven.
@@ -526,7 +530,10 @@ function extractTimeOfDay(lower: string): TimeOfDay | undefined {
       // "tomorrow evening at 8" is 20:00, not 8am.
       if (hour < 12 && /\b(afternoon|evening|tonight)\b/.test(lower)) return { hour: hour + 12, minute };
       // A bare "at 7" means the evening far more often than 7am; hours that
-      // can only be one thing on a 24h clock are left alone.
+      // can only be one thing on a 24h clock are left alone. With minutes it
+      // is read as a 24-hour time on purpose: that is how the normalizers
+      // above write "à 7h30" / "um 7 Uhr" / "a las 7 de la mañana", and for a
+      // deadline, too early is the safer mistake.
       return { hour: clock[2] === undefined && hour >= 1 && hour <= 7 ? hour + 12 : hour, minute };
     }
   }
@@ -573,7 +580,15 @@ export function parseDateRange(text: string, now: Date = new Date(), language?: 
     // Already rewritten into English above.
     const inner = parseDateRange(bound[2], now, "en");
     if (!inner) return undefined;
-    return /^(after|since|from|starting)$/.test(bound[1]) ? { from: inner.from ?? inner.to } : { to: inner.to ?? inner.from };
+    const start = inner.from ?? inner.to;
+    const end = inner.to ?? inner.from;
+    // "before friday" and "after monday" leave that day out — a bulk delete
+    // "before friday" must not reach Friday's tasks. "by", "until", "since"
+    // and "from" keep it.
+    const moved = (iso: string | undefined, ms: number) => iso && new Date(Date.parse(iso) + ms).toISOString();
+    if (bound[1] === "before") return { to: moved(start, -1) };
+    if (bound[1] === "after") return { from: moved(end, 1) };
+    return /^(since|from|starting)$/.test(bound[1]) ? { from: start } : { to: end };
   }
 
   const count = lower.match(new RegExp(`\\b(?:the\\s+)?(past|last|next|coming)\\s+(${COUNT_PATTERN})\\s+(day|week|month)s?\\b`));
@@ -772,18 +787,22 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
 
   // "march 5", "5 march", "sept 20", "september 25th", "the 25th of september"
   // — the year is whichever keeps it closest to now, so a month already past
-  // this year reads as next year.
+  // this year reads as next year. A year the user said ("march 5, 2028") wins.
   for (let i = 0; i < MONTHS.length; i += 1) {
     const name = `(?:${MONTH_ALTERNATIVES[i].join("|")})`;
     const ordinal = "(?:st|nd|rd|th)?";
+    const year = "(?:,?\\s+(\\d{4}))?";
     const match = lower.match(
-      new RegExp(`\\b(?:${name}\\.?\\s+(?:the\\s+)?(\\d{1,2})${ordinal}|(\\d{1,2})${ordinal}\\s+(?:of\\s+)?${name})\\b`),
+      new RegExp(
+        `\\b(?:${name}\\.?\\s+(?:the\\s+)?(\\d{1,2})${ordinal}${year}|(\\d{1,2})${ordinal}\\s+(?:of\\s+)?${name}${year})\\b`,
+      ),
     );
     if (!match) continue;
-    const day = Number.parseInt(match[1] ?? match[2], 10);
+    const day = Number.parseInt(match[1] ?? match[3], 10);
     if (!day || day > 31) continue;
-    const date = new Date(now.getFullYear(), i, day);
-    if (date.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) date.setFullYear(date.getFullYear() + 1);
+    const statedYear = match[2] ?? match[4];
+    const date = new Date(statedYear ? Number(statedYear) : now.getFullYear(), i, day);
+    if (!statedYear && date.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) date.setFullYear(date.getFullYear() + 1);
     return resolve(date);
   }
 

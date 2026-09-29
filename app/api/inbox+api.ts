@@ -4,6 +4,7 @@ import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/a
 import { GeminiHttpError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
 import { hasExplicitTime, isAmbiguousDate, parseDatePhrase } from "@/lib/ai/parseDate";
+import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -126,6 +127,9 @@ type SingleTurnResult = {
   remainingMessage: string | null;
   reply: string;
 };
+
+/** The model call: Gemini here, a scripted stand-in in tests/stores.test.ts. */
+type AskModel = typeof generateStructuredJson;
 
 const ACTION_TYPE_ENUM: InboxActionType[] = [
   "CREATE_TASK",
@@ -477,13 +481,14 @@ async function classifyOneInstruction(params: {
   tasks: TaskContext[];
   history: { role: "user" | "ai"; text: string }[];
   language?: AppLanguage;
+  askModel: AskModel;
 }): Promise<SingleTurnResult> {
-  const { language, ...userContent } = params;
+  const { language, askModel, ...userContent } = params;
   // The language notes ride at the top of the message rather than at the end
   // of the system prompt. That keeps the system prompt identical for every
   // user, which is what lets it be read from one cache (lib/ai/gemini.ts).
   const languageNotes = `${languageInstruction(language)}${datePhraseInstruction(language)}`.trim();
-  const result = await generateStructuredJson({
+  const result = await askModel({
     label: "inbox",
     systemPrompt: INBOX_SYSTEM_PROMPT,
     cacheSystemPrompt: true,
@@ -536,6 +541,7 @@ const MAX_RECOVERY_FRAGMENTS = 10;
 async function classifyFragmentsIndependently(
   fragments: string[],
   context: Omit<InboxRequestBody, "message">,
+  askModel: AskModel,
 ): Promise<{ actions: InboxAction[]; replies: string[]; intent: string | null }> {
   if (fragments.length > MAX_RECOVERY_FRAGMENTS) {
     console.warn(`[api/inbox] recovery capped: ${fragments.length} fragments, classifying the first ${MAX_RECOVERY_FRAGMENTS}`);
@@ -551,6 +557,7 @@ async function classifyFragmentsIndependently(
         tasks: context.tasks,
         history: context.history,
         language: context.language,
+        askModel,
       }),
     ),
   );
@@ -620,7 +627,8 @@ export function parseBody(raw: unknown): InboxRequestBody | null {
 // (app/onboarding-analyzing.tsx) is read BEFORE the user signs up, as their
 // free look at the AI. lib/anonymousTrial.ts allows one request per install,
 // with per-IP and per-day ceilings behind it; the caps above bound what that
-// one request can cost.
+// one request can cost. Signed in, lib/aiUsageLimit.ts caps each account's
+// requests per day.
 export async function POST(request: Request) {
   // A 503 rather than quietly treating the caller as anonymous: being waved
   // through as anonymous here would only mean tighter rate limiting, but it
@@ -643,10 +651,8 @@ export async function POST(request: Request) {
   const body = parseBody(raw);
   if (!body) return badRequest();
 
-  if (!auth.userId) {
-    const trialResponse = await claimTrialCall(request, "inbox");
-    if (trialResponse) return trialResponse;
-  }
+  const limitResponse = auth.userId ? await claimUserCall(auth.userId, "inbox") : await claimTrialCall(request, "inbox");
+  if (limitResponse) return limitResponse;
 
   return Response.json(await resolveInboxMessage(body));
 }
@@ -654,9 +660,13 @@ export async function POST(request: Request) {
 /**
  * The model side of the route, after authentication and the request caps:
  * resolves a message one instruction at a time. Exported so the AI eval
- * (tests/ai-eval) can run it against the real model without a server.
+ * (tests/ai-eval) can run it against the real model without a server, and
+ * tests/stores.test.ts against a scripted one.
  */
-export async function resolveInboxMessage(body: InboxRequestBody): Promise<InboxResponseBody> {
+export async function resolveInboxMessage(
+  body: InboxRequestBody,
+  askModel: AskModel = generateStructuredJson,
+): Promise<InboxResponseBody> {
   const actions: InboxAction[] = [];
   const replies: string[] = [];
   let intent = "UNRELATED";
@@ -690,6 +700,7 @@ export async function resolveInboxMessage(body: InboxRequestBody): Promise<Inbox
         tasks: body.tasks,
         history: body.history,
         language: body.language,
+        askModel,
       });
     } catch (error) {
       console.error("[api/inbox]", error);
@@ -716,7 +727,7 @@ export async function resolveInboxMessage(body: InboxRequestBody): Promise<Inbox
   }
 
   if ((ranOutOfTurns || (laterTurnFailed && !googleRefused)) && message) {
-    const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body);
+    const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body, askModel);
     actions.push(...recovered.actions);
     replies.push(...recovered.replies);
     if (recovered.intent) intent = recovered.intent;
@@ -725,7 +736,7 @@ export async function resolveInboxMessage(body: InboxRequestBody): Promise<Inbox
   if (firstTurnFailed && !googleRefused) {
     const fragments = splitIntoFragments(body.message);
     if (fragments.length > 1) {
-      const recovered = await classifyFragmentsIndependently(fragments, body);
+      const recovered = await classifyFragmentsIndependently(fragments, body, askModel);
       actions.push(...recovered.actions);
       replies.push(...recovered.replies);
       if (recovered.intent) intent = recovered.intent;

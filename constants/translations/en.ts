@@ -852,5 +852,7 @@ export const en = {
     checkEmail: "Check your email",
     codeSentTo: "We sent a 6-digit code to",
     somethingWrong: "Something went wrong. Try again.",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
   },
 };

@@ -3,6 +3,7 @@ import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { languageInstruction } from "@/lib/ai/language";
 import type { PlanStep } from "@/lib/ai/types";
+import { claimUserCall } from "@/lib/aiUsageLimit";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
 import {
   asObject,
@@ -332,6 +333,9 @@ export async function POST(request: Request) {
 
   const body = parseReassessBody(raw);
   if (!body) return badRequest();
+
+  const limitResponse = await claimUserCall(auth.userId, "reassess");
+  if (limitResponse) return limitResponse;
 
   try {
     return Response.json(await reassessTask(body));

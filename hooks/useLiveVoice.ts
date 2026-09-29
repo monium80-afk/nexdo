@@ -1,4 +1,4 @@
-import { requestRecordingPermissionsAsync, setAudioModeAsync, useAudioStream } from "expo-audio";
+import { requestRecordingPermissionsAsync, useAudioStream } from "expo-audio";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useSharedValue, withTiming } from "react-native-reanimated";
@@ -9,6 +9,7 @@ import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
 import { createLiveVoice } from "@/lib/liveVoice";
 import { createLiveToolRunner } from "@/lib/liveVoiceTools";
+import { beginRecording, endRecording } from "@/lib/recordingMode";
 import { useTaskStore } from "@/store/useTaskStore";
 
 // What Gemini Live reads natively — asking the microphone for it directly
@@ -59,7 +60,7 @@ export function useLiveVoice() {
       },
       openSocket: (url) => new WebSocket(url),
       startMicrophone: async () => {
-        await setAudioModeAsync({ allowsRecording: true });
+        await beginRecording("liveVoice");
         await stream.start();
       },
       stopMicrophone: () => {
@@ -68,11 +69,7 @@ export function useLiveVoice() {
         } catch {
           // Already stopped, or already released because the screen closed.
         }
-        // Same as the voice-note recorder (components/InboxInput.tsx): iOS
-        // otherwise stays in record mode and keeps playback quiet afterwards.
-        setAudioModeAsync({ allowsRecording: false }).catch((error) =>
-          console.warn("[useLiveVoice] couldn't leave recording mode", error),
-        );
+        endRecording("liveVoice");
       },
       runTool: (call) => runner.run(call),
       undo: () => runner.undo(),

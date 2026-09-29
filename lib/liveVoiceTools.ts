@@ -27,7 +27,9 @@ const SCOPES = ["this", "future", "series"] as const;
 
 // Gemini Live sometimes repeats a call it has just made (seen in testing:
 // the same add_task twice, a quarter of a second apart). The same call again
-// this soon is that echo, not a second instruction.
+// this soon is that echo, not a second instruction — unless something has
+// changed that task since (it was reopened, deleted, or the change undone):
+// then asking again is new, and is carried out.
 const ECHO_WINDOW_MS = 10_000;
 
 function text(value: unknown): string | undefined {
@@ -98,7 +100,8 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   const toAlias = new Map([...aliases].map(([alias, id]) => [id, alias]));
   let nextNumber = aliases.size + 1;
   const undoStack: Snapshot[][] = [];
-  const recent: { key: string; at: number; result: LiveToolResult }[] = [];
+  // Recent calls, with the task each was about (the model's id for it).
+  let recent: { key: string; at: number; taskId?: string; result: LiveToolResult }[] = [];
 
   const aliasFor = (taskId: string): string => {
     let alias = toAlias.get(taskId);
@@ -116,6 +119,8 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
     const entry = undoStack.pop();
     if (!entry) return false;
     useTaskStore.getState().restoreSnapshots(entry);
+    // Whatever was undone can be asked for again, and be done again.
+    recent = [];
     return true;
   };
 
@@ -190,12 +195,17 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
     run: (call: LiveToolCall): LiveToolResult => {
       const now = Date.now();
       const key = callKey(call);
-      while (recent.length > 0 && now - recent[0].at > ECHO_WINDOW_MS) recent.shift();
+      recent = recent.filter((entry) => now - entry.at <= ECHO_WINDOW_MS);
       // "Undo, undo" really is twice.
-      const echo = call.name === "undo_last_change" ? undefined : recent.find((entry) => entry.key === key);
+      if (call.name === "undo_last_change") return dispatch(call);
+      const echo = recent.find((entry) => entry.key === key);
       if (echo) return echo.result;
       const result = dispatch(call);
-      recent.push({ key, at: now, result });
+      const taskId = text(call.args.taskId) ?? result.taskId;
+      // A change to a task makes the earlier calls about it history: the
+      // same call again is a new instruction now, not their echo.
+      if (result.ok && taskId) recent = recent.filter((entry) => entry.taskId !== taskId);
+      recent.push({ key, at: now, taskId, result });
       return result;
     },
     /** The Undo button: reverses the latest change, as "undo" said out loud does. */

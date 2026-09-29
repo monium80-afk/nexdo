@@ -3,7 +3,6 @@ import { Feather } from "@expo/vector-icons";
 import {
     RecordingPresets,
     requestRecordingPermissionsAsync,
-    setAudioModeAsync,
     useAudioRecorder,
     useAudioRecorderState,
 } from "expo-audio";
@@ -28,6 +27,7 @@ import { extractAttachmentText } from "@/lib/ai/media";
 import { isTrialUsed } from "@/lib/aiTrial";
 import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
+import { beginRecording, endRecording } from "@/lib/recordingMode";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
 // The control is a big circle to talk into, and stretches into a button the
@@ -201,6 +201,22 @@ export default function OnboardingDump() {
     level.value = withTiming(loudness, { duration: METER_INTERVAL + 40, easing: Easing.out(Easing.quad) });
   }, [metering, isRecording, level]);
 
+  // Leaving mid-recording (back, or the redirect once signed in) ends it
+  // here — otherwise the phone stays in record mode for whatever plays next.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        try {
+          if (recorder.isRecording) recorder.stop().catch(() => {});
+        } catch {
+          // Already released along with the screen.
+        }
+        endRecording("brainDump");
+      },
+      [recorder],
+    ),
+  );
+
   if (!isLoaded) return null;
   if (isSignedIn) return <Redirect href="/" />;
 
@@ -211,11 +227,12 @@ export default function OnboardingDump() {
         Alert.alert(t.chat.micPermissionTitle, t.chat.micPermissionBody);
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true });
+      await beginRecording("brainDump");
       await recorder.prepareToRecordAsync();
       recorder.record();
     } catch (error) {
       console.warn("[onboarding-dump] recording start failed", error);
+      endRecording("brainDump");
       Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
     }
   };
@@ -249,9 +266,7 @@ export default function OnboardingDump() {
       Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
     } finally {
       setIsTranscribing(false);
-      setAudioModeAsync({ allowsRecording: false }).catch((error) =>
-        console.warn("[onboarding-dump] couldn't leave recording mode", error),
-      );
+      endRecording("brainDump");
     }
   };
 

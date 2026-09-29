@@ -841,5 +841,7 @@ export const de: Translations = {
     checkEmail: "Sieh in deinen Posteingang",
     codeSentTo: "Wir haben einen 6-stelligen Code gesendet an",
     somethingWrong: "Etwas ist schiefgelaufen. Versuch es noch einmal.",
+    showPassword: "Passwort anzeigen",
+    hidePassword: "Passwort verbergen",
   },
 };

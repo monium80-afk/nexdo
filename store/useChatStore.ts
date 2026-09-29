@@ -39,9 +39,46 @@ let signOutGeneration = 0;
 // Same local-first background sync approach as useTaskStore.
 let realtimeChannel: RealtimeChannel | null = null;
 
+// Every upload still on its way, and the latest one per message: a message's
+// uploads go up one after another (so an older version can't land last), and
+// only the latest may mark it saved.
+const uploads = new Set<Promise<void>>();
+const latestUpload = new Map<string, Promise<void>>();
+// A history clear in progress: uploads started meanwhile wait for its delete,
+// rather than landing first and being wiped by it.
+let clearing: Promise<void> = Promise.resolve();
+// When the history was last cleared (ms): the realtime echo of an older
+// message — an upload that landed just before the delete — is ignored.
+let clearedAt = 0;
+
+function withoutKey(record: Record<string, string>, key: string): Record<string, string> {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
+
+// The message is marked unsynced — with the account it belongs to — until
+// Supabase confirms it, so a failed upload is sent again by that account's
+// next hydrate instead of being dropped by it.
 function syncUpsert(message: ChatMessage, userId: string | null) {
   if (!userId) return;
-  upsertMessageRow(message, userId).catch((error) => console.warn("[useChatStore] upsert failed", error));
+  useChatStore.setState((state) => ({ unsynced: { ...state.unsynced, [message.id]: userId } }));
+  const previous = latestUpload.get(message.id) ?? Promise.resolve();
+  const upload: Promise<void> = Promise.all([clearing, previous])
+    .then(() => upsertMessageRow(message, userId))
+    .then(
+      () => {
+        if (latestUpload.get(message.id) !== upload) return;
+        useChatStore.setState((state) => ({ unsynced: withoutKey(state.unsynced, message.id) }));
+      },
+      (error) => console.warn("[useChatStore] upsert failed", error),
+    )
+    .then(() => {
+      uploads.delete(upload);
+      if (latestUpload.get(message.id) === upload) latestUpload.delete(message.id);
+    });
+  uploads.add(upload);
+  latestUpload.set(message.id, upload);
 }
 
 function createMessageId(role: "user" | "ai" | "seed"): string {
@@ -63,6 +100,8 @@ type ChatStore = {
   lastUndo: UndoEntry | null;
   redirectToNext: { minutes: number } | null;
   syncUserId: string | null;
+  /** Messages Supabase hasn't confirmed yet: id → the account they're being saved to. */
+  unsynced: Record<string, string>;
   hydrateFromSupabase: (userId: string) => Promise<void>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
@@ -323,17 +362,27 @@ export const useChatStore = create<ChatStore>()(
         lastUndo: null,
         redirectToNext: null,
         syncUserId: null,
+        unsynced: {},
 
         // Supabase becomes the source of truth for a signed-in user, same
         // as useTaskStore — an empty remote result means this user has no
-        // synced history yet, so the local welcome message stays put.
+        // synced history yet, so the local welcome message stays put. The
+        // exception is a message this account sent that never reached
+        // Supabase (offline, a failed upload): the phone has the only copy,
+        // so it's kept in its place and sent again. Another account's never is.
         hydrateFromSupabase: async (userId) => {
           set({ syncUserId: userId });
           try {
             const remoteMessages = await fetchMessages(userId);
-            if (get().syncUserId === userId) {
-              set({ messages: remoteMessages.length > 0 ? remoteMessages : initialMessages() });
-            }
+            if (get().syncUserId !== userId) return;
+            const { messages, unsynced } = get();
+            const localOnly = messages.filter((message) => unsynced[message.id] === userId);
+            const localIds = new Set(localOnly.map((message) => message.id));
+            const merged = [...remoteMessages.filter((message) => !localIds.has(message.id)), ...localOnly].sort(
+              (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
+            );
+            set({ messages: merged.length > 0 ? merged : initialMessages(), unsynced: {} });
+            localOnly.forEach((message) => syncUpsert(message, userId));
           } catch (error) {
             console.warn("[useChatStore] hydrate failed", error);
           }
@@ -342,6 +391,7 @@ export const useChatStore = create<ChatStore>()(
         subscribeToRealtime: (userId) => {
           if (realtimeChannel) return;
           realtimeChannel = subscribeToMessages(userId, (message) => {
+            if (Date.parse(message.createdAt) <= clearedAt) return;
             set((state) => {
               if (state.messages.some((m) => m.id === message.id)) {
                 return { messages: state.messages.map((m) => (m.id === message.id ? message : m)) };
@@ -608,6 +658,7 @@ export const useChatStore = create<ChatStore>()(
         // tasks untouched.
         clearHistory: async () => {
           signOutGeneration += 1; // drop any AI reply still in flight
+          clearedAt = Date.now();
           set({
             messages: initialMessages(),
             isAiTyping: false,
@@ -615,13 +666,23 @@ export const useChatStore = create<ChatStore>()(
             pendingActions: [],
             lastUndo: null,
             redirectToNext: null,
+            unsynced: {},
           });
           const userId = get().syncUserId;
-          if (userId) await deleteAllMessages(userId);
+          if (!userId) return;
+          // Uploads already on their way land first — one landing after the
+          // delete would bring its message back — and new ones wait for it.
+          const cleared = Promise.all([...uploads]).then(() => deleteAllMessages(userId));
+          clearing = cleared.then(
+            () => undefined,
+            () => undefined,
+          );
+          await cleared;
         },
 
         handleSignOut: async () => {
           signOutGeneration += 1;
+          clearedAt = 0;
           realtimeChannel?.unsubscribe();
           realtimeChannel = null;
           set({
@@ -632,6 +693,7 @@ export const useChatStore = create<ChatStore>()(
             lastUndo: null,
             redirectToNext: null,
             syncUserId: null,
+            unsynced: {},
           });
           await AsyncStorage.removeItem("nexdo-chat");
         },
@@ -640,7 +702,7 @@ export const useChatStore = create<ChatStore>()(
     {
       name: "nexdo-chat",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ messages: state.messages }),
+      partialize: (state) => ({ messages: state.messages, unsynced: state.unsynced }),
     },
   ),
 );

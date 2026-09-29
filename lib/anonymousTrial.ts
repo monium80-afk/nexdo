@@ -15,6 +15,7 @@
 // total — that last one is the hard cap on what signed-out AI can ever cost.
 import { getClientIp } from "@/lib/anonymousRateLimit";
 import { serverMisconfigured } from "@/lib/serverAuth";
+import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
 
 export type TrialRoute = "inbox" | "extract-text" | "next";
 
@@ -35,9 +36,6 @@ const TRIAL_ID_PATTERN = /^[a-zA-Z0-9-]{16,64}$/;
 
 type ClaimResult = "ok" | "trial_used" | "ip_limit" | "global_limit";
 
-/** SUPABASE_SECRET_KEY (or the URL) isn't set, so no allowance can be checked. */
-class TrialConfigError extends Error {}
-
 // The IP is only ever stored hashed: it's needed to tell one caller from
 // another, not to know who they are.
 async function hashIp(ip: string): Promise<string> {
@@ -45,30 +43,15 @@ async function hashIp(ip: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function claim(params: { trialId: string; ipHash: string; route: TrialRoute }): Promise<ClaimResult> {
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const secretKey = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !secretKey) throw new TrialConfigError();
-
-  const headers: Record<string, string> = { "Content-Type": "application/json", apikey: secretKey };
-  // A legacy service_role key is a JWT and goes in Authorization as well; the
-  // newer sb_secret_ keys are only accepted in the apikey header.
-  if (secretKey.startsWith("eyJ")) headers.Authorization = `Bearer ${secretKey}`;
-
-  const response = await fetch(`${url}/rest/v1/rpc/claim_ai_trial_call`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      p_trial_id: params.trialId,
-      p_ip_hash: params.ipHash,
-      p_route: params.route,
-      p_route_limit: TRIAL_ALLOWANCE[params.route],
-      p_ip_daily_limit: NEW_TRIALS_PER_IP_PER_DAY,
-      p_global_daily_limit: NEW_TRIALS_PER_DAY,
-    }),
+function claim(params: { trialId: string; ipHash: string; route: TrialRoute }): Promise<ClaimResult> {
+  return callServerRpc<ClaimResult>("claim_ai_trial_call", {
+    p_trial_id: params.trialId,
+    p_ip_hash: params.ipHash,
+    p_route: params.route,
+    p_route_limit: TRIAL_ALLOWANCE[params.route],
+    p_ip_daily_limit: NEW_TRIALS_PER_IP_PER_DAY,
+    p_global_daily_limit: NEW_TRIALS_PER_DAY,
   });
-  if (!response.ok) throw new Error(`claim_ai_trial_call failed: ${response.status} ${await response.text()}`);
-  return (await response.json()) as ClaimResult;
 }
 
 /**
@@ -89,7 +72,7 @@ export async function claimTrialCall(request: Request, route: TrialRoute): Promi
   } catch (error) {
     // Closed rather than open: if the allowance can't be checked, the free
     // run doesn't happen — that is what keeps it from being unlimited.
-    if (error instanceof TrialConfigError) {
+    if (error instanceof RpcConfigError) {
       console.error("[anonymousTrial] SUPABASE_SECRET_KEY is missing — add it to your .env file");
     } else {
       console.error("[anonymousTrial]", error);
