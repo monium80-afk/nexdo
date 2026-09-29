@@ -1,0 +1,357 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+/* =============================================================
+ * Nexdo — Design System ("Warm Signal")
+ * Source of truth: prompt_material/01-design-system.txt
+ * Mirrored in JS at constants/theme/ for the few RN components
+ * that can't take a className (SafeAreaView, Modal, etc.)
+ * ============================================================= */
+
+@theme {
+  /* ---- Color tokens ---------------------------------------- */
+
+  /* Cream surfaces */
+  --color-cream-50: #f7f4e8;
+  --color-cream-100: #efebda;
+  --color-cream-200: #e2ddc6;
+  --color-cream-300: #cfc9ac;
+
+  /* Charcoal surfaces */
+  --color-charcoal-900: #1e1c19;
+  --color-charcoal-800: #28251f;
+  --color-charcoal-600: #4a453b;
+  --color-charcoal-400: #8b8574;
+
+  /* Orange — the single primary accent. Reserved for CTAs, the AI's
+     presence, and the single highest-priority signal on a screen.
+     Never used for medium/low urgency. */
+  --color-orange-500: #e2622e;
+  --color-orange-600: #c74f20;
+  --color-orange-100: #f7e1d2;
+
+  /* Urgency (medium / low) */
+  --color-amber-500: #c8912c;
+  --color-amber-100: #f3e7cc;
+  --color-olive-500: #71824a;
+  --color-olive-100: #e4e8d3;
+
+  /* Overdue — distinct from orange so it never competes with the CTA accent */
+  --color-overdue-500: #b5432f;
+  --color-overdue-100: #f2dcd5;
+  /* Overdue ink on charcoal — 500 is too dark to read there (~3:1). */
+  --color-overdue-300: #e8907c;
+
+  /* Success — a finished step in a running session */
+  --color-success-500: #3e9b5f;
+
+  /* Text — named "ink" to avoid a "text-text-*" utility name.
+     ink-cream-* sits on cream surfaces, ink-charcoal-* on charcoal surfaces. */
+  --color-ink-cream: #211e19;
+  --color-ink-cream-muted: #6b6656;
+  /* One step fainter than -muted, for secondary metadata that shouldn't
+     compete with a card's title (e.g. the AI task confirmation card). */
+  --color-ink-cream-subtle: #9a9382;
+  --color-ink-charcoal: #f5f1e6;
+  --color-ink-charcoal-muted: #a39d8a;
+  /* Ink on a filled button — orange-500, charcoal-900 or Apple black.
+     Named for the surface it sits on, not the palette it comes from. */
+  --color-on-accent: #f7f4e8;
+
+  /* ---- Fonts -------------------------------------------------
+   * Space Grotesk is the only typeface in the app. Variable fonts
+   * don't render reliably on React Native (NativeWind v5 docs
+   * confirm this), so the app loads the 5 static weight files —
+   * this is the doc's own documented fallback path, used here as
+   * the primary because RN is exactly the target it describes.
+   * Each weight is its own font-family utility; always pick a
+   * weight via `font-grotesk-*`, never via the `font-*` weight
+   * utilities (font-bold, font-semibold, ...) — RN does not
+   * synthesize bold/etc. from a single custom font file. */
+  --font-grotesk-light: "SpaceGrotesk-Light"; /* weight 300 — quoted/AI/chat content only */
+  --font-grotesk-regular: "SpaceGrotesk-Regular"; /* weight 400 — body copy, metadata */
+  --font-grotesk-medium: "SpaceGrotesk-Medium"; /* weight 500 — default UI chrome */
+  --font-grotesk-semibold: "SpaceGrotesk-SemiBold"; /* weight 600 — labels of consequence */
+  --font-grotesk-bold: "SpaceGrotesk-Bold"; /* weight 700 — the one or two things that must win first */
+  --font-sans: "SpaceGrotesk-Regular"; /* default fallback for plain text */
+
+  /* ---- Shadows -------------------------------------------------
+   * Cream surfaces only — charcoal surfaces use a hairline border
+   * instead (see .hairline-charcoal below), shadows barely read there. */
+  --shadow-card: 0 1px 2px rgba(30, 28, 25, 0.06);
+  --shadow-modal: 0 4px 16px rgba(30, 28, 25, 0.1);
+}
+
+/* =============================================================
+ * Reusable component utilities (BEM: block, block--modifier)
+ * Add a new one here once a recipe (colors + border + shadow +
+ * shape) repeats across 2+ screens — not before.
+ * ============================================================= */
+
+/* Screen layout -------------------------------------------------- */
+
+/* The cream page under a screen's charcoal header (Next, Tasks, Task
+   Details, Settings, Live voice), wrapped around its ScrollView. The top
+   corners curve away from the charcoal — the SafeAreaView's charcoal shows
+   through them — and overflow hidden clips the scrolling content to the
+   curves too, not just the fill. 28px: one step rounder than the 24px Next
+   card, so a card never looks rounder than the page it sits on. */
+@utility screen-body {
+  flex: 1;
+  overflow: hidden;
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  background-color: var(--color-cream-100);
+}
+
+/* Surface cards -------------------------------------------------- */
+
+@utility card {
+  border-radius: 16px;
+  border-width: 1px;
+}
+
+@utility card--cream {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-300);
+  box-shadow: var(--shadow-card);
+}
+
+/* The task list's resting card — a softer edge than card--cream, so a long
+   list reads as calm rows rather than a stack of outlined boxes. The same
+   card holds every grouped block that sits on the cream page (Task Details
+   sections, Settings groups, checklist rows). */
+@utility card--cream-soft {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-card);
+}
+
+/* A block nested inside a card--cream-soft (a saved AI note, a planned step,
+   the repeat options inside Task Details' repeat card) — sunk one step into
+   the page colour instead of lifted, so it doesn't read as a card on a card. */
+@utility card--cream-inset {
+  background-color: var(--color-cream-100);
+  border-color: var(--color-cream-200);
+}
+
+@utility card--cream-elevated {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-300);
+  box-shadow: var(--shadow-modal);
+}
+
+@utility card--charcoal {
+  background-color: var(--color-charcoal-800);
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+@utility card--cream-muted {
+  background-color: var(--color-cream-200);
+  border-color: var(--color-cream-300);
+  box-shadow: var(--shadow-card);
+}
+
+@utility card--overdue {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-overdue-500);
+  box-shadow: var(--shadow-card);
+}
+
+/* The one card on a charcoal screen that is currently "live" — the task
+   being worked on in a focus session. Thicker orange edge so it wins over
+   the hairline-bordered cards stacked around it. */
+@utility card--charcoal-active {
+  background-color: var(--color-charcoal-800);
+  border-color: var(--color-orange-500);
+  border-width: 2px;
+}
+
+/* A card nested inside a charcoal card (AI advice / breakdown in a session,
+   inline editors in Settings) — a faint white lift instead of a new fill. */
+@utility card--charcoal-inset {
+  background-color: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* Hairline dividers/borders, standalone (outside a card) --------- */
+
+@utility hairline-cream {
+  border-width: 1px;
+  border-color: var(--color-cream-300);
+}
+
+@utility hairline-charcoal {
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+/* Buttons ---------------------------------------------------------
+ * Use with a text child styled font-grotesk-bold + the matching
+ * ink color: text-cream-50 on --primary, canvas ink color on --secondary. */
+
+@utility btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+@utility btn--primary {
+  background-color: var(--color-orange-500);
+}
+
+@utility btn--secondary-cream {
+  background-color: transparent;
+  border-width: 1px;
+  border-color: var(--color-cream-300);
+}
+
+@utility btn--secondary-charcoal {
+  background-color: transparent;
+  border-width: 1px;
+  border-color: var(--color-charcoal-600);
+}
+
+@utility btn--charcoal-solid {
+  background-color: var(--color-charcoal-900);
+}
+
+/* Badges/pills ------------------------------------------------------
+ * Pair with `text-ink-cream font-grotesk-semibold` (or font-grotesk-bold
+ * on the numeral, per the weight-pairing rule) — tint backgrounds always
+ * take dark ink text, never colored text, so the badge stays quiet. */
+
+@utility badge {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 12px;
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+@utility badge--high {
+  background-color: var(--color-orange-100);
+}
+
+@utility badge--medium {
+  background-color: var(--color-amber-100);
+}
+
+@utility badge--low {
+  background-color: var(--color-olive-100);
+}
+
+@utility badge--overdue {
+  background-color: var(--color-overdue-100);
+}
+
+/* Chips (selectable pill toggles) — the base shape. On cream, every set of
+ * options (the Tasks toolbar, durations, deadlines, repeat, theme, language)
+ * goes through components/Chip.tsx, which picks the colours from the Tasks
+ * page: cream-50 / cream-200 edge at rest, orange-100 / orange-500 edge when
+ * picked. chip--idle is the older, stronger-edged recipe the AI chat's
+ * suggestion chips still use. */
+
+@utility chip {
+  border-radius: 9999px;
+  border-width: 1px;
+}
+
+@utility chip--idle {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-300);
+}
+
+/* Same chip recipe on a charcoal surface — tints with white instead of
+   cream, since a cream fill would read as a filled/selected state there. */
+@utility chip--charcoal {
+  background-color: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* A toggled-on chip on a charcoal surface (e.g. "Hide AI Advice"). */
+@utility chip--charcoal-selected {
+  background-color: rgb(226 98 46 / 0.18);
+  border-color: rgb(226 98 46 / 0.55);
+}
+
+/* Scrim (modal overlay) -------------------------------------------- */
+
+@utility scrim {
+  background-color: rgb(30 28 25 / 0.5);
+}
+
+/* Form fields -------------------------------------------------------- */
+
+/* A text input on the cream page (TextField). The shape of the Tasks
+   page's search field, in cream; pair with border-cream-200, or
+   border-overdue-500 when the value needs fixing. */
+@utility input {
+  border-radius: 14px;
+  border-width: 1px;
+  background-color: var(--color-cream-50);
+}
+
+/* The sign-in / sign-up field (AuthTextField), label inside the box. */
+@utility field {
+  border-radius: 14px;
+  border-width: 1px;
+  border-color: var(--color-cream-300);
+  background-color: var(--color-cream-50);
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Typography ---------------------------------------------------------
+ * Each utility bundles the exact size + line-height + tracking +
+ * weight recipe from the design doc so screens can't drift from it.
+ * Font family is hardcoded (not var()) per the "single font name,
+ * no indirection" constraint NativeWind places on font-family. */
+
+@utility text-title {
+  font-family: "SpaceGrotesk-Bold";
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+@utility text-card-title {
+  font-family: "SpaceGrotesk-Bold";
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+@utility text-body {
+  font-family: "SpaceGrotesk-Regular";
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+@utility text-quote {
+  font-family: "SpaceGrotesk-Light";
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@utility eyebrow {
+  font-family: "SpaceGrotesk-SemiBold";
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
