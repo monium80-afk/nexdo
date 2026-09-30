@@ -32,18 +32,26 @@ function steps(...entries: [string, number, Subtask["status"]][]): Subtask[] {
 }
 
 describe("the score", () => {
-  it("is 0.40 urgency + 0.30 importance + 0.15 readiness (+ 0.15 time fit when a budget is known), 0–100", () => {
-    const task = due("a", "2026-09-30", { importance: 75 });
+  it("is 0.45 urgency + 0.35 importance + 0.20 effort, 0–100", () => {
+    // Due tomorrow (end of day, 37h59m away) and 60 minutes long: 1.54 days of slack.
+    const task = due("a", "2026-09-30", { importance: 80, estimatedMinutes: 60 });
     const breakdown = priorityBreakdown(task, { now: NOW });
-    assert.deepEqual([breakdown.urgency, breakdown.importance, breakdown.readiness, breakdown.timeFit], [85, 75, 100, null]);
-    // No budget: the time-fit weight is left out and the rest re-weighted.
-    assert.equal(breakdown.score, Math.round((0.4 * 85 + 0.3 * 75 + 0.15 * 100) / 0.85));
-    const withBudget = priorityBreakdown(task, { now: NOW, availableMinutes: 60 });
-    assert.equal(withBudget.score, Math.round(0.4 * 85 + 0.3 * 75 + 0.15 * 100 + 0.15 * 100));
+    assert.deepEqual([breakdown.importance, breakdown.effort, breakdown.readiness, breakdown.timeFit], [80, 70, 1, null]);
+    assert.ok(breakdown.urgency > 72 && breakdown.urgency < 85, `slack between 1 and 2 days: ${breakdown.urgency}`);
+    assert.equal(breakdown.score, Math.round(0.45 * breakdown.urgency + 0.35 * 80 + 0.2 * 70));
+  });
+
+  it("uses the whole 0–100 range: the chosen level clearly moves it, and it can reach 100", () => {
+    const score = (extra: Partial<Task>) => computeScore(makeTask({ id: "x", estimatedMinutes: 30, ...extra }), { now: NOW });
+    assert.equal(score({ importance: 50 }), Math.round(0.45 * 15 + 0.35 * 50 + 0.2 * 50));
+    assert.ok(score({ importance: 80 }) - score({ importance: 50 }) >= 10, "High is well above Medium");
+    assert.ok(score({ importance: 50 }) - score({ importance: 20 }) >= 10, "Medium is well above Low");
+    const top = due("top", "2026-09-20", { importance: 100, estimatedMinutes: 240 });
+    assert.equal(computeScore(top, { now: NOW }), 100);
   });
 
   it("a task without a deadline still gets a score and stays recommendable", () => {
-    const task = makeTask({ id: "read", importance: 75 });
+    const task = makeTask({ id: "read", importance: 80 });
     assert.ok(computeScore(task, { now: NOW }) > 0);
     assert.deepEqual(recommendTasks([task], { now: NOW }).map((entry) => entry.task.id), ["read"]);
   });
@@ -54,10 +62,23 @@ describe("the score", () => {
     assert.equal(computeScore(due("month", "2026-08-01"), { now: NOW }), computeScore(due("week", "2026-09-22"), { now: NOW }));
   });
 
-  it("duration never lowers it — a long task isn't an unimportant one", () => {
+  it("urgency rises smoothly as the deadline nears, with no jump at midnight", () => {
+    const task = due("d", "2026-10-03", { estimatedMinutes: 30 });
+    const before = urgencyScore(task, local(2026, 9, 30, 23, 59));
+    const after = urgencyScore(task, local(2026, 10, 1, 0, 1));
+    assert.ok(after - before <= 1, `${before} → ${after}`);
+    assert.ok(urgencyScore(task, local(2026, 10, 2, 12)) > after);
+  });
+
+  it("the longer the task, the higher the score", () => {
+    const minutes = [2, 15, 30, 60, 120, 240];
+    const scores = minutes.map((m) => computeScore(makeTask({ id: `m${m}`, estimatedMinutes: m }), { now: NOW }));
+    for (let index = 1; index < scores.length; index += 1) assert.ok(scores[index] > scores[index - 1], scores.join(" < "));
+    // Same deadline: the long one also runs out of slack sooner.
     const short = due("s", "2026-10-02", { estimatedMinutes: 15 });
     const long = due("l", "2026-10-02", { estimatedMinutes: 600 });
-    assert.equal(computeScore(short, { now: NOW }), computeScore(long, { now: NOW }));
+    assert.ok(urgencyScore(long, NOW) > urgencyScore(short, NOW));
+    assert.ok(computeScore(long, { now: NOW }) > computeScore(short, { now: NOW }));
   });
 
   it("more work than time left counts as due now", () => {
@@ -65,12 +86,14 @@ describe("the score", () => {
     assert.equal(urgencyScore(dueSoon, NOW), 100);
   });
 
-  it("a snoozed task comes back gradually", () => {
+  it("a snoozed task is held back, and comes back gradually", () => {
     const skip = createSkipRecord("not now", NOW);
     const task = makeTask({ id: "x", skip });
-    assert.equal(priorityBreakdown(task, { now: NOW }).readiness, 0);
-    assert.ok(priorityBreakdown(task, { now: new Date(NOW.getTime() + 90 * 60_000) }).readiness > 0);
-    assert.equal(priorityBreakdown(task, { now: new Date(NOW.getTime() + 4 * 3_600_000) }).readiness, 100);
+    const unsnoozed = computeScore(makeTask({ id: "x" }), { now: NOW });
+    assert.equal(priorityBreakdown(task, { now: NOW }).readiness, 0.3);
+    assert.equal(computeScore(task, { now: NOW }), Math.round(unsnoozed * 0.3));
+    assert.ok(priorityBreakdown(task, { now: new Date(NOW.getTime() + 90 * 60_000) }).readiness > 0.3);
+    assert.equal(priorityBreakdown(task, { now: new Date(NOW.getTime() + 4 * 3_600_000) }).readiness, 1);
   });
 
   it("time fit: what fits the stated time wins; the next step fitting counts for something", () => {
@@ -94,7 +117,7 @@ describe("what to do next", () => {
   });
 
   it("completing the top task brings up the next best one", () => {
-    const tasks = [due("urgent", "2026-09-29", { importance: 75 }), due("later", "2026-10-10"), makeTask({ id: "someday" })];
+    const tasks = [due("urgent", "2026-09-29", { importance: 80 }), due("later", "2026-10-10"), makeTask({ id: "someday" })];
     const first = recommendTasks(tasks, { now: NOW })[0].task;
     assert.equal(first.id, "urgent");
     const completed = completeTaskDelta(first, NOW, tasks).upserts[0];
@@ -103,7 +126,7 @@ describe("what to do next", () => {
   });
 
   it("the user's pin beats the ranking", () => {
-    const tasks = [due("urgent", "2026-09-29", { importance: 75 }), makeTask({ id: "mine", pinnedAt: NOW.toISOString() })];
+    const tasks = [due("urgent", "2026-09-29", { importance: 80 }), makeTask({ id: "mine", pinnedAt: NOW.toISOString() })];
     assert.equal(recommendTasks(tasks, { now: NOW })[0].task.id, "mine");
   });
 
@@ -119,7 +142,7 @@ describe("what to do next", () => {
   it("keeps the card on top unless another beats it clearly", () => {
     const top = makeTask({ id: "top", importance: 50 });
     const slightlyBetter = makeTask({ id: "better", importance: 55 });
-    const muchBetter = due("much", "2026-09-29", { importance: 75 });
+    const muchBetter = due("much", "2026-09-29", { importance: 80 });
     assert.equal(recommendTasks([top, slightlyBetter], { now: NOW })[0].task.id, "better");
     assert.equal(recommendTasks([top, slightlyBetter], { now: NOW }, "top")[0].task.id, "top");
     const gap = computeScore(muchBetter, { now: NOW }) - computeScore(top, { now: NOW });

@@ -1,8 +1,8 @@
 import { useAuth } from "@clerk/expo";
 import * as Haptics from "expo-haptics";
 import { Redirect, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Platform, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { BackHandler, Platform, ScrollView, Text, View } from "react-native";
 import Animated, { Easing, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,6 +15,7 @@ import { TaskCard } from "@/components/TaskCard";
 import { listItemEntering, listItemLayout } from "@/constants/theme";
 import { useLiveVoice } from "@/hooks/useLiveVoice";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatClock } from "@/lib/formatDuration";
@@ -74,6 +75,7 @@ export default function LiveVoiceScreen() {
 
 function LiveVoice() {
   const colors = useColors();
+  useStatusBarStyle("light");
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
@@ -128,14 +130,28 @@ function LiveVoice() {
   const stopButtonStyle = useAnimatedStyle(() => ({ width: STOP_BUTTON_SIZE + WAVES_ROOM * open.value }));
   const wavesStyle = useAnimatedStyle(() => ({ width: WAVES_ROOM * open.value, opacity: open.value }));
 
-  const handleClose = () => {
+  // Closing lands on the Tasks page, where what was just said shows up. The
+  // tab bar's mic switches to Tasks before opening this screen, so it's
+  // already underneath and the page simply slides down onto it; dismissTo
+  // still gets there if Live voice was opened some other way.
+  const handleClose = useCallback(() => {
     stop();
     if (router.canGoBack()) {
-      router.back();
+      router.dismissTo("/(tabs)/tasks");
     } else {
       router.replace("/(tabs)/tasks");
     }
-  };
+  }, [router, stop]);
+
+  // Android's back button closes it the same way, rather than returning to
+  // whichever tab it was opened from.
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [handleClose]);
 
   const undoButton =
     undoable > 0 ? <TextButton icon="rotate-ccw" label={t.live.undo} onPress={undo} className="py-2" /> : null;
@@ -160,7 +176,8 @@ function LiveVoice() {
           <Text className="eyebrow px-6 pt-4 text-ink-cream-muted" style={rtl}>
             {t.live.yourTasks}
           </Text>
-          <View className="gap-[11px] px-6 pt-3">
+          {/* Laid out exactly like the Tasks page's list — same cards, same spacing. */}
+          <View className="gap-3.5 px-4 pt-3.5">
             {list.length === 0 ? (
               <EmptyState icon="mic" title={t.live.emptyTitle} body={t.live.emptyBody} />
             ) : (

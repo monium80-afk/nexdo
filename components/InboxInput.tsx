@@ -13,6 +13,7 @@ import { Alert, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AttachmentPreviewRow } from "@/components/AttachmentPreviewRow";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -33,6 +34,9 @@ type InboxInputProps = {
   /** A voice note is being turned into text for the input box (auto mode off). */
   isTranscribing?: boolean;
 };
+
+// The round, lifted button each of the three attach tools sits in.
+const TOOL_BUTTON = "chip h-9 w-9 items-center justify-center";
 
 function formatDurationLabel(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -179,7 +183,7 @@ export function InboxInput({
   };
 
   return (
-    <View className="rounded-2xl border border-cream-300 bg-cream-50">
+    <View className="card card--cream-soft rounded-[20px]" style={gradients.card}>
       {/* Recording takes the whole bar over, so previews would have nothing
           to attach to until it stops. */}
       {isRecording ? null : <AttachmentPreviewRow attachments={attachments} onRemove={onRemoveAttachment} />}
@@ -191,9 +195,9 @@ export function InboxInput({
           disabled={isTranscribing}
           hitSlop={8}
           style={{ opacity: isTranscribing ? 0.35 : 1 }}
-          className="h-9 w-9 items-center justify-center"
+          className={isRecording ? `${TOOL_BUTTON} border-overdue-200 bg-overdue-50` : `${TOOL_BUTTON} chip--idle`}
         >
-          <Feather name="mic" size={19} color={isRecording ? colors.overdue[500] : colors.ink.creamMuted} />
+          <Feather name="mic" size={17} color={isRecording ? colors.overdue[500] : colors.ink.cream} />
         </AnimatedPressable>
         <AnimatedPressable
           onPress={handleCameraPress}
@@ -202,9 +206,9 @@ export function InboxInput({
           disabled={isRecording}
           hitSlop={8}
           style={{ opacity: isRecording ? 0.35 : 1 }}
-          className="h-9 w-9 items-center justify-center"
+          className={`${TOOL_BUTTON} chip--idle`}
         >
-          <Feather name="camera" size={19} color={colors.ink.creamMuted} />
+          <Feather name="camera" size={17} color={colors.ink.cream} />
         </AnimatedPressable>
         <AnimatedPressable
           onPress={handleAttachPress}
@@ -213,10 +217,11 @@ export function InboxInput({
           disabled={isRecording}
           hitSlop={8}
           style={{ opacity: isRecording ? 0.35 : 1 }}
-          className="h-9 w-9 items-center justify-center"
+          className={`${TOOL_BUTTON} chip--idle`}
         >
-          <Feather name="paperclip" size={19} color={colors.ink.creamMuted} />
+          <Feather name="paperclip" size={17} color={colors.ink.cream} />
         </AnimatedPressable>
+        <View className="mx-0.5 h-[22px] w-px bg-cream-200" />
 
         {isRecording ? (
           <View className="flex-1 flex-row items-center gap-2 py-2.5">
@@ -249,8 +254,8 @@ export function InboxInput({
           accessibilityLabel={isRecording ? t.chat.stopRecording : t.chat.send}
           disabled={isTranscribing || (!isRecording && !canSend)}
           hitSlop={4}
-          style={{ opacity: !isRecording && !canSend ? 0.4 : 1 }}
-          className="mr-2 h-11 w-11 items-center justify-center rounded-2xl bg-orange-500"
+          style={[gradients.accent, { opacity: !isRecording && !canSend ? 0.45 : 1 }]}
+          className="glow-accent mr-2 h-11 w-11 items-center justify-center rounded-[14px] bg-orange-500"
         >
           <Feather name={isRecording ? "square" : "send"} size={isRecording ? 15 : 17} color={colors.onAccent} />
         </AnimatedPressable>

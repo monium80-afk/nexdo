@@ -10,6 +10,15 @@
 // routes verify that instead of inventing a second credential.
 import { verifyToken } from "@clerk/backend";
 
+// How far this server's clock may be from Clerk's when checking a token's
+// times. Clerk's default is 5 s — right for a hosted server, whose clock is
+// kept exact. In development the routes run on the developer's own PC, and
+// that clock drifts: 15–16 s slow on 2026-09-29/30, so every fresh token
+// looked "not yet valid" and every signed-in AI route (Live voice, the
+// Assistant) answered 401. A minute covers ordinary drift without loosening
+// production at all.
+const CLOCK_SKEW_MS = process.env.NODE_ENV === "production" ? undefined : 60_000;
+
 /**
  * The server is missing a key it needs. Deliberately its own type: a missing
  * CLERK_SECRET_KEY must never be answered with `null` (that would silently
@@ -51,7 +60,7 @@ export async function getUserId(request: Request): Promise<string | null> {
     // Verifies the signature, expiry and issuer against the Clerk instance
     // the secret key belongs to — so a token minted by some other Clerk app
     // is rejected too, not just an unsigned one.
-    const payload = await verifyToken(token, { secretKey });
+    const payload = await verifyToken(token, { secretKey, clockSkewInMs: CLOCK_SKEW_MS });
     return typeof payload.sub === "string" ? payload.sub : null;
   } catch {
     return null;

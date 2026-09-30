@@ -90,6 +90,7 @@ export const fr: Translations = {
     addATask: "Ajouter une tâche",
     eyebrow: "NEXDO MAINTENANT",
     heading: "Que pouvez-vous faire maintenant ?",
+    scoreLabel: "Score : ",
     timeFilter: (duration: string) => `Tient en ${duration}`,
     timeFilterEmpty: (duration: string) => `Rien ne tient en ${duration}`,
     timeFilterClear: "Tout afficher",
@@ -115,6 +116,7 @@ export const fr: Translations = {
     startSessionLabel: "Lancer la session",
     breakDown: "Découper",
     getAdvice: "Conseil",
+    markComplete: "Marquer comme terminée",
     taskComplete: "Tâche terminée",
     pickTasks: "CHOISISSEZ VOS TÂCHES",
     useRecommended: "Utiliser la recommandation",
@@ -266,7 +268,7 @@ export const fr: Translations = {
       deadlineUnchanged: "Échéance : inchangée",
       duration: (from: string, to: string) => `Durée estimée : ${from} → ${to}`,
       priority: (from: string, to: string) => `Priorité : ${from} → ${to}`,
-      levels: { high: "Haute", medium: "Moyenne", low: "Basse" },
+      levels: { critical: "Critique", high: "Haute", medium: "Moyenne", low: "Basse" },
       score: (from: number, to: number) => `Score de la tâche : ${from} → ${to}`,
       subtasks: (parts: string[]) => `Sous-tâches : mises à jour (${parts.join(", ")})`,
       subtaskParts: {
@@ -302,6 +304,7 @@ export const fr: Translations = {
 
   form: {
     title: "Nouvelle tâche",
+    subtitle: "Transformez vos idées en progrès",
     taskTitle: "TITRE DE LA TÂCHE",
     titlePlaceholder: "ex. Rédiger le compte rendu de TP de chimie",
     titleRequired: "Le titre de la tâche est obligatoire.",
@@ -601,6 +604,7 @@ export const fr: Translations = {
 
   settings: {
     title: "Réglages",
+    subtitle: "Personnalisez votre expérience",
     preferences: "PRÉFÉRENCES NEXDO",
 
     account: "COMPTE",
@@ -612,6 +616,22 @@ export const fr: Translations = {
     unsavedTasksBody: (count: number) =>
       `${count === 1 ? "1 tâche n'a" : `${count} tâches n'ont`} pas encore été enregistrée${count === 1 ? "" : "s"} sur votre compte — vérifiez votre connexion. Si vous vous déconnectez maintenant, ${count === 1 ? "elle reste" : "elles restent"} en sécurité sur ce téléphone et ${count === 1 ? "sera enregistrée" : "seront enregistrées"} à votre prochaine connexion ici, mais n'apparaîtr${count === 1 ? "a" : "ont"} pas sur vos autres appareils d'ici là.`,
     signOutAnyway: "Se déconnecter quand même",
+
+    pro: "NEXDO PRO",
+    upgrade: "Passer à Nexdo Pro",
+    upgradeBody: "Au mois ou à l'année — résiliable à tout moment.",
+    upgradeError: "Impossible d'ouvrir l'écran d'abonnement. Vérifiez votre connexion et réessayez.",
+    restorePurchases: "Restaurer les achats",
+    restoring: "Restauration…",
+    restoreDone: "Nexdo Pro est de retour sur ce compte.",
+    restoreNothing: "Aucun achat Nexdo Pro trouvé pour le compte store de ce téléphone.",
+    restoreOffline: "Vous êtes hors ligne. Connectez-vous et réessayez.",
+    restoreError: "Impossible de restaurer les achats. Réessayez.",
+    manageSubscription: "Gérer l'abonnement",
+    manageError: "Impossible d'ouvrir votre abonnement. Réessayez.",
+    proActive: "Nexdo Pro est actif.",
+    proRenews: (date: string) => `Nexdo Pro · renouvelé le ${date}`,
+    proEnds: (date: string) => `Nexdo Pro · prend fin le ${date}`,
 
     aiChat: "BOÎTE IA",
     autoMode: "Mode automatique",
@@ -720,6 +740,8 @@ export const fr: Translations = {
     deleteTitle: "Supprimer votre compte ?",
     deleteBody:
       "Cela supprime définitivement votre compte Nexdo et tout ce qu'il contient — tâches, conversations et réglages, sur tous vos appareils. C'est irréversible.",
+    deleteProNote:
+      "Supprimer votre compte ne résilie pas Nexdo Pro. Résiliez-le d'abord dans vos abonnements App Store ou Google Play, sinon il continue d'être renouvelé.",
     deleteConfirm: "Supprimer le compte",
     deleting: "Suppression…",
     deleteError: "Impossible de supprimer votre compte. Réessayez.",

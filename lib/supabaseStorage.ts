@@ -1,3 +1,4 @@
+import { readFileBytes } from "@/lib/localFile";
 import { supabase } from "@/lib/supabase";
 
 const BUCKET = "chat-attachments";
@@ -52,8 +53,10 @@ export async function uploadAttachment(localUri: string, userId: string, fileNam
     throw new Error(`Unsupported file type: ${mimeType}`);
   }
 
-  const response = await fetch(localUri);
-  const bytes = await response.arrayBuffer();
+  // Read the way the AI reads it (see lib/localFile.ts): a bare fetch() once
+  // uploaded a "File not found" message in place of every camera photo.
+  const bytes = await readFileBytes(localUri);
+  if (bytes.byteLength === 0) throw new Error("File is empty");
   if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
     throw new Error(`File is too large (max ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB)`);
   }

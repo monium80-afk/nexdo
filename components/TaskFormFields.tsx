@@ -5,7 +5,7 @@ import { Alert, Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { Chip } from "@/components/Chip";
-import { colors } from "@/constants/theme";
+import { colors, gradients } from "@/constants/theme";
 import { useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { deadlineToLocalDate, makeDeadline, type DeadlineInput } from "@/lib/deadline";
@@ -105,7 +105,8 @@ export function PriorityCard({
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      className={`card flex-1 gap-2 p-[14px] ${selected ? style.selected : "border-cream-200 bg-cream-50"}`}
+      style={selected ? undefined : gradients.card}
+      className={`card flex-1 gap-2 p-[14px] ${selected ? style.selected : "chip--idle"}`}
     >
       <Ionicons name={PRIORITY_ICONS[level]} size={18} color={style.color} />
       <Text className={selected ? "font-grotesk-bold text-sm text-ink-cream" : "font-grotesk-semibold text-sm text-ink-cream"}>

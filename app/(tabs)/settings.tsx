@@ -6,24 +6,37 @@ import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import Animated, { interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import { PAYWALL_RESULT } from "react-native-purchases-ui";
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AccountSheet } from "@/components/AccountSheet";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import type { FeatherIconName } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { IconTile } from "@/components/IconTile";
 import { ProfileCard } from "@/components/ProfileCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { useTabBarHeight } from "@/components/TabBar";
 import { SUPPORT_LINKS } from "@/constants/support";
-import { MOTION } from "@/constants/theme";
+import { MOTION, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
+import {
+  isPurchasesEnabled,
+  presentCustomerCenter,
+  presentProPaywall,
+  resetPurchaser,
+  restorePurchases,
+} from "@/lib/purchases";
 import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { AppLanguage } from "@/types/settings";
 
@@ -50,12 +63,12 @@ function dateToTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-/** A muted eyebrow plus whatever cards the section holds — the Tasks page's sheet title over its cards. */
+/** A section: a frosted tray holding its eyebrow and the cards under it. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const rtl = useRtlText();
   return (
-    <View className="gap-3">
-      <Text className="eyebrow text-ink-cream-muted" style={rtl}>
+    <View className="tray gap-3 px-2.5 pb-2.5 pt-4">
+      <Text className="eyebrow px-3.5 text-ink-cream-muted" style={rtl}>
         {title}
       </Text>
       {children}
@@ -63,17 +76,29 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** The group card every section's rows sit in — the task list's card. */
+/** The card a section's rows sit in — the task list's card. */
 function Group({ children }: { children: ReactNode }) {
-  return <View className="card card--cream-soft gap-4 p-[16px]">{children}</View>;
+  return (
+    <View className="card card--cream-soft gap-4 p-[16px]" style={gradients.card}>
+      {children}
+    </View>
+  );
 }
 
+/**
+ * Starts under a row's label rather than its tile, so rows read as one list.
+ * 46.5 = the 36dp tile + the row's gap-3.
+ */
 function Divider() {
-  return <View className="h-px bg-cream-200" />;
+  return <View className="ml-[46.5px] h-px bg-cream-200" />;
+}
+
+/** Controls that belong to the row above them, indented to its label. */
+function RowDetails({ children }: { children: ReactNode }) {
+  return <View className="gap-3 pl-[46.5px]">{children}</View>;
 }
 
 function ToggleControl({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (next: boolean) => void }) {
-  const colors = useColors();
   const progress = useSharedValue(value ? 1 : 0);
   const reduceMotion = useReducedMotion();
 
@@ -84,11 +109,12 @@ function ToggleControl({ label, value, onValueChange }: { label: string; value: 
     });
   }, [progress, reduceMotion, value]);
 
-  const trackStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(progress.value, [0, 1], [colors.cream[300], colors.orange[500]]),
-  }));
+  // A gradient can't be colour-interpolated, so the lit track fades in over
+  // the resting one instead.
+  const litStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  // 16 = the 42dp track − its two 1dp edges − 2dp padding each side − the 20dp thumb.
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * 20 }],
+    transform: [{ translateX: progress.value * 16 }],
   }));
 
   const toggle = () => {
@@ -110,20 +136,32 @@ function ToggleControl({ label, value, onValueChange }: { label: string; value: 
       accessibilityState={{ checked: value }}
       className="h-10 items-center justify-center"
     >
-      <Animated.View className="h-7 w-12 justify-center rounded-full px-[3px]" style={trackStyle}>
-        <Animated.View className="h-[22px] w-[22px] rounded-full" style={[{ backgroundColor: colors.onAccent }, thumbStyle]} />
-      </Animated.View>
+      {/* Flat rather than pressed in: an inset shadow per switch was a real
+          cost on Android, and the darker edge reads as a track on its own. */}
+      <View className="h-7 w-12 justify-center rounded-full border border-cream-300 bg-cream-200/60 px-[2px]">
+        {/* Over the edge too, so a switched-on track is orange right to its
+            rim. Its glow only while it's on — hidden, it still cost a shadow. */}
+        <Animated.View className="absolute -inset-px rounded-full" style={[gradients.accent, value ? TRACK_GLOW : null, litStyle]} />
+        <Animated.View className="h-[20px] w-[20px] rounded-full bg-white" style={[THUMB_SHADOW, thumbStyle]} />
+      </View>
     </Pressable>
   );
 }
 
-/** Label + explanation on the left, a switch on the right. */
+// The lit track glows onto the card; the thumb sits up on it.
+const TRACK_GLOW = { boxShadow: "0 4px 12px -4px rgba(236, 86, 28, 0.6)" };
+const THUMB_SHADOW = { boxShadow: "0 2px 5px rgba(60, 30, 10, 0.25)" };
+
+/** Tile, label + explanation, and a switch on the right. */
 function ToggleRow({
+  icon,
   label,
   body,
   value,
   onValueChange,
 }: {
+  /** Left out on a row nested under another row's label, which has no room for one. */
+  icon?: FeatherIconName;
   label: string;
   body: string;
   value: boolean;
@@ -132,8 +170,9 @@ function ToggleRow({
   const rtl = useRtlText();
   return (
     <View className="flex-row items-center gap-3">
+      {icon ? <IconTile icon={icon} /> : null}
       <View className="flex-1 gap-1">
-        <Text className="font-grotesk-semibold text-base text-ink-cream" style={rtl}>
+        <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
           {label}
         </Text>
         <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
@@ -145,19 +184,17 @@ function ToggleRow({
   );
 }
 
-/** A tappable row inside a card: icon, label, optional explanation. */
+/** A tappable row inside a card: tile, label, optional explanation, chevron. */
 function ActionRow({
   icon,
   label,
   body,
-  destructive = false,
   disabled = false,
   onPress,
 }: {
-  icon: keyof typeof Feather.glyphMap;
+  icon: FeatherIconName;
   label: string;
   body?: string;
-  destructive?: boolean;
   disabled?: boolean;
   onPress: () => void;
 }) {
@@ -170,16 +207,9 @@ function ActionRow({
       accessibilityRole="button"
       className={`flex-row items-center gap-3 ${disabled ? "opacity-40" : ""}`}
     >
-      <Feather name={icon} size={18} color={destructive ? colors.overdue[500] : colors.ink.creamMuted} />
+      <IconTile icon={icon} tone="neutral" />
       <View className="flex-1 gap-1">
-        <Text
-          className={
-            destructive
-              ? "font-grotesk-semibold text-base text-overdue-500"
-              : "font-grotesk-semibold text-base text-ink-cream"
-          }
-          style={rtl}
-        >
+        <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
           {label}
         </Text>
         {body ? (
@@ -188,9 +218,42 @@ function ActionRow({
           </Text>
         ) : null}
       </View>
-      {/* A chevron reads as "this opens something" — wrong on a row that
-          destroys data, and those rows say what they do already. */}
-      {destructive ? null : <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />}
+      <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
+    </AnimatedPressable>
+  );
+}
+
+/**
+ * A row that ends or destroys something (Sign out, Clear chat history): its
+ * own red-tinted card, so it can't be mistaken for a setting.
+ */
+function DangerRow({
+  icon,
+  label,
+  disabled = false,
+  onPress,
+}: {
+  icon: FeatherIconName;
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const colors = useColors();
+  const rtl = useRtlText();
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      scaleTo={0.98}
+      style={gradients.danger}
+      className={`card card--danger flex-row items-center gap-3 px-[16px] py-[10px] ${disabled ? "opacity-40" : ""}`}
+    >
+      <IconTile icon={icon} tone="red" size="sm" />
+      <Text className="flex-1 font-grotesk-bold text-base text-overdue-500" style={rtl}>
+        {label}
+      </Text>
+      <Feather name="chevron-right" size={16} color={colors.overdue[500]} />
     </AnimatedPressable>
   );
 }
@@ -225,10 +288,14 @@ export default function Settings() {
   const importantExtraReminder = useSettingsStore((state) => state.importantExtraReminder);
   const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   const clearChatHistory = useChatStore((state) => state.clearHistory);
+  const pro = useSubscriptionStore((state) => state.pro);
+  const tabBarHeight = useTabBarHeight();
+  useStatusBarStyle("light");
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [historyStatus, setHistoryStatus] = useState<string | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
@@ -341,6 +408,37 @@ export default function Settings() {
     }
   };
 
+  // Under the Pro row: when the plan renews, or — once cancelled — when Pro
+  // ends. A plan without an end date is simply active.
+  const proExpiry = pro?.expirationDate
+    ? new Date(pro.expirationDate).toLocaleDateString(t.locale, { day: "numeric", month: "short", year: "numeric" })
+    : null;
+  const proStatus = !proExpiry ? t.settings.proActive : pro?.willRenew ? t.settings.proRenews(proExpiry) : t.settings.proEnds(proExpiry);
+
+  // Buying, and any error while buying, happens inside RevenueCat's paywall;
+  // only a paywall that couldn't open at all is left to explain here.
+  const handleUpgrade = async () => {
+    const result = await presentProPaywall();
+    if (result === PAYWALL_RESULT.ERROR) Alert.alert(t.settings.upgradeError);
+  };
+
+  const handleRestore = async () => {
+    setIsRestoring(true);
+    const outcome = await restorePurchases();
+    setIsRestoring(false);
+    const messages = {
+      restored: t.settings.restoreDone,
+      nothing: t.settings.restoreNothing,
+      offline: t.settings.restoreOffline,
+      error: t.settings.restoreError,
+    };
+    Alert.alert(messages[outcome]);
+  };
+
+  const handleManageSubscription = async () => {
+    if (!(await presentCustomerCenter())) Alert.alert(t.settings.manageError);
+  };
+
   const signOutNow = async () => {
     setIsSigningOut(true);
     setSignOutError(null);
@@ -353,6 +451,7 @@ export default function Settings() {
       const cleanupResults = await Promise.allSettled([
         Promise.resolve().then(() => handleChatSignOut()),
         Promise.resolve().then(() => handleTaskSignOut()),
+        resetPurchaser(),
       ]);
       if (cleanupResults.some((result) => result.status === "rejected")) {
         setSignOutError(t.settings.signOutCleanupError);
@@ -386,42 +485,66 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScreenHeader title={t.settings.title} />
+      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} />
 
       <View className="screen-body">
+        <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 40 }}
+          // Clear of the tab bar, which floats over the foot of the page.
+          contentContainerStyle={{ paddingBottom: 40 + tabBarHeight }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="gap-6 px-6 pt-4">
+          <View className="gap-4 px-3 pt-3">
             <Section title={t.settings.account}>
               <ProfileCard onPress={() => setAccountOpen(true)} />
 
-              <View className="card card--cream-soft p-[16px]">
-                <AnimatedPressable
-                  onPress={handleSignOut}
-                  disabled={isSigningOut}
-                  accessibilityRole="button"
-                  className={`flex-row items-center gap-3 ${isSigningOut ? "opacity-40" : ""}`}
-                >
-                  <Feather name="log-out" size={18} color={colors.overdue[500]} />
-                  <Text className="flex-1 font-grotesk-semibold text-base text-overdue-500" style={rtl}>
-                    {isSigningOut ? t.settings.signingOut : t.settings.signOut}
-                  </Text>
-                </AnimatedPressable>
-              </View>
+              <DangerRow
+                icon="log-out"
+                label={isSigningOut ? t.settings.signingOut : t.settings.signOut}
+                disabled={isSigningOut}
+                onPress={handleSignOut}
+              />
 
               {signOutError ? (
-                <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
+                <Text className="px-3.5 font-grotesk-medium text-sm text-overdue-500" style={rtl}>
                   {signOutError}
                 </Text>
               ) : null}
             </Section>
 
+            {isPurchasesEnabled ? (
+              <Section title={t.settings.pro}>
+                <Group>
+                  {pro ? (
+                    <ActionRow
+                      icon="award"
+                      label={t.settings.manageSubscription}
+                      body={proStatus}
+                      onPress={handleManageSubscription}
+                    />
+                  ) : (
+                    <>
+                      <ActionRow icon="star" label={t.settings.upgrade} body={t.settings.upgradeBody} onPress={handleUpgrade} />
+
+                      <Divider />
+
+                      <ActionRow
+                        icon="rotate-ccw"
+                        label={isRestoring ? t.settings.restoring : t.settings.restorePurchases}
+                        disabled={isRestoring}
+                        onPress={handleRestore}
+                      />
+                    </>
+                  )}
+                </Group>
+              </Section>
+            ) : null}
+
             <Section title={t.settings.aiChat}>
               <Group>
                 <ToggleRow
+                  icon="zap"
                   label={t.settings.autoMode}
                   body={t.settings.autoModeBody}
                   value={aiAutoMode}
@@ -431,22 +554,21 @@ export default function Settings() {
                 <Divider />
 
                 <ToggleRow
+                  icon="mic"
                   label={t.settings.voiceButton}
                   body={t.settings.voiceButtonBody}
                   value={voiceAddButton}
                   onValueChange={setVoiceAddButton}
                 />
-
-                <Divider />
-
-                <ActionRow icon="trash-2" label={t.settings.clearHistory} destructive onPress={handleClearHistory} />
-
-                {historyStatus ? (
-                  <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                    {historyStatus}
-                  </Text>
-                ) : null}
               </Group>
+
+              <DangerRow icon="trash-2" label={t.settings.clearHistory} onPress={handleClearHistory} />
+
+              {historyStatus ? (
+                <Text className="px-3.5 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                  {historyStatus}
+                </Text>
+              ) : null}
             </Section>
 
             <Section title={t.settings.notifications}>
@@ -463,6 +585,7 @@ export default function Settings() {
                 ) : null}
 
                 <ToggleRow
+                  icon="bell"
                   label={t.settings.deadlineReminders}
                   body={t.settings.deadlineRemindersBody}
                   value={deadlineRemindersEnabled}
@@ -470,7 +593,7 @@ export default function Settings() {
                 />
 
                 {deadlineRemindersEnabled ? (
-                  <View className="gap-3">
+                  <RowDetails>
                     <AnimatedPressable
                       onPress={() => setShowReminderTimePicker((open) => !open)}
                       accessibilityRole="button"
@@ -515,12 +638,13 @@ export default function Settings() {
                       value={importantExtraReminder}
                       onValueChange={setImportantExtraReminder}
                     />
-                  </View>
+                  </RowDetails>
                 ) : null}
 
                 <Divider />
 
                 <ToggleRow
+                  icon="sun"
                   label={t.settings.dailyNudge}
                   body={t.settings.dailyNudgeBody}
                   value={dailyNudgeEnabled}
@@ -528,7 +652,7 @@ export default function Settings() {
                 />
 
                 {dailyNudgeEnabled ? (
-                  <View className="gap-3">
+                  <RowDetails>
                     {/* The picked time, shown like a filled field that opens the picker. */}
                     <AnimatedPressable
                       onPress={() => setShowTimePicker((open) => !open)}
@@ -553,12 +677,13 @@ export default function Settings() {
                         onChange={handleTimeChange}
                       />
                     ) : null}
-                  </View>
+                  </RowDetails>
                 ) : null}
 
                 <Divider />
 
                 <ToggleRow
+                  icon="alert-triangle"
                   label={t.settings.overdueAlerts}
                   body={t.settings.overdueAlertsBody}
                   value={overdueAlertsEnabled}
@@ -574,9 +699,12 @@ export default function Settings() {
             <Section title={t.settings.appearance}>
               <Group>
                 <View className="gap-3">
-                  <Text className="font-grotesk-semibold text-base text-ink-cream" style={rtl}>
-                    {t.settings.language}
-                  </Text>
+                  <View className="flex-row items-center gap-3">
+                    <IconTile icon="globe" />
+                    <Text className="flex-1 font-grotesk-bold text-base text-ink-cream" style={rtl}>
+                      {t.settings.language}
+                    </Text>
+                  </View>
                   <View className="flex-row flex-wrap gap-2">
                     {LANGUAGE_OPTIONS.map((option) => (
                       <Chip
@@ -618,7 +746,7 @@ export default function Settings() {
                 />
               </Group>
 
-              <Text className="text-center font-grotesk-medium text-sm text-ink-cream-subtle">
+              <Text className="pb-1 text-center font-grotesk-medium text-sm text-ink-cream-subtle">
                 {t.settings.version(APP_VERSION)}
               </Text>
             </Section>

@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,11 +8,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { IconButton, PrimaryButton } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
-import { FilterSheet } from "@/components/FilterSheet";
+import { DropdownMenu, type DropdownAnchor } from "@/components/DropdownMenu";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { useTabBarHeight } from "@/components/TabBar";
 import { TaskCard } from "@/components/TaskCard";
-import { listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
+import { gradients, listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getDueInfo } from "@/lib/taskMeta";
@@ -56,10 +58,18 @@ export default function TasksListScreen() {
   const allTasks = useTaskStore((state) => state.tasks);
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
+  const tabBarHeight = useTabBarHeight();
+  useStatusBarStyle("light");
 
   const [searchOpen, setSearchOpen] = useState(false);
-  const [statusSheetOpen, setStatusSheetOpen] = useState(false);
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  // Where the open menu hangs from — each drops out of its own chip.
+  const [statusMenu, setStatusMenu] = useState<DropdownAnchor | null>(null);
+  const [sortMenu, setSortMenu] = useState<DropdownAnchor | null>(null);
+  const statusChipRef = useRef<View>(null);
+  const sortChipRef = useRef<View>(null);
+  const openMenu = (chip: View | null, open: (anchor: DropdownAnchor) => void) => {
+    chip?.measureInWindow((x, y, width, height) => open({ x, y, width, height }));
+  };
   const [deadlineNow, setDeadlineNow] = useState(() => new Date());
 
   // The list is open and done tasks. Archived ones — and occurrences a
@@ -136,7 +146,7 @@ export default function TasksListScreen() {
         }
       >
         {searchOpen ? (
-          <View className="flex-row items-center gap-2 rounded-2xl border border-charcoal-600 bg-charcoal-800 px-4 py-2.5">
+          <View className="glass flex-row items-center gap-2 rounded-[16px] px-4 py-2.5">
             <Feather name="search" size={16} color={colors.ink.charcoalMuted} />
             <TextInput
               value={search}
@@ -149,47 +159,61 @@ export default function TasksListScreen() {
             />
           </View>
         ) : (
-          <View className="flex-row flex-wrap items-center gap-x-[15px] gap-y-1">
+          // Each count in its own colour — open work warm, finished work green —
+          // split by a hairline so the pair reads as a scoreboard.
+          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
             <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
-              <Text className="font-grotesk-bold text-ink-charcoal">{pendingCount}</Text>
+              <Text className="font-grotesk-bold text-orange-300">{pendingCount}</Text>
               {t.tasks.pendingSuffix}
             </Text>
+            <View className="h-[12px] w-px bg-white/20" />
             <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
-              <Text className="font-grotesk-bold text-ink-charcoal">{completedCount}</Text>
+              <Text className="font-grotesk-bold text-success-300">{completedCount}</Text>
               {t.tasks.completedSuffix}
             </Text>
             {/* overdue-300: the -500 red is too dark to read on the charcoal header. */}
             {overdueCount > 0 ? (
-              <Text className="font-grotesk-semibold text-sm text-overdue-300">
-                {t.tasks.overdueCount(overdueCount)}
-              </Text>
+              <>
+                <View className="h-[12px] w-px bg-white/20" />
+                <Text className="font-grotesk-semibold text-sm text-overdue-300">
+                  {t.tasks.overdueCount(overdueCount)}
+                </Text>
+              </>
             ) : null}
           </View>
         )}
       </ScreenHeader>
 
       <View className="screen-body">
+        <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 28 }}
+          // Clear of the tab bar, which floats over the foot of the page.
+          contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
           {/* Filter on the left, sort on the right, each as wide as its label and
-              orange only once something other than the default is picked. */}
+              orange only once something other than the default is picked. The
+              funnel is always orange: it's the way into the list. */}
           <View className="flex-row items-center justify-between gap-3 px-6 pt-4">
-            <Chip
-              label={statusLabel}
-              selected={status !== "all"}
-              icon={(color) => <Feather name="filter" size={14} color={color} />}
-              chevron
-              onPress={() => setStatusSheetOpen(true)}
-            />
-            <Chip
-              label={sortLabel}
-              selected={sort !== "recent"}
-              icon={(color) => <Ionicons name="swap-vertical" size={14} color={color} />}
-              chevron
-              onPress={() => setSortSheetOpen(true)}
-            />
+            {/* Wrapped so each chip can be measured: its menu opens right under it. */}
+            <View ref={statusChipRef} collapsable={false} className="shrink">
+              <Chip
+                label={statusLabel}
+                selected={status !== "all"}
+                icon={() => <Ionicons name="funnel-outline" size={14} color={colors.orange[500]} />}
+                chevron
+                onPress={() => openMenu(statusChipRef.current, setStatusMenu)}
+              />
+            </View>
+            <View ref={sortChipRef} collapsable={false} className="shrink">
+              <Chip
+                label={sortLabel}
+                selected={sort !== "recent"}
+                icon={(color) => <Ionicons name="swap-vertical" size={14} color={color} />}
+                chevron
+                onPress={() => openMenu(sortChipRef.current, setSortMenu)}
+              />
+            </View>
           </View>
 
           <Text className="px-6 pt-3 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
@@ -198,7 +222,7 @@ export default function TasksListScreen() {
             {t.tasks.showingSuffix(filteredTasks.length, tasks.length)}
           </Text>
 
-          <View className="gap-[11px] px-6 pt-3">
+          <View className="gap-3.5 px-4 pt-3.5">
             {filteredTasks.length === 0 ? (
               <EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} />
             ) : (
@@ -221,21 +245,20 @@ export default function TasksListScreen() {
         </ScrollView>
       </View>
 
-      <FilterSheet
-        visible={statusSheetOpen}
-        title={t.tasks.statusTitle}
+      <DropdownMenu
+        anchor={statusMenu}
         options={statusOptions}
         selected={status}
         onSelect={setStatus}
-        onClose={() => setStatusSheetOpen(false)}
+        onClose={() => setStatusMenu(null)}
       />
-      <FilterSheet
-        visible={sortSheetOpen}
-        title={t.tasks.sortTitle}
+      <DropdownMenu
+        anchor={sortMenu}
+        align="right"
         options={sortOptions}
         selected={sort}
         onSelect={setSort}
-        onClose={() => setSortSheetOpen(false)}
+        onClose={() => setSortMenu(null)}
       />
     </SafeAreaView>
   );

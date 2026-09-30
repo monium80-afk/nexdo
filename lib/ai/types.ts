@@ -1,6 +1,7 @@
 import type { RuleInput } from "@/lib/recurrence";
+import type { ImportanceLevel } from "@/lib/scoring";
 import type { TaskFilter, TaskOperation } from "@/lib/taskOperations";
-import type { Task, TaskComplexity, TaskPriorityLevel } from "@/types/task";
+import type { Task, TaskComplexity } from "@/types/task";
 
 // Every "AI" function in this directory is a heuristic today, but shaped
 // exactly like a real LLM call's input/output — swapping in a real backend
@@ -24,8 +25,9 @@ export type ExtractedTaskDraft = {
   dueHasTime?: boolean;
   // Feeds `importance` in lib/scoring.ts. Without it every extracted task
   // landed on medium, which — combined with no deadline — pinned every
-  // AI-created task to the same priority score.
-  priorityLevel: TaskPriorityLevel;
+  // AI-created task to the same priority score. "critical" when the user
+  // stressed it ("really important").
+  priorityLevel: ImportanceLevel;
   // Set when the message listed linked items that belong to this one task
   // (taxonomy 1.1a) — they're saved as its subtasks instead of separate tasks.
   steps?: PlanStep[];

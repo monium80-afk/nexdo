@@ -1,4 +1,4 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { View, useWindowDimensions, type TextLayoutEvent } from "react-native";
@@ -21,7 +21,7 @@ import { Checkbox } from "@/components/Checkbox";
 import { CompletionBurst } from "@/components/CompletionBurst";
 import { GemLogo } from "@/components/GemLogo";
 import { MetaPill } from "@/components/MetaPill";
-import { MOTION, colors } from "@/constants/theme";
+import { MOTION, colors, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
@@ -29,19 +29,29 @@ import { describeRule } from "@/lib/recurrence";
 import { getDueInfo, type DueTone } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 
-// The icon and label carry the deadline colour directly, with no badge behind them.
+// The icon and label carry the deadline colour directly, with no badge behind
+// them — except once it's overdue: then they're white on a solid red badge.
 const DEADLINE_STYLES: Record<DueTone, { color: string; label: string }> = {
-  overdue: { color: colors.overdue[500], label: "font-grotesk-semibold" },
-  today: { color: colors.overdue[500], label: "font-grotesk-semibold" },
-  urgent: { color: colors.amber[500], label: "font-grotesk-medium" },
-  upcoming: { color: colors.success[500], label: "font-grotesk-bold" },
+  overdue: { color: colors.onAccent, label: "font-grotesk-bold" },
+  today: { color: colors.overdue[500], label: "font-grotesk-bold" },
+  urgent: { color: colors.amber[500], label: "font-grotesk-semibold" },
+  upcoming: { color: colors.success[500], label: "font-grotesk-semibold" },
   muted: { color: colors.ink.creamMuted, label: "font-grotesk-medium" },
 };
 
-// The title's text-[17px], and where Android draws its line-through on it: centred
+// The card's surface for each state: a lifted cream card at rest, a flat one
+// sunk into the page once it's done. Only an overdue task is tinted red — a
+// task due today says so in its deadline alone, so red always means "late".
+function cardSurface(tone: DueTone, isCompleted: boolean) {
+  if (isCompleted) return { className: "card--cream-muted", fill: undefined };
+  if (tone === "overdue") return { className: "card--overdue", fill: gradients.danger };
+  return { className: "card--cream-soft", fill: gradients.card };
+}
+
+// The title's text-[18px], and where Android draws its line-through on it: centred
 // 6/21 em above the baseline, 1/18 em thick. The animated strike is drawn there
 // too, so it hands over to the real line-through without a jump.
-const TITLE_SIZE = 17;
+const TITLE_SIZE = 18;
 const STRIKE_CENTER_EM = 6 / 21;
 const STRIKE_THICKNESS_EM = 1 / 18;
 
@@ -102,7 +112,6 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
   const { fontScale } = useWindowDimensions();
   const due = getDueInfo(task);
   const isOverdue = due.tone === "overdue";
-  const deadlineAlert = isOverdue || due.tone === "today";
   const isCompleted = task.status === "completed";
   const deadline = DEADLINE_STYLES[due.tone];
   const reduceMotion = useReducedMotion();
@@ -201,7 +210,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
     completeTimer.current = setTimeout(finishCheck, CHECK_HOLD_MS);
   };
 
-  const cardVariant = due.tone === "overdue" ? "card--overdue" : isCompleted ? "card--cream-muted" : "card--cream-soft";
+  const surface = cardSurface(due.tone, isCompleted);
 
   return (
     <Animated.View style={bumpStyle}>
@@ -210,7 +219,8 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
       <AnimatedPressable
         onPress={onPress}
         scaleTo={0.98}
-        className={`card ${cardVariant} flex-row items-baseline gap-3 p-[16px]`}
+        style={surface.fill}
+        className={`card ${surface.className} flex-row items-baseline gap-3.5 px-[18px] py-[17px]`}
       >
         <AnimatedPressable
           onPress={handleToggle}
@@ -221,19 +231,19 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
           {/* Mounted only for the tick — it waits BURST_DELAY_MS to start, so it's in place before it plays. */}
           {celebrating ? <CompletionBurst progress={burst} /> : null}
           <Animated.View style={popStyle}>
-            <Checkbox checked={isCompleted || celebrating} tone={deadlineAlert ? "overdue" : "default"} />
+            <Checkbox checked={isCompleted || celebrating} tone={isOverdue ? "overdue" : "default"} />
           </Animated.View>
         </AnimatedPressable>
 
         {/* Title and details share one column, so the details line up under the title. */}
-        <View className="flex-1 gap-2">
+        <View className="flex-1 gap-2.5">
           <View className="flex-row items-baseline gap-2">
             <View className="flex-1">
               <Animated.Text
                 className={
                   isCompleted
-                    ? "font-grotesk-semibold text-[17px] leading-[22px] line-through"
-                    : "font-grotesk-semibold text-[17px] leading-[22px]"
+                    ? "font-grotesk-semibold text-[18px] leading-[23px] tracking-tight line-through"
+                    : "font-grotesk-bold text-[18px] leading-[23px] tracking-tight"
                 }
                 style={[rtl, titleStyle]}
                 onTextLayout={(event) => {
@@ -258,42 +268,44 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
                   ))
                 : null}
             </View>
-            {/* As tall as the checkbox, with the icon laid over it, so its baseline
-                is its bottom edge too and whatever sits here is level with the box. */}
-            <View className={isCompleted ? "h-[22px] w-[18px]" : "h-[22px] w-[16px]"}>
+            {/* As tall as the checkbox, with the chevron laid over it, so its
+                baseline is its bottom edge too and the chevron is level with the
+                box. A done task has no mark of its own here: the ticked box says it. */}
+            <View className="h-[22px] w-[16px]">
               <View className="absolute inset-0 items-center justify-center">
-                {isCompleted ? (
-                  <Ionicons name="checkmark-circle" size={18} color={colors.olive[500]} />
-                ) : (
-                  <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
-                )}
+                <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
               </View>
             </View>
           </View>
 
-          <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
+          <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1.5">
+            {/* Past its deadline — yesterday or last month — a task simply reads
+                "Overdue"; how late is left to the screen reader and Task Details. */}
             <MetaPill
               icon={<Feather name="calendar" size={14} color={deadline.color} />}
-              label={isOverdue ? due.pillLabel : due.label}
-              labelClassName={`${deadline.label} text-[14px]`}
+              label={isOverdue ? t.due.overdue : due.label}
+              labelClassName={`${deadline.label} text-[13px]`}
               labelStyle={{ color: deadline.color }}
+              className={isOverdue ? "badge--overdue-solid rounded-full px-2.5" : ""}
               accessibilityLabel={due.label}
             />
             <MetaPill
               icon={<GemLogo size={13} />}
               label={String(task.priorityScore)}
-              labelClassName="font-grotesk-bold text-ink-cream-muted"
+              labelClassName="font-grotesk-semibold text-[13px] text-ink-cream-muted"
               accessibilityLabel={t.tasks.score(task.priorityScore)}
             />
             <MetaPill
               icon={<Feather name="clock" size={14} color={colors.ink.creamMuted} />}
               label={formatDuration(task.estimatedMinutes)}
+              labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
             />
             {/* The rule in a few words, so a repeating task is recognisable in the list. */}
             {task.recurrence ? (
               <MetaPill
                 icon={<Feather name="repeat" size={14} color={colors.orange[500]} />}
                 label={describeRule(task.recurrence.rule, t)}
+                labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
               />
             ) : null}
           </View>

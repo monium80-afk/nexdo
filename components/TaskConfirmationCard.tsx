@@ -1,10 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useState } from "react";
-import { Platform, Text, TextInput, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
 import { GemLogo } from "@/components/GemLogo";
+import { MetaPill } from "@/components/MetaPill";
+import { TextField } from "@/components/TextField";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -28,13 +32,11 @@ function formatDueFieldValue(dueDate: string | undefined, hasTime: boolean | und
   })}`;
 }
 
-/** Shared shell for the editable fields — a bordered pill matching the design. */
-function EditField({ children }: { children: React.ReactNode }) {
-  return (
-    <View className="flex-1 rounded-xl border border-cream-300 bg-cream-50 px-3 py-2">{children}</View>
-  );
-}
-
+/**
+ * A task the AI found in a message, before it's added: drawn as the Tasks
+ * page's card (same surface, title and details row) with the app's own
+ * buttons under it, so it reads as "this is what will land in your list".
+ */
 export function TaskConfirmationCard({
   draft,
   onAdd,
@@ -104,74 +106,34 @@ export function TaskConfirmationCard({
   };
 
   return (
-    // The frame (orange edge, width, corners) is the card's own and stays as it is.
-    <View className="card card--cream gap-3 border-orange-500 px-4 pb-4 pt-5">
-      <View className="flex-row items-start gap-2">
-        {isEditing ? (
-          <TextInput
+    <View className="card card--cream-soft gap-3.5 px-[18px] py-[17px]" style={gradients.card}>
+      {isEditing ? (
+        <View className="gap-2.5">
+          <TextField
             value={draft.title}
             onChangeText={(text) => onChange?.({ title: text })}
             placeholder={t.chat.titlePlaceholder}
-            placeholderTextColor={colors.ink.creamMuted}
-            style={[{ flex: 1 }, rtl]}
-            className="rounded-xl border border-cream-300 bg-cream-50 px-3 py-2 font-grotesk-bold text-sm text-ink-cream"
           />
-        ) : (
-          <>
-            <Text
-              className="flex-1 font-grotesk-semibold text-[20px] leading-[25px] tracking-[-0.02em] text-ink-cream"
-              style={rtl}
-            >
-              {draft.title}
-            </Text>
-            <AnimatedPressable
-              onPress={() => setIsEditing(true)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel={t.chat.editDetails}
-              className="mt-[1px]"
-            >
-              <Feather name="edit-2" size={15} color={colors.ink.creamSubtle} />
-            </AnimatedPressable>
-          </>
-        )}
-      </View>
-
-      {isEditing ? (
-        <View className="gap-2.5">
           <View className="flex-row items-center gap-2.5">
-            <Feather name="clock" size={14} color={colors.orange[500]} />
-            <EditField>
-              <TextInput
-                value={draft.estimatedMinutes ? String(draft.estimatedMinutes) : ""}
-                onChangeText={handleMinutesChange}
-                keyboardType="number-pad"
-                placeholder={t.chat.minutesPlaceholder}
-                placeholderTextColor={colors.ink.creamSubtle}
-                style={{ padding: 0 }}
-                className="font-grotesk-medium text-sm text-ink-cream-subtle"
-              />
-            </EditField>
-            <Feather name="calendar" size={14} color={colors.orange[500]} />
+            <TextField
+              value={draft.estimatedMinutes ? String(draft.estimatedMinutes) : ""}
+              onChangeText={handleMinutesChange}
+              keyboardType="number-pad"
+              placeholder={t.chat.minutesPlaceholder}
+              className="flex-1"
+              trailing={<Feather name="clock" size={15} color={colors.ink.creamMuted} />}
+            />
+            {/* Shaped like a TextField, but a tap opens the date picker. */}
             <AnimatedPressable
               onPress={() => setPicker("date")}
-              className="flex-1 rounded-xl border border-cream-300 bg-cream-50 px-3 py-2"
+              scaleTo={0.98}
+              accessibilityRole="button"
+              className="input min-h-[44px] flex-1 flex-row items-center gap-2 border-cream-200 px-4"
             >
-              <Text className="font-grotesk-medium text-sm text-ink-cream-subtle">
+              <Text numberOfLines={1} className="flex-1 font-grotesk-regular text-sm text-ink-cream">
                 {formatDueFieldValue(draft.dueDate, draft.dueHasTime, t)}
               </Text>
-            </AnimatedPressable>
-          </View>
-
-          <View className="flex-row items-center justify-end">
-            <AnimatedPressable
-              onPress={() => {
-                setIsEditing(false);
-                setPicker(null);
-              }}
-              hitSlop={8}
-            >
-              <Text className="font-grotesk-medium text-sm text-ink-cream-subtle underline">{t.chat.doneEditing}</Text>
+              <Feather name="calendar" size={15} color={colors.ink.creamMuted} />
             </AnimatedPressable>
           </View>
 
@@ -183,59 +145,70 @@ export function TaskConfirmationCard({
               onChange={handlePickerChange}
             />
           ) : null}
+
+          <View className="flex-row justify-end">
+            <TextButton
+              icon="check"
+              tone="accent"
+              label={t.chat.doneEditing}
+              onPress={() => {
+                setIsEditing(false);
+                setPicker(null);
+              }}
+            />
+          </View>
         </View>
       ) : (
-        // Score in a soft chip, then duration and deadline. "No deadline"
-        // is a shade quieter than a real one.
-        <View className="flex-row flex-wrap items-center gap-x-3.5 gap-y-2">
-          <View
-            accessible
-            accessibilityLabel={t.tasks.score(priorityScore)}
-            // Less on the left: the gem's box has air of its own, so this
-            // looks even on both sides.
-            className="flex-row items-center gap-1 rounded-[8px] bg-cream-200/70 py-[2px] pl-[5px] pr-[7px]"
-          >
-            <GemLogo size={13} />
-            <Text className="font-grotesk-semibold text-[13px] leading-[17px] text-ink-cream-muted">{priorityScore}</Text>
-          </View>
-          <View className="flex-row items-center gap-1">
-            <Feather name="clock" size={14} color={colors.ink.creamSubtle} />
-            <Text className="font-grotesk-medium text-[13.5px] text-ink-cream-muted">
-              {formatDuration(draft.estimatedMinutes)}
+        // The Tasks page's card, line for line: bold title, then the details.
+        <View className="gap-2.5">
+          <View className="flex-row items-start gap-2">
+            <Text className="flex-1 font-grotesk-bold text-[18px] leading-[23px] tracking-tight text-ink-cream" style={rtl}>
+              {draft.title}
             </Text>
+            {/* Pulled into the corner so the pencil, not its touch area, lines
+                up with the title's first line and the card's edge. */}
+            <View className="mr-[-8px] mt-[-4px]">
+              <IconButton icon="edit-2" onPress={() => setIsEditing(true)} accessibilityLabel={t.chat.editDetails} />
+            </View>
           </View>
-          <View className="flex-row items-center gap-1">
-            <Feather name="calendar" size={14} color={colors.ink.creamSubtle} />
-            <Text
-              className={
+
+          <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1.5">
+            <MetaPill
+              icon={<Feather name="calendar" size={14} color={shownDueDate ? colors.orange[500] : colors.ink.creamSubtle} />}
+              label={dueLabel}
+              labelClassName={
                 shownDueDate
-                  ? "font-grotesk-medium text-[13.5px] text-ink-cream-muted"
-                  : "font-grotesk-medium text-[13.5px] text-ink-cream-subtle"
+                  ? "font-grotesk-semibold text-[13px] text-ink-cream"
+                  : "font-grotesk-medium text-[13px] text-ink-cream-muted"
               }
-            >
-              {dueLabel}
-            </Text>
+            />
+            <MetaPill
+              icon={<GemLogo size={13} />}
+              label={String(priorityScore)}
+              labelClassName="font-grotesk-semibold text-[13px] text-ink-cream-muted"
+              accessibilityLabel={t.tasks.score(priorityScore)}
+            />
+            <MetaPill
+              icon={<Feather name="clock" size={14} color={colors.ink.creamMuted} />}
+              label={formatDuration(draft.estimatedMinutes)}
+              labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
+            />
+            {repeatRule ? (
+              <MetaPill
+                icon={<Feather name="repeat" size={14} color={colors.orange[500]} />}
+                label={describeRule(repeatRule, t)}
+                labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
+              />
+            ) : null}
           </View>
         </View>
       )}
 
-      {repeatRule ? (
-        <View className="flex-row items-center gap-1">
-          <Feather name="repeat" size={14} color={colors.ink.creamSubtle} />
-          <Text className="flex-1 font-grotesk-medium text-[13.5px] text-ink-cream-muted" style={rtl}>
-            {describeRule(repeatRule, t)}
-          </Text>
-        </View>
-      ) : null}
-
-      <View className="mt-1 flex-row items-center justify-end gap-5">
-        <AnimatedPressable onPress={onDismiss} hitSlop={8}>
-          <Text className="font-grotesk-semibold text-[13.5px] text-ink-cream-muted">{t.chat.dismiss}</Text>
-        </AnimatedPressable>
-        <AnimatedPressable onPress={onAdd} className="flex-row items-center gap-2 rounded-full bg-orange-500 px-4 py-2">
-          <Feather name="check" size={13} color={colors.onAccent} />
-          <Text className="font-grotesk-bold text-[12.5px] leading-[17.5px] text-on-accent">{t.chat.addTask}</Text>
-        </AnimatedPressable>
+      {/* Split from the task by a hairline, so the buttons read as the
+          decision about it rather than as more of its details. */}
+      <View className="flex-row items-center justify-end gap-2.5 border-t border-cream-200 pt-3.5">
+        <SecondaryButton label={t.chat.dismiss} onPress={onDismiss} />
+        <PrimaryButton icon="check" label={t.chat.addTask} onPress={onAdd} />
       </View>
     </View>
   );

@@ -1,8 +1,9 @@
 import type { ProposedStep, ReassessmentUpdate } from "@/lib/ai/reassessTask";
 import { deadlineOf, sameDeadline } from "@/lib/deadline";
-import { editTaskDelta, effectiveChanges, priorityLevelOf, type TaskChanges } from "@/lib/taskOperations";
+import type { ImportanceLevel } from "@/lib/scoring";
+import { editTaskDelta, effectiveChanges, importanceLevelOf, type TaskChanges } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
-import type { Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
+import type { Subtask, Task, TaskDeadline } from "@/types/task";
 
 // The second half of a reassessment (the first is lib/ai/reassessTask.ts):
 // what the AI proposed, applied to the task as it is NOW and compared with
@@ -35,7 +36,7 @@ export type ReassessmentChange =
   | { field: "description"; kind: "added" | "updated" | "removed" }
   | { field: "deadline"; from?: TaskDeadline; to?: TaskDeadline }
   | { field: "duration"; from: number; to: number }
-  | { field: "priority"; from: TaskPriorityLevel; to: TaskPriorityLevel }
+  | { field: "priority"; from: ImportanceLevel; to: ImportanceLevel }
   | { field: "score"; from: number; to: number }
   | { field: "subtasks"; summary: SubtaskChangeSummary }
   | { field: "advice"; kind: "added" | "revised" };
@@ -241,7 +242,7 @@ export function describeReassessment(before: Task, after: Task): ReassessmentCha
   if (durationChanged) changes.push({ field: "duration", from: before.estimatedMinutes, to: after.estimatedMinutes });
   const importanceChanged = before.importance !== after.importance;
   if (importanceChanged) {
-    changes.push({ field: "priority", from: priorityLevelOf(before.importance), to: priorityLevelOf(after.importance) });
+    changes.push({ field: "priority", from: importanceLevelOf(before.importance), to: importanceLevelOf(after.importance) });
   }
   // The score is the app's own formula (lib/scoring.ts) run on the new
   // values. Reported only when an input to it changed here: saving also

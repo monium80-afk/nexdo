@@ -166,6 +166,11 @@ const FILTER_SCHEMA: GeminiJsonSchema = {
   },
 };
 
+// A task's own priority: the picker's three levels, and "critical" (High,
+// stressed by the user). Filters stay on the three — a critical task is
+// among "my high-priority tasks".
+const TASK_PRIORITIES = ["critical", "high", "medium", "low"] as const;
+
 const ACTION_SCHEMA: GeminiJsonSchema = {
   type: "OBJECT",
   properties: {
@@ -183,7 +188,8 @@ const ACTION_SCHEMA: GeminiJsonSchema = {
         // calendar date itself (that's what broke it), just copy the
         // deadline phrase verbatim; the device resolves it.
         dueDatePhrase: { type: "STRING", nullable: true },
-        priority: { type: "STRING", enum: ["high", "medium", "low"], nullable: true },
+        // "critical" only when the user stressed it — see rule 1.4 in the prompt.
+        priority: { type: "STRING", enum: [...TASK_PRIORITIES], nullable: true },
         note: { type: "STRING", nullable: true },
         steps: {
           type: "ARRAY",
@@ -437,9 +443,13 @@ function looksMultiItem(text: string): boolean {
 // dueDatePhrase), which saved every task with no deadline, medium priority
 // and 30 minutes — and therefore the same score. Read whatever it left out
 // straight off the user's own words instead.
+function isTaskPriority(value: string | undefined): boolean {
+  return (TASK_PRIORITIES as readonly string[]).includes(value ?? "");
+}
+
 function fillMissingTaskFields(action: InboxAction, text: string, now: Date, language: AppLanguage | undefined) {
   if (looksMultiItem(text)) {
-    if (!["high", "medium", "low"].includes(action.fields.priority ?? "")) action.fields.priority = "medium";
+    if (!isTaskPriority(action.fields.priority)) action.fields.priority = "medium";
     // No deadline is deliberate here: the model saw which line this task came
     // from and this code can't, so an invented date is worse than none.
     action.fields.estimatedMinutes ??= guessDuration(action.fields.title ?? "");
@@ -462,10 +472,10 @@ function fillMissingTaskFields(action: InboxAction, text: string, now: Date, lan
   if (textParses && ((hasExplicitTime(text, language) && !phraseHasTime) || !phraseParses)) {
     action.fields.dueDateText = text;
   }
-  // Importance the user stated outright ("it's really important", "no
-  // rush") beats the model's own judgement.
+  // Importance the user stated outright ("it's really important" → critical,
+  // "no rush" → low) beats the model's own judgement.
   const statedPriority = guessPriorityLevel(text);
-  if (statedPriority !== "medium" || !["high", "medium", "low"].includes(action.fields.priority ?? "")) {
+  if (statedPriority !== "medium" || !isTaskPriority(action.fields.priority)) {
     action.fields.priority = statedPriority;
   }
   // A length the user actually said ("for two hours") beats any estimate.

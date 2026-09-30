@@ -76,7 +76,12 @@ const DETAILS = {
     description: 'The deadline as the user said it, translated to English ("tomorrow at 6 pm", "next friday"). Never a computed date.',
   },
   estimatedMinutes: { type: "NUMBER", description: "Only if the user said how long it takes." },
-  priority: { type: "STRING", enum: ["high", "medium", "low"], description: "Only if the user said how important it is." },
+  priority: {
+    type: "STRING",
+    enum: ["critical", "high", "medium", "low"],
+    description:
+      'Only if the user said how important it is. "critical" only when they stressed it ("really important", "top priority", "critical").',
+  },
   repeat: REPEAT,
 };
 

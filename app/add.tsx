@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/expo";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
@@ -7,11 +7,13 @@ import Animated from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddItemField } from "@/components/AddItemField";
-import { IconButton, PrimaryButton, TextButton } from "@/components/Button";
+import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { IconButton, PrimaryButton, SecondaryButton } from "@/components/Button";
 import { Chip } from "@/components/Chip";
+import { FormSection } from "@/components/FormSection";
+import { IconTile } from "@/components/IconTile";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { ScreenHeader } from "@/components/ScreenHeader";
-import { SectionHeader } from "@/components/SectionHeader";
 import {
     computeDeadline,
     DEADLINE_OPTIONS,
@@ -24,8 +26,9 @@ import {
     type DeadlineValue,
 } from "@/components/TaskFormFields";
 import { TextField } from "@/components/TextField";
-import { listItemEntering, listItemLayout } from "@/constants/theme";
+import { gradients, listItemEntering, listItemLayout } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
@@ -34,6 +37,9 @@ import { useTaskStore } from "@/store/useTaskStore";
 import type { TaskPriorityLevel } from "@/types/task";
 
 const PRIORITY_OPTIONS: TaskPriorityLevel[] = ["high", "medium", "low"];
+
+// The footer tray casts its shadow up over the form scrolling under it.
+const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
 
 // Steps have no time of their own — the task's duration is split between them on save.
 type StepDraft = { id: string; label: string };
@@ -50,6 +56,7 @@ export default function Add() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const addTask = useTaskStore((state) => state.addTask);
+  useStatusBarStyle("light");
 
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
@@ -183,18 +190,19 @@ export default function Add() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScreenHeader
           title={t.form.title}
+          subtitle={t.form.subtitle}
+          accent
           actions={<IconButton icon="x" variant="header" onPress={handleClose} accessibilityLabel={t.common.close} />}
         />
 
+        <View className="screen-body">
         <ScrollView
-          style={{ backgroundColor: colors.cream[100] }}
           contentContainerStyle={{ paddingBottom: 24 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="gap-6 px-6 pt-4">
-            <View className="gap-2">
-              <SectionHeader label={t.form.taskTitle} required />
+          <View className="gap-2 px-3 pt-4">
+            <FormSection icon="file-text" label={t.form.taskTitle} required plain>
               <TextField
                 value={title}
                 onChangeText={(text) => {
@@ -207,20 +215,25 @@ export default function Add() {
               {titleTouched ? (
                 <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.titleRequired}</Text>
               ) : null}
-            </View>
+            </FormSection>
 
-            <View className="gap-3">
-              <SectionHeader
-                icon="clock"
-                label={t.form.duration}
-                action={{ label: t.form.customDuration, onPress: () => setCustomDurationOpen((open) => !open) }}
-              />
+            <FormSection
+              icon="clock"
+              label={t.form.duration}
+              action={{
+                label: t.form.customDuration,
+                icon: "edit-2",
+                iconAfter: true,
+                onPress: () => setCustomDurationOpen((open) => !open),
+              }}
+            >
               <View className="flex-row flex-wrap gap-2">
                 {DURATION_OPTIONS.map((minutes) => (
                   <Chip
                     key={minutes}
                     label={t.form.durationOptions[minutes]}
                     selected={!customDurationOpen && durationMinutes === minutes}
+                    solid
                     accessibilityRole="radio"
                     onPress={() => {
                       setDurationMinutes(minutes);
@@ -242,14 +255,13 @@ export default function Add() {
               {customDurationError ? (
                 <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.durationError}</Text>
               ) : null}
-            </View>
+            </FormSection>
 
-            <View className="gap-3">
-              <SectionHeader
-                icon="calendar"
-                label={t.form.deadline}
-                action={{ label: t.form.pickDate, onPress: handleToggleCustomDeadline }}
-              />
+            <FormSection
+              icon="calendar"
+              label={t.form.deadline}
+              action={{ label: t.form.pickDate, icon: "calendar", onPress: handleToggleCustomDeadline }}
+            >
               <View className="flex-row flex-wrap gap-2">
                 {DEADLINE_OPTIONS.map((value) => (
                   <Chip
@@ -265,12 +277,16 @@ export default function Add() {
                 ))}
               </View>
               {customDeadlineOpen ? <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} /> : null}
-            </View>
+            </FormSection>
 
-            <RecurrencePicker value={recurrence} onChange={setRecurrence} deadline={chosenDeadline} />
+            <FormSection icon="repeat" tone="green" label={t.recurrence.title}>
+              <RecurrencePicker value={recurrence} onChange={setRecurrence} deadline={chosenDeadline} nested />
+            </FormSection>
 
-            <View className="gap-3">
-              <SectionHeader icon={<Ionicons name="flame" size={14} color={colors.ink.creamMuted} />} label={t.form.priority} />
+            <FormSection
+              icon={<Ionicons name="flame" size={17} color={colors.orange[500]} />}
+              label={t.form.priority}
+            >
               <View className="flex-row gap-2">
                 {PRIORITY_OPTIONS.map((level) => (
                   <PriorityCard
@@ -282,10 +298,9 @@ export default function Add() {
                   />
                 ))}
               </View>
-            </View>
+            </FormSection>
 
-            <View className="gap-3">
-              <SectionHeader icon="check-square" label={t.form.planSteps(steps.length)} hint={t.form.optionalPlan} />
+            <FormSection icon="check-square" label={t.form.planSteps(steps.length)} hint={t.form.optionalPlan}>
               <AddItemField
                 value={stepDraftLabel}
                 onChangeText={setStepDraftLabel}
@@ -298,8 +313,11 @@ export default function Add() {
                   {steps.map((step, index) => (
                     <Animated.View key={step.id} entering={listItemEntering(index)} layout={listItemLayout()}>
                       {/* A step-to-be: the checklist row's card, numbered instead of ticked. */}
-                      <View className="card card--cream-soft min-h-[46px] flex-row items-center gap-3 pl-[16px] pr-1.5">
-                        <Text className="w-[22px] font-grotesk-bold text-sm text-ink-cream-muted">{index + 1}.</Text>
+                      <View
+                        className="card card--cream-soft min-h-[46px] flex-row items-center gap-3 pl-[16px] pr-1.5"
+                        style={gradients.card}
+                      >
+                        <Text className="w-[22px] font-grotesk-bold text-sm text-orange-600">{index + 1}.</Text>
                         <Text className="flex-1 font-grotesk-semibold text-base text-ink-cream" numberOfLines={1} style={rtl}>
                           {step.label}
                         </Text>
@@ -309,10 +327,9 @@ export default function Add() {
                   ))}
                 </View>
               ) : null}
-            </View>
+            </FormSection>
 
-            <View className="gap-3">
-              <SectionHeader icon="align-left" label={t.form.notesTitle} />
+            <FormSection icon="align-left" label={t.form.notesTitle}>
               <TextField
                 value={notes}
                 onChangeText={setNotes}
@@ -320,25 +337,33 @@ export default function Add() {
                 multiline
                 inputStyle={{ minHeight: 90 }}
               />
-            </View>
+            </FormSection>
           </View>
         </ScrollView>
 
+        {/* A raised tray at the foot: the way over to the AI, then the two
+            ways out — Cancel quiet, Add Task glowing. */}
         <View
-          className="gap-3 border-t border-cream-200 bg-cream-50 px-6 pt-3"
-          style={{ paddingBottom: insets.bottom + 21 }}
+          className="gap-3 rounded-t-[28px] border-t border-white/80 bg-cream-50 px-6 pt-3"
+          style={[{ paddingBottom: insets.bottom + 21 }, FOOTER_SHADOW]}
         >
-          <TextButton
-            icon="message-circle"
-            label={t.form.openAiChat}
+          <AnimatedPressable
             onPress={handleOpenAiChat}
-            tone="accent"
-            className="self-center py-1"
-          />
-          <View className="flex-row items-center gap-5">
-            <TextButton label={t.common.cancel} onPress={handleClose} className="py-3" />
-            <PrimaryButton icon="plus" size="lg" label={t.form.addTask} onPress={handleSubmit} className="flex-1" />
+            accessibilityRole="button"
+            scaleTo={0.98}
+            className="card card--cream-inset flex-row items-center gap-2.5 py-[5px] pl-[6px] pr-3"
+          >
+            <IconTile icon="message-circle" size="sm" />
+            <Text className="flex-1 font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
+              {t.form.openAiChat}
+            </Text>
+            <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
+          </AnimatedPressable>
+          <View className="flex-row items-center gap-3">
+            <SecondaryButton size="lg" label={t.common.cancel} onPress={handleClose} className="flex-1" />
+            <PrimaryButton icon="plus" size="lg" label={t.form.addTask} onPress={handleSubmit} className="flex-[1.5]" />
           </View>
+        </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

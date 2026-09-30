@@ -2,16 +2,28 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { PrimaryButton } from "@/components/Button";
 import { GemLogo } from "@/components/GemLogo";
 import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
-import { MOTION } from "@/constants/theme";
+import { useTabBarHeight } from "@/components/TabBar";
+import { MOTION, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
@@ -28,11 +40,33 @@ type FocusCardState = {
   returnBounds: CardBounds;
 };
 
+// The Next card's corners (NextTaskCardStack's CARD_RADIUS), which the
+// session grows out of and shrinks back into.
+const CARD_RADIUS = 28;
+// Opening decelerates hard into place; closing accelerates away — Material's
+// "emphasized" curves, which read as one confident movement each way.
+const GROW = { duration: 360, easing: Easing.bezier(0.05, 0.7, 0.1, 1) };
+const SHRINK = { duration: 300, easing: Easing.bezier(0.3, 0, 0.8, 0.15) };
+const CONTENT_IN_MS = 220;
+const CONTENT_OUT_MS = 140;
+const HAND_BACK_MS = 180;
+
+/**
+ * A session opening out of its Next card, and closing back into it.
+ *
+ * Only an empty shell changes size: a card-coloured shape that grows to fill
+ * the screen, taking on the session's glow as it goes. The session itself is
+ * laid out at full size once, faded in when the shell is there — resizing it
+ * every frame used to squeeze and re-wrap everything in it on the way. Closing
+ * runs the other way: the session fades, the shell shrinks onto the card it
+ * came from (or the one that took its place), and melts away over it.
+ */
 function FocusCardTransition({
   focus,
   screenWidth,
   screenHeight,
   closing,
+  onLanded,
   onExited,
   onDetails,
 }: {
@@ -40,6 +74,8 @@ function FocusCardTransition({
   screenWidth: number;
   screenHeight: number;
   closing: boolean;
+  /** The shell is back over the card: time to show the card again under it. */
+  onLanded: () => void;
   onExited: () => void;
   onDetails: (taskId: string) => void;
 }) {
@@ -49,44 +85,74 @@ function FocusCardTransition({
   const y = useSharedValue(focus.origin.y);
   const width = useSharedValue(focus.origin.width);
   const height = useSharedValue(focus.origin.height);
-  const radius = useSharedValue(24);
+  // 0 = the Next card it grew out of, 1 = the full-screen session.
+  const expand = useSharedValue(0);
+  const content = useSharedValue(0);
+  const shell = useSharedValue(1);
+  // The session's content is mounted once the shell has finished growing:
+  // mounting it alongside the growth cost the first frames of the animation.
+  const [contentMounted, setContentMounted] = useState(reduceMotion);
 
   useEffect(() => {
     if (closing) return;
-    const target = { x: 0, y: 0, width: screenWidth, height: screenHeight };
-    const config = {
-      duration: reduceMotion ? 0 : MOTION.duration.screen,
-      easing: MOTION.easing.standard,
-    };
-    x.set(withTiming(target.x, config));
-    y.set(withTiming(target.y, config));
-    width.set(withTiming(target.width, config));
-    height.set(withTiming(target.height, config));
-    radius.set(withTiming(0, config));
-  }, [closing, height, radius, reduceMotion, screenHeight, screenWidth, width, x, y]);
+    const grow = { ...GROW, duration: reduceMotion ? 0 : GROW.duration };
+    x.set(withTiming(0, grow));
+    y.set(withTiming(0, grow));
+    width.set(withTiming(screenWidth, grow));
+    height.set(withTiming(screenHeight, grow));
+    expand.set(
+      withTiming(1, grow, (finished) => {
+        if (finished) scheduleOnRN(setContentMounted, true);
+      }),
+    );
+  }, [closing, expand, height, reduceMotion, screenHeight, screenWidth, width, x, y]);
+
+  // Fades in once it's mounted — the frame after, so it's never seen at full strength first.
+  useEffect(() => {
+    if (!contentMounted || closing) return;
+    content.set(withTiming(1, { duration: reduceMotion ? 0 : CONTENT_IN_MS, easing: MOTION.easing.enter }));
+  }, [closing, content, contentMounted, reduceMotion]);
 
   useEffect(() => {
     if (!closing) return;
     const target = focus.returnBounds;
-    const config = {
-      duration: reduceMotion ? 0 : MOTION.duration.screen,
-      easing: MOTION.easing.standard,
-    };
-    x.set(withTiming(target.x, config));
-    y.set(withTiming(target.y, config));
-    width.set(withTiming(target.width, config));
-    height.set(withTiming(target.height, config, (finished) => {
-      if (finished) scheduleOnRN(onExited);
-    }));
-    radius.set(withTiming(24, config));
-  }, [closing, focus.returnBounds, height, onExited, radius, reduceMotion, width, x, y]);
+    const wait = reduceMotion ? 0 : CONTENT_OUT_MS;
+    const shrink = { ...SHRINK, duration: reduceMotion ? 0 : SHRINK.duration };
+    content.set(withTiming(0, { duration: wait, easing: MOTION.easing.exit }));
+    x.set(withDelay(wait, withTiming(target.x, shrink)));
+    y.set(withDelay(wait, withTiming(target.y, shrink)));
+    width.set(withDelay(wait, withTiming(target.width, shrink)));
+    height.set(withDelay(wait, withTiming(target.height, shrink)));
+    expand.set(
+      withDelay(
+        wait,
+        withTiming(0, shrink, (finished) => {
+          if (!finished) return;
+          scheduleOnRN(onLanded);
+          // The card is showing again underneath: let the shell melt into it.
+          shell.set(
+            withTiming(0, { duration: reduceMotion ? 0 : HAND_BACK_MS }, (done) => {
+              if (done) scheduleOnRN(onExited);
+            }),
+          );
+        }),
+      ),
+    );
+  }, [closing, content, expand, focus.returnBounds, height, onExited, onLanded, reduceMotion, shell, width, x, y]);
 
-  const cardStyle = useAnimatedStyle(() => ({
+  const shellStyle = useAnimatedStyle(() => ({
     left: x.value,
     top: y.value,
     width: width.value,
     height: height.value,
-    borderRadius: radius.value,
+    borderRadius: CARD_RADIUS * (1 - expand.value),
+    opacity: shell.value,
+  }));
+  // The Next card's own surface over the session's glow, fading as it grows.
+  const cardSurfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: content.value,
+    transform: [{ translateY: (1 - content.value) * 14 }],
   }));
 
   return (
@@ -94,6 +160,7 @@ function FocusCardTransition({
       {/* Blocks the task stack while leaving the persistent tab bar outside this screen interactive. */}
       <View pointerEvents="auto" style={StyleSheet.absoluteFill} />
       <Animated.View
+        pointerEvents="none"
         style={[
           {
             position: "absolute",
@@ -103,29 +170,95 @@ function FocusCardTransition({
             borderWidth: 1,
             borderColor: colors.hairlineCharcoal,
           },
-          cardStyle,
+          // Embers glowing behind the glass of the session card.
+          gradients.session,
+          shellStyle,
         ]}
       >
-        <NextTaskCard
-          task={focus.task}
-          rank={focus.rank}
-          focusMode
-          onStart={() => {}}
-          onDetails={() => onDetails(focus.task.id)}
-        />
+        <Animated.View style={[StyleSheet.absoluteFill, gradients.charcoalCard, cardSurfaceStyle]} />
       </Animated.View>
+      {contentMounted ? (
+        <Animated.View
+          pointerEvents={closing ? "none" : "auto"}
+          style={[{ position: "absolute", zIndex: 21, left: 0, top: 0, width: screenWidth, height: screenHeight }, contentStyle]}
+        >
+          <NextTaskCard
+            task={focus.task}
+            rank={focus.rank}
+            focusMode
+            onStart={() => {}}
+            onComplete={() => {}}
+            onDetails={() => onDetails(focus.task.id)}
+          />
+        </Animated.View>
+      ) : null}
     </>
   );
 }
 
-/** "01", "12" — the queue counter keeps two digits so it doesn't jump in width at 10. */
-const twoDigits = (value: number) => String(value).padStart(2, "0");
+// However long the queue, the dots stay a short row: past this many, each one
+// stands for a stretch of it and the lit one shows roughly where you are.
+const MAX_DOTS = 5;
+
+/** Where you are in the queue, as a row of dots. */
+function QueueDots({ index, total }: { index: number; total: number }) {
+  const count = Math.min(total, MAX_DOTS);
+  const active = total <= MAX_DOTS ? index : Math.round((index / Math.max(1, total - 1)) * (count - 1));
+  return (
+    <View className="flex-row items-center gap-[5px]" importantForAccessibility="no-hide-descendants">
+      {Array.from({ length: count }, (_, dot) =>
+        dot === active ? (
+          <View key={dot} className="h-[8px] w-[8px] rounded-full bg-orange-500" style={DOT_GLOW} />
+        ) : (
+          <View key={dot} className="h-[6px] w-[6px] rounded-full bg-orange-200" />
+        ),
+      )}
+    </View>
+  );
+}
+
+const DOT_GLOW = { boxShadow: "0 2px 6px rgba(242, 101, 42, 0.55)" };
+
+/**
+ * Soft peach dunes along the foot of the page, behind the buttons. They sit
+ * just above the tab bar, which floats over the page, and their solid foot
+ * runs on down to the bottom of the screen — so that's what the bar's rounded
+ * corners show.
+ */
+function BottomWaves() {
+  const colors = useColors();
+  const { width } = useWindowDimensions();
+  const tabBarHeight = useTabBarHeight();
+  return (
+    <View pointerEvents="none" className="absolute bottom-0 left-0 right-0">
+      <Svg width={width} height={130} viewBox="0 0 360 130" preserveAspectRatio="none">
+        <Defs>
+          <LinearGradient id="duneBack" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FBDDBC" stopOpacity={0.85} />
+            <Stop offset="1" stopColor="#F9D0A6" stopOpacity={0.9} />
+          </LinearGradient>
+          {/* Solid at the foot, in the colour it carries on in below. */}
+          <LinearGradient id="duneFront" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#F8CFA2" stopOpacity={0.8} />
+            <Stop offset="1" stopColor={colors.pageFoot.dunes} stopOpacity={1} />
+          </LinearGradient>
+        </Defs>
+        <Path d="M0 58 C 70 30, 150 40, 220 58 S 320 70, 360 36 L 360 130 L 0 130 Z" fill="url(#duneBack)" />
+        <Path d="M0 96 C 60 70, 130 78, 200 94 S 310 104, 360 80 L 360 130 L 0 130 Z" fill="url(#duneFront)" />
+      </Svg>
+      <View style={{ height: tabBarHeight, backgroundColor: colors.pageFoot.dunes }} />
+    </View>
+  );
+}
 
 export default function Next() {
   const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useTabBarHeight();
+  const reduceMotion = useReducedMotion();
   const rootRef = useRef<View>(null);
   const startingSession = useRef(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -138,8 +271,14 @@ export default function Next() {
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [rootSize, setRootSize] = useState({ width: windowWidth, height: windowHeight });
+  // Cream at the top, so dark status bar icons. A focus session fills the
+  // screen below the status bar, which stays on the cream.
+  useStatusBarStyle("dark");
   const [focusState, setFocusState] = useState<FocusCardState | null>(null);
   const [focusClosing, setFocusClosing] = useState(false);
+  // The closing session's shell is back over its card, so the card shows again under it.
+  const [focusLanded, setFocusLanded] = useState(false);
+  const handleFocusLanded = useCallback(() => setFocusLanded(true), []);
 
   // "I've only got 20 minutes" in the AI chat routes here carrying that budget
   // (see REDIRECT_NEXT in lib/ai/classifyIntent.ts). Without reading it back
@@ -274,6 +413,7 @@ export default function Next() {
       });
       startSession({ taskIds: [task.id], plannedMinutes, energy: "ready" });
       setFocusClosing(false);
+      setFocusLanded(false);
       const taskIndex = pendingTasks.findIndex((entry) => entry.id === task.id);
       setFocusState({ task, rank: Math.max(1, taskIndex + 1), origin, returnBounds: origin });
       startingSession.current = false;
@@ -293,43 +433,68 @@ export default function Next() {
   const clearFocus = useCallback(() => {
     setFocusState(null);
     setFocusClosing(false);
+    setFocusLanded(false);
   }, []);
 
   if (!currentTask && !focusState) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-        <View className="flex-1 items-center justify-center gap-3 bg-cream-100 px-6">
-          <Ionicons name="checkmark-done-circle" size={40} color={colors.orange[500]} />
-          <Text className="text-card-title text-ink-cream">{t.next.allCaughtUp}</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
+        <BottomWaves />
+        {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
+          className="flex-1 items-center justify-center gap-3 px-6"
+          // Centred in what the tab bar leaves showing.
+          style={{ paddingBottom: tabBarHeight }}
+        >
+          <View
+            pointerEvents="none"
+            className="absolute left-0 right-0"
+            style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+          />
+          <View
+            className="tile tile--orange h-[52px] w-[52px] rounded-[16px]"
+            style={gradients.tileOrange}
+          >
+            <Ionicons name="checkmark-done" size={26} color={colors.orange[500]} />
+          </View>
+          <Text className="text-card-title text-center text-ink-cream">{t.next.allCaughtUp}</Text>
           <Text className="text-body text-center text-ink-cream-muted">{t.next.allCaughtUpBody}</Text>
-          <AnimatedPressable onPress={() => router.push("/add")} className="btn btn--primary mt-2 flex-row gap-2 px-6">
-            <Feather name="plus" size={16} color={colors.onAccent} />
-            <Text className="font-grotesk-bold text-base text-on-accent">{t.next.addATask}</Text>
-          </AnimatedPressable>
-        </View>
+          <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
+        </Animated.View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
       <View ref={rootRef} style={{ flex: 1 }} onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
         setRootSize((current) => current.width === width && current.height === height ? current : { width, height });
       }}>
-      <View className="gap-2 bg-charcoal-900 px-6 pb-[18px] pt-2">
+      {/* Warm light from the top-right corner, running up under the status
+          bar, and peach dunes along the foot — the page's own scenery. */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+      />
+      <BottomWaves />
+
+      <View className="px-6 pb-1 pt-2">
         <View className="flex-row items-center gap-1.5">
-          <GemLogo size={16} onDark />
+          <GemLogo size={16} />
           <Text className="eyebrow text-orange-500">{t.next.eyebrow}</Text>
         </View>
-        <Text className="font-grotesk-bold text-[19px] leading-[24px] tracking-tight text-ink-charcoal" style={rtl}>
+        <Text className="mt-2 font-grotesk-bold text-[19px] leading-[24px] tracking-tight text-ink-cream" style={rtl}>
           {t.next.heading}
         </Text>
       </View>
 
-      <View className="screen-body">
+      <View className="flex-1">
         <ScrollView
-          contentContainerStyle={{ paddingTop: 18, paddingBottom: 28 }}
+          // Clear of the tab bar, which floats over the foot of the page.
+          contentContainerStyle={{ paddingTop: 18, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
           {activeBudget !== undefined ? (
@@ -362,12 +527,15 @@ export default function Next() {
               <View
                 accessible
                 accessibilityLabel={t.next.rankOf(currentIndex + 1, total)}
-                className="px-6"
+                className="flex-row items-center gap-3 px-6"
               >
-                <Text className="font-grotesk-bold text-[15px] text-ink-cream">
-                  {twoDigits(currentIndex + 1)}
-                  <Text className="font-grotesk-medium text-ink-cream-subtle">{` / ${twoDigits(total)}`}</Text>
-                </Text>
+                <View className="card card--cream-soft rounded-[12px] px-2.5 py-1" style={gradients.card}>
+                  <Text className="font-grotesk-bold text-[15px] text-ink-cream">
+                    {currentIndex + 1}
+                    <Text className="font-grotesk-medium text-ink-cream-subtle">{` / ${total}`}</Text>
+                  </Text>
+                </View>
+                <QueueDots index={currentIndex} total={total} />
               </View>
 
               <NextTaskCardStack
@@ -376,7 +544,7 @@ export default function Next() {
                 onIndexChange={handleIndexChange}
                 onStart={handleStartSession}
                 onDetails={handleDetails}
-                focusTaskId={focusState?.task.id}
+                focusTaskId={focusState && !focusLanded ? focusState.task.id : undefined}
                 onFocusBoundsChange={handleFocusBoundsChange}
               />
             </>
@@ -389,6 +557,7 @@ export default function Next() {
           screenWidth={rootSize.width}
           screenHeight={rootSize.height}
           closing={focusClosing}
+          onLanded={handleFocusLanded}
           onExited={clearFocus}
           onDetails={handleDetails}
         />

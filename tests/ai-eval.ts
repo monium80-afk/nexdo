@@ -154,7 +154,13 @@ const CASES: Case[] = [
   {
     name: "modify importance",
     say: "make the groceries high priority",
-    check: () => (byTitle("Groceries")?.importance === 75 ? null : `importance ${byTitle("Groceries")?.importance}`),
+    check: () => (byTitle("Groceries")?.importance === 80 ? null : `importance ${byTitle("Groceries")?.importance}`),
+  },
+  {
+    name: "stressed importance is critical",
+    say: "Calling the dentist is really important",
+    check: () =>
+      byTitle("Call the dentist")?.importance === 100 ? null : `importance ${byTitle("Call the dentist")?.importance}`,
   },
   // Bulk.
   {
@@ -183,7 +189,7 @@ const CASES: Case[] = [
     check: () => {
       const business = ["Business plan", "Client pitch for business"].map((title) => byTitle(title)?.importance);
       const other = byTitle("Groceries")?.importance;
-      return business.every((value) => value === 75) && other === 25 ? null : `business ${business}, groceries ${other}`;
+      return business.every((value) => value === 80) && other === 20 ? null : `business ${business}, groceries ${other}`;
     },
   },
   {

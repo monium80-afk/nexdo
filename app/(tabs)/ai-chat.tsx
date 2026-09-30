@@ -2,19 +2,21 @@ import { useUser } from "@clerk/expo";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Alert, Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
 import { InboxInput } from "@/components/InboxInput";
-import { SuggestionChip } from "@/components/SuggestionChip";
+import { SuggestionChip, type SuggestionTone } from "@/components/SuggestionChip";
+import { useTabBarHeight } from "@/components/TabBar";
 import { TaskConfirmationCard } from "@/components/TaskConfirmationCard";
-import { colors } from "@/constants/theme";
+import { colors, gradients } from "@/constants/theme";
 import { INBOX_QUICK_ACTIONS } from "@/data/aiPrompts";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useTranslation } from "@/hooks/useTranslation";
 import { adviceToText, generateAdvice } from "@/lib/ai/generateAdvice";
 import { extractAttachmentText } from "@/lib/ai/media";
@@ -33,23 +35,32 @@ const QUICK_ACTION_ICON_SIZE = 18;
 const MIN_IMAGE_RATIO = 3 / 4;
 const MAX_IMAGE_RATIO = 16 / 9;
 
-// Each quick-action chip gets its own colored icon, keyed by INBOX_QUICK_ACTIONS id.
-const QUICK_ACTION_ICONS: Record<string, ReactNode> = {
-  "whats-next": <Feather name="plus" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.add} />,
-  "breakdown-top": <Feather name="check" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.complete} />,
-  "quick-win": <Feather name="trash-2" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.remove} />,
-  "overdue-catchup": <Feather name="refresh-cw" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.change} />,
-  "break-down": (
-    <MaterialCommunityIcons name="format-list-checks" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.breakDown} />
-  ),
-  prioritize: <Feather name="target" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.prioritize} />,
+// Each quick-action chip is tinted in its own colour, with a matching icon,
+// keyed by INBOX_QUICK_ACTIONS id. Add leads the row as the glowing one.
+const QUICK_ACTION_STYLES: Record<string, { tone: SuggestionTone; icon: ReactNode }> = {
+  "whats-next": { tone: "accent", icon: <Feather name="plus" size={QUICK_ACTION_ICON_SIZE} color={colors.onAccent} /> },
+  "breakdown-top": {
+    tone: "green",
+    icon: <Feather name="check" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.complete} />,
+  },
+  "quick-win": { tone: "red", icon: <Feather name="trash-2" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.remove} /> },
+  "overdue-catchup": {
+    tone: "amber",
+    icon: <Feather name="refresh-cw" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.change} />,
+  },
+  "break-down": {
+    tone: "olive",
+    icon: <MaterialCommunityIcons name="format-list-checks" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.breakDown} />,
+  },
+  prioritize: { tone: "blue", icon: <Feather name="target" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.prioritize} /> },
 };
 
 // Both sides share one bubble shape; the corner nearest the speaker is
 // tighter, so it points at them. No avatars and no timestamps: which side a
 // bubble sits on says who said it.
-const USER_BUBBLE = "rounded-[15px] rounded-br-[6px] bg-charcoal-800 px-[13px] py-[9px]";
-const AI_BUBBLE = "card--cream rounded-[15px] rounded-bl-[6px] border px-[13px] py-[9px]";
+const USER_BUBBLE = "rounded-[18px] rounded-br-[6px] bg-charcoal-800 px-[13px] py-[9px]";
+const AI_BUBBLE = "card--cream rounded-[18px] rounded-bl-[6px] border px-[13px] py-[9px]";
+const USER_BUBBLE_SHADOW = { boxShadow: "0 10px 22px -10px rgba(30, 16, 6, 0.5)" };
 
 /** An image the user sent, shown inside their bubble like a regular chat attachment. */
 function ChatImage({ attachment }: { attachment: ChatAttachment }) {
@@ -77,7 +88,10 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
     };
   }, [storagePath]);
 
-  if (failed) return null;
+  // Unreadable (photos sent before 2026-09-30 were stored broken, see
+  // lib/localFile.ts): a chip still says a photo was sent, rather than an
+  // empty bubble.
+  if (failed) return <AttachmentChip attachment={attachment} />;
 
   const uri = localUri ?? signedUrl;
   const ratio = attachment.width && attachment.height ? attachment.width / attachment.height : 4 / 3;
@@ -109,21 +123,25 @@ function ChatImage({ attachment }: { attachment: ChatAttachment }) {
 }
 
 /**
- * A voice note or document the user sent. There's nothing to show for these
- * the way there is for an image, so a small chip stands in — otherwise a
- * message like "summarize this" would look like it was sent with nothing.
+ * A voice note or document the user sent (or a photo that can't be loaded).
+ * There's nothing to show for these the way there is for an image, so a small
+ * chip stands in — otherwise a message like "summarize this" would look like
+ * it was sent with nothing.
  */
 function AttachmentChip({ attachment }: { attachment: ChatAttachment }) {
   const t = useTranslation();
+  const isImage = isImageAttachment(attachment);
   return (
     <View className="flex-row items-center gap-2 self-start rounded-lg bg-white/10 px-2.5 py-1.5">
       <Feather
-        name={attachment.kind === "voice" ? "mic" : "paperclip"}
+        name={isImage ? "image" : attachment.kind === "voice" ? "mic" : "paperclip"}
         size={13}
         color={colors.ink.charcoalMuted}
       />
       <Text numberOfLines={1} className="font-grotesk-medium text-xs text-ink-charcoal-muted">
-        {attachment.kind === "voice" ? attachment.label : (attachment.name ?? t.chat.documentLabel)}
+        {attachment.kind === "voice"
+          ? attachment.label
+          : (attachment.name ?? (isImage ? t.chat.photoLabel : t.chat.documentLabel))}
       </Text>
     </View>
   );
@@ -136,9 +154,9 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   if (message.role === "ai") {
     return (
       <Animated.View entering={FadeInUp.duration(240)} className="items-start">
-        <View className={`max-w-[88%] ${AI_BUBBLE}`}>
+        <View className={`max-w-[88%] ${AI_BUBBLE}`} style={gradients.card}>
           {/* The welcome message is app copy, so it follows the current language. */}
-          <Text className="text-quote text-ink-cream" style={rtl}>
+          <Text className="font-grotesk-regular text-[13px] leading-[19.5px] text-ink-cream" style={rtl}>
             {message.id === "welcome" ? t.chat.welcome : message.text}
           </Text>
         </View>
@@ -155,7 +173,10 @@ function ChatBubble({ message }: { message: ChatMessage }) {
 
   return (
     <Animated.View entering={FadeInDown.duration(220)} className="items-end">
-      <View className={`${hasImage ? "w-[80%]" : "max-w-[85%]"} gap-2 ${USER_BUBBLE}`}>
+      <View
+        className={`${hasImage ? "w-[80%]" : "max-w-[85%]"} gap-2 ${USER_BUBBLE}`}
+        style={[gradients.charcoalCard, USER_BUBBLE_SHADOW]}
+      >
         {attachments.map((attachment, index) =>
           isImageAttachment(attachment) ? (
             <ChatImage key={`${attachment.uri}-${index}`} attachment={attachment} />
@@ -178,8 +199,8 @@ function TypingBubble() {
 
   return (
     <Animated.View entering={FadeInUp.duration(200)} className="items-start">
-      <View className={AI_BUBBLE}>
-        <Text className="text-quote text-ink-cream-muted">{t.chat.typing}</Text>
+      <View className={AI_BUBBLE} style={gradients.card}>
+        <Text className="font-grotesk-regular text-[13px] leading-[19.5px] text-ink-cream-muted">{t.chat.typing}</Text>
       </View>
     </Animated.View>
   );
@@ -204,6 +225,24 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const redirectToNext = useChatStore((state) => state.redirectToNext);
   const clearRedirectToNext = useChatStore((state) => state.clearRedirectToNext);
   const tasks = useTaskStore((state) => state.tasks);
+  const insets = useSafeAreaInsets();
+  useStatusBarStyle("dark");
+  // The input is kept clear of the tab bar, which floats over the foot of the
+  // page. On iOS an open keyboard covers the bar, and KeyboardAvoidingView
+  // lifts the input clear of the keyboard itself — so the bar's room is only
+  // kept while the keyboard is down. (Android's window shrinks for the
+  // keyboard, bar and all, so there the room is always kept.)
+  const tabBarHeight = useTabBarHeight();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const shown = Keyboard.addListener("keyboardWillShow", () => setKeyboardOpen(true));
+    const hidden = Keyboard.addListener("keyboardWillHide", () => setKeyboardOpen(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
 
   const pendingCount = tasks.filter((task) => task.status === "pending").length;
   const pendingDraftCount = pendingActions.reduce(
@@ -390,10 +429,16 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-      <View className="flex-row items-center gap-3 border-b border-cream-300 bg-cream-100 px-6 pb-4 pt-2">
+      <View className="flex-row items-center gap-3 px-6 pb-4 pt-2">
+        {/* Warm light from the top-right corner, running up under the status bar. */}
+        <View
+          pointerEvents="none"
+          className="absolute left-0 right-0"
+          style={[{ top: -insets.top, height: 360 + insets.top }, gradients.creamGlow]}
+        />
         <GemLogo size={44} />
         <View className="flex-1">
-          <Text className="text-card-title text-ink-cream">
+          <Text className="text-card-title text-ink-cream" numberOfLines={2}>
             {contextTask ? contextTask.title : t.chat.inboxTitle}
           </Text>
           <Text className="font-grotesk-medium text-sm text-ink-cream-muted">
@@ -401,7 +446,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
               t.chat.contextSubtitle
             ) : (
               <>
-                <Text className="font-grotesk-bold text-ink-cream">{pendingCount}</Text>
+                <Text className="font-grotesk-bold text-orange-500">{pendingCount}</Text>
                 {t.chat.activeTasksSuffix}
               </>
             )}
@@ -450,7 +495,8 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
               {pendingDraftCount > 1 ? (
                 <AnimatedPressable
                   onPress={() => void confirmAllPendingDrafts()}
-                  className="flex-row items-center justify-center gap-2 self-end rounded-full bg-orange-500 px-4 py-2.5"
+                  style={gradients.accent}
+                  className="glow-accent flex-row items-center justify-center gap-2 self-end rounded-full bg-orange-500 px-4 py-2.5"
                 >
                   <Feather name="check-circle" size={16} color={colors.cream[50]} />
                   <Text className="font-grotesk-bold text-sm text-cream-50">{t.chat.addAll(pendingDraftCount)}</Text>
@@ -458,7 +504,13 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
               ) : null}
               {pendingActions.some((pending) => pending.action.type !== "CREATE_TASK") ? (
                 <View className="flex-row gap-2">
-                  <SuggestionChip emoji="✅" label={t.chat.yesDoIt} onPress={confirmPendingActions} />
+                  <SuggestionChip
+                    emoji="✅"
+                    tone="accent"
+                    icon={<Feather name="check" size={QUICK_ACTION_ICON_SIZE} color={colors.onAccent} />}
+                    label={t.chat.yesDoIt}
+                    onPress={confirmPendingActions}
+                  />
                   <SuggestionChip emoji="✕" label={t.common.cancel} onPress={cancelPendingActions} />
                 </View>
               ) : null}
@@ -472,34 +524,39 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           ) : null}
         </ScrollView>
 
-        <View className="gap-3 border-t border-cream-300 bg-cream-100 px-6 pb-2 pt-3">
+        <View className="gap-2 pt-1.5" style={{ paddingBottom: 7 + (keyboardOpen ? 0 : tabBarHeight) }}>
           {!contextTask ? (
+            // Padded inside the scroll rather than around it, so the chips'
+            // shadows and glow aren't cut off at its edges.
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8 }}
+              contentContainerStyle={{ gap: 8, paddingHorizontal: 21, paddingVertical: 5 }}
             >
               {INBOX_QUICK_ACTIONS.map((action) => (
                 <SuggestionChip
                   key={action.id}
                   emoji={action.emoji}
                   label={t.chat.quickActions[action.id]}
-                  icon={QUICK_ACTION_ICONS[action.id]}
+                  tone={QUICK_ACTION_STYLES[action.id]?.tone}
+                  icon={QUICK_ACTION_STYLES[action.id]?.icon}
                   onPress={() => handleQuickAction(t.chat.quickActions[action.id])}
                 />
               ))}
             </ScrollView>
           ) : null}
 
-          <InboxInput
-            value={draft}
-            onChangeText={setDraft}
-            onSend={() => handleSend(draft, pendingAttachments)}
-            onAttachment={handleAttachment}
-            attachments={pendingAttachments}
-            onRemoveAttachment={handleRemoveAttachment}
-            isTranscribing={isTranscribing}
-          />
+          <View className="px-6">
+            <InboxInput
+              value={draft}
+              onChangeText={setDraft}
+              onSend={() => handleSend(draft, pendingAttachments)}
+              onAttachment={handleAttachment}
+              attachments={pendingAttachments}
+              onRemoveAttachment={handleRemoveAttachment}
+              isTranscribing={isTranscribing}
+            />
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

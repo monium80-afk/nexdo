@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
 import type { ComponentProps } from "react";
-import { Platform, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { gradients } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Translations } from "@/lib/i18n";
@@ -50,32 +51,36 @@ function TabIcon({
 
 // A plus that opens the Add Task form, or — with "Talk instead of type" on in
 // Settings — a microphone that opens Live voice. Same button either way.
-function AddTabButton() {
+function AddTabButton({ onShowTasks }: { onShowTasks: () => void }) {
   const colors = useColors();
   const router = useRouter();
   const t = useTranslation();
   const voice = useSettingsStore((state) => state.voiceAddButton);
 
+  const handlePress = () => {
+    if (!voice) {
+      router.push("/add");
+      return;
+    }
+    // The Tasks page goes underneath first, so when Live voice is closed it
+    // slides down onto the list it has just been changing.
+    onShowTasks();
+    router.push("/live-voice");
+  };
+
   return (
     <AnimatedPressable
-      onPress={() => router.push(voice ? "/live-voice" : "/add")}
+      onPress={handlePress}
       scaleTo={0.92}
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={voice ? t.live.open : t.tabs.addTask}
       className="items-center"
     >
+      {/* A glowing orange coin: lit at the top, casting its light on the bar. */}
       <View
-        style={Platform.select({
-          ios: {
-            shadowColor: colors.orange[600],
-            shadowOffset: { width: 0, height: 3 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-          },
-          android: { elevation: 3 },
-        })}
-        className="h-[36px] w-[36px] items-center justify-center rounded-full bg-orange-500"
+        style={gradients.accent}
+        className="glow-accent h-[36px] w-[36px] items-center justify-center rounded-full bg-orange-500"
       >
         <Feather name={voice ? "mic" : "plus"} size={18} color={colors.onAccent} />
       </View>
@@ -118,7 +123,7 @@ function StandardTabButton({
   const t = useTranslation();
   // Orange is kept for the Add button and the small dot under the active tab,
   // so the selected icon doesn't compete with Add for attention.
-  const tintColor = focused ? colors.ink.charcoal : colors.ink.charcoalMuted;
+  const tintColor = focused ? colors.ink.charcoal : IDLE_ICON;
 
   return (
     <AnimatedPressable
@@ -136,7 +141,7 @@ function StandardTabButton({
         {/* Out of flow so every icon sits on the same line as the Add button. */}
         {focused && (
           <View className="absolute left-0 right-0 top-[28px] items-center">
-            <View className="h-[4px] w-[4px] rounded-full bg-orange-500" />
+            <View className="h-[4px] w-[4px] rounded-full bg-orange-500" style={DOT_GLOW} />
           </View>
         )}
       </View>
@@ -145,10 +150,26 @@ function StandardTabButton({
 }
 
 // Everything, the Add button included, sits inside the bar on one centre line
-// — nothing pokes above it — so the height React Navigation measures here is
-// the height the bar really takes, and screen content (e.g. the AI chat input)
-// is padded clear of it.
+// — nothing pokes above it.
 const BAR_HEIGHT = 58;
+
+/**
+ * How much of the foot of a tab page the bar covers: it floats over the page
+ * (so its rounded corners show the page itself), so each tab page leaves this
+ * much room at the end of its content — a scroll's bottom padding, the AI
+ * chat's input — to keep it clear of the bar.
+ */
+export function useTabBarHeight(): number {
+  const insets = useSafeAreaInsets();
+  return BAR_HEIGHT + insets.bottom;
+}
+
+// An idle tab: bright enough to read as a button on the charcoal, a step
+// below the active one's cream.
+const IDLE_ICON = "rgba(251, 245, 234, 0.6)";
+const DOT_GLOW = { boxShadow: "0 0 6px rgba(250, 130, 62, 0.9)" };
+// The bar casts a soft shadow up onto the page, so it sits over it.
+const BAR_SHADOW = { boxShadow: "0 -10px 24px -12px rgba(30, 16, 6, 0.35)" };
 
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
@@ -186,17 +207,25 @@ export function TabBar({ state, navigation }: TabBarProps) {
   // crowded against the middle.
   const [first, second, third, fourth] = state.routes;
 
-  // One charcoal fill with one hairline at the very top, running down under
-  // the system navigation area so the bar reads as a single piece.
+  // One charcoal slab with rounded top corners, floating over the foot of the
+  // page: flush with both sides and the bottom of the screen, and running down
+  // under the system navigation area (its buttons stay above it, padded by the
+  // inset) so the bar reads as a single piece. Nothing sits behind it — the
+  // tab page reaches the bottom of the screen, so its corners curve away into
+  // the page itself.
   return (
     <View
-      className="border-t border-white/10 bg-charcoal-900"
-      style={{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }}
+      className="absolute bottom-0 left-0 right-0 rounded-t-[30px] border-t border-white/10 bg-charcoal-900"
+      style={[{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }, BAR_SHADOW]}
     >
       <View className="flex-1 flex-row items-center px-4">
         {renderRoute(first, 0)}
         {renderRoute(second, 1, "pr-3")}
-        <AddTabButton />
+        <AddTabButton
+          onShowTasks={() => {
+            if (state.routes[state.index]?.name !== "tasks") navigation.navigate("tasks");
+          }}
+        />
         {renderRoute(third, 2, "pl-3")}
         {renderRoute(fourth, 3)}
       </View>

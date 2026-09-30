@@ -1,7 +1,8 @@
 import { describeRuleForAi } from "@/lib/recurrence";
 import { getDueInfo } from "@/lib/taskMeta";
-import { isListed, isOverdue, priorityLevelOf } from "@/lib/taskOperations";
-import type { Task, TaskPriorityLevel } from "@/types/task";
+import type { ImportanceLevel } from "@/lib/scoring";
+import { importanceLevelOf, isListed, isOverdue } from "@/lib/taskOperations";
+import type { Task } from "@/types/task";
 
 // Trims a Task down to the fields the AI prompts actually need — keeps the
 // request payload small and gives the model a stable, documented shape
@@ -18,8 +19,8 @@ export type TaskContext = {
   complexity: Task["complexity"];
   notes?: string;
   contextNotes: string[];
-  /** The importance picked for the task — what "make it high priority" changes. */
-  priority?: TaskPriorityLevel;
+  /** The importance picked for the task — what "make it high priority" changes. "critical" when the user stressed it. */
+  priority?: ImportanceLevel;
   /** Pending and past its deadline. */
   overdue?: boolean;
   /** A completed task still exists: when it was finished, in words ("Completed yesterday at 3:12 PM (1 day ago)"). */
@@ -77,7 +78,7 @@ export function taskToContext(task: Task, now: Date = new Date()): TaskContext {
     complexity: task.complexity,
     notes: task.notes,
     contextNotes: task.aiContext.notes,
-    priority: priorityLevelOf(task.importance),
+    priority: importanceLevelOf(task.importance),
     overdue: isOverdue(task, now) || undefined,
     completedLabel: completed && task.completedAt ? completedLabelFor(task.completedAt, now) : undefined,
     repeats: task.recurrence ? `${describeRuleForAi(task.recurrence.rule)} (this is one occurrence)` : undefined,

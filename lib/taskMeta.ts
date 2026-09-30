@@ -15,10 +15,12 @@ export function describeTaskCount(count: number, scope: TaskScope): string {
   return translate().format.scopedTaskCount(count, scope);
 }
 
-// Thresholds mirror prompt_material/01-design-system.txt's urgency scale.
+// The score bands, as the AI is told them (EXECUTION_COACH_INTEGRATION_NOTES
+// in data/aiPrompts.ts). Set for the 2026-09-30 formula, where a medium task
+// with no deadline sits in the mid-30s.
 export function getScoreTier(score: number): ScoreTier {
-  if (score >= 75) return "high";
-  if (score >= 45) return "medium";
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
   return "low";
 }
 

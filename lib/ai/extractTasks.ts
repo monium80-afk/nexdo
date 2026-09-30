@@ -1,14 +1,19 @@
 import { parseDeadlinePhrase } from "@/lib/ai/parseDate";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { deadlineInstant, makeDeadline } from "@/lib/deadline";
+import type { ImportanceLevel } from "@/lib/scoring";
 import type { AppLanguage } from "@/types/settings";
-import type { TaskPriorityLevel } from "@/types/task";
 
 const LONG_TASK_KEYWORDS = /\b(write|study|prepare|build|plan|research|essay|report|presentation|thesis|revise|design)\b/i;
 const QUICK_TASK_KEYWORDS = /\b(call|email|text|book|order|pay|send|reply|buy|pick up|drop off|check|confirm)\b/i;
 
 // English, French, Spanish and German — the inbox route reads stated
 // importance straight off the user's own words, whichever language they typed in.
+
+// Importance stressed outright — "critical" (importance 100), a step above High.
+const CRITICAL_PRIORITY_KEYWORDS =
+  /\b((?:really|very|super|extremely|incredibly|highly|hugely|vitally|so) important|most important|top priority|highest priority|number one priority|critical|crucial|life or death|(?:tr[eè]s|vraiment|super|extr[eê]mement|hyper) importante?|priorit[eé] absolue|primordiale?|cruciale?|(?:muy|super|realmente|extremadamente) importante|important[ií]sim[oa]|m[aá]xima prioridad|prioridad (?:m[aá]xima|absoluta)|lo m[aá]s importante|(?:sehr|extrem|super|wirklich|echt|total) wichtig(?:e[nrs]?)?|h[öo]chste priorit[äa]t|oberste priorit[äa]t|am wichtigsten|entscheidend)\b/i;
+
 const HIGH_PRIORITY_KEYWORDS =
   /\b(urgent|urgently|asap|immediately|critical|important|importance|high priority|top priority|emergency|overdue|exam|midterm|finals?|interview|deadline|urgente?|prioritaire|critique|examen|entretien|importante|prioritari[oa]|cr[íi]tic[oa]|emergencia|entrevista|cuanto antes|dringend(?:e[nrs]?)?|wichtig(?:e[nrs]?)?|eilig(?:e[nrs]?)?|kritisch(?:e[nrs]?)?|sofort|notfall|pr[üu]fung|klausur|vorstellungsgespr[äa]ch|hohe priorit[äa]t)\b/i;
 
@@ -71,7 +76,7 @@ const DURATION_WORDS: Record<string, number> = {
 // Checked before the high-priority words — "pas urgent", "no es urgente" and
 // "nicht dringend" all contain a high-priority word.
 const LOW_PRIORITY_KEYWORDS =
-  /\b(someday|eventually|whenever|sometime|no rush|not urgent|not important|low priority|low importance|if i have time|maybe|at some point|pas urgente?|pas important|pas press|rien ne presse|un jour|quand j'ai le temps|si j'ai le temps|peut-[eê]tre|priorit[ée] basse|no (?:es )?urgente|no es importante|sin prisa|no (?:hay|corre) prisa|alg[úu]n d[íi]a|cuando (?:pueda|tenga tiempo)|si tengo tiempo|tal vez|quiz[áa]s|a lo mejor|prioridad baja|baja prioridad|nicht (?:so )?(?:dringend|wichtig|eilig)|unwichtig|keine eile|eilt nicht|hat zeit|irgendwann|(?:wenn|falls) ich zeit habe|vielleicht|niedrige priorit[äa]t)\b/i;
+  /\b(someday|eventually|whenever|sometime|no rush|not (?:really |that |very |so |too )?urgent|not (?:really |that |very |so |too )?important|low priority|low importance|if i have time|maybe|at some point|pas urgente?|pas (?:tr[eè]s |si |vraiment |super )?importante?|pas press|rien ne presse|un jour|quand j'ai le temps|si j'ai le temps|peut-[eê]tre|priorit[ée] basse|no (?:es )?urgente|no es (?:muy |tan |realmente )?importante|sin prisa|no (?:hay|corre) prisa|alg[úu]n d[íi]a|cuando (?:pueda|tenga tiempo)|si tengo tiempo|tal vez|quiz[áa]s|a lo mejor|prioridad baja|baja prioridad|nicht (?:so |sehr |wirklich |besonders )?(?:dringend|wichtig|eilig)|unwichtig|keine eile|eilt nicht|hat zeit|irgendwann|(?:wenn|falls) ich zeit habe|vielleicht|niedrige priorit[äa]t)\b/i;
 
 /** Identifies one preview card for its whole life — see ExtractedTaskDraft.candidateId. */
 export function createCandidateId(): string {
@@ -138,10 +143,12 @@ export function guessDuration(text: string): number {
 }
 
 // Importance only — the deadline is scored separately as urgency in
-// lib/scoring.ts, so it must not leak in here too.
-export function guessPriorityLevel(text: string): TaskPriorityLevel {
-  // Low first — "not urgent" and "low priority" contain high-priority words.
+// lib/priority.ts, so it must not leak in here too.
+export function guessPriorityLevel(text: string): ImportanceLevel {
+  // Low first — "not urgent" and "not really important" contain the words
+  // above them.
   if (LOW_PRIORITY_KEYWORDS.test(text)) return "low";
+  if (CRITICAL_PRIORITY_KEYWORDS.test(text)) return "critical";
   if (HIGH_PRIORITY_KEYWORDS.test(text)) return "high";
   return "medium";
 }

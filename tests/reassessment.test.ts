@@ -154,14 +154,15 @@ describe("reassessing a task for new context", () => {
     assert.equal(saved.priorityScore, computePriorityScore(saved));
 
     const { changes, deadlineUnchanged, summary } = report("chem");
-    // 180 → 330 minutes doesn't move the score (both over two hours), so it isn't reported.
-    assert.deepEqual(fields(changes), ["duration", "subtasks", "advice"]);
+    // 180 → 330 minutes is more work, which counts for more (Effort) and eats
+    // into the slack before the deadline — so the score moves and says so.
+    assert.deepEqual(fields(changes), ["duration", "score", "subtasks", "advice"]);
     assert.deepEqual(changes[0], { field: "duration", from: 180, to: 330 });
-    assert.deepEqual(changes[1], {
+    assert.deepEqual(changes[2], {
       field: "subtasks",
       summary: { added: 2, removed: 0, completed: 0, renamed: 0, retimed: 1, reordered: false },
     });
-    assert.deepEqual(changes[2], { field: "advice", kind: "added" });
+    assert.deepEqual(changes[3], { field: "advice", kind: "added" });
     assert.equal(deadlineUnchanged, true);
     assert.equal(summary, "Chapters 4 and 5 add a second block of review.");
 
@@ -172,15 +173,18 @@ describe("reassessing a task for new context", () => {
     assert.equal(useTaskStore.getState().unsynced.chem, undefined);
   });
 
-  it("more work alone doesn't lower the score — a longer task isn't a less important one", async () => {
+  it("more work raises the score — the longer a task takes, the more it counts", async () => {
     const before = seed({ id: "essay", title: "Essay", dueDate: at(2), estimatedMinutes: 90, importance: 50 });
     modelAnswers({ outcome: "update", estimatedMinutes: 150, summary: "Two more sources to read." });
 
     await submit("essay", "I still need to read two more sources.");
 
     const after = task("essay");
-    assert.equal(after.priorityScore, before.priorityScore);
-    assert.deepEqual(report("essay").changes, [{ field: "duration", from: 90, to: 150 }]);
+    assert.ok(after.priorityScore > before.priorityScore, `${before.priorityScore} → ${after.priorityScore}`);
+    assert.deepEqual(report("essay").changes, [
+      { field: "duration", from: 90, to: 150 },
+      { field: "score", from: before.priorityScore, to: after.priorityScore },
+    ]);
   });
 
   it("reports a score change when the new workload no longer fits before the deadline", async () => {
@@ -237,13 +241,28 @@ describe("reassessing a task for new context", () => {
     await submit("pitch", "If this pitch goes well we win the whole contract.");
 
     const after = task("pitch");
-    assert.equal(after.importance, 75);
+    assert.equal(after.importance, 80);
     assert.equal(after.dueDate, before.dueDate);
     assert.equal(after.estimatedMinutes, before.estimatedMinutes);
     assert.deepEqual(after.subtasks, before.subtasks);
     assert.equal(after.title, before.title);
     assert.deepEqual(report("pitch").changes, [
       { field: "priority", from: "medium", to: "high" },
+      { field: "score", from: before.priorityScore, to: after.priorityScore },
+    ]);
+  });
+
+  it("\"this is really important\" makes it critical — above High, and said so", async () => {
+    const before = seed({ id: "visa", title: "Visa form", dueDate: at(6), estimatedMinutes: 45, importance: 80 });
+    modelAnswers({ outcome: "update", priority: "critical", summary: "The whole trip depends on it." });
+
+    await submit("visa", "This is really important, the whole trip depends on it.");
+
+    const after = task("visa");
+    assert.equal(after.importance, 100);
+    assert.ok(after.priorityScore > before.priorityScore);
+    assert.deepEqual(report("visa").changes, [
+      { field: "priority", from: "high", to: "critical" },
       { field: "score", from: before.priorityScore, to: after.priorityScore },
     ]);
   });

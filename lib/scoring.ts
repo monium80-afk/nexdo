@@ -1,12 +1,24 @@
 import { computeScore, recommendTasks, type PriorityInput } from "@/lib/priority";
 import type { Task, TaskPriorityLevel } from "@/types/task";
 
-// Maps the Add form's 3-card priority picker to the "importance" input the
-// scoring engine actually runs on (Step 2 of the prioritization logic).
-export const PRIORITY_LEVEL_IMPORTANCE: Record<TaskPriorityLevel, number> = {
-  high: 75,
+/**
+ * How much a task matters, as the score reads it: the three levels of the
+ * Add form's picker, and "critical" — High, stressed by the user in as many
+ * words ("really important", "top priority"). Critical is never picked, only
+ * ever read off what the user said, typed or noted; the picker shows it as
+ * High.
+ */
+export type ImportanceLevel = TaskPriorityLevel | "critical";
+
+export const IMPORTANCE_LEVELS: readonly ImportanceLevel[] = ["critical", "high", "medium", "low"];
+
+// The "importance" input the scoring engine runs on (lib/priority.ts), for
+// each level. Spread wide so the level the user chose clearly moves a score.
+export const PRIORITY_LEVEL_IMPORTANCE: Record<ImportanceLevel, number> = {
+  critical: 100,
+  high: 80,
   medium: 50,
-  low: 25,
+  low: 20,
 };
 
 const SKIP_SUPPRESSION_HOURS = 3;

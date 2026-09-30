@@ -13,9 +13,11 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
+import { resetPurchaser } from "@/lib/purchases";
 import { deleteAllAttachments } from "@/lib/supabaseStorage";
 import { deleteAllMessages, deleteAllTasks } from "@/lib/supabaseSync";
 import { useChatStore } from "@/store/useChatStore";
+import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -38,6 +40,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const { signOut } = useClerk();
   const handleChatSignOut = useChatStore((state) => state.handleSignOut);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
+  const isPro = useIsPro();
 
   const [name, setName] = useState(user?.fullName ?? "");
   const [nameStatus, setNameStatus] = useState<"saving" | "saved" | null>(null);
@@ -167,7 +170,10 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   // database for good. If a cleanup step fails the account is left intact, and
   // the deletes are all idempotent, so retrying is safe.
   const handleDeleteAccount = () => {
-    Alert.alert(t.account.deleteTitle, t.account.deleteBody, [
+    // The store bills the subscription, not Nexdo — deleting the account
+    // can't stop it, so a Pro user is told where to cancel.
+    const body = isPro ? `${t.account.deleteBody}\n\n${t.account.deleteProNote}` : t.account.deleteBody;
+    Alert.alert(t.account.deleteTitle, body, [
       { text: t.common.cancel, style: "cancel" },
       {
         text: t.account.deleteConfirm,
@@ -203,6 +209,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           await Promise.allSettled([
             Promise.resolve().then(() => handleChatSignOut()),
             Promise.resolve().then(() => handleTaskSignOut({ accountDeleted: true })),
+            resetPurchaser(),
           ]);
         },
       },

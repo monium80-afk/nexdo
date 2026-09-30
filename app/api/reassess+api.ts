@@ -23,7 +23,7 @@ import {
 } from "@/lib/serverRequest";
 import type { DateShift } from "@/lib/taskOperations";
 import type { AppLanguage } from "@/types/settings";
-import type { TaskPriorityLevel } from "@/types/task";
+import type { ImportanceLevel } from "@/lib/scoring";
 
 /** An unfinished subtask as the model sees it — `id` is a short alias ("s1"), mapped back on the device. */
 export type ReassessStep = { id: string; title: string; estimatedMinutes: number };
@@ -69,13 +69,14 @@ export type ReassessResponseBody = {
   /** The whole new list of unfinished steps (alias to keep one, null for a new one), or null to keep them as they are. */
   steps: { id: string | null; title: string; estimatedMinutes: number }[] | null;
   estimatedMinutes: number | null;
-  priority: TaskPriorityLevel | null;
+  priority: ImportanceLevel | null;
   advice: string | null;
   summary: string;
 };
 
 const SHIFT_UNITS = ["minutes", "hours", "days", "weeks", "months"] as const;
-const PRIORITIES = ["high", "medium", "low"] as const;
+// "critical": High, stressed in the note ("it's really important now").
+const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 const OUTCOMES = ["update", "no_change", "clarify"] as const;
 
 // Required-but-nullable, like the inbox schema: optional keys were routinely

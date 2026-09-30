@@ -4,7 +4,11 @@ import { Text, View, type TextStyle } from "react-native";
 type MetaPillProps = {
   icon: ReactNode;
   label: string;
-  /** Replaces the label's weight and color (e.g. a deadline that's coming up). */
+  /**
+   * Replaces the label's weight, color and size (e.g. a deadline that's coming
+   * up) — so give it a text size too: two size classes on one Text don't
+   * reliably resolve in the order they're written.
+   */
   labelClassName?: string;
   labelStyle?: TextStyle;
   /** A tinted chip for the one item that needs flagging (a deadline due soon or overdue). */
@@ -22,7 +26,7 @@ type MetaPillProps = {
 export function MetaPill({
   icon,
   label,
-  labelClassName = "font-grotesk-medium text-ink-cream-muted",
+  labelClassName = "font-grotesk-medium text-sm text-ink-cream-muted",
   labelStyle,
   className = "",
   accessibilityLabel,
@@ -34,7 +38,7 @@ export function MetaPill({
       className={`flex-row items-center gap-1 py-[3px] ${className}`}
     >
       {icon}
-      <Text className={`text-sm ${labelClassName}`} style={labelStyle}>{label}</Text>
+      <Text className={labelClassName} style={labelStyle}>{label}</Text>
     </View>
   );
 }

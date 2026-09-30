@@ -21,7 +21,7 @@ type Snapshot = { taskId: string; before: Task | null };
 
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const FREQUENCIES = ["daily", "weekly", "monthly", "yearly", "none"] as const;
-const PRIORITIES = ["high", "medium", "low"];
+const PRIORITIES = ["critical", "high", "medium", "low"];
 const SHIFT_UNITS = ["minutes", "hours", "days", "weeks", "months"] as const;
 const SCOPES = ["this", "future", "series"] as const;
 

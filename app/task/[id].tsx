@@ -4,7 +4,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddItemField } from "@/components/AddItemField";
 import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
@@ -25,6 +25,7 @@ import { TextField } from "@/components/TextField";
 import { listItemEntering, listItemLayout } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDeadline, type DeadlineInput } from "@/lib/deadline";
@@ -104,9 +105,11 @@ function chooseScope(
 
 export default function TaskDetail() {
   const colors = useColors();
+  useStatusBarStyle("light");
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isLoaded, isSignedIn } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const task = useTaskStore((state) => state.tasks.find((t) => t.id === id));
@@ -433,17 +436,19 @@ export default function TaskDetail() {
           <MetaPill
             icon={<Feather name="calendar" size={14} color={isOverdue ? colors.overdue[300] : colors.ink.charcoalMuted} />}
             label={due.pillLabel}
-            labelClassName={isOverdue ? "font-grotesk-semibold text-overdue-300" : "font-grotesk-medium text-ink-charcoal-muted"}
+            labelClassName={
+              isOverdue ? "font-grotesk-semibold text-sm text-overdue-300" : "font-grotesk-medium text-sm text-ink-charcoal-muted"
+            }
           />
           <MetaPill
             icon={<Feather name="clock" size={14} color={colors.ink.charcoalMuted} />}
             label={formatDuration(task.estimatedMinutes)}
-            labelClassName="font-grotesk-medium text-ink-charcoal-muted"
+            labelClassName="font-grotesk-medium text-sm text-ink-charcoal-muted"
           />
           <MetaPill
             icon={<GemLogo size={13} onDark />}
             label={String(task.priorityScore)}
-            labelClassName="font-grotesk-bold text-ink-charcoal"
+            labelClassName="font-grotesk-bold text-sm text-ink-charcoal"
             accessibilityLabel={t.tasks.score(task.priorityScore)}
           />
         </View>
@@ -751,7 +756,12 @@ export default function TaskDetail() {
           </ScrollView>
         </View>
 
-        <View className="flex-row items-center justify-between gap-4 border-t border-cream-200 bg-cream-50 px-6 py-3">
+        {/* Clear of the phone's own navigation bar (the screen's safe area
+            only covers the top), as on Add Task and Live voice. */}
+        <View
+          className="flex-row items-center justify-between gap-4 border-t border-cream-200 bg-cream-50 px-6 pt-3"
+          style={{ paddingBottom: insets.bottom + 12 }}
+        >
           <TextButton icon="trash-2" label={t.taskDetail.deleteTask} onPress={handleDelete} tone="destructive" />
           {/* Held while Nexdo is reassessing, so its report isn't missed. */}
           <PrimaryButton

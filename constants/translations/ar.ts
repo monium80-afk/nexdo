@@ -116,6 +116,7 @@ export const ar: Translations = {
     addATask: "أضف مهمة",
     eyebrow: "نكسدو الآن",
     heading: "ما الذي يمكنك فعله الآن؟",
+    scoreLabel: "الدرجة: ",
     timeFilter: (duration: string) => `يناسب ${duration}`,
     timeFilterEmpty: (duration: string) => `لا شيء يناسب ${duration}`,
     timeFilterClear: "عرض الكل",
@@ -141,6 +142,7 @@ export const ar: Translations = {
     startSessionLabel: "ابدأ الجلسة",
     breakDown: "تقسيم",
     getAdvice: "اطلب نصيحة",
+    markComplete: "تحديد كمكتملة",
     taskComplete: "اكتملت المهمة",
     pickTasks: "اختر مهامك",
     useRecommended: "استخدم المقترح",
@@ -288,7 +290,7 @@ export const ar: Translations = {
       deadlineUnchanged: "الموعد النهائي: دون تغيير",
       duration: (from: string, to: string) => `المدة المقدّرة: ${from} ← ${to}`,
       priority: (from: string, to: string) => `الأولوية: ${from} ← ${to}`,
-      levels: { high: "عالية", medium: "متوسطة", low: "منخفضة" },
+      levels: { critical: "حرجة", high: "عالية", medium: "متوسطة", low: "منخفضة" },
       score: (from: number, to: number) => `نقاط المهمة: ${from} ← ${to}`,
       subtasks: (parts: string[]) => `المهام الفرعية: حُدّثت (${parts.join("، ")})`,
       subtaskParts: {
@@ -324,6 +326,7 @@ export const ar: Translations = {
 
   form: {
     title: "مهمة جديدة",
+    subtitle: "حوّل أفكارك إلى إنجاز",
     taskTitle: "عنوان المهمة",
     titlePlaceholder: "مثلاً: إنهاء تقرير مختبر الكيمياء العضوية",
     titleRequired: "عنوان المهمة مطلوب.",
@@ -617,6 +620,7 @@ export const ar: Translations = {
 
   settings: {
     title: "الإعدادات",
+    subtitle: "خصّص تجربتك",
     preferences: "تفضيلات نكسدو",
 
     account: "الحساب",
@@ -628,6 +632,22 @@ export const ar: Translations = {
     unsavedTasksBody: (count: number) =>
       `${count === 1 ? "مهمة واحدة لم تصل" : `${count} مهام لم تصل`} إلى حسابك بعد — تحقّق من اتصالك. إذا سجّلت الخروج الآن فستبقى آمنة على هذا الهاتف وتُحفظ عند تسجيل دخولك التالي هنا، لكنها لن تظهر على أجهزتك الأخرى حتى ذلك الحين.`,
     signOutAnyway: "تسجيل الخروج على أي حال",
+
+    pro: "نكسدو برو",
+    upgrade: "الترقية إلى نكسدو برو",
+    upgradeBody: "شهريًا أو سنويًا — يمكنك الإلغاء في أي وقت.",
+    upgradeError: "تعذّر فتح شاشة الاشتراك. تحقّق من اتصالك وأعد المحاولة.",
+    restorePurchases: "استعادة المشتريات",
+    restoring: "جارٍ الاستعادة…",
+    restoreDone: "عاد نكسدو برو إلى هذا الحساب.",
+    restoreNothing: "لم يُعثر على أي شراء لنكسدو برو في حساب المتجر على هذا الهاتف.",
+    restoreOffline: "أنت غير متصل. اتصل بالإنترنت وأعد المحاولة.",
+    restoreError: "تعذّرت استعادة المشتريات. أعد المحاولة.",
+    manageSubscription: "إدارة الاشتراك",
+    manageError: "تعذّر فتح اشتراكك. أعد المحاولة.",
+    proActive: "نكسدو برو مفعّل.",
+    proRenews: (date: string) => `نكسدو برو · يتجدّد في ${date}`,
+    proEnds: (date: string) => `نكسدو برو · ينتهي في ${date}`,
 
     aiChat: "صندوق الذكاء الاصطناعي",
     autoMode: "الوضع التلقائي",
@@ -734,6 +754,8 @@ export const ar: Translations = {
     deleteTitle: "حذف حسابك؟",
     deleteBody:
       "سيحذف هذا نهائيًا حساب نكسدو وكل ما فيه — كل مهمة ومحادثة وإعداد، على كل أجهزتك. لا يمكن التراجع عن ذلك.",
+    deleteProNote:
+      "حذف حسابك لا يلغي اشتراك نكسدو برو. ألغِه أولًا من اشتراكاتك في App Store أو Google Play، وإلا فسيستمر في التجدّد.",
     deleteConfirm: "حذف الحساب",
     deleting: "جارٍ الحذف…",
     deleteError: "تعذّر حذف حسابك. أعد المحاولة.",

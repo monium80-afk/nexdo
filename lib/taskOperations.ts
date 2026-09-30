@@ -24,7 +24,7 @@ import {
   type RecurrenceScope,
   type RuleInput,
 } from "@/lib/recurrence";
-import { PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
+import { PRIORITY_LEVEL_IMPORTANCE, type ImportanceLevel } from "@/lib/scoring";
 import type { Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
 
 // The structured task-operation system. Every change the AI asks for — and the
@@ -54,7 +54,7 @@ export type TaskChanges = {
   dueShift?: DateShift;
   estimatedMinutes?: number;
   estimatedMinutesDelta?: number;
-  priority?: TaskPriorityLevel;
+  priority?: ImportanceLevel;
   /** Start or change repeating; null stops it. */
   recurrence?: RuleInput | null;
   /** Turn this task's reminders off (true) or back on (false). */
@@ -135,15 +135,23 @@ export type OperationPlan = {
   missingIds: string[];
 };
 
+// Midway between the levels (20 / 50 / 80 / 100) — and still right for tasks
+// saved at the earlier 25 / 50 / 75.
 const LEVEL_THRESHOLDS: { level: TaskPriorityLevel; min: number }[] = [
   { level: "high", min: 63 },
-  { level: "medium", min: 38 },
+  { level: "medium", min: 35 },
   { level: "low", min: 0 },
 ];
+const CRITICAL_MIN = 90;
 
-/** The picker level an importance value belongs to (75 / 50 / 25, or anything in between). */
+/** The picker level an importance value belongs to: a critical task shows as High. */
 export function priorityLevelOf(importance: number): TaskPriorityLevel {
   return LEVEL_THRESHOLDS.find((entry) => importance >= entry.min)?.level ?? "low";
+}
+
+/** The level an importance value belongs to, "critical" included — what the AI and change reports see. */
+export function importanceLevelOf(importance: number): ImportanceLevel {
+  return importance >= CRITICAL_MIN ? "critical" : priorityLevelOf(importance);
 }
 
 export function isOverdue(task: Task, now: Date): boolean {
@@ -756,7 +764,12 @@ export function effectiveChanges(task: Task, changes: TaskChanges): TaskChanges 
   if (result.estimatedMinutes !== undefined && Math.round(result.estimatedMinutes) === task.estimatedMinutes) {
     delete result.estimatedMinutes;
   }
-  if (result.priority !== undefined && result.priority === priorityLevelOf(task.importance)) delete result.priority;
+  if (result.priority !== undefined) {
+    const current = importanceLevelOf(task.importance);
+    // "high" on a critical task is the level the picker shows for it, so it's
+    // a repeat — an unrelated edit mustn't quietly undo "really important".
+    if (result.priority === current || (result.priority === "high" && current === "critical")) delete result.priority;
+  }
   if (result.notes !== undefined && (result.notes?.trim() || undefined) === task.notes) delete result.notes;
   if (result.dueDate !== undefined && result.dueDate === task.dueDate) {
     delete result.dueDate;

@@ -80,6 +80,8 @@ export const en = {
     addATask: "Add a task",
     eyebrow: "NEXDO NOW",
     heading: "What can you do right now?",
+    /** Before the score number on the Next card, which is set in its own colour. */
+    scoreLabel: "Score: ",
     timeFilter: (duration: string) => `Fits in ${duration}`,
     timeFilterEmpty: (duration: string) => `Nothing fits in ${duration}`,
     timeFilterClear: "Show all",
@@ -101,12 +103,14 @@ export const en = {
     startSessionFor: (duration: string) => `Start Session (${duration})`,
     previous: "Previous",
     nextCard: "Next",
-    /** Beside the "01 / 12" counter above the card stack. */
+    /** Beside the "1 / 12" counter above the card stack. */
     tasksPrioritized: "Tasks prioritized",
     /** The card's Start button — its length sits beside it, not inside the label. */
     startSessionLabel: "Start session",
     breakDown: "Break down",
     getAdvice: "Get advice",
+    /** Under Start session on the Next card: finishes the task without a session. */
+    markComplete: "Mark complete",
     taskComplete: "Task complete",
     pickTasks: "PICK YOUR TASKS",
     useRecommended: "Use recommended",
@@ -257,7 +261,7 @@ export const en = {
       deadlineUnchanged: "Deadline: Unchanged",
       duration: (from: string, to: string) => `Estimated duration: ${from} → ${to}`,
       priority: (from: string, to: string) => `Priority: ${from} → ${to}`,
-      levels: { high: "High", medium: "Medium", low: "Low" },
+      levels: { critical: "Critical", high: "High", medium: "Medium", low: "Low" },
       score: (from: number, to: number) => `Task score: ${from} → ${to}`,
       subtasks: (parts: string[]) => `Subtasks: Updated (${parts.join(", ")})`,
       subtaskParts: {
@@ -296,6 +300,7 @@ export const en = {
 
   form: {
     title: "Add New Task",
+    subtitle: "Turn your thoughts into progress",
     taskTitle: "TASK TITLE",
     titlePlaceholder: "e.g. Complete Organic Chemistry lab writeup",
     titleRequired: "Task title is required.",
@@ -607,6 +612,7 @@ export const en = {
 
   settings: {
     title: "Settings",
+    subtitle: "Customize your experience",
     preferences: "NEXDO PREFERENCES",
 
     account: "ACCOUNT",
@@ -618,6 +624,22 @@ export const en = {
     unsavedTasksBody: (count: number) =>
       `${count === 1 ? "1 task hasn't" : `${count} tasks haven't`} reached your account yet — check your connection. If you sign out now, ${count === 1 ? "it stays" : "they stay"} safe on this phone and ${count === 1 ? "is" : "are"} saved the next time you sign in here, but won't show on other devices until then.`,
     signOutAnyway: "Sign out anyway",
+
+    pro: "NEXDO PRO",
+    upgrade: "Upgrade to Nexdo Pro",
+    upgradeBody: "Monthly or yearly — cancel anytime.",
+    upgradeError: "Couldn't open the upgrade screen. Check your connection and try again.",
+    restorePurchases: "Restore purchases",
+    restoring: "Restoring…",
+    restoreDone: "Nexdo Pro is back on this account.",
+    restoreNothing: "No Nexdo Pro purchase was found for this phone's store account.",
+    restoreOffline: "You're offline. Connect and try again.",
+    restoreError: "Couldn't restore purchases. Try again.",
+    manageSubscription: "Manage subscription",
+    manageError: "Couldn't open your subscription. Try again.",
+    proActive: "Nexdo Pro is active.",
+    proRenews: (date: string) => `Nexdo Pro · renews ${date}`,
+    proEnds: (date: string) => `Nexdo Pro · ends ${date}`,
 
     aiChat: "AI INBOX",
     autoMode: "Auto mode",
@@ -727,6 +749,8 @@ export const en = {
     deleteTitle: "Delete your account?",
     deleteBody:
       "This permanently deletes your Nexdo account and everything on it — every task, chat and setting, on every device. It can't be undone.",
+    deleteProNote:
+      "Deleting your account doesn't cancel Nexdo Pro. Cancel it in your App Store or Google Play subscriptions first, or it keeps renewing.",
     deleteConfirm: "Delete account",
     deleting: "Deleting…",
     deleteError: "Couldn't delete your account. Try again.",

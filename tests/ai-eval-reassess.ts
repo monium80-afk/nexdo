@@ -98,7 +98,7 @@ const CASES: Case[] = [
     task: {
       title: "Prepare chemistry exam",
       dueDate: at(12, 9),
-      importance: 75,
+      importance: 80,
       subtasks: steps(["Review chapters 1–3", 180]),
     },
     say: "I also have to study chapters 4 and 5, and I have a chemistry practice exam tomorrow.",
@@ -138,10 +138,20 @@ const CASES: Case[] = [
     task: { title: "Client pitch", dueDate: at(6), estimatedMinutes: 60, importance: 50 },
     say: "If this pitch goes well we win the whole contract, so it really matters.",
     check: (before, after, state) => {
-      if (after.importance !== 75) return `importance ${after.importance}`;
+      // High or critical — "it really matters" can fairly be read as either.
+      if (after.importance < 80) return `importance ${after.importance}`;
       if (after.dueDate !== before.dueDate) return "deadline changed";
       if (after.estimatedMinutes !== before.estimatedMinutes) return "estimate changed";
       return changedFields(state).includes("priority") ? null : `reported ${changedFields(state).join(",")}`;
+    },
+  },
+  {
+    name: "stressed importance: critical",
+    task: { title: "Visa form", dueDate: at(6), estimatedMinutes: 45, importance: 80 },
+    say: "This is really important, the whole trip depends on it.",
+    check: (before, after) => {
+      if (after.importance !== 100) return `importance ${after.importance}`;
+      return after.dueDate === before.dueDate ? null : "deadline changed";
     },
   },
   {

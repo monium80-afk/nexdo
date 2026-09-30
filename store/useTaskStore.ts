@@ -11,7 +11,7 @@ import { translate } from "@/lib/i18n";
 import { clearAllNotifications } from "@/lib/notifications";
 import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
 import { buildRule, startSeries, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
-import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask } from "@/lib/scoring";
+import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask, type ImportanceLevel } from "@/lib/scoring";
 import { deleteTaskRows, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
 import {
   completeTaskDelta,
@@ -23,7 +23,7 @@ import {
   type TaskOperation,
 } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
-import type { Subtask, Task, TaskDeadline, TaskPriorityLevel, TaskStep } from "@/types/task";
+import type { Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
@@ -228,7 +228,8 @@ export type NewTaskInput = {
   dueDate?: string;
   /** With `dueDate`: false when no clock time was given, so only its day is kept. */
   dueHasTime?: boolean;
-  priorityLevel: TaskPriorityLevel;
+  /** The picker's three levels, or "critical" read off the user's own words. */
+  priorityLevel: ImportanceLevel;
   notes?: string;
   steps?: TaskStep[];
   /** Makes the new task the first occurrence of a repeating series. */
@@ -312,6 +313,19 @@ function remainingMinutes(subtasks: Subtask[]): number {
   return subtasks.filter((subtask) => subtask.status !== "completed").reduce((sum, s) => sum + s.estimatedMinutes, 0);
 }
 
+// The picker's High and Low were 75 and 25 until 2026-09-30, when the scale
+// widened to 80 / 50 / 20 (lib/scoring.ts). Those exact old values are read
+// as today's, so a task saved then scores like one picked now; anything else
+// (a critical 100, a value in between) is kept as it is.
+const LEGACY_IMPORTANCE: Record<number, number> = {
+  75: PRIORITY_LEVEL_IMPORTANCE.high,
+  25: PRIORITY_LEVEL_IMPORTANCE.low,
+};
+
+function currentImportance(importance: number): number {
+  return LEGACY_IMPORTANCE[importance] ?? importance;
+}
+
 function normalizePersistedTasks(tasks: Task[]): Task[] {
   return tasks.map((task) => {
     // Tasks saved before buildTask stopped adding a generic plan still carry
@@ -337,10 +351,15 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
     const currentStepId = subtasks?.find((subtask) => subtask.status === "current")?.id;
 
     const advice = task.aiContext?.advice;
+    const recurrence = task.recurrence?.template
+      ? { ...task.recurrence, template: { ...task.recurrence.template, importance: currentImportance(task.recurrence.template.importance) } }
+      : task.recurrence;
     // `deadline` is the source of truth; a task saved before date-only
     // deadlines existed has only `dueDate`, and keeps it as an exact one.
     return reconcileDeadline({
       ...task,
+      importance: currentImportance(task.importance),
+      recurrence,
       status: TASK_STATUSES.includes(task.status) ? task.status : "pending",
       aiContext: {
         notes: Array.isArray(task.aiContext?.notes) ? task.aiContext.notes : [],

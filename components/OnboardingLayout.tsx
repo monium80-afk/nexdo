@@ -9,6 +9,7 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { HighlightedText } from "@/components/HighlightedText";
 import { SetupProgressBar } from "@/components/SetupProgressBar";
 import { useRtlText } from "@/hooks/useRtlText";
+import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -90,6 +91,7 @@ export function OnboardingLayout({
   children: ReactNode;
 }) {
   const colors = useColors();
+  useStatusBarStyle("dark");
   const t = useTranslation();
   const rtl = useRtlText();
 

@@ -134,7 +134,7 @@ export function parseTaskContext(raw: unknown): TaskContext | null {
     contextNotes: clampArray(task.contextNotes, MAX_CONTEXT_NOTES)
       .map((note) => clampString(note, MAX_NOTE_LENGTH))
       .filter((note): note is string => !!note),
-    priority: oneOf(task.priority, ["high", "medium", "low"] as const),
+    priority: oneOf(task.priority, ["critical", "high", "medium", "low"] as const),
     overdue: task.overdue === true ? true : undefined,
     completedLabel: clampString(task.completedLabel, 100),
     repeats: clampString(task.repeats, 160),

@@ -92,6 +92,7 @@ export const de: Translations = {
     addATask: "Aufgabe hinzufügen",
     eyebrow: "NEXDO JETZT",
     heading: "Was kannst du jetzt gerade tun?",
+    scoreLabel: "Score: ",
     timeFilter: (duration: string) => `Passt in ${duration}`,
     timeFilterEmpty: (duration: string) => `Nichts passt in ${duration}`,
     timeFilterClear: "Alle anzeigen",
@@ -118,6 +119,7 @@ export const de: Translations = {
     startSessionLabel: "Session starten",
     breakDown: "Aufteilen",
     getAdvice: "Tipp holen",
+    markComplete: "Als erledigt markieren",
     taskComplete: "Aufgabe erledigt",
     pickTasks: "WÄHLE DEINE AUFGABEN",
     useRecommended: "Empfehlung übernehmen",
@@ -268,7 +270,7 @@ export const de: Translations = {
       deadlineUnchanged: "Frist: unverändert",
       duration: (from: string, to: string) => `Geschätzte Dauer: ${from} → ${to}`,
       priority: (from: string, to: string) => `Priorität: ${from} → ${to}`,
-      levels: { high: "Hoch", medium: "Mittel", low: "Niedrig" },
+      levels: { critical: "Kritisch", high: "Hoch", medium: "Mittel", low: "Niedrig" },
       score: (from: number, to: number) => `Aufgaben-Score: ${from} → ${to}`,
       subtasks: (parts: string[]) => `Teilaufgaben: aktualisiert (${parts.join(", ")})`,
       subtaskParts: {
@@ -304,6 +306,7 @@ export const de: Translations = {
 
   form: {
     title: "Neue Aufgabe",
+    subtitle: "Mach aus Gedanken Fortschritt",
     taskTitle: "TITEL DER AUFGABE",
     titlePlaceholder: "z. B. Laborbericht für Chemie fertigschreiben",
     titleRequired: "Ein Titel ist erforderlich.",
@@ -606,6 +609,7 @@ export const de: Translations = {
 
   settings: {
     title: "Einstellungen",
+    subtitle: "Passe Nexdo an dich an",
     preferences: "NEXDO-EINSTELLUNGEN",
 
     account: "KONTO",
@@ -617,6 +621,22 @@ export const de: Translations = {
     unsavedTasksBody: (count: number) =>
       `${count === 1 ? "1 Aufgabe ist" : `${count} Aufgaben sind`} noch nicht in deinem Konto angekommen — prüf deine Verbindung. Wenn du dich jetzt abmeldest, ${count === 1 ? "bleibt sie" : "bleiben sie"} sicher auf diesem Handy und ${count === 1 ? "wird" : "werden"} bei deiner nächsten Anmeldung hier gespeichert — bis dahin aber nicht auf deinen anderen Geräten angezeigt.`,
     signOutAnyway: "Trotzdem abmelden",
+
+    pro: "NEXDO PRO",
+    upgrade: "Upgrade auf Nexdo Pro",
+    upgradeBody: "Monatlich oder jährlich — jederzeit kündbar.",
+    upgradeError: "Der Upgrade-Bildschirm konnte nicht geöffnet werden. Prüf deine Verbindung und versuch es noch einmal.",
+    restorePurchases: "Käufe wiederherstellen",
+    restoring: "Wird wiederhergestellt…",
+    restoreDone: "Nexdo Pro ist wieder auf diesem Konto.",
+    restoreNothing: "Für das Store-Konto dieses Telefons wurde kein Nexdo-Pro-Kauf gefunden.",
+    restoreOffline: "Du bist offline. Stell eine Verbindung her und versuch es noch einmal.",
+    restoreError: "Käufe konnten nicht wiederhergestellt werden. Versuch es noch einmal.",
+    manageSubscription: "Abo verwalten",
+    manageError: "Dein Abo konnte nicht geöffnet werden. Versuch es noch einmal.",
+    proActive: "Nexdo Pro ist aktiv.",
+    proRenews: (date: string) => `Nexdo Pro · verlängert sich am ${date}`,
+    proEnds: (date: string) => `Nexdo Pro · endet am ${date}`,
 
     aiChat: "KI-POSTEINGANG",
     autoMode: "Automatikmodus",
@@ -726,6 +746,8 @@ export const de: Translations = {
     deleteTitle: "Dein Konto löschen?",
     deleteBody:
       "Damit werden dein Nexdo-Konto und alles darin endgültig gelöscht — alle Aufgaben, Chats und Einstellungen, auf allen Geräten. Das kann nicht rückgängig gemacht werden.",
+    deleteProNote:
+      "Wenn du dein Konto löschst, wird Nexdo Pro nicht gekündigt. Kündige es zuerst in deinen App-Store- oder Google-Play-Abos, sonst verlängert es sich weiter.",
     deleteConfirm: "Konto löschen",
     deleting: "Wird gelöscht…",
     deleteError: "Dein Konto konnte nicht gelöscht werden. Versuch es noch einmal.",

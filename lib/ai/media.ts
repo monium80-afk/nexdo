@@ -1,42 +1,10 @@
-import * as FileSystem from "expo-file-system/legacy";
-
 import type { ExtractTextRequestBody, ExtractTextResponseBody } from "@/app/api/extract-text+api";
 import type { ExtractedAttachment } from "@/lib/ai/attachmentMessage";
 import { apiPost } from "@/lib/api";
 import { isImageAttachment } from "@/lib/chatAttachments";
+import { readFileAsBase64 } from "@/lib/localFile";
 import type { ChatAttachment } from "@/types/chat";
 import type { AppLanguage } from "@/types/settings";
-
-// The legacy string-based API (readAsStringAsync) is far simpler than the
-// new File/Directory class API for this one-shot "give me base64" need —
-// still officially supported, see expo-file-system's "/legacy" export.
-//
-// It refuses files outside the folders it considers the app's own, though,
-// and on Expo Go that includes the document picker's copies (they land in
-// Expo Go's shared cache, not this project's): "Location '…/cache/
-// DocumentPicker/….jpg' isn't readable". fetch() reads the same file://
-// uri through React Native's blob support without that check — it's how
-// uploadAttachment() already reads every attachment — so it's the fallback.
-export async function readFileAsBase64(uri: string): Promise<string> {
-  try {
-    return await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-  } catch (error) {
-    if (__DEV__) console.log("[media] file system read refused, reading through fetch instead", error);
-    return readFileAsBase64ViaFetch(uri);
-  }
-}
-
-async function readFileAsBase64ViaFetch(uri: string): Promise<string> {
-  const blob = await (await fetch(uri)).blob();
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error(`Couldn't read ${uri}`));
-    reader.readAsDataURL(blob);
-  });
-  // "data:<mime>;base64,<data>" — only the part after the comma is the file.
-  return dataUrl.slice(dataUrl.indexOf(",") + 1);
-}
 
 const DEFAULT_MIME_TYPE: Record<ChatAttachment["kind"], string> = {
   photo: "image/jpeg",

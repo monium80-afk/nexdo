@@ -15,10 +15,10 @@ import { apiPost } from "@/lib/api";
 import { deadlineInstant, makeDeadline } from "@/lib/deadline";
 import { getLanguage, translate } from "@/lib/i18n";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
-import { rankTasksForNext } from "@/lib/scoring";
+import { IMPORTANCE_LEVELS, rankTasksForNext, type ImportanceLevel } from "@/lib/scoring";
 import type { TaskChanges, TaskFilter, TaskOperation, TaskStatusFilter, TaskTarget } from "@/lib/taskOperations";
 import type { AppLanguage } from "@/types/settings";
-import type { Task, TaskPriorityLevel, Weekday } from "@/types/task";
+import type { Task, Weekday } from "@/types/task";
 
 export type ClassifyIntentInput = {
   text: string;
@@ -35,7 +35,7 @@ export type ClassifyIntentInput = {
 // chat then uses the app's own message for it. `reply` is all of them joined.
 export type ClassifiedTurn = { actions: StructuredAction[]; replies: (string | null)[]; reply: string | null };
 
-const VALID_PRIORITIES: TaskPriorityLevel[] = ["high", "medium", "low"];
+const VALID_PRIORITIES: readonly ImportanceLevel[] = IMPORTANCE_LEVELS;
 
 // Must match MAX_TASKS in app/api/inbox+api.ts, which keeps only the first
 // that-many tasks it receives. Up to that many go in full (duplicate
@@ -154,7 +154,7 @@ function buildChanges(action: InboxAction, ctx: MapContext, bulk: boolean): Task
   } else if (typeof fields.estimatedMinutes === "number" && fields.estimatedMinutes > 0) {
     changes.estimatedMinutes = fields.estimatedMinutes;
   }
-  if (VALID_PRIORITIES.includes(fields.priority as TaskPriorityLevel)) changes.priority = fields.priority as TaskPriorityLevel;
+  if (VALID_PRIORITIES.includes(fields.priority as ImportanceLevel)) changes.priority = fields.priority as ImportanceLevel;
   if (fields.dueDateShift) {
     changes.dueShift = fields.dueDateShift;
   } else {
@@ -229,8 +229,8 @@ function operationFor(
 function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction | null {
   const t = translate();
   if (action.type === "CREATE_TASK" && action.fields.title) {
-    const priorityLevel = VALID_PRIORITIES.includes(action.fields.priority as TaskPriorityLevel)
-      ? (action.fields.priority as TaskPriorityLevel)
+    const priorityLevel = VALID_PRIORITIES.includes(action.fields.priority as ImportanceLevel)
+      ? (action.fields.priority as ImportanceLevel)
       : "medium";
     const { deadline, unclear } = resolveDeadline(action.fields, ctx);
     if (unclear !== undefined) return askAboutDate(unclear);

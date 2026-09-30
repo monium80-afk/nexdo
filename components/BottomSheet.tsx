@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { useEffect, useState, type ReactNode } from "react";
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -33,6 +34,7 @@ export function BottomSheet({
   children: ReactNode;
 }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const [mounted, setMounted] = useState(visible);
@@ -70,7 +72,16 @@ export function BottomSheet({
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable className="flex-1 justify-end" onPress={onClose}>
             <Animated.View style={[{ maxHeight: "88%" }, panelStyle]}>
-              <Pressable onPress={() => {}} className={`card--cream-elevated rounded-t-2xl p-6 pb-10 ${panelClassName}`}>
+              {/* The sheet runs under the phone's own navigation bar (edge to
+                  edge), so its foot is kept at least that bar's height clear. */}
+              <Pressable
+                onPress={() => {}}
+                className={`card--cream-elevated rounded-t-[30px] p-6 pt-[8px] ${panelClassName}`}
+                style={{ paddingBottom: Math.max(35, insets.bottom + 21) }}
+              >
+                {/* The grab handle: says "this slid up, and slides back down".
+                    8 + 5 + 8 = the sheet's old 21dp of top padding. */}
+                <View className="mb-[8px] h-[5px] w-[40px] self-center rounded-full bg-cream-300" />
                 {closeLabel ? (
                   <View className="mb-3 flex-row items-center justify-between gap-3">
                     <View className="shrink flex-row items-center gap-2">

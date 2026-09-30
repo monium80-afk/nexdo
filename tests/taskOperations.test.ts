@@ -8,6 +8,7 @@ import { normalizeRule, startSeries } from "@/lib/recurrence";
 import {
   bulkRecurrenceScope,
   completeTaskDelta,
+  effectiveChanges,
   needsRecurrenceScope,
   planOperation,
   reopenTaskDelta,
@@ -91,7 +92,15 @@ describe("bulk updates", () => {
       target: { filter: { keywords: ["business"] } },
       changes: { priority: "high" },
     });
-    assert.deepEqual(plan.upserts.map((task) => [task.id, task.importance]), [["b", 75]]);
+    assert.deepEqual(plan.upserts.map((task) => [task.id, task.importance]), [["b", 80]]);
+  });
+
+  it("\"critical\" is a step above High, and a repeated \"high\" doesn't undo it", () => {
+    const critical = apply(tasks, { kind: "update", target: { taskIds: ["b"] }, changes: { priority: "critical" } });
+    assert.deepEqual(critical.plan.upserts.map((task) => [task.id, task.importance]), [["b", 100]]);
+    const stressed = critical.plan.upserts[0];
+    assert.deepEqual(effectiveChanges(stressed, { priority: "high" }), {});
+    assert.deepEqual(effectiveChanges(stressed, { priority: "medium" }), { priority: "medium" });
   });
 
   it("reschedules only overdue tasks to an absolute date, keeping their own time", () => {

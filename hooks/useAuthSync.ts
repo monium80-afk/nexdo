@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 
 import { setApiTokenGetter } from "@/lib/api";
 import { posthog } from "@/lib/posthog";
+import { identifyPurchaser } from "@/lib/purchases";
 import { setClerkTokenGetter } from "@/lib/supabase";
 import { useChatStore } from "@/store/useChatStore";
 import { useOnboardingStore, waitForOnboardingHydration } from "@/store/useOnboardingStore";
@@ -117,4 +118,10 @@ export function useAuthSync() {
       unsubscribeChat();
     };
   }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks, hydrateChat, subscribeChat, unsubscribeChat]);
+
+  // Nexdo Pro belongs to the account, so RevenueCat knows the user by their
+  // Clerk id. Sign-out resets it (resetPurchaser, from the sign-out buttons).
+  useEffect(() => {
+    if (userId) void identifyPurchaser(userId);
+  }, [userId]);
 }
