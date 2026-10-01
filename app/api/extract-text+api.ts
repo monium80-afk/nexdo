@@ -1,15 +1,26 @@
 import { extractTextFromMedia } from "@/lib/ai/gemini";
-import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
-import { asObject, badRequest, BadRequestError, clampString, LANGUAGES, oneOf, readJsonBody } from "@/lib/serverRequest";
+import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
+import {
+  asObject,
+  badRequest,
+  BadRequestError,
+  clampNumber,
+  clampString,
+  LANGUAGES,
+  oneOf,
+  readJsonBody,
+} from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
 
 export type ExtractTextRequestBody = {
   mimeType: string;
   base64: string;
   kind: "photo" | "voice" | "document";
+  /** A voice note's length — what the account's monthly voice minutes are counted in. */
+  durationSeconds?: number;
   /** The app language — used for any description the model writes itself. */
   language?: AppLanguage;
   /** What the user typed alongside the file ("pull out the deadlines"), if anything. */
@@ -87,11 +98,28 @@ const MAX_BODY_BYTES = 9 * 1024 * 1024;
 // prompt channel rather than a caption.
 const MAX_INSTRUCTION_LENGTH = 500;
 
+// A voice note is counted by its length. The app says how long it is; the
+// file's size puts a floor under that, so a request can't call ten minutes of
+// audio one second. The floor assumes a bitrate far above anything the app
+// records (compressed audio is about 16 KB a second, uncompressed WAV under
+// 200), so an honest length is never raised by it.
+const TYPICAL_BYTES_PER_SECOND = 16_000;
+const MAX_BYTES_PER_SECOND = { compressed: 40_000, wav: 200_000 };
+const MAX_VOICE_SECONDS = 15 * 60;
+
+function voiceSeconds(declared: number | undefined, bytes: number, mimeType: string): number {
+  const ceiling = mimeType.includes("wav") ? MAX_BYTES_PER_SECOND.wav : MAX_BYTES_PER_SECOND.compressed;
+  const seconds = Math.max(declared ?? bytes / TYPICAL_BYTES_PER_SECOND, bytes / ceiling);
+  return Math.min(MAX_VOICE_SECONDS, Math.max(1, Math.ceil(seconds)));
+}
+
 // Open to signed-out callers only for onboarding's free run: the brain dump
 // can be spoken (app/onboarding-dump.tsx) before the user signs up. The body
 // is an arbitrary media file plus an instruction — the shape of a general LLM
 // proxy — so the MIME allowlist and MAX_BODY_BYTES limit what one request can
 // be, and lib/anonymousTrial.ts allows a signed-out install only a few.
+// Signed in, a photo or document is one of the account's files for the month
+// and a voice note uses its length in voice minutes (lib/serverPlan.ts).
 export async function POST(request: Request) {
   // See the same call in app/api/inbox+api.ts for why this 503s rather than
   // falling through to the anonymous path.
@@ -117,20 +145,31 @@ export async function POST(request: Request) {
   if (!kind || !mimeType || !base64) return badRequest();
   if (!ALLOWED_MIME_TYPES[kind].includes(mimeType.toLowerCase())) return badRequest();
 
-  const limitResponse = auth.userId
-    ? await claimUserCall(auth.userId, "extract-text")
+  // Base64 is 4 characters per 3 bytes. Logged on both paths below because
+  // it is the one number that separates "the model couldn't read it" from
+  // "the recorder handed us a file with nothing in it" — a silent emulator
+  // mic and a genuinely unreadable recording look identical from up here.
+  const bytes = Math.floor((base64.length * 3) / 4);
+
+  // What this file uses of the account's month — given back below if the
+  // model then can't read it.
+  const { userId } = auth;
+  const usage =
+    kind === "voice"
+      ? {
+          meter: "voice" as const,
+          amount: voiceSeconds(clampNumber(parsed.durationSeconds, 0, MAX_VOICE_SECONDS), bytes, mimeType.toLowerCase()),
+        }
+      : { meter: "media" as const, amount: 1 };
+
+  const limitResponse = userId
+    ? await claimPlanUsage(request, userId, usage.meter, usage.amount)
     : await claimTrialCall(request, "extract-text");
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
   const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);
   const languageNote = kind === "voice" || !language ? "" : (DESCRIPTION_LANGUAGE[language] ?? "");
-
-  // Base64 is 4 characters per 3 bytes. Logged on both paths below because
-  // it is the one number that separates "the model couldn't read it" from
-  // "the recorder handed us a file with nothing in it" — a silent emulator
-  // mic and a genuinely unreadable recording look identical from up here.
-  const bytes = Math.floor((base64.length * 3) / 4);
 
   try {
     const text = await extractTextFromMedia({
@@ -149,6 +188,7 @@ export async function POST(request: Request) {
     // caller's catch branch runs and says "couldn't transcribe" instead.
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[api/extract-text] ${kind} ${mimeType} ${bytes}B failed:`, reason);
+    if (userId) await refundPlanUsage(userId, usage.meter, usage.amount);
     return Response.json({ text: "", error: "extraction_failed" } satisfies ExtractTextResponseBody, { status: 502 });
   }
 }

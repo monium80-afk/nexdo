@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 
 import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
+import { showPlanLimit } from "@/lib/paywall";
+import { PlanLimitError } from "@/lib/plan";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
@@ -53,8 +55,17 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
     const requestId = ++adviceRequestId.current;
     const taskId = task.id;
     setAdviceState({ taskId, request: { status: "loading" } });
-    // generateAdvice never throws — it falls back to heuristic advice offline.
-    const result = await generateAdvice(task, availableMinutes);
+    // generateAdvice falls back to heuristic advice offline; the one thing it
+    // throws is the month's breakdowns-and-advice being used up.
+    let result: TaskAdvice;
+    try {
+      result = await generateAdvice(task, availableMinutes);
+    } catch (error) {
+      if (requestId !== adviceRequestId.current) return;
+      setAdviceState({ taskId, request: IDLE_ADVICE });
+      if (error instanceof PlanLimitError) showPlanLimit(error.meter);
+      return;
+    }
     if (requestId !== adviceRequestId.current) return;
     setAdviceState({
       taskId,
@@ -83,8 +94,15 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
       replaceRemainingSteps(taskId, steps);
       setBreakdownState({ taskId, status: "idle" });
     } catch (error) {
+      if (requestId !== breakdownRequestId.current) return;
+      // Out of this month's breakdowns: not a failure to retry.
+      if (error instanceof PlanLimitError) {
+        setBreakdownState({ taskId, status: "idle" });
+        showPlanLimit(error.meter);
+        return;
+      }
       console.warn("[useTaskAiAssist] breakdown failed", error);
-      if (requestId === breakdownRequestId.current) setBreakdownState({ taskId, status: "error" });
+      setBreakdownState({ taskId, status: "error" });
     }
   };
 

@@ -1,6 +1,7 @@
 import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
 import { audioLevel, decodeUtf8, encodeBase64, parseServerMessage, toMonoPcm16, type LiveEvent } from "@/lib/liveProtocol";
 import type { LiveToolCall, LiveToolResult } from "@/lib/liveVoiceTools";
+import { PlanLimitError } from "@/lib/plan";
 
 // One live voice session, start to finish: open a socket to Gemini Live,
 // stream the microphone into it, and carry out every tool call it makes the
@@ -23,7 +24,8 @@ const LAST_TURN_WAIT_MS = 3000;
 const SOCKET_OPEN = 1;
 
 export type LiveVoiceStatus = "idle" | "connecting" | "listening" | "finishing" | "stopped" | "error";
-export type LiveVoiceProblem = "permission" | "unavailable" | "connection" | "timeLimit" | "silence";
+/** "planLimit": Live voice isn't in the account's plan, or the month's minutes are used up (lib/plan.ts). */
+export type LiveVoiceProblem = "permission" | "unavailable" | "connection" | "timeLimit" | "silence" | "planLimit";
 
 export type LiveVoiceState = {
   status: LiveVoiceStatus;
@@ -52,6 +54,8 @@ export type LiveVoiceDeps = {
   undoCount: () => number;
   /** How loud the microphone is (0–1) with every buffer sent, then 0 once it stops — for the sound waves. */
   onLevel?: (level: number) => void;
+  /** How long a session listened, once it stops — what the month's Live voice minutes are counted in. */
+  onListened?: (seconds: number) => void;
   /** Development only: what was heard and done, for checking it in the terminal. */
   log?: (message: string) => void;
 };
@@ -79,6 +83,19 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   let finishTimer: ReturnType<typeof setTimeout> | undefined;
   let limitTimer: ReturnType<typeof setTimeout> | undefined;
   let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  // How long this session may listen: MAX_LIVE_SECONDS, or what is left of
+  // the month's minutes when the server says that is less.
+  let sessionSeconds = MAX_LIVE_SECONDS;
+  // When the microphone started streaming (ms), until its time is reported.
+  let listeningSince: number | null = null;
+
+  // Called wherever the microphone stops; reports the session's length once.
+  const reportListened = () => {
+    if (listeningSince === null) return;
+    const seconds = Math.ceil((Date.now() - listeningSince) / 1000);
+    listeningSince = null;
+    deps.onListened?.(seconds);
+  };
 
   const closeSocket = () => {
     const current = socket;
@@ -104,6 +121,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     turnOpen = false;
     deps.stopMicrophone();
     deps.onLevel?.(0);
+    reportListened();
     closeSocket();
     setState({ status, problem, startedAt: null });
   };
@@ -117,6 +135,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     streaming = false;
     deps.stopMicrophone();
     deps.onLevel?.(0);
+    reportListened();
     clearTimeout(limitTimer);
     clearTimeout(silenceTimer);
     // Everything said has been acted on: nothing to wait for.
@@ -157,10 +176,12 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       return;
     }
     streaming = true;
-    setState({ status: "listening", startedAt: Date.now() });
+    listeningSince = Date.now();
+    setState({ status: "listening", startedAt: listeningSince });
     limitTimer = setTimeout(() => {
-      if (current === session) stop("timeLimit");
-    }, MAX_LIVE_SECONDS * 1000);
+      // Cut short by the month's minutes running out, or by the usual limit.
+      if (current === session) stop(sessionSeconds < MAX_LIVE_SECONDS ? "planLimit" : "timeLimit");
+    }, sessionSeconds * 1000);
     waitForSpeech();
   };
 
@@ -242,11 +263,18 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     try {
       live = await deps.requestSession();
     } catch (error) {
+      if (current !== session) return;
+      // Not in the plan, or out of minutes — nothing is broken.
+      if (error instanceof PlanLimitError) {
+        end("error", "planLimit");
+        return;
+      }
       console.warn("[liveVoice] couldn't start a session", error);
-      if (current === session) end("error", "unavailable");
+      end("error", "unavailable");
       return;
     }
     if (current !== session) return;
+    sessionSeconds = Math.min(MAX_LIVE_SECONDS, Math.max(1, live.maxSeconds ?? MAX_LIVE_SECONDS));
 
     const opened = deps.openSocket(live.url);
     // Google sends its JSON as binary frames; React Native would otherwise

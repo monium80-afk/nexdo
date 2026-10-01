@@ -126,6 +126,24 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
+              {/* So does Settings → Send feedback / Report a problem. */}
+              <Stack.Screen
+                name="feedback"
+                options={{
+                  presentation: "modal",
+                  animation: "slide_from_bottom",
+                  contentStyle: { backgroundColor: colors.cream[50] },
+                }}
+              />
+              {/* And the Nexdo Pro paywall, from wherever it's opened. */}
+              <Stack.Screen
+                name="paywall"
+                options={{
+                  presentation: "modal",
+                  animation: "slide_from_bottom",
+                  contentStyle: { backgroundColor: colors.cream[100] },
+                }}
+              />
             </Stack>
           </View>
         </View>

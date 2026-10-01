@@ -3,7 +3,9 @@ import type { TaskContext } from "@/lib/ai/context";
 import { createLiveSessionToken } from "@/lib/ai/gemini";
 import { languageName } from "@/lib/ai/language";
 import { claimUserCall } from "@/lib/aiUsageLimit";
+import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
+import { remainingPlanUsage } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -36,6 +38,11 @@ export type LiveSessionResponseBody = {
   url: string;
   /** The first message to send once it's open. */
   setup: { setup: Record<string, unknown> };
+  /**
+   * How long this session may listen: the app's own limit, or what is left
+   * of the month's Live voice minutes if that is less.
+   */
+  maxSeconds?: number;
 };
 
 // The low-latency Live model — the "extended thinking" one reasons in the
@@ -237,7 +244,10 @@ export function parseBody(raw: unknown): LiveSessionRequestBody {
 }
 
 // Signed-in only. The one AI run a signed-out install gets (onboarding) never
-// streams audio, and a live session is billed by the minute.
+// streams audio, and a live session is billed by the minute. It is also part
+// of Pro only (lib/plan.ts), counted in minutes of listening: this route
+// checks there are some left, and the app reports what a session used once
+// it's over (app/api/live-usage+api.ts).
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
@@ -251,15 +261,22 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  const allowance = await remainingPlanUsage(request, auth.userId, "live");
+  if ("refused" in allowance) return allowance.refused;
+
   // Each token is a session of up to SESSION_MINUTES, so the daily count of
-  // tokens is what bounds live voice's cost per account.
+  // tokens bounds live voice's cost per account whatever the app reports.
   const limitResponse = await claimUserCall(auth.userId, "live-session");
   if (limitResponse) return limitResponse;
 
   const setup = liveSetup(parseBody(raw));
   try {
     const { websocketUrl } = await createLiveSessionToken({ setup, sessionMinutes: SESSION_MINUTES });
-    return Response.json({ url: websocketUrl, setup: { setup } } satisfies LiveSessionResponseBody);
+    return Response.json({
+      url: websocketUrl,
+      setup: { setup },
+      maxSeconds: Math.min(MAX_LIVE_SECONDS, allowance.remaining),
+    } satisfies LiveSessionResponseBody);
   } catch (error) {
     // Logged in full here (a missing key, a quota, a rejected setup); the
     // phone only needs to know it can't start.

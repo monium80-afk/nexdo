@@ -11,6 +11,8 @@ import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import { isImageAttachment } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
 import { describeConfirmation, describeScopeQuestion } from "@/lib/operationMessages";
+import { PlanLimitError, type Meter } from "@/lib/plan";
+import { planLimitMessage } from "@/lib/planLimit";
 import { deleteAllMessages, fetchMessages, subscribeToMessages, upsertMessageRow } from "@/lib/supabaseSync";
 import { bulkRecurrenceScope, needsRecurrenceScope, resolveTarget, type TaskOperation } from "@/lib/taskOperations";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -99,6 +101,12 @@ type ChatStore = {
   pendingActions: PendingAction[];
   lastUndo: UndoEntry | null;
   redirectToNext: { minutes: number } | null;
+  /**
+   * Set when a message ran into the end of a month's allowance (lib/plan.ts).
+   * The reply in the thread says which one; the chat screen reads this to
+   * open the paywall, then clears it.
+   */
+  planLimit: Meter | null;
   syncUserId: string | null;
   /** Messages Supabase hasn't confirmed yet: id → the account they're being saved to. */
   unsynced: Record<string, string>;
@@ -131,6 +139,7 @@ type ChatStore = {
   cancelPendingActions: () => void;
   undoLastAction: () => void;
   clearRedirectToNext: () => void;
+  clearPlanLimit: () => void;
   clearHistory: () => Promise<void>;
   handleSignOut: () => Promise<void>;
 };
@@ -361,6 +370,7 @@ export const useChatStore = create<ChatStore>()(
         pendingActions: [],
         lastUndo: null,
         redirectToNext: null,
+        planLimit: null,
         syncUserId: null,
         unsynced: {},
 
@@ -456,11 +466,26 @@ export const useChatStore = create<ChatStore>()(
             // composeAttachmentMessage() produces.
             let effectiveText = trimmed;
             if (attachments.length > 0) {
-              const { extracted, failedCount } = await extractAttachmentsText(localAttachments, {
+              const { extracted, failedCount, limit } = await extractAttachmentsText(localAttachments, {
                 language: getLanguage(),
                 userInstruction: trimmed,
               });
               if (generation !== signOutGeneration) return;
+
+              // The month's photos, documents or voice minutes ran out. With
+              // nothing read, the message stops there (see the catch below).
+              // With some files read, the thread says the rest were left out
+              // and the message goes ahead on the ones that were.
+              if (limit && extracted.length === 0) throw limit;
+              if (limit) {
+                set({ planLimit: limit.meter });
+                pushMessage({
+                  id: createMessageId("ai"),
+                  role: "ai",
+                  text: planLimitMessage(limit.meter),
+                  createdAt: new Date().toISOString(),
+                });
+              }
 
               if (extracted.length === 0) {
                 // Nothing readable came back. If they also wrote something,
@@ -524,13 +549,20 @@ export const useChatStore = create<ChatStore>()(
             if (generation !== signOutGeneration) return; // signed out / reset mid-request
             await handleClassifiedActions(actions, replies);
           })().catch((error) => {
-            // Nothing above is expected to reject — classifyIntent and
+            if (generation !== signOutGeneration) return;
+            // A month's allowance is used up: say which, rather than "the AI
+            // is unreachable" — nothing is wrong, and nothing was changed.
+            if (error instanceof PlanLimitError) {
+              set({ pendingActions: [], planLimit: error.meter });
+              respondWith(planLimitMessage(error.meter));
+              return;
+            }
+            // Nothing else above is expected to reject — classifyIntent and
             // extractAttachmentsText both absorb their own failures — but this
             // is fire-and-forget, so anything that did would surface as an
             // unhandled rejection *and* leave isAiTyping stuck on, spinning the
             // typing bubble for the rest of the session.
             console.warn("[useChatStore] sendMessage failed", error);
-            if (generation !== signOutGeneration) return;
             respondWith(translate().common.aiUnreachable);
           });
 
@@ -652,6 +684,7 @@ export const useChatStore = create<ChatStore>()(
         },
 
         clearRedirectToNext: () => set({ redirectToNext: null }),
+        clearPlanLimit: () => set({ planLimit: null }),
 
         // Wipes the conversation (locally and in Supabase, or hydrate would
         // bring it straight back) but leaves the user signed in and their
@@ -666,6 +699,7 @@ export const useChatStore = create<ChatStore>()(
             pendingActions: [],
             lastUndo: null,
             redirectToNext: null,
+            planLimit: null,
             unsynced: {},
           });
           const userId = get().syncUserId;
@@ -692,6 +726,7 @@ export const useChatStore = create<ChatStore>()(
             pendingActions: [],
             lastUndo: null,
             redirectToNext: null,
+            planLimit: null,
             syncUserId: null,
             unsynced: {},
           });

@@ -3,8 +3,8 @@ import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { languageInstruction } from "@/lib/ai/language";
 import type { PlanStep } from "@/lib/ai/types";
-import { claimUserCall } from "@/lib/aiUsageLimit";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
+import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
   badRequest,
@@ -98,7 +98,8 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
-  const limitResponse = await claimUserCall(auth.userId, "breakdown");
+  // One of the account's breakdowns-and-advice for the month.
+  const limitResponse = await claimPlanUsage(request, auth.userId, "assist");
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -116,9 +117,13 @@ export async function POST(request: Request) {
       }),
       responseSchema: RESPONSE_SCHEMA,
     });
-    return Response.json({ steps: normalizeSteps(result) } satisfies BreakdownResponseBody);
+    const steps = normalizeSteps(result);
+    // No usable steps: the app offers a retry, and this try isn't counted.
+    if (steps.length === 0) await refundPlanUsage(auth.userId, "assist");
+    return Response.json({ steps } satisfies BreakdownResponseBody);
   } catch (error) {
     console.error("[api/breakdown]", error);
+    await refundPlanUsage(auth.userId, "assist");
     return Response.json({ steps: [] } satisfies BreakdownResponseBody);
   }
 }

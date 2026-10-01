@@ -1,27 +1,22 @@
 // Server-only: imported exclusively by app/api/**/+api.ts route handlers.
 //
-// A daily ceiling on each signed-in account's AI calls. Signing in skips the
-// signed-out limits (lib/anonymousRateLimit.ts, lib/anonymousTrial.ts), and an
-// account costs nothing to make — without this, one account, or a script
-// holding its session token, could call the AI routes as often as it liked,
-// every call billed to the project's Gemini key. Supabase keeps the count
-// (supabase/schema.sql, ai_usage), so it holds across server instances.
+// A daily ceiling on how many Live voice sessions an account may open.
+// Supabase keeps the count (supabase/schema.sql, ai_usage), so it holds
+// across server instances.
 //
-// An abuse ceiling, not a plan: every call is something a person tapped or
-// said, so these sit far above a busy day. Monthly credits per plan are a
-// separate decision, still open.
+// Every other AI route is bounded by the account's plan instead — a monthly
+// count the server keeps itself (lib/serverPlan.ts). Live voice's minutes are
+// the one thing the server can't measure: the audio goes from the phone
+// straight to Google, so the app reports how long it listened
+// (app/api/live-usage+api.ts). This ceiling is the stop behind that report:
+// however little a tampered app admits to, it can only open so many sessions
+// of up to 6 minutes a day.
 import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
 
-export type AiRoute = "inbox" | "extract-text" | "next" | "breakdown" | "reassess" | "live-session";
+export type AiRoute = "live-session";
 
-// Calls per account per UTC day. The inbox (several Gemini calls per request)
-// and live voice (up to 6 minutes of audio per session) cost the most per call.
+// Calls per account per UTC day — far above a busy day of real use.
 const DAILY_LIMITS: Record<AiRoute, number> = {
-  inbox: 200,
-  "extract-text": 100,
-  next: 200,
-  breakdown: 200,
-  reassess: 200,
   "live-session": 30,
 };
 

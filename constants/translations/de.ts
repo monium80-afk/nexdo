@@ -1,10 +1,20 @@
 import type { Translations } from "@/lib/i18n";
+import type { TrialUnit } from "@/lib/plan";
 
 // German copy — same shape as en.ts (TypeScript checks it against that file).
 // Addresses the user as "du", like most consumer apps in German (lib/ai/language.ts
 // asks the AI for the same).
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
+
+const TRIAL_UNITS: Record<TrialUnit, [one: string, many: string]> = {
+  day: ["Tag", "Tage"],
+  week: ["Woche", "Wochen"],
+  month: ["Monat", "Monate"],
+  year: ["Jahr", "Jahre"],
+};
+/** "3 Tage" — how long a free trial lasts. */
+const trialLength = (count: number, unit: TrialUnit) => `${count} ${plural(count, ...TRIAL_UNITS[unit])}`;
 
 // The adjective comes before the noun and has the same form for 1 and many:
 // "1 erledigte Aufgabe", "3 erledigte Aufgaben".
@@ -432,7 +442,7 @@ export const de: Translations = {
 
   live: {
     open: "Sprechen, um Aufgaben hinzuzufügen oder zu ändern",
-    title: "Live-Sprache",
+    title: "Magisches Mikro",
     connecting: "Verbinde…",
     listening: (clock: string) => `Hört zu · ${clock}`,
     finishing: "Deine letzten Worte kommen noch…",
@@ -447,11 +457,10 @@ export const de: Translations = {
     done: "Fertig",
     problems: {
       permission: "Nexdo braucht das Mikrofon, um dich zu hören. Du kannst es in den Einstellungen erlauben.",
-      unavailable: "Live-Sprache konnte nicht starten. Prüfe deine Verbindung und versuch es noch einmal.",
+      unavailable: "Das Magische Mikro konnte nicht starten. Prüfe deine Verbindung und versuch es noch einmal.",
       connection: "Die Verbindung ist abgebrochen. Was du schon gesagt hast, zählt trotzdem.",
-      timeLimit: "Live-Sprache stoppt nach 5 Minuten — tippe auf Weitersprechen, um weiterzumachen.",
-      silence: "Zuhören nach einer stillen Pause beendet — tippe auf Weitersprechen, um weiterzumachen.",
-    },
+      timeLimit: "Das Magische Mikro stoppt nach 5 Minuten — tippe auf Weitersprechen, um weiterzumachen.",
+      silence: "Zuhören nach einer stillen Pause beendet — tippe auf Weitersprechen, um weiterzumachen.",    },
   },
 
   assistant: {
@@ -625,7 +634,6 @@ export const de: Translations = {
     pro: "NEXDO PRO",
     upgrade: "Upgrade auf Nexdo Pro",
     upgradeBody: "Monatlich oder jährlich — jederzeit kündbar.",
-    upgradeError: "Der Upgrade-Bildschirm konnte nicht geöffnet werden. Prüf deine Verbindung und versuch es noch einmal.",
     restorePurchases: "Käufe wiederherstellen",
     restoring: "Wird wiederhergestellt…",
     restoreDone: "Nexdo Pro ist wieder auf diesem Konto.",
@@ -641,9 +649,9 @@ export const de: Translations = {
     aiChat: "KI-POSTEINGANG",
     autoMode: "Automatikmodus",
     autoModeBody: "Aufgaben sofort hinzufügen und aktualisieren, ohne vorher nachzufragen.",
-    voiceButton: "Sprechen statt tippen",
+    voiceButton: "Magisches Mikro",
     voiceButtonBody:
-      "Die mittlere Taste der Tab-Leiste wird zum Mikrofon und öffnet Live-Sprache statt des Formulars zum Hinzufügen von Aufgaben.",
+      "Aufgaben per Sprache hinzufügen und ändern: Die mittlere Taste der Tab-Leiste wird zum Mikrofon, statt das Formular zum Hinzufügen von Aufgaben zu öffnen. Teil von Nexdo Pro.",
     clearHistory: "Chatverlauf löschen",
     clearConfirmTitle: "Chatverlauf löschen?",
     clearConfirmBody: "Damit werden alle Nachrichten im KI-Chat entfernt. Deine Aufgaben bleiben unverändert.",
@@ -678,13 +686,101 @@ export const de: Translations = {
     themes: { light: "Hell", dark: "Dunkel", system: "System" },
     language: "Sprache",
 
-    support: "HILFE",
-    help: "Hilfe & Feedback",
-    helpBody: "Sag uns, was nicht funktioniert oder was du dir wünschst.",
+    support: "HILFE & SUPPORT",
+    help: "FAQ / Hilfe",
+    helpBody: "Antworten auf häufige Fragen, oder schreib uns.",
+    sendFeedback: "Feedback senden",
     privacy: "Datenschutzerklärung",
     terms: "Nutzungsbedingungen",
     version: (version: string) => `Nexdo v${version}`,
     linkError: "Der Link konnte nicht geöffnet werden. Versuch es noch einmal.",
+  },
+
+  plan: {
+    meters: {
+      chat: "KI-Chat-Nachrichten",
+      media: "Fotos und Dokumente",
+      voice: "Sprachnotizen",
+      live: "Magisches Mikro",
+      assist: "Aufteilungen und Tipps",
+    },
+    minutes: (count: number) => `${count} Min.`,
+    used: {
+      chat: "Du hast deine KI-Chat-Nachrichten für diesen Monat aufgebraucht.",
+      media: "Du hast deine Fotos und Dokumente für diesen Monat aufgebraucht.",
+      voice: "Du hast deine Sprachnotiz-Minuten für diesen Monat aufgebraucht.",
+      live: "Du hast deine Minuten für das Magische Mikro in diesem Monat aufgebraucht.",
+      assist: "Du hast deine Aufteilungen und Tipps für diesen Monat aufgebraucht.",
+    },
+    liveProOnly: "Das Magische Mikro gehört zu Nexdo Pro.",
+    resets: "Dein Kontingent beginnt am 1. neu.",
+    upgradeHint: "Nexdo Pro gibt dir jeden Monat deutlich mehr — und Aufgaben von Hand hinzuzufügen bleibt immer kostenlos.",
+    limitTitle: "Monatslimit erreicht",
+    thisMonth: "Diesen Monat",
+    names: { free: "Gratis-Tarif", pro: "Nexdo Pro" },
+    usedOf: (used: number, limit: string) => `${used} von ${limit}`,
+    proOnly: "Nur mit Pro",
+  },
+
+  paywall: {
+    close: "Schließen",
+    title: "Lass Nexdo mehr für dich mitdenken.",
+    subtitle: (taskCount: number) =>
+      taskCount === 0
+        ? "Pro gibt der KI Raum, deine Aufgaben mit dir zu planen."
+        : `Nexdo hat ${taskCount === 1 ? "deine Aufgabe" : `deine ${taskCount} Aufgaben`} schon sortiert. Pro gibt der KI Raum, sie weiter mit dir zu planen.`,
+    yearly: "Jährlich",
+    monthly: "Monatlich",
+    save: (percent: number) => `${percent} % sparen`,
+    aMonth: (price: string) => `${price} pro Monat`,
+    perMonth: "pro Monat",
+    eachMonth: "Jeden Monat",
+    free: "Gratis",
+    pro: "Pro",
+    unlimitedNote: "Aufgaben von Hand hinzufügen, die Seite „Jetzt“ und Erinnerungen sind in beiden Tarifen unbegrenzt.",
+    startTrial: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} kostenlos testen`,
+    subscribe: "Nexdo Pro holen",
+    working: "Einen Moment…",
+    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
+      `${trialLength(count, unit)} kostenlos, danach ${price} pro ${yearly ? "Jahr" : "Monat"}. Jederzeit kündbar.`,
+    terms: (price: string, yearly: boolean) => `${price} pro ${yearly ? "Jahr" : "Monat"}, verlängert sich bis zur Kündigung.`,
+    continueFree: "Kostenlos weitermachen",
+    restore: "Käufe wiederherstellen",
+    termsLink: "Bedingungen",
+    privacyLink: "Datenschutz",
+    loading: "Tarife werden geladen…",
+    loadError: "Die Tarife konnten nicht geladen werden. Prüf deine Verbindung und versuch es noch einmal.",
+    retry: "Noch einmal versuchen",
+    purchaseError: "Der Kauf hat nicht geklappt. Versuch es noch einmal.",
+    purchasePending: "Dein Kauf wartet auf Freigabe. Nexdo Pro wird aktiv, sobald er bestätigt ist.",
+    offline: "Du bist offline. Stell eine Verbindung her und versuch es noch einmal.",
+    welcomeTitle: "Du hast jetzt Nexdo Pro",
+    welcomeBody: "Dein neues Monatskontingent steht bereit.",
+  },
+
+  feedback: {
+    title: "Feedback senden",
+    subtitle: "Hilf uns, Nexdo zu verbessern.",
+    typeLabel: "FEEDBACK-TYP",
+    types: { suggestion: "Vorschlag", bug: "Fehler", general: "Allgemeines Feedback", other: "Sonstiges" },
+    messageLabel: "DEINE NACHRICHT",
+    messagePlaceholder: "Was möchtest du uns mitteilen?",
+    messageRequired: "Schreib zuerst eine Nachricht.",
+    optional: "Optional",
+    screenshotLabel: "SCREENSHOT",
+    addScreenshot: "Screenshot anhängen",
+    screenshotAttached: "Screenshot angehängt",
+    viewScreenshot: "Screenshot ansehen",
+    removeScreenshot: "Screenshot entfernen",
+    screenshotInvalid: "Dieses Bild kann nicht angehängt werden. Wähle einen Screenshot oder ein Foto unter 5 MB.",
+    screenshotError: "Der Screenshot konnte nicht hochgeladen werden. Versuch es noch einmal oder entferne ihn und sende ohne.",
+    privacyNote: "Wird mit deinem Nexdo-Konto, der App-Version und dem Gerätetyp gesendet – du musst deine E-Mail nicht angeben.",
+    submit: "Feedback senden",
+    sending: "Wird gesendet…",
+    success: "Danke für dein Feedback.",
+    successBody: "Wir lesen jede Nachricht. Sie hilft uns zu entscheiden, was wir als Nächstes verbessern und bauen.",
+    error: "Feedback konnte nicht gesendet werden. Prüfe deine Verbindung und versuche es erneut.",
+    rateLimited: "Du hast in kurzer Zeit viel Feedback gesendet. Versuch es in einer Weile noch einmal.",
   },
 
   notifications: {

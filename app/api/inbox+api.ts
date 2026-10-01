@@ -4,10 +4,10 @@ import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/a
 import { GeminiHttpError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
 import { hasExplicitTime, isAmbiguousDate, parseDatePhrase } from "@/lib/ai/parseDate";
-import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
+import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -112,6 +112,8 @@ export type InboxResponseBody = {
   intent: string;
   actions: InboxAction[];
   reply: string;
+  /** Set when the model couldn't be reached and "reply" is the apology — the message isn't counted. */
+  unavailable?: true;
 };
 
 // Internal per-call contract. Asking the model to fully resolve a compound
@@ -278,6 +280,7 @@ function fallbackResponse(language: AppLanguage | undefined): InboxResponseBody 
     intent: "UNRELATED",
     actions: [{ ...NO_ACTION, reply: aiUnavailableMessage(language) }],
     reply: aiUnavailableMessage(language),
+    unavailable: true,
   };
 }
 
@@ -637,8 +640,9 @@ export function parseBody(raw: unknown): InboxRequestBody | null {
 // (app/onboarding-analyzing.tsx) is read BEFORE the user signs up, as their
 // free look at the AI. lib/anonymousTrial.ts allows one request per install,
 // with per-IP and per-day ceilings behind it; the caps above bound what that
-// one request can cost. Signed in, lib/aiUsageLimit.ts caps each account's
-// requests per day.
+// one request can cost. Signed in, each request is one of the account's AI
+// chat messages for the month (lib/serverPlan.ts) — one message, however many
+// instructions it holds.
 export async function POST(request: Request) {
   // A 503 rather than quietly treating the caller as anonymous: being waved
   // through as anonymous here would only mean tighter rate limiting, but it
@@ -661,10 +665,14 @@ export async function POST(request: Request) {
   const body = parseBody(raw);
   if (!body) return badRequest();
 
-  const limitResponse = auth.userId ? await claimUserCall(auth.userId, "inbox") : await claimTrialCall(request, "inbox");
+  const limitResponse = auth.userId
+    ? await claimPlanUsage(request, auth.userId, "chat")
+    : await claimTrialCall(request, "inbox");
   if (limitResponse) return limitResponse;
 
-  return Response.json(await resolveInboxMessage(body));
+  const result = await resolveInboxMessage(body);
+  if (result.unavailable && auth.userId) await refundPlanUsage(auth.userId, "chat");
+  return Response.json(result);
 }
 
 /**

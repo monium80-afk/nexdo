@@ -72,10 +72,8 @@ export default function TasksListScreen() {
   };
   const [deadlineNow, setDeadlineNow] = useState(() => new Date());
 
-  // The list is open and done tasks. Archived ones — and occurrences a
-  // repeating task skipped — are kept, but only under the Archived filter.
+  // The list shows open and done tasks. Skipped repeating occurrences stay out of the active list.
   const tasks = useMemo(() => allTasks.filter(isListed), [allTasks]);
-  const archivedTasks = useMemo(() => allTasks.filter((task) => task.status === "archived"), [allTasks]);
 
   const pendingCount = tasks.filter((task) => task.status === "pending").length;
   const completedCount = tasks.filter((task) => task.status === "completed").length;
@@ -103,20 +101,15 @@ export default function TasksListScreen() {
       { label: t.tasks.status.pending, value: "pending" as TaskStatusFilter, count: pendingCount },
       { label: t.tasks.status.completed, value: "completed" as TaskStatusFilter, count: completedCount },
       { label: t.tasks.status.overdue, value: "overdue" as TaskStatusFilter, count: overdueCount },
-      // Only once there's something archived to find.
-      ...(archivedTasks.length > 0
-        ? [{ label: t.tasks.status.archived, value: "archived" as TaskStatusFilter, count: archivedTasks.length }]
-        : []),
     ],
-    [tasks.length, pendingCount, completedCount, overdueCount, archivedTasks.length, t],
+    [tasks.length, pendingCount, completedCount, overdueCount, t],
   );
 
   const sortOptions = SORT_VALUES.map((value) => ({ label: t.tasks.sort[value], value }));
 
   const filteredTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const source = status === "archived" ? archivedTasks : tasks;
-    const filtered = source.filter((task) => {
+    const filtered = tasks.filter((task) => {
       if (status === "pending" && task.status !== "pending") return false;
       if (status === "completed" && task.status !== "completed") return false;
       if (status === "overdue" && getDueInfo(task, deadlineNow).tone !== "overdue") return false;
@@ -124,7 +117,7 @@ export default function TasksListScreen() {
       return true;
     });
     return sortTasks(filtered, sort);
-  }, [tasks, archivedTasks, status, sort, search, deadlineNow]);
+  }, [tasks, status, sort, search, deadlineNow]);
 
   const statusLabel = t.tasks.status[status];
   const sortLabel = t.tasks.sort[sort];

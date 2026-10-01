@@ -3,6 +3,7 @@ import type { ExtractedAttachment } from "@/lib/ai/attachmentMessage";
 import { apiPost } from "@/lib/api";
 import { isImageAttachment } from "@/lib/chatAttachments";
 import { readFileAsBase64 } from "@/lib/localFile";
+import { PlanLimitError } from "@/lib/plan";
 import type { ChatAttachment } from "@/types/chat";
 import type { AppLanguage } from "@/types/settings";
 
@@ -28,7 +29,11 @@ export function resolveMimeType(attachment: ChatAttachment): string {
   return mimeType === "image/jpg" ? "image/jpeg" : mimeType;
 }
 
-/** One attachment through the vision/audio model — the text it holds, or "" if unreadable. */
+/**
+ * One attachment through the vision/audio model — the text it holds, or "" if
+ * unreadable. Throws PlanLimitError when the month's photos and documents, or
+ * voice minutes, are used up.
+ */
 export async function extractAttachmentText(
   attachment: ChatAttachment,
   options: { language?: AppLanguage; userInstruction?: string } = {},
@@ -43,6 +48,8 @@ export async function extractAttachmentText(
     mimeType: resolveMimeType(attachment),
     base64,
     kind: extractionKind(attachment),
+    // A voice note is counted by its length (the month's voice minutes).
+    durationSeconds: attachment.durationSeconds,
     language: options.language,
     userInstruction: options.userInstruction?.trim() || undefined,
   };
@@ -58,24 +65,34 @@ export async function extractAttachmentText(
  * shouldn't lose the other one — but failures are counted, because "the
  * photo has no text in it" and "the photo never reached the model" need
  * different replies: only the first is fixed by taking a clearer shot.
+ *
+ * A file turned away because the month's allowance is used up is neither:
+ * `limit` carries that refusal, so the caller can say so rather than answer
+ * as if the file had simply been left out.
  */
 export async function extractAttachmentsText(
   attachments: ChatAttachment[],
   options: { language?: AppLanguage; userInstruction?: string } = {},
-): Promise<{ extracted: ExtractedAttachment[]; failedCount: number }> {
+): Promise<{ extracted: ExtractedAttachment[]; failedCount: number; limit?: PlanLimitError }> {
   const settled = await Promise.allSettled(
     attachments.map(async (attachment) => ({
       kind: extractionKind(attachment),
       text: await extractAttachmentText(attachment, options),
     })),
   );
+  let limit: PlanLimitError | undefined;
+  let failedCount = 0;
   const extracted = settled.flatMap((outcome) => {
     if (outcome.status === "rejected") {
-      console.warn("[media] attachment extraction failed", outcome.reason);
+      if (outcome.reason instanceof PlanLimitError) {
+        limit = outcome.reason;
+      } else {
+        console.warn("[media] attachment extraction failed", outcome.reason);
+        failedCount += 1;
+      }
       return [];
     }
     return outcome.value.text ? [outcome.value] : [];
   });
-  const failedCount = settled.filter((outcome) => outcome.status === "rejected").length;
-  return { extracted, failedCount };
+  return { extracted, failedCount, limit };
 }

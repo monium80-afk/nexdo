@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
 import { createLiveVoice, MAX_LIVE_SECONDS, SILENCE_STOP_SECONDS, type LiveVoiceDeps } from "@/lib/liveVoice";
 import type { LiveToolCall } from "@/lib/liveVoiceTools";
+import { PlanLimitError } from "@/lib/plan";
 
 const flush = async () => {
   for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
@@ -317,6 +318,59 @@ describe("live voice session", () => {
     await voice.start();
     assert.equal(voice.getState().problem, "unavailable");
     assert.equal(sockets.length, 0);
+  });
+
+  it("says so when Live voice isn't in the plan, or the month's minutes are used up", async () => {
+    const { voice, sockets } = setup({
+      requestSession: async () => {
+        throw new PlanLimitError("live", "free");
+      },
+    });
+    await voice.start();
+    assert.equal(voice.getState().status, "error");
+    assert.equal(voice.getState().problem, "planLimit");
+    assert.equal(sockets.length, 0);
+  });
+
+  it("stops when what's left of the month's minutes runs out", async () => {
+    const maxSeconds = SILENCE_STOP_SECONDS * 3;
+    const { voice, socket } = await listening({ requestSession: async () => ({ ...SESSION, maxSeconds }) });
+    // An instruction more often than the silence stop, so only the limit can end it.
+    const step = (SILENCE_STOP_SECONDS - 1) * 1000;
+    for (let elapsed = 0; elapsed < maxSeconds * 1000; elapsed += step) {
+      mock.timers.tick(step);
+      if (voice.getState().status !== "listening") break;
+      socket.receive(speechStart);
+      socket.receive(turnComplete);
+    }
+    assert.equal(voice.getState().status, "stopped");
+    assert.equal(voice.getState().problem, "planLimit");
+  });
+
+  it("reports how long it listened, once per session", async () => {
+    const listened: number[] = [];
+    const { voice, sockets } = await listening({ onListened: (seconds) => listened.push(seconds) });
+    assert.deepEqual(listened, [], "nothing to report while it's still listening");
+    voice.stop();
+    voice.dispose();
+    assert.equal(listened.length, 1);
+    assert.ok(listened[0] >= 0);
+
+    // A second session on the same screen is reported separately.
+    await voice.start();
+    sockets[1].onopen?.();
+    sockets[1].receive({ setupComplete: {} });
+    await flush();
+    sockets[1].dropConnection();
+    assert.equal(listened.length, 2, "a dropped connection still counts what was used");
+  });
+
+  it("reports nothing for a session that never got to listen", async () => {
+    const listened: number[] = [];
+    const { voice, sockets } = setup({ onListened: (seconds) => listened.push(seconds) });
+    await voice.start();
+    sockets[0].dropConnection();
+    assert.deepEqual(listened, []);
   });
 
   it("ignores a late tool call from a session that's already over", async () => {

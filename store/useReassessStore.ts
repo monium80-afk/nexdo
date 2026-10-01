@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { requestReassessment, type ContextSubmission } from "@/lib/ai/reassessTask";
+import { PlanLimitError } from "@/lib/plan";
 import { applyReassessment, type NoteEdit, type ReassessmentReport } from "@/lib/reassessment";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -20,7 +21,8 @@ export type ReassessState =
   | { status: "running"; pending: PendingContext }
   | { status: "done"; report: ReassessmentReport }
   | { status: "clarify"; pending: PendingContext; question: string }
-  | { status: "error"; pending: PendingContext; reason: "ai" | "save" };
+  // "limit": the month's AI messages are used up (lib/plan.ts) — the note waits, as with any other failure.
+  | { status: "error"; pending: PendingContext; reason: "ai" | "save" | "limit" };
 
 type ReassessStore = {
   byTask: Record<string, ReassessState>;
@@ -59,6 +61,7 @@ export const useReassessStore = create<ReassessStore>()((set, get) => {
     try {
       proposal = await requestReassessment(base, pending.submission);
     } catch (error) {
+      if (error instanceof PlanLimitError) return setState(taskId, { status: "error", pending, reason: "limit" });
       console.warn("[useReassessStore] reassessment failed", error);
       return setState(taskId, { status: "error", pending, reason: "ai" });
     }

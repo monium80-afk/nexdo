@@ -2,19 +2,20 @@ import { useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import { PAYWALL_RESULT } from "react-native-purchases-ui";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import type { UsageResponseBody } from "@/app/api/usage+api";
 import { AccountSheet } from "@/components/AccountSheet";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { FeatherIconName } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { IconTile } from "@/components/IconTile";
+import { PlanUsage } from "@/components/PlanUsage";
 import { ProfileCard } from "@/components/ProfileCard";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useTabBarHeight } from "@/components/TabBar";
@@ -24,15 +25,11 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { apiPost } from "@/lib/api";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
+import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
-import {
-  isPurchasesEnabled,
-  presentCustomerCenter,
-  presentProPaywall,
-  resetPurchaser,
-  restorePurchases,
-} from "@/lib/purchases";
+import { isPurchasesEnabled, presentCustomerCenter, resetPurchaser, restorePurchases } from "@/lib/purchases";
 import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -86,19 +83,24 @@ function Group({ children }: { children: ReactNode }) {
 }
 
 /**
- * Starts under a row's label rather than its tile, so rows read as one list.
- * 46.5 = the 36dp tile + the row's gap-3.
+ * Between rows. In a group whose rows have tiles (Help & Support) it starts
+ * under their labels, so they read as one list: 46.5 = the 36dp tile + the
+ * row's gap-3.
  */
-function Divider() {
-  return <View className="ml-[46.5px] h-px bg-cream-200" />;
+function Divider({ inset = false }: { inset?: boolean }) {
+  return <View className={`h-px bg-cream-200 ${inset ? "ml-[46.5px]" : ""}`} />;
 }
 
-/** Controls that belong to the row above them, indented to its label. */
-function RowDetails({ children }: { children: ReactNode }) {
-  return <View className="gap-3 pl-[46.5px]">{children}</View>;
-}
-
-function ToggleControl({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (next: boolean) => void }) {
+function ToggleControl({
+  label,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  value: boolean;
+  /** Returning false refuses the change: the switch stays where it was. */
+  onValueChange: (next: boolean) => unknown;
+}) {
   const progress = useSharedValue(value ? 1 : 0);
   const reduceMotion = useReducedMotion();
 
@@ -119,12 +121,12 @@ function ToggleControl({ label, value, onValueChange }: { label: string; value: 
 
   const toggle = () => {
     const next = !value;
+    if (onValueChange(next) === false) return;
     // eslint-disable-next-line react-hooks/immutability
     progress.value = withTiming(next ? 1 : 0, {
       duration: reduceMotion ? 0 : MOTION.duration.standard,
       easing: MOTION.easing.standard,
     });
-    onValueChange(next);
   };
 
   return (
@@ -152,25 +154,21 @@ function ToggleControl({ label, value, onValueChange }: { label: string; value: 
 const TRACK_GLOW = { boxShadow: "0 4px 12px -4px rgba(236, 86, 28, 0.6)" };
 const THUMB_SHADOW = { boxShadow: "0 2px 5px rgba(60, 30, 10, 0.25)" };
 
-/** Tile, label + explanation, and a switch on the right. */
+/** Label + explanation, and a switch on the right. */
 function ToggleRow({
-  icon,
   label,
   body,
   value,
   onValueChange,
 }: {
-  /** Left out on a row nested under another row's label, which has no room for one. */
-  icon?: FeatherIconName;
   label: string;
   body: string;
   value: boolean;
-  onValueChange: (next: boolean) => void;
+  onValueChange: (next: boolean) => unknown;
 }) {
   const rtl = useRtlText();
   return (
     <View className="flex-row items-center gap-3">
-      {icon ? <IconTile icon={icon} /> : null}
       <View className="flex-1 gap-1">
         <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
           {label}
@@ -184,7 +182,10 @@ function ToggleRow({
   );
 }
 
-/** A tappable row inside a card: tile, label, optional explanation, chevron. */
+/**
+ * A tappable row inside a card: label, optional explanation, chevron. Only
+ * Help & Support's rows lead with a tile.
+ */
 function ActionRow({
   icon,
   label,
@@ -192,7 +193,7 @@ function ActionRow({
   disabled = false,
   onPress,
 }: {
-  icon: FeatherIconName;
+  icon?: FeatherIconName;
   label: string;
   body?: string;
   disabled?: boolean;
@@ -207,7 +208,7 @@ function ActionRow({
       accessibilityRole="button"
       className={`flex-row items-center gap-3 ${disabled ? "opacity-40" : ""}`}
     >
-      <IconTile icon={icon} tone="neutral" />
+      {icon ? <IconTile icon={icon} tone="neutral" /> : null}
       <View className="flex-1 gap-1">
         <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
           {label}
@@ -228,12 +229,10 @@ function ActionRow({
  * own red-tinted card, so it can't be mistaken for a setting.
  */
 function DangerRow({
-  icon,
   label,
   disabled = false,
   onPress,
 }: {
-  icon: FeatherIconName;
   label: string;
   disabled?: boolean;
   onPress: () => void;
@@ -247,9 +246,8 @@ function DangerRow({
       accessibilityRole="button"
       scaleTo={0.98}
       style={gradients.danger}
-      className={`card card--danger flex-row items-center gap-3 px-[16px] py-[10px] ${disabled ? "opacity-40" : ""}`}
+      className={`card card--danger flex-row items-center gap-3 px-[16px] py-[15px] ${disabled ? "opacity-40" : ""}`}
     >
-      <IconTile icon={icon} tone="red" size="sm" />
       <Text className="flex-1 font-grotesk-bold text-base text-overdue-500" style={rtl}>
         {label}
       </Text>
@@ -259,6 +257,7 @@ function DangerRow({
 }
 
 export default function Settings() {
+  const router = useRouter();
   const colors = useColors();
   const scheme = useThemeScheme();
   const t = useTranslation();
@@ -314,6 +313,39 @@ export default function Settings() {
       };
     }, []),
   );
+
+  // What the month has used of the plan, asked again each time Settings comes
+  // into view — which includes coming back from the paywall with a new plan.
+  // Left out of the page, rather than shown as an error, when it can't be read.
+  const [usage, setUsage] = useState<UsageResponseBody | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (!isPurchasesEnabled) return;
+      let active = true;
+      apiPost<UsageResponseBody>("/api/usage", {}).then(
+        (value) => {
+          if (active) setUsage(value);
+        },
+        (error) => {
+          console.warn("[Settings] couldn't load plan usage", error);
+          if (active) setUsage(null);
+        },
+      );
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  // Magic mic is part of Pro: on Free, switching it on opens the paywall
+  // instead. Switching it off is always allowed.
+  const handleVoiceAddButton = (next: boolean) => {
+    if (next && !pro && isPurchasesEnabled) {
+      openPaywall("live");
+      return false;
+    }
+    setVoiceAddButton(next);
+  };
 
   const nudgeTimeLabel = timeToDate(dailyNudgeTime).toLocaleTimeString(t.locale, {
     hour: "2-digit",
@@ -415,13 +447,6 @@ export default function Settings() {
     : null;
   const proStatus = !proExpiry ? t.settings.proActive : pro?.willRenew ? t.settings.proRenews(proExpiry) : t.settings.proEnds(proExpiry);
 
-  // Buying, and any error while buying, happens inside RevenueCat's paywall;
-  // only a paywall that couldn't open at all is left to explain here.
-  const handleUpgrade = async () => {
-    const result = await presentProPaywall();
-    if (result === PAYWALL_RESULT.ERROR) Alert.alert(t.settings.upgradeError);
-  };
-
   const handleRestore = async () => {
     setIsRestoring(true);
     const outcome = await restorePurchases();
@@ -500,7 +525,6 @@ export default function Settings() {
               <ProfileCard onPress={() => setAccountOpen(true)} />
 
               <DangerRow
-                icon="log-out"
                 label={isSigningOut ? t.settings.signingOut : t.settings.signOut}
                 disabled={isSigningOut}
                 onPress={handleSignOut}
@@ -515,22 +539,26 @@ export default function Settings() {
 
             {isPurchasesEnabled ? (
               <Section title={t.settings.pro}>
+                {usage ? (
+                  <Group>
+                    <PlanUsage plan={usage.plan} used={usage.used} />
+                  </Group>
+                ) : null}
+
                 <Group>
                   {pro ? (
                     <ActionRow
-                      icon="award"
                       label={t.settings.manageSubscription}
                       body={proStatus}
                       onPress={handleManageSubscription}
                     />
                   ) : (
                     <>
-                      <ActionRow icon="star" label={t.settings.upgrade} body={t.settings.upgradeBody} onPress={handleUpgrade} />
+                      <ActionRow label={t.settings.upgrade} body={t.settings.upgradeBody} onPress={() => openPaywall()} />
 
                       <Divider />
 
                       <ActionRow
-                        icon="rotate-ccw"
                         label={isRestoring ? t.settings.restoring : t.settings.restorePurchases}
                         disabled={isRestoring}
                         onPress={handleRestore}
@@ -544,7 +572,6 @@ export default function Settings() {
             <Section title={t.settings.aiChat}>
               <Group>
                 <ToggleRow
-                  icon="zap"
                   label={t.settings.autoMode}
                   body={t.settings.autoModeBody}
                   value={aiAutoMode}
@@ -554,15 +581,14 @@ export default function Settings() {
                 <Divider />
 
                 <ToggleRow
-                  icon="mic"
                   label={t.settings.voiceButton}
                   body={t.settings.voiceButtonBody}
                   value={voiceAddButton}
-                  onValueChange={setVoiceAddButton}
+                  onValueChange={handleVoiceAddButton}
                 />
               </Group>
 
-              <DangerRow icon="trash-2" label={t.settings.clearHistory} onPress={handleClearHistory} />
+              <DangerRow label={t.settings.clearHistory} onPress={handleClearHistory} />
 
               {historyStatus ? (
                 <Text className="px-3.5 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
@@ -585,21 +611,20 @@ export default function Settings() {
                 ) : null}
 
                 <ToggleRow
-                  icon="bell"
                   label={t.settings.deadlineReminders}
                   body={t.settings.deadlineRemindersBody}
                   value={deadlineRemindersEnabled}
                   onValueChange={handleDeadlineRemindersChange}
                 />
 
+                {/* Controls that belong to the row above them. */}
                 {deadlineRemindersEnabled ? (
-                  <RowDetails>
+                  <View className="gap-3">
                     <AnimatedPressable
                       onPress={() => setShowReminderTimePicker((open) => !open)}
                       accessibilityRole="button"
                       className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
                     >
-                      <Feather name="bell" size={14} color={colors.ink.creamMuted} />
                       <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
                         {t.settings.reminderTime}
                       </Text>
@@ -638,13 +663,12 @@ export default function Settings() {
                       value={importantExtraReminder}
                       onValueChange={setImportantExtraReminder}
                     />
-                  </RowDetails>
+                  </View>
                 ) : null}
 
                 <Divider />
 
                 <ToggleRow
-                  icon="sun"
                   label={t.settings.dailyNudge}
                   body={t.settings.dailyNudgeBody}
                   value={dailyNudgeEnabled}
@@ -652,14 +676,13 @@ export default function Settings() {
                 />
 
                 {dailyNudgeEnabled ? (
-                  <RowDetails>
+                  <View className="gap-3">
                     {/* The picked time, shown like a filled field that opens the picker. */}
                     <AnimatedPressable
                       onPress={() => setShowTimePicker((open) => !open)}
                       accessibilityRole="button"
                       className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
                     >
-                      <Feather name="clock" size={14} color={colors.ink.creamMuted} />
                       <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
                         {t.settings.nudgeTime}
                       </Text>
@@ -677,13 +700,12 @@ export default function Settings() {
                         onChange={handleTimeChange}
                       />
                     ) : null}
-                  </RowDetails>
+                  </View>
                 ) : null}
 
                 <Divider />
 
                 <ToggleRow
-                  icon="alert-triangle"
                   label={t.settings.overdueAlerts}
                   body={t.settings.overdueAlertsBody}
                   value={overdueAlertsEnabled}
@@ -699,12 +721,9 @@ export default function Settings() {
             <Section title={t.settings.appearance}>
               <Group>
                 <View className="gap-3">
-                  <View className="flex-row items-center gap-3">
-                    <IconTile icon="globe" />
-                    <Text className="flex-1 font-grotesk-bold text-base text-ink-cream" style={rtl}>
-                      {t.settings.language}
-                    </Text>
-                  </View>
+                  <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
+                    {t.settings.language}
+                  </Text>
                   <View className="flex-row flex-wrap gap-2">
                     {LANGUAGE_OPTIONS.map((option) => (
                       <Chip
@@ -729,7 +748,15 @@ export default function Settings() {
                   onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
                 />
 
-                <Divider />
+                <Divider inset />
+
+                <ActionRow
+                  icon="message-circle"
+                  label={t.settings.sendFeedback}
+                  onPress={() => router.push("/feedback")}
+                />
+
+                <Divider inset />
 
                 <ActionRow
                   icon="shield"
@@ -737,7 +764,7 @@ export default function Settings() {
                   onPress={() => handleOpenLink(SUPPORT_LINKS.privacyPolicy)}
                 />
 
-                <Divider />
+                <Divider inset />
 
                 <ActionRow
                   icon="file-text"

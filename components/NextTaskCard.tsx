@@ -2,7 +2,15 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, Text, View, type ViewProps } from "react-native";
-import Animated, { FadeIn, FadeOut, useReducedMotion, type AnimatedProps } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+  type AnimatedProps,
+} from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
@@ -21,7 +29,7 @@ import { formatDuration } from "@/lib/formatDuration";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
-import type { Task } from "@/types/task";
+import type { Subtask, Task } from "@/types/task";
 
 // A task with no estimate still needs a timer length.
 const FALLBACK_SESSION_MINUTES = 25;
@@ -49,43 +57,101 @@ const PLAY_SHADOW = { boxShadow: "0 3px 8px -2px rgba(150, 50, 10, 0.45)" };
 
 export type CardBounds = { x: number; y: number; width: number; height: number };
 
+// A step's box filling in, and the progress bar sliding along after it.
+const STEP_TICK_MS = 160;
+const STEP_PROGRESS_MS = 380;
+
+/** A step's box: the orange fill and its tick pop in on the UI thread. */
+function StepCheckbox({ done, current }: { done: boolean; current: boolean }) {
+  const colors = useColors();
+  const reduceMotion = useReducedMotion();
+  const fill = useSharedValue(done ? 1 : 0);
+
+  useEffect(() => {
+    fill.set(withTiming(done ? 1 : 0, { duration: reduceMotion ? 0 : STEP_TICK_MS, easing: MOTION.easing.enter }));
+  }, [done, fill, reduceMotion]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    opacity: fill.value,
+    transform: [{ scale: 0.6 + 0.4 * fill.value }],
+  }));
+
+  return (
+    <View className={current ? "h-5 w-5 rounded-md border-2 border-orange-500" : "h-5 w-5 rounded-md border-2 border-white/20"}>
+      {/* Over the border too, so a ticked box is solid orange. */}
+      <Animated.View
+        className="absolute -left-[2px] -top-[2px] h-5 w-5 items-center justify-center rounded-md bg-orange-500"
+        style={fillStyle}
+      >
+        <Feather name="check" size={12} color={colors.onAccent} />
+      </Animated.View>
+    </View>
+  );
+}
+
+/** How much of the plan is done — a bar that slides to each new length. */
+function StepsProgress({ fraction }: { fraction: number }) {
+  const reduceMotion = useReducedMotion();
+  const progress = useSharedValue(fraction);
+
+  useEffect(() => {
+    progress.set(withTiming(fraction, { duration: reduceMotion ? 0 : STEP_PROGRESS_MS, easing: MOTION.easing.enter }));
+  }, [fraction, progress, reduceMotion]);
+
+  const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+
+  return (
+    <View className="h-1.5 flex-row overflow-hidden rounded-full bg-white/10">
+      <Animated.View className="rounded-full bg-orange-500" style={barStyle} />
+    </View>
+  );
+}
+
 /** The task's plan while a session runs on it — every step, each one tickable. */
 function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep: (stepId: string) => void }) {
-  const colors = useColors();
   const rtl = useRtlText();
   const steps = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
-  const doneCount = steps.filter((step) => step.status === "completed").length;
+
+  // A tap shows at once, here. Saving it re-renders the whole Next page, so
+  // that waits until the tick has played, and each step goes back to the
+  // store's word once the store agrees with the tap.
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const caughtUp = Object.keys(ticked).filter((id) => {
+    const step = steps.find((entry) => entry.id === id);
+    return !step || (step.status === "completed") === ticked[id];
+  });
+  if (caughtUp.length > 0) {
+    setTicked((current) => {
+      const next = { ...current };
+      caughtUp.forEach((id) => delete next[id]);
+      return next;
+    });
+  }
+
+  const isDone = (step: Subtask) => ticked[step.id] ?? step.status === "completed";
+  const doneCount = steps.filter(isDone).length;
+
+  const handlePress = (step: Subtask) => {
+    setTicked((current) => ({ ...current, [step.id]: !(current[step.id] ?? step.status === "completed") }));
+    setTimeout(() => onToggleStep(step.id), STEP_TICK_MS);
+  };
 
   return (
     <View className="glass gap-3 rounded-[20px] p-4">
-      {/* Flex ratios rather than a percentage width — RN takes fractional flex directly. */}
-      <View className="h-1.5 flex-row overflow-hidden rounded-full bg-white/10">
-        <View className="rounded-full bg-orange-500" style={{ flex: doneCount }} />
-        <View style={{ flex: steps.length - doneCount }} />
-      </View>
+      <StepsProgress fraction={steps.length > 0 ? doneCount / steps.length : 0} />
 
       <View className="gap-2.5">
         {steps.map((step) => {
-          const done = step.status === "completed";
+          const done = isDone(step);
           return (
             <AnimatedPressable
               key={step.id}
-              onPress={() => onToggleStep(step.id)}
+              onPress={() => handlePress(step)}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: done }}
               className="flex-row items-center gap-3"
             >
-              <View
-                className={
-                  done
-                    ? "h-5 w-5 items-center justify-center rounded-md bg-orange-500"
-                    : step.status === "current"
-                      ? "h-5 w-5 rounded-md border-2 border-orange-500"
-                      : "h-5 w-5 rounded-md border-2 border-white/20"
-                }
-              >
-                {done ? <Feather name="check" size={12} color={colors.onAccent} /> : null}
-              </View>
+              <StepCheckbox done={done} current={!done && step.status === "current"} />
               <Text
                 numberOfLines={2}
                 style={rtl}
@@ -124,18 +190,20 @@ function SessionPanel({
   return (
     <View className="glass items-center gap-3 rounded-[22px] p-4">
       <TimerRing progress={countdown.progress} overtime={countdown.isOvertime}>
-        {/* Shrinks to fit the ring once a long session shows hours too. */}
+        {/* Shrinks to fit the ring once a long session shows hours too.
+            Tabular digits, so the clock doesn't shift sideways as it ticks. */}
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
           className="text-center font-grotesk-bold text-[44px] leading-[52px] tracking-tight"
-          style={{ width: 144, color: countdown.isOvertime ? colors.overdue[300] : colors.ink.charcoal }}
+          style={{
+            width: 144,
+            fontVariant: ["tabular-nums"],
+            color: countdown.isOvertime ? colors.overdue[300] : colors.ink.charcoal,
+          }}
         >
           {countdown.clock}
         </Text>
-        <View className="h-[26px] w-[26px] items-center justify-center rounded-full bg-orange-500/20">
-          <Ionicons name={countdown.isRunning ? "hourglass-outline" : "pause"} size={13} color={colors.orange[400]} />
-        </View>
       </TimerRing>
 
       <View className="flex-row gap-2.5 self-stretch">
@@ -188,6 +256,7 @@ export function NextTaskCard({
   onBoundsChange,
   onStart,
   onComplete,
+  onCelebrated,
   onDetails,
 }: {
   task: Task;
@@ -210,6 +279,12 @@ export function NextTaskCard({
    * off and completes the task (see NextTaskCardStack).
    */
   onComplete: () => void;
+  /**
+   * Focus mode: the task was finished in the session and its celebration has
+   * played — time to close the session over it. The task itself is completed
+   * right after, so that heavier update never lands on the celebration.
+   */
+  onCelebrated?: () => void;
   onDetails: () => void;
 }) {
   const colors = useColors();
@@ -229,8 +304,8 @@ export function NextTaskCard({
   // A session runs inside the card of the task it is for, so the timer stays
   // with everything else that task needs.
   const session = useSessionStore((state) => state.session);
-  const runningSession = session?.taskIds.includes(task.id) ? session : undefined;
-  const hasRunningSession = Boolean(runningSession);
+  const liveSession = session?.taskIds.includes(task.id) ? session : undefined;
+  const hasRunningSession = Boolean(liveSession);
   const previousSessionState = useRef(hasRunningSession);
   // Only a task with steps of its own, or ones AI Breakdown added (before the
   // session or during it), gets a checklist under its title.
@@ -249,6 +324,13 @@ export function NextTaskCard({
   const [celebrationOrigin, setCelebrationOrigin] = useState<OverlayOrigin | undefined>(undefined);
   const pendingCelebrationTaskIds = useRef(new Set<string>());
   const celebrating = celebratedTaskId === task.id;
+
+  // A focus session that finished its task keeps its clock and controls on
+  // screen while it closes: swapping them for the Start button under the
+  // celebration was wasted work, right when the phone had the least to spare.
+  const [heldSession, setHeldSession] = useState(liveSession);
+  if (liveSession && liveSession !== heldSession) setHeldSession(liveSession);
+  const runningSession = liveSession ?? (focusMode && celebrating ? heldSession : undefined);
 
   useEffect(() => () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
@@ -269,23 +351,34 @@ export function NextTaskCard({
     }, MOTION.duration.screen + 30);
   };
 
-  /** Update task state immediately while the focus card holds its brief completion response. */
+  /**
+   * Finished in a session: the celebration plays first, and only then is the
+   * task completed. Completing it re-renders the whole Next page (the queue
+   * reshuffles, the session ends); doing that on the tap held the overlay's
+   * first frames back and made it stutter. In focus mode the session starts
+   * closing over the celebration (onCelebrated) just before the task is
+   * completed, and the overlay fades out with it rather than vanishing.
+   */
   const celebrate = (finish: () => void) => {
-    if (celebrating || pendingCelebrationTaskIds.current.has(task.id)) return;
-    pendingCelebrationTaskIds.current.add(task.id);
+    const taskId = task.id;
+    if (celebrating || pendingCelebrationTaskIds.current.has(taskId)) return;
+    pendingCelebrationTaskIds.current.add(taskId);
     setCelebrationOrigin(undefined);
-    setCelebratedTaskId(task.id);
+    setCelebratedTaskId(taskId);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    finish();
     setTimeout(() => {
-      try {
-        // Only this task's own session ends with it — by now the user could
-        // have swiped on and started another one.
-        if (useSessionStore.getState().session?.taskIds.includes(task.id)) leaveSession();
-      } finally {
-        pendingCelebrationTaskIds.current.delete(task.id);
-        setCelebratedTaskId((current) => (current === task.id ? null : current));
-      }
+      onCelebrated?.();
+      // A turn later, so the close is already running on the UI thread.
+      setTimeout(() => {
+        try {
+          finish();
+          // Only this task's own session ends with it.
+          if (useSessionStore.getState().session?.taskIds.includes(taskId)) leaveSession();
+        } finally {
+          pendingCelebrationTaskIds.current.delete(taskId);
+          if (!onCelebrated) setCelebratedTaskId((current) => (current === taskId ? null : current));
+        }
+      }, 0);
     }, CELEBRATION_MS);
   };
 
@@ -339,7 +432,10 @@ export function NextTaskCard({
   // that tap gets the same send-off as the Complete button. Ticked from inside the
   // AI Breakdown sheet, the sheet gets out of the way so the card can show it.
   const handleToggleStep = (stepId: string) => {
-    const steps = task.subtasks ?? [];
+    if (pendingCelebrationTaskIds.current.has(task.id)) return;
+    // Read fresh: the checklist hands its ticks over a moment after the tap,
+    // possibly several in a row, each seeing the one before it.
+    const steps = useTaskStore.getState().tasks.find((entry) => entry.id === task.id)?.subtasks ?? [];
     const finishesTask = steps.every((step) =>
       step.id === stepId ? step.status !== "completed" : step.status === "completed",
     );
@@ -446,9 +542,21 @@ export function NextTaskCard({
           {/* Where the task sits in the queue, and its score — worth knowing,
               but set in small pills so the title wins. */}
           <View className="flex-row items-center justify-between gap-3">
-            <View className="flex-row items-center gap-1.5 rounded-full py-0.5 pl-1.5 pr-2.5" style={gradients.rankPill}>
-              <Ionicons name={task.pinnedAt ? "bookmark" : "flame"} size={13} color={colors.orange[400]} />
-              <Text className="font-grotesk-bold text-[13px] text-orange-300">
+            {/* Plain glass in a session, where the timer is the one orange thing. */}
+            <View
+              className={
+                focusMode
+                  ? "glass flex-row items-center gap-1.5 rounded-full py-0.5 pl-1.5 pr-2.5"
+                  : "flex-row items-center gap-1.5 rounded-full py-0.5 pl-1.5 pr-2.5"
+              }
+              style={focusMode ? undefined : gradients.rankPill}
+            >
+              <Ionicons
+                name={task.pinnedAt ? "bookmark" : "flame"}
+                size={13}
+                color={focusMode ? colors.ink.charcoalMuted : colors.orange[400]}
+              />
+              <Text className={focusMode ? "font-grotesk-bold text-[13px] text-ink-charcoal" : "font-grotesk-bold text-[13px] text-orange-300"}>
                 {task.pinnedAt ? t.next.pinned : t.next.priorityRank(rank)}
               </Text>
             </View>
@@ -456,7 +564,9 @@ export function NextTaskCard({
               <GemLogo size={13} onDark />
               <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">
                 {t.next.scoreLabel}
-                <Text className="font-grotesk-bold text-orange-400">{task.priorityScore}</Text>
+                <Text className={focusMode ? "font-grotesk-bold text-ink-charcoal" : "font-grotesk-bold text-orange-400"}>
+                  {task.priorityScore}
+                </Text>
               </Text>
             </View>
           </View>
@@ -488,7 +598,7 @@ export function NextTaskCard({
               <Ionicons
                 name="calendar-clear-outline"
                 size={14}
-                color={isOverdue ? colors.onAccent : focusMode ? colors.orange[300] : colors.ink.charcoal}
+                color={isOverdue ? colors.onAccent : focusMode ? colors.ink.charcoalMuted : colors.ink.charcoal}
               />
               <Text
                 className={
@@ -508,7 +618,7 @@ export function NextTaskCard({
                 focusMode ? "glass flex-row items-center gap-1.5 rounded-[10px] px-2 py-1" : "flex-row items-center gap-1.5"
               }
             >
-              <Ionicons name="time-outline" size={14} color={focusMode ? colors.orange[300] : colors.ink.charcoal} />
+              <Ionicons name="time-outline" size={14} color={focusMode ? colors.ink.charcoalMuted : colors.ink.charcoal} />
               <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">{formatDuration(plannedMinutes)}</Text>
             </View>
           </View>
@@ -536,7 +646,7 @@ export function NextTaskCard({
 
               {/* The AI helpers belong to the session: breaking the task down
                   and asking how to go about it are for when you're doing it.
-                  A pane of glass each, orange only on the icon. */}
+                  A plain pane of glass each. */}
               <View className="flex-row gap-[10px]">
                 <AnimatedPressable
                   onPress={handleOpenBreakdown}
@@ -544,7 +654,7 @@ export function NextTaskCard({
                   accessibilityLabel={t.session.aiBreakdown}
                   className="glass min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
                 >
-                  <Ionicons name="list-outline" size={16} color={colors.orange[400]} />
+                  <Ionicons name="list-outline" size={16} color={colors.ink.charcoal} />
                   <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.breakDown}</Text>
                 </AnimatedPressable>
                 <AnimatedPressable
@@ -558,7 +668,7 @@ export function NextTaskCard({
                       : "glass min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
                   }
                 >
-                  <Ionicons name="bulb-outline" size={15} color={colors.orange[400]} />
+                  <Ionicons name="bulb-outline" size={15} color={colors.ink.charcoal} />
                   <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.getAdvice}</Text>
                 </AnimatedPressable>
               </View>

@@ -73,11 +73,6 @@ export const colors = {
   onAccent: "#FFF9F2",
   scrim: "rgba(34, 28, 22, 0.5)",
   hairlineCharcoal: "rgba(255, 255, 255, 0.08)",
-  // The solid colour the Next page's peach dunes end in, carried on down to
-  // the bottom of the screen under the tab bar (which floats over the page).
-  pageFoot: {
-    dunes: "#F4C08F",
-  },
 } as const;
 
 // Onboarding uses these values for shadow contrast. Keep the alias while the

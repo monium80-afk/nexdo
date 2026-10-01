@@ -360,7 +360,8 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
       ...task,
       importance: currentImportance(task.importance),
       recurrence,
-      status: TASK_STATUSES.includes(task.status) ? task.status : "pending",
+      // Treat tasks saved with the removed archive status as open tasks.
+      status: task.status === "archived" ? "pending" : TASK_STATUSES.includes(task.status) ? task.status : "pending",
       aiContext: {
         notes: Array.isArray(task.aiContext?.notes) ? task.aiContext.notes : [],
         ...(typeof advice === "string" && advice ? { advice } : {}),
@@ -371,7 +372,7 @@ function normalizePersistedTasks(tasks: Task[]): Task[] {
   });
 }
 
-const TASK_STATUSES: Task["status"][] = ["pending", "completed", "skipped", "archived"];
+const TASK_STATUSES: Task["status"][] = ["pending", "completed", "skipped"];
 
 /**
  * A row read back from a database that doesn't have the newer columns yet

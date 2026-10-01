@@ -2,10 +2,10 @@ import { EXECUTION_COACH_INTEGRATION_NOTES, EXECUTION_COACH_SYSTEM_PROMPT } from
 import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, languageInstruction } from "@/lib/ai/language";
-import { claimUserCall } from "@/lib/aiUsageLimit";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
+import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
   badRequest,
@@ -124,6 +124,8 @@ function normalizeResponse(raw: unknown, language: AppLanguage | undefined): Nex
 // screen (app/onboarding-focus.tsx) shows the AI's advice on the picked task
 // BEFORE the user signs up. lib/anonymousTrial.ts allows a signed-out install
 // only that; past it, generateAdvice quietly shows its offline heuristic.
+// Signed in, each answer is one of the account's breakdowns-and-advice for
+// the month (lib/serverPlan.ts).
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
@@ -144,7 +146,9 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
-  const limitResponse = auth.userId ? await claimUserCall(auth.userId, "next") : await claimTrialCall(request, "next");
+  const limitResponse = auth.userId
+    ? await claimPlanUsage(request, auth.userId, "assist")
+    : await claimTrialCall(request, "next");
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -160,9 +164,13 @@ export async function POST(request: Request) {
       }),
       responseSchema: RESPONSE_SCHEMA,
     });
-    return Response.json(normalizeResponse(result, language));
+    const response = normalizeResponse(result, language);
+    // No advice came back: that isn't one of the month's answers.
+    if (response.unavailable && auth.userId) await refundPlanUsage(auth.userId, "assist");
+    return Response.json(response);
   } catch (error) {
     console.error("[api/next]", error);
+    if (auth.userId) await refundPlanUsage(auth.userId, "assist");
     return Response.json(fallbackResponse(language));
   }
 }

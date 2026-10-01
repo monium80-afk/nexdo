@@ -1,10 +1,20 @@
 import type { Translations } from "@/lib/i18n";
+import type { TrialUnit } from "@/lib/plan";
 
 // Spanish copy — same shape as en.ts (TypeScript checks it against that file).
 // Neutral Spanish that reads naturally in Spain and Latin America, addressing
 // the user as "tú" (lib/ai/language.ts asks the AI for the same).
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
+
+const TRIAL_UNITS: Record<TrialUnit, [one: string, many: string]> = {
+  day: ["día", "días"],
+  week: ["semana", "semanas"],
+  month: ["mes", "meses"],
+  year: ["año", "años"],
+};
+/** "3 días" — how long a free trial lasts. */
+const trialLength = (count: number, unit: TrialUnit) => `${count} ${plural(count, ...TRIAL_UNITS[unit])}`;
 
 const SCOPE_ADJECTIVES = { completed: ["completada", "completadas"], pending: ["pendiente", "pendientes"] } as const;
 
@@ -424,7 +434,7 @@ export const es: Translations = {
 
   live: {
     open: "Habla para añadir o cambiar tareas",
-    title: "Voz en directo",
+    title: "Micro mágico",
     connecting: "Conectando…",
     listening: (clock: string) => `Escuchando · ${clock}`,
     finishing: "Captando tus últimas palabras…",
@@ -439,11 +449,10 @@ export const es: Translations = {
     done: "Hecho",
     problems: {
       permission: "Nexdo necesita el micrófono para oírte. Puedes activarlo en Ajustes.",
-      unavailable: "No se pudo iniciar la voz en directo. Revisa tu conexión e inténtalo de nuevo.",
+      unavailable: "No se pudo iniciar el micro mágico. Revisa tu conexión e inténtalo de nuevo.",
       connection: "Se cortó la conexión. Lo que ya habías dicho sigue contando.",
-      timeLimit: "La voz en directo se detiene a los 5 minutos — toca Hablar de nuevo para seguir.",
-      silence: "Dejé de escuchar tras un momento de silencio — toca Hablar de nuevo para seguir.",
-    },
+      timeLimit: "El micro mágico se detiene a los 5 minutos — toca Hablar de nuevo para seguir.",
+      silence: "Dejé de escuchar tras un momento de silencio — toca Hablar de nuevo para seguir.",    },
   },
 
   assistant: {
@@ -613,7 +622,6 @@ export const es: Translations = {
     pro: "NEXDO PRO",
     upgrade: "Pásate a Nexdo Pro",
     upgradeBody: "Mensual o anual — cancela cuando quieras.",
-    upgradeError: "No se pudo abrir la pantalla de suscripción. Revisa tu conexión e inténtalo de nuevo.",
     restorePurchases: "Restaurar compras",
     restoring: "Restaurando…",
     restoreDone: "Nexdo Pro vuelve a estar en esta cuenta.",
@@ -629,9 +637,9 @@ export const es: Translations = {
     aiChat: "BANDEJA DE IA",
     autoMode: "Modo automático",
     autoModeBody: "Añade y actualiza tareas al momento, sin pedirte confirmación.",
-    voiceButton: "Hablar en vez de escribir",
+    voiceButton: "Micro mágico",
     voiceButtonBody:
-      "El botón central de la barra de pestañas se convierte en un micrófono que abre la voz en directo, en lugar del formulario para añadir tareas.",
+      "Habla para añadir y cambiar tareas: el botón central de la barra de pestañas se convierte en un micrófono, en lugar de abrir el formulario para añadir tareas. Incluido en Nexdo Pro.",
     clearHistory: "Borrar el historial del chat",
     clearConfirmTitle: "¿Borrar el historial del chat?",
     clearConfirmBody: "Se eliminarán todos los mensajes del chat con IA. Tus tareas no se verán afectadas.",
@@ -665,13 +673,101 @@ export const es: Translations = {
     themes: { light: "Claro", dark: "Oscuro", system: "Sistema" },
     language: "Idioma",
 
-    support: "AYUDA",
-    help: "Ayuda y comentarios",
-    helpBody: "Cuéntanos qué falla o qué te gustaría ver.",
+    support: "AYUDA Y SOPORTE",
+    help: "Preguntas frecuentes / Ayuda",
+    helpBody: "Respuestas a preguntas frecuentes, o escríbenos.",
+    sendFeedback: "Enviar comentarios",
     privacy: "Política de privacidad",
     terms: "Condiciones del servicio",
     version: (version: string) => `Nexdo v${version}`,
     linkError: "No se pudo abrir el enlace. Inténtalo de nuevo.",
+  },
+
+  plan: {
+    meters: {
+      chat: "Mensajes al chat de IA",
+      media: "Fotos y documentos",
+      voice: "Notas de voz",
+      live: "Micro mágico",
+      assist: "Desgloses y consejos",
+    },
+    minutes: (count: number) => `${count} min`,
+    used: {
+      chat: "Has usado los mensajes al chat de IA de este mes.",
+      media: "Has usado las fotos y documentos de este mes.",
+      voice: "Has usado los minutos de notas de voz de este mes.",
+      live: "Has usado los minutos de micro mágico de este mes.",
+      assist: "Has usado los desgloses y consejos de este mes.",
+    },
+    liveProOnly: "El micro mágico viene con Nexdo Pro.",
+    resets: "Tu cuota vuelve a empezar el día 1.",
+    upgradeHint: "Nexdo Pro te da mucho más cada mes — y añadir tareas a mano siempre es gratis.",
+    limitTitle: "Límite mensual alcanzado",
+    thisMonth: "Este mes",
+    names: { free: "Plan gratis", pro: "Nexdo Pro" },
+    usedOf: (used: number, limit: string) => `${used} de ${limit}`,
+    proOnly: "Solo en Pro",
+  },
+
+  paywall: {
+    close: "Cerrar",
+    title: "Deja que Nexdo piense más por ti.",
+    subtitle: (taskCount: number) =>
+      taskCount === 0
+        ? "Pro le da a la IA margen para planificar tus tareas contigo."
+        : `Nexdo ya organizó ${taskCount === 1 ? "tu tarea" : `tus ${taskCount} tareas`}. Pro le da a la IA margen para seguir ${taskCount === 1 ? "planificándola" : "planificándolas"} contigo.`,
+    yearly: "Anual",
+    monthly: "Mensual",
+    save: (percent: number) => `Ahorra ${percent} %`,
+    aMonth: (price: string) => `${price} al mes`,
+    perMonth: "al mes",
+    eachMonth: "Cada mes",
+    free: "Gratis",
+    pro: "Pro",
+    unlimitedNote: "Añadir tareas a mano, la página Ahora y los recordatorios son ilimitados en ambos planes.",
+    startTrial: (count: number, unit: TrialUnit) => `Empezar prueba gratis de ${trialLength(count, unit)}`,
+    subscribe: "Pásate a Nexdo Pro",
+    working: "Un momento…",
+    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
+      `Gratis durante ${trialLength(count, unit)}, después ${price} al ${yearly ? "año" : "mes"}. Cancela cuando quieras.`,
+    terms: (price: string, yearly: boolean) => `${price} al ${yearly ? "año" : "mes"}, se renueva hasta que canceles.`,
+    continueFree: "Seguir con el plan gratis",
+    restore: "Restaurar compras",
+    termsLink: "Condiciones",
+    privacyLink: "Privacidad",
+    loading: "Cargando planes…",
+    loadError: "No se pudieron cargar los planes. Revisa tu conexión e inténtalo de nuevo.",
+    retry: "Reintentar",
+    purchaseError: "La compra no se completó. Inténtalo de nuevo.",
+    purchasePending: "Tu compra está pendiente de aprobación. Nexdo Pro se activará en cuanto se confirme.",
+    offline: "No tienes conexión. Conéctate e inténtalo de nuevo.",
+    welcomeTitle: "Ya tienes Nexdo Pro",
+    welcomeBody: "Tu nueva cuota mensual está lista.",
+  },
+
+  feedback: {
+    title: "Enviar comentarios",
+    subtitle: "Ayúdanos a mejorar Nexdo.",
+    typeLabel: "TIPO DE COMENTARIO",
+    types: { suggestion: "Sugerencia", bug: "Error", general: "Comentario general", other: "Otro" },
+    messageLabel: "TU MENSAJE",
+    messagePlaceholder: "Cuéntanos qué tienes en mente…",
+    messageRequired: "Escribe primero un mensaje.",
+    optional: "Opcional",
+    screenshotLabel: "CAPTURA DE PANTALLA",
+    addScreenshot: "Adjuntar una captura de pantalla",
+    screenshotAttached: "Captura de pantalla adjunta",
+    viewScreenshot: "Ver la captura de pantalla",
+    removeScreenshot: "Quitar la captura de pantalla",
+    screenshotInvalid: "No se puede adjuntar esa imagen. Elige una captura o foto de menos de 5 MB.",
+    screenshotError: "No se pudo subir la captura de pantalla. Inténtalo de nuevo, o quítala y envía sin ella.",
+    privacyNote: "Se envía con tu cuenta Nexdo, la versión de la app y el tipo de teléfono, así que no hace falta añadir tu correo.",
+    submit: "Enviar comentarios",
+    sending: "Enviando…",
+    success: "Gracias por tus comentarios.",
+    successBody: "Leemos todos los mensajes. Nos ayudan a decidir qué arreglar y qué crear después.",
+    error: "No se pudieron enviar tus comentarios. Comprueba tu conexión e inténtalo de nuevo.",
+    rateLimited: "Has enviado muchos comentarios en poco tiempo. Vuelve a intentarlo dentro de un rato.",
   },
 
   notifications: {

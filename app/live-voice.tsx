@@ -19,6 +19,8 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatClock } from "@/lib/formatDuration";
+import { showPlanLimit } from "@/lib/paywall";
+import { planLimitMessage } from "@/lib/planLimit";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
@@ -99,6 +101,13 @@ function LiveVoice() {
   useEffect(() => {
     if (changes > 0) Haptics.selectionAsync().catch(() => {});
   }, [changes]);
+
+  // Live voice is part of Pro. The tab bar's mic sends a Free account to the
+  // paywall instead of here; this covers any other way in. (On Pro, out of
+  // minutes, the line above the buttons says so.)
+  useEffect(() => {
+    if (problem === "planLimit") showPlanLimit("live", true);
+  }, [problem]);
 
   // Once a second while listening, for the clock — same approach as
   // useSessionCountdown.
@@ -208,10 +217,10 @@ function LiveVoice() {
         {problem ? (
           <Text
             // Stopping on its own isn't an error — only real failures go red.
-            className={`font-grotesk-medium text-sm ${problem === "timeLimit" || problem === "silence" ? "text-ink-cream-muted" : "text-overdue-500"}`}
+            className={`font-grotesk-medium text-sm ${problem === "timeLimit" || problem === "silence" || problem === "planLimit" ? "text-ink-cream-muted" : "text-overdue-500"}`}
             style={rtl}
           >
-            {t.live.problems[problem]}
+            {problem === "planLimit" ? planLimitMessage("live") : t.live.problems[problem]}
           </Text>
         ) : null}
 

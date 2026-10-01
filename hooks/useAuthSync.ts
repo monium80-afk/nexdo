@@ -3,8 +3,9 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 
 import { setApiTokenGetter } from "@/lib/api";
+import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
-import { identifyPurchaser } from "@/lib/purchases";
+import { identifyPurchaser, isPurchasesEnabled } from "@/lib/purchases";
 import { setClerkTokenGetter } from "@/lib/supabase";
 import { useChatStore } from "@/store/useChatStore";
 import { useOnboardingStore, waitForOnboardingHydration } from "@/store/useOnboardingStore";
@@ -42,10 +43,13 @@ function isNewAccount(accountCreatedAt: Date | null | undefined, sessionCreatedA
  *
  * Deliberately after hydrateFromSupabase has settled: adding first would race
  * the merge, which decides what a signed-in user's task list actually is.
+ *
+ * Returns whether any were saved — true once per new account, since the
+ * drafts are claimed only once.
  */
-function claimOnboardingDrafts(accountIsNew: boolean) {
+function claimOnboardingDrafts(accountIsNew: boolean): boolean {
   const drafts = useOnboardingStore.getState().claimDrafts();
-  if (drafts.length === 0 || !accountIsNew) return;
+  if (drafts.length === 0 || !accountIsNew) return false;
 
   const { addTask } = useTaskStore.getState();
   drafts.forEach((draft) =>
@@ -68,6 +72,7 @@ function claimOnboardingDrafts(accountIsNew: boolean) {
     }),
   );
   posthog.capture("onboarding_drafts_saved", { task_count: drafts.length });
+  return true;
 }
 
 export function useAuthSync() {
@@ -96,7 +101,10 @@ export function useAuthSync() {
       subscribeTasks(userId);
       await waitForOnboardingHydration();
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
-      claimOnboardingDrafts(isNewAccount(clerk.user?.createdAt, clerk.session?.createdAt));
+      const savedDrafts = claimOnboardingDrafts(isNewAccount(clerk.user?.createdAt, clerk.session?.createdAt));
+      // The end of setup for a new account: the tasks from its brain dump are
+      // on the list, and this is the one moment Pro is offered unasked.
+      if (savedDrafts && isPurchasesEnabled) openPaywall();
     });
     hydrateChat(userId).then(() => {
       if (isActive && useChatStore.getState().syncUserId === userId) subscribeChat(userId);

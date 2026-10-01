@@ -12,6 +12,7 @@ import { TextField } from "@/components/TextField";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { deleteAllFeedback } from "@/lib/feedback";
 import { posthog } from "@/lib/posthog";
 import { resetPurchaser } from "@/lib/purchases";
 import { deleteAllAttachments } from "@/lib/supabaseStorage";
@@ -184,6 +185,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           setError(null);
           try {
             await deleteAllAttachments(user.id);
+            await deleteAllFeedback(user.id);
             await deleteAllMessages(user.id);
             await deleteAllTasks(user.id);
 

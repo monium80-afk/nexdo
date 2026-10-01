@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
-import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
+import Svg, { Circle } from "react-native-svg";
 
 import { colors } from "@/constants/theme";
 
@@ -16,8 +16,9 @@ type TimerRingProps = {
 };
 
 /**
- * The focus session's clock face: a glowing orange ring of the time left,
- * with a knob riding its leading end.
+ * The focus session's clock face: an orange ring of the time left, with a
+ * knob riding its leading end. Flat — no halo or gradient: it's the one
+ * orange thing in the session, and doesn't need to glow to be seen.
  */
 export function TimerRing({ progress, overtime = false, size = 188, stroke = 10, children }: TimerRingProps) {
   // Room around the ring for the knob, which is wider than the stroke.
@@ -32,24 +33,7 @@ export function TimerRing({ progress, overtime = false, size = 188, stroke = 10,
 
   return (
     <View style={{ width: size, height: size }} className="items-center justify-center">
-      {/* A halo of warm light around the ring. */}
-      <View
-        pointerEvents="none"
-        className="absolute rounded-full"
-        style={{
-          width: radius * 2,
-          height: radius * 2,
-          boxShadow: overtime ? "0 0 28px rgba(240, 149, 126, 0.15)" : "0 0 30px rgba(242, 101, 42, 0.2)",
-        }}
-      />
       <Svg width={size} height={size} style={{ position: "absolute" }}>
-        <Defs>
-          <LinearGradient id="timerArc" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor="#FFA766" />
-            <Stop offset="0.55" stopColor={colors.orange[500]} />
-            <Stop offset="1" stopColor="#E0421C" />
-          </LinearGradient>
-        </Defs>
         <Circle cx={center} cy={center} r={radius} stroke="rgba(255, 255, 255, 0.08)" strokeWidth={stroke} fill="none" />
         {overtime ? (
           <Circle
@@ -68,7 +52,7 @@ export function TimerRing({ progress, overtime = false, size = 188, stroke = 10,
             cx={center}
             cy={center}
             r={radius}
-            stroke="url(#timerArc)"
+            stroke={colors.orange[500]}
             strokeWidth={stroke}
             strokeLinecap="round"
             fill="none"

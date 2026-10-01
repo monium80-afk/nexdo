@@ -59,10 +59,11 @@ const Z_BACK = 0;
 // A waiting card is a plain card — its text and buttons showing in the band
 // under the top card only looked broken. Its content fades out as it goes
 // back into the deck (gone by CONTENT_GONE_DEPTH), and once it has come to
-// the top it fades back in over REVEAL_MS, rising the last few points.
+// the top it fades back in over REVEAL_MS, rising the last few points — starting
+// as soon as it begins to move up, not when it lands.
 const CONTENT_GONE_DEPTH = 0.6;
-const ARRIVED_DEPTH = 0.02;
-const REVEAL_MS = 420;
+const REVEAL_MS = 340;
+const REVEAL_OUT_MS = 140;
 const REVEAL_RISE = 6;
 
 /**
@@ -137,7 +138,10 @@ function restPose(depth: number): Pose {
     turn: 0,
     depth,
     opacity: interpolate(depth, DEPTHS, DEPTH_OPACITY, Extrapolation.CLAMP),
-    z: Math.round(30 - depth * 10),
+    // One drawing order per place, switching halfway between two — each
+    // change makes Android re-sort the cards, so it shouldn't happen every
+    // few frames of a move.
+    z: depth < 0.5 ? 30 : depth < 1.5 ? 20 : 10,
   };
 }
 
@@ -218,18 +222,11 @@ function StackSlot({
   onComplete,
   onDetails,
   hidden,
-  shadowed,
 }: {
   slot: number;
   task: Task;
   rank: number;
   active: boolean;
-  /**
-   * Only the top card and the one peeking under it cast a shadow: a 40dp blur
-   * is redrawn every frame of a swipe on Android, and the other two (out on
-   * the left, and invisible at the back) would pay for one nobody sees.
-   */
-  shadowed: boolean;
   motion: StackMotion;
   cardWidth: number;
   onMeasure: (slot: number, height: number) => void;
@@ -282,24 +279,45 @@ function StackSlot({
     opacity: interpolate(pose.get().depth, DEPTHS, DEPTH_VEIL, Extrapolation.CLAMP),
   }));
 
-  // 1 once this card has come to the top and its content has faded in; 0
-  // while it waits. Only the arrival is timed — leaving is the depth's job.
+  // 1 once this card's content has faded in; 0 while it waits. The fade
+  // starts the moment the card begins moving up from its place behind the top
+  // card — the first points of a drag on the card in front, or the first frame
+  // of a button press — rather than once it has landed. `arriving` is true
+  // from then until it lands, so the depth fade below (which hides a card's
+  // content as it goes back into the deck) doesn't hold it hidden on the way.
   const reveal = useSharedValue(active ? 1 : 0);
+  const arriving = useSharedValue(false);
   useAnimatedReaction(
     () => pose.get().depth,
     (depth, previous) => {
       if (previous === null) return;
-      if (depth <= ARRIVED_DEPTH && previous > ARRIVED_DEPTH) {
+      if (depth >= 0.99) {
+        // Waiting in the deck (or back there after a drag that let go): hidden,
+        // ready to fade in again next time. Quick rather than cut, in case a
+        // let-go drag brought it back with its content still showing.
+        if (arriving.get() || (previous < 0.99 && reveal.get() > 0)) {
+          arriving.set(false);
+          cancelAnimation(reveal);
+          reveal.set(withTiming(0, { duration: reduceMotion ? 0 : REVEAL_OUT_MS }));
+        }
+        return;
+      }
+      if (depth <= 0.02) {
+        // Landed on top: from here, leaving is the depth fade's job.
+        arriving.set(false);
+        return;
+      }
+      // Only from the place straight behind the top card: the card further
+      // back, moving up to that place, keeps its content hidden.
+      if (depth < previous && !arriving.get() && reveal.get() < 1) {
+        arriving.set(true);
         reveal.set(withTiming(1, { duration: reduceMotion ? 0 : REVEAL_MS, easing: Easing.out(Easing.quad) }));
-      } else if (depth >= 0.99 && previous < 0.99) {
-        cancelAnimation(reveal);
-        reveal.set(0);
       }
     },
   );
   const contentStyle = useAnimatedStyle(() => {
     const shown = reveal.get();
-    const inDeck = 1 - Math.min(Math.max(pose.get().depth / CONTENT_GONE_DEPTH, 0), 1);
+    const inDeck = arriving.get() ? 1 : 1 - Math.min(Math.max(pose.get().depth / CONTENT_GONE_DEPTH, 0), 1);
     return {
       opacity: Math.min(shown, inDeck),
       transform: [{ translateY: (1 - shown) * REVEAL_RISE }],
@@ -324,7 +342,11 @@ function StackSlot({
         styles.card,
         { backgroundColor: colors.charcoal[900] },
         active ? null : styles.waiting,
-        shadowed ? CARD_SHADOW : null,
+        // Every card, always: the shadow fades in and out with its card's
+        // opacity. Switching it on only for the top two cards made it pop
+        // on and off each time the deck stepped. The cards that aren't
+        // showing are fully transparent, which Android doesn't draw at all.
+        CARD_SHADOW,
         placeStyle,
       ]}
     >
@@ -627,7 +649,6 @@ export function NextTaskCardStack({
               onComplete={handleComplete}
               onDetails={onDetails}
               hidden={task.id === focusTaskId}
-              shadowed={depth === 0 || depth === 1}
             />
           ))}
         </View>

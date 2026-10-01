@@ -22,6 +22,8 @@ import { adviceToText, generateAdvice } from "@/lib/ai/generateAdvice";
 import { extractAttachmentText } from "@/lib/ai/media";
 import { isImageAttachment, messageAttachments } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
+import { showPlanLimit } from "@/lib/paywall";
+import { PlanLimitError } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
 import { getAttachmentSignedUrl, isStoragePath, uploadAttachment } from "@/lib/supabaseStorage";
 import { useChatStore } from "@/store/useChatStore";
@@ -224,6 +226,16 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const updatePendingDraft = useChatStore((state) => state.updatePendingDraft);
   const redirectToNext = useChatStore((state) => state.redirectToNext);
   const clearRedirectToNext = useChatStore((state) => state.clearRedirectToNext);
+  const planLimit = useChatStore((state) => state.planLimit);
+  const clearPlanLimit = useChatStore((state) => state.clearPlanLimit);
+
+  // A message ran into the end of a month's allowance. The reply in the
+  // thread already says which; on Free this opens the paywall as well.
+  useEffect(() => {
+    if (!planLimit) return;
+    clearPlanLimit();
+    showPlanLimit(planLimit, true);
+  }, [planLimit, clearPlanLimit]);
   const tasks = useTaskStore((state) => state.tasks);
   const insets = useSafeAreaInsets();
   useStatusBarStyle("dark");
@@ -283,7 +295,9 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
       if (analysisSeedKey.current === seedKey) analysisSeedKey.current = null;
     };
 
-    generateAdvice(task, availableMinutes)
+    // Nobody tapped for this advice, so it never costs a Free account one of
+    // its month's answers (see generateAdvice).
+    generateAdvice(task, availableMinutes, { unasked: true })
       .then((advice) => {
         if (cancelled) return;
         const copy = translate().chat;
@@ -407,8 +421,13 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           Alert.alert(t.chat.couldntCatch, t.chat.attachmentReplies.voice);
         }
       } catch (error) {
-        console.warn("[ai-chat] voice transcription failed", error);
-        Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
+        // Out of this month's voice minutes — nothing wrong with the recording.
+        if (error instanceof PlanLimitError) {
+          showPlanLimit(error.meter);
+        } else {
+          console.warn("[ai-chat] voice transcription failed", error);
+          Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
+        }
       } finally {
         setIsTranscribing(false);
       }

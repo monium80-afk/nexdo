@@ -2,6 +2,8 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { getTrialId } from "@/lib/aiTrial";
+import { isPlanLimitBody, PLAN_HEADER, PlanLimitError } from "@/lib/plan";
+import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
 // Expo Router API routes (app/api/**/+api.ts) are served by the same Metro
 // dev server as the app. On web that's same-origin, so a relative fetch
@@ -30,10 +32,24 @@ export function setApiTokenGetter(fn: () => Promise<string | null>) {
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = getClerkToken ? await getClerkToken() : null;
-  if (token) return { Authorization: `Bearer ${token}` };
+  if (token) {
+    // Pro gets Pro's monthly allowance. The server checks the claim with
+    // RevenueCat itself (lib/serverPlan.ts) — this only tells it to look.
+    const isPro = useSubscriptionStore.getState().pro !== null;
+    return { Authorization: `Bearer ${token}`, ...(isPro ? { [PLAN_HEADER]: "pro" } : {}) };
+  }
   // Signed out, the only AI anyone gets is onboarding's one free run, which
   // the server counts against this install's trial id.
   return { "X-Nexdo-Trial": await getTrialId() };
+}
+
+function parsePlanLimit(detail: string): PlanLimitError | null {
+  try {
+    const body: unknown = JSON.parse(detail);
+    return isPlanLimitBody(body) ? new PlanLimitError(body.meter, body.plan) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function apiPost<T>(
@@ -63,6 +79,12 @@ export async function apiPost<T>(
       // app/api/extract-text+api.ts). Without it a failure reaches the caller
       // as a bare status code, which says that something broke but never what.
       const detail = await response.text().catch(() => "");
+      // The month's allowance is used up (lib/serverPlan.ts). Its own error,
+      // so callers can say that instead of "the AI is unreachable".
+      if (response.status === 429) {
+        const limit = parsePlanLimit(detail);
+        if (limit) throw limit;
+      }
       throw new Error(`${path} failed: ${response.status}${detail ? ` ${detail.slice(0, 300)}` : ""}`);
     }
     return response.json();

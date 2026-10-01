@@ -89,13 +89,18 @@ export async function getAttachmentSignedUrl(path: string): Promise<string> {
 const LIST_PAGE_SIZE = 100;
 
 export async function deleteAllAttachments(userId: string): Promise<void> {
+  await deleteUserFolder(BUCKET, userId);
+}
+
+/** Empties "<userId>/" in a bucket laid out one folder per user. */
+export async function deleteUserFolder(bucket: string, userId: string): Promise<void> {
   for (;;) {
-    const { data, error } = await supabase.storage.from(BUCKET).list(userId, { limit: LIST_PAGE_SIZE });
+    const { data, error } = await supabase.storage.from(bucket).list(userId, { limit: LIST_PAGE_SIZE });
     if (error) throw error;
     if (!data || data.length === 0) return;
 
     const { data: removed, error: removeError } = await supabase.storage
-      .from(BUCKET)
+      .from(bucket)
       .remove(data.map((file) => `${userId}/${file.name}`));
     if (removeError) throw removeError;
     if (!removed || removed.length === 0) throw new Error("Attachment removal made no progress");

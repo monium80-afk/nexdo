@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import { parseBody, resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
+import { PlanLimitError } from "@/lib/plan";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -94,7 +95,7 @@ beforeEach(async () => {
   apiCalls.length = 0;
   useSettingsStore.setState({ language: "en", aiAutoMode: false });
   useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: USER, ownerId: USER });
-  useChatStore.setState({ messages: [], pendingActions: [], lastUndo: null, recentlyMentionedTaskIds: [], syncUserId: USER });
+  useChatStore.setState({ messages: [], pendingActions: [], lastUndo: null, recentlyMentionedTaskIds: [], planLimit: null, syncUserId: USER });
   await flush();
 });
 
@@ -351,5 +352,23 @@ describe("AI chat: the reply matches what was written", () => {
     const reply = await say("show me the tasks I completed this week");
     assert.match(reply, /^3 tasks match:\n• Done/);
     assert.ok(!reply.includes("Open"));
+  });
+
+  it("says the month's AI messages are used up, instead of guessing offline or claiming an outage", async () => {
+    setApiHandler(() => {
+      throw new PlanLimitError("chat", "free");
+    });
+    const reply = await say("buy milk tomorrow at 5pm");
+    assert.equal(
+      reply,
+      "You've used this month's AI chat messages. Nexdo Pro gives you far more each month — and adding tasks by hand is always free.",
+    );
+    // The offline rules would have drafted "Buy milk" here: nothing may be
+    // proposed or changed by a message that wasn't answered.
+    assert.equal(useChatStore.getState().pendingActions.length, 0);
+    assert.equal(useTaskStore.getState().tasks.length, 0);
+    assert.equal(useChatStore.getState().isAiTyping, false);
+    // What the chat screen reads to open the paywall.
+    assert.equal(useChatStore.getState().planLimit, "chat");
   });
 });

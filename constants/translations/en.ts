@@ -1,3 +1,4 @@
+import type { TrialUnit } from "@/lib/plan";
 import type { TaskScope } from "@/lib/taskMeta";
 
 // Every piece of interface copy in the app, in English. The other languages'
@@ -421,10 +422,10 @@ export const en = {
     videoNotSupportedBody: "Nexdo reads photos, voice notes and documents. Send a photo or a file instead.",
   },
 
-  /** Live voice (app/live-voice.tsx) and the tab bar's mic button that opens it. */
+  /** Magic mic — live voice (app/live-voice.tsx) — and the tab bar's mic button that opens it. */
   live: {
     open: "Talk to add or change tasks",
-    title: "Live voice",
+    title: "Magic mic",
     connecting: "Connecting…",
     listening: (clock: string) => `Listening · ${clock}`,
     finishing: "Catching your last words…",
@@ -439,11 +440,10 @@ export const en = {
     done: "Done",
     problems: {
       permission: "Nexdo needs the microphone to hear you. You can allow it in Settings.",
-      unavailable: "Couldn't start live voice. Check your connection and try again.",
+      unavailable: "Couldn't start Magic mic. Check your connection and try again.",
       connection: "The connection dropped. What you'd already said still counts.",
-      timeLimit: "Live voice stops after 5 minutes — tap Talk again to keep going.",
-      silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",
-    },
+      timeLimit: "Magic mic stops after 5 minutes — tap Talk again to keep going.",
+      silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",    },
   },
 
   /** What the assistant says when the app itself (not the AI model) writes the reply. */
@@ -628,7 +628,6 @@ export const en = {
     pro: "NEXDO PRO",
     upgrade: "Upgrade to Nexdo Pro",
     upgradeBody: "Monthly or yearly — cancel anytime.",
-    upgradeError: "Couldn't open the upgrade screen. Check your connection and try again.",
     restorePurchases: "Restore purchases",
     restoring: "Restoring…",
     restoreDone: "Nexdo Pro is back on this account.",
@@ -644,8 +643,8 @@ export const en = {
     aiChat: "AI INBOX",
     autoMode: "Auto mode",
     autoModeBody: "Add and update tasks right away, without asking you to confirm first.",
-    voiceButton: "Talk instead of type",
-    voiceButtonBody: "The middle button of the tab bar becomes a microphone that opens Live voice, instead of the Add Task form.",
+    voiceButton: "Magic mic",
+    voiceButtonBody: "Talk to add and change tasks: the middle button of the tab bar becomes a microphone, instead of opening the Add Task form. Part of Nexdo Pro.",
     clearHistory: "Clear chat history",
     clearConfirmTitle: "Clear chat history?",
     clearConfirmBody: "This removes every message in the AI chat. Your tasks won't be affected.",
@@ -678,13 +677,106 @@ export const en = {
     themes: { light: "Light", dark: "Dark", system: "System" },
     language: "Language",
 
-    support: "SUPPORT",
-    help: "Help & send feedback",
-    helpBody: "Tell us what's broken or what you'd like next.",
+    support: "HELP & SUPPORT",
+    help: "FAQ / Help",
+    helpBody: "Answers to common questions, or get in touch.",
+    sendFeedback: "Send feedback",
     privacy: "Privacy policy",
     terms: "Terms of service",
     version: (version: string) => `Nexdo v${version}`,
     linkError: "Couldn't open that link. Try again.",
+  },
+
+  /** Free vs Pro: what a plan counts each month (lib/plan.ts), and what's said when one runs out. */
+  plan: {
+    meters: {
+      chat: "AI chat messages",
+      media: "Photos and documents",
+      voice: "Voice notes",
+      live: "Magic mic",
+      assist: "Breakdowns and advice",
+    },
+    minutes: (count: number) => `${count} min`,
+    used: {
+      chat: "You've used this month's AI chat messages.",
+      media: "You've used this month's photos and documents.",
+      voice: "You've used this month's voice note minutes.",
+      live: "You've used this month's Magic mic minutes.",
+      assist: "You've used this month's breakdowns and advice.",
+    },
+    /** Free has no Magic mic at all. */
+    liveProOnly: "Magic mic comes with Nexdo Pro.",
+    resets: "Your allowance starts again on the 1st.",
+    upgradeHint: "Nexdo Pro gives you far more each month — and adding tasks by hand is always free.",
+    limitTitle: "Monthly limit reached",
+    /** Settings → Nexdo Pro: what the month has used so far. */
+    thisMonth: "This month",
+    names: { free: "Free plan", pro: "Nexdo Pro" },
+    usedOf: (used: number, limit: string) => `${used} of ${limit}`,
+    proOnly: "Pro only",
+  },
+
+  /** The Nexdo Pro paywall (app/paywall.tsx). Prices come from the store, never from here. */
+  paywall: {
+    close: "Close",
+    title: "Let Nexdo do more of the thinking.",
+    subtitle: (taskCount: number) =>
+      taskCount === 0
+        ? "Pro gives the AI room to plan your tasks with you."
+        : `Nexdo already organized your ${plural(taskCount, "task", `${taskCount} tasks`)}. Pro gives the AI room to keep planning ${plural(taskCount, "it", "them")} with you.`,
+    yearly: "Yearly",
+    monthly: "Monthly",
+    save: (percent: number) => `Save ${percent}%`,
+    aMonth: (price: string) => `${price} a month`,
+    perMonth: "per month",
+    eachMonth: "Each month",
+    free: "Free",
+    pro: "Pro",
+    unlimitedNote: "Adding tasks by hand, the Next page and reminders are unlimited on both plans.",
+    startTrial: (count: number, unit: TrialUnit) => `Start ${count}-${unit} free trial`,
+    subscribe: "Get Nexdo Pro",
+    working: "One moment…",
+    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
+      `Free for ${count} ${plural(count, unit, `${unit}s`)}, then ${price} a ${yearly ? "year" : "month"}. Cancel anytime.`,
+    terms: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}, renewed until you cancel.`,
+    continueFree: "Continue with Free",
+    restore: "Restore purchases",
+    termsLink: "Terms",
+    privacyLink: "Privacy",
+    loading: "Loading plans…",
+    loadError: "Couldn't load the plans. Check your connection and try again.",
+    retry: "Try again",
+    purchaseError: "The purchase didn't go through. Try again.",
+    purchasePending: "Your purchase is waiting for approval. Nexdo Pro switches on as soon as it's confirmed.",
+    offline: "You're offline. Connect and try again.",
+    welcomeTitle: "You're on Nexdo Pro",
+    welcomeBody: "Your new monthly allowance is ready to use.",
+  },
+
+  /** Settings → Send feedback. */
+  feedback: {
+    title: "Send feedback",
+    subtitle: "Help us make Nexdo better.",
+    typeLabel: "FEEDBACK TYPE",
+    types: { suggestion: "Suggestion", bug: "Bug", general: "General feedback", other: "Other" },
+    messageLabel: "YOUR MESSAGE",
+    messagePlaceholder: "Tell us what's on your mind…",
+    messageRequired: "Write a message first.",
+    optional: "Optional",
+    screenshotLabel: "SCREENSHOT",
+    addScreenshot: "Attach a screenshot",
+    screenshotAttached: "Screenshot attached",
+    viewScreenshot: "View screenshot",
+    removeScreenshot: "Remove screenshot",
+    screenshotInvalid: "That image can't be attached. Pick a screenshot or photo under 5 MB.",
+    screenshotError: "Couldn't upload your screenshot. Try again, or remove it and send without it.",
+    privacyNote: "Sent with your Nexdo account, app version and phone type, so there's no need to add your email.",
+    submit: "Send feedback",
+    sending: "Sending…",
+    success: "Thanks for your feedback.",
+    successBody: "We read every message. It helps decide what we fix and build next.",
+    error: "Couldn't send your feedback. Check your connection and try again.",
+    rateLimited: "You've sent a lot of feedback in a short time. Try again in a little while.",
   },
 
   /** Phone notifications — shown by the system, outside the app. */

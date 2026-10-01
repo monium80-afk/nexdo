@@ -31,6 +31,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { formatDeadline, type DeadlineInput } from "@/lib/deadline";
 import { formatDuration } from "@/lib/formatDuration";
 import { addDaysToKey, toLocalDateKey } from "@/lib/localDate";
+import { showPlanLimit } from "@/lib/paywall";
 import { summarizePlan } from "@/lib/planning";
 import { describeRule, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import type { Translations } from "@/lib/i18n";
@@ -120,7 +121,6 @@ export default function TaskDetail() {
   const updateSubtask = useTaskStore((state) => state.updateSubtask);
   const deleteSubtask = useTaskStore((state) => state.deleteSubtask);
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
-  const archiveTask = useTaskStore((state) => state.archiveTask);
   const restoreTask = useTaskStore((state) => state.restoreTask);
   // As a string, so the page re-renders when a reminder setting changes but not on every store write.
   const reminderPrefsKey = useSettingsStore((state) => JSON.stringify(reminderPreferences(state)));
@@ -132,6 +132,16 @@ export default function TaskDetail() {
   const retryContext = useReassessStore((state) => state.retry);
   const dismissContext = useReassessStore((state) => state.dismiss);
   const enterStyle = useScreenEnterAnimation();
+
+  // A note that ran into the end of the month's AI messages: the notice under
+  // it says so, and on Free the paywall opens too — once, as it happens, not
+  // every time this page is opened with the note still waiting.
+  const noteHitLimit = reassess?.status === "error" && reassess.reason === "limit";
+  const noteHadHitLimit = useRef(noteHitLimit);
+  useEffect(() => {
+    if (noteHitLimit && !noteHadHitLimit.current) showPlanLimit("chat", true);
+    noteHadHitLimit.current = noteHitLimit;
+  }, [noteHitLimit]);
 
   const [note, setNote] = useState("");
   const [subtaskDraft, setSubtaskDraft] = useState("");
@@ -185,7 +195,7 @@ export default function TaskDetail() {
   const orderedSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const completedSubtaskCount = orderedSubtasks.filter((subtask) => subtask.status === "completed").length;
   const isOpen = task.status === "pending";
-  const isArchived = task.status === "archived" || task.status === "skipped";
+  const isSkipped = task.status === "skipped";
 
   // The reminder is its own thing, not the deadline: "Oct 15" with a 9:00
   // reminder is still due Oct 15, not at 9:00.
@@ -565,37 +575,9 @@ export default function TaskDetail() {
                 )}
               </View>
 
-              {/* Put first on Next, or away altogether — both undo with one tap. */}
-              <View className="card card--cream-soft gap-3 p-[16px]">
-                <SectionHeader icon="sliders" label={t.taskDetail.organizeTitle} />
-                {isArchived ? (
-                  <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                    {t.taskDetail.archivedNote}
-                  </Text>
-                ) : null}
-                <View className="flex-row flex-wrap items-center gap-x-5 gap-y-2">
-                  {isOpen ? (
-                    <TextButton
-                      icon="bookmark"
-                      label={task.pinnedAt ? t.taskDetail.unpin : t.taskDetail.pin}
-                      tone="accent"
-                      onPress={() => updateTask(task.id, { pinned: !task.pinnedAt })}
-                    />
-                  ) : null}
-                  {isArchived ? (
-                    <TextButton icon="rotate-ccw" label={t.taskDetail.restore} tone="accent" onPress={() => restoreTask(task.id)} />
-                  ) : (
-                    <TextButton
-                      icon="archive"
-                      label={t.taskDetail.archive}
-                      onPress={() => {
-                        archiveTask(task.id);
-                        router.back();
-                      }}
-                    />
-                  )}
-                </View>
-              </View>
+              {isSkipped ? (
+                <TextButton icon="rotate-ccw" label={t.taskDetail.restore} tone="accent" onPress={() => restoreTask(task.id)} />
+              ) : null}
 
               {/* A list rather than a panel, so it's laid out like the task list:
                   a label, then one card per step. */}

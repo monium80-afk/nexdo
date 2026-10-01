@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 import { useSharedValue, withTiming } from "react-native-reanimated";
 
 import type { LiveSessionRequestBody, LiveSessionResponseBody } from "@/app/api/live-session+api";
+import type { LiveUsageRequestBody } from "@/app/api/live-usage+api";
 import { describeNow, selectRelevantTasks, taskToContext } from "@/lib/ai/context";
 import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
@@ -77,6 +78,13 @@ export function useLiveVoice() {
       onLevel: (value) => {
         // Eased between buffers, so the waves glide instead of twitching.
         level.value = withTiming(value, { duration: 120 });
+      },
+      // The audio goes straight to Google, so the server only knows how long
+      // a session ran if the app tells it (app/api/live-usage+api.ts).
+      onListened: (seconds) => {
+        apiPost("/api/live-usage", { seconds } satisfies LiveUsageRequestBody).catch((error) =>
+          console.warn("[liveVoice] couldn't report listening time", error),
+        );
       },
       log: __DEV__ ? (message) => console.log(`[liveVoice] ${message}`) : undefined,
     });

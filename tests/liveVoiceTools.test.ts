@@ -49,11 +49,17 @@ describe("live voice tools", () => {
   });
 
   it("follows up on the task it just added: \"actually make that Thursday\"", () => {
+    // The weekday three days from now, not always Thursday: on a Wednesday
+    // "tomorrow" is Thursday already, and the follow-up rightly changes nothing.
+    const target = new Date();
+    target.setDate(target.getDate() + 3);
+    const weekday = target.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
     const { runner } = withGym();
     runner.run(call("add_task", { title: "Call mom", dueDatePhrase: "tomorrow at 6 pm" }));
-    assert.deepEqual(runner.run(call("update_task", { taskId: "t2", dueDatePhrase: "thursday" })), { ok: true, taskId: "t2" });
+    assert.deepEqual(runner.run(call("update_task", { taskId: "t2", dueDatePhrase: weekday })), { ok: true, taskId: "t2" });
     const due = new Date(byTitle("Call mom")!.dueDate!);
-    assert.equal(due.getDay(), 4);
+    assert.equal(due.getDay(), target.getDay());
     assert.equal(due.getHours(), 18, "keeps the time it already had");
   });
 

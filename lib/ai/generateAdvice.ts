@@ -3,6 +3,8 @@ import { taskToContext } from "@/lib/ai/context";
 import { apiPost } from "@/lib/api";
 import { formatDuration } from "@/lib/formatDuration";
 import { getLanguage, translate } from "@/lib/i18n";
+import { PlanLimitError } from "@/lib/plan";
+import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import type { Task } from "@/types/task";
 
 /**
@@ -48,7 +50,18 @@ function cacheAdvice(key: string, advice: TaskAdvice) {
 
 // Layer B (Execution Coach) — see data/aiPrompts.ts and app/api/next+api.ts.
 // Falls back to the heuristic advice below on any network/parse failure.
-export async function generateAdvice(task: Task, availableMinutes?: number): Promise<TaskAdvice> {
+//
+// Each AI answer is one of the month's breakdowns-and-advice (lib/plan.ts).
+// Asked for outright ("Get advice"), a used-up allowance is thrown as
+// PlanLimitError so the caller can say so. `unasked` is for advice nobody
+// tapped for (the AI chat reads a task out when it opens on one): on Free it
+// never touches the allowance, and a used-up one quietly gets the heuristic.
+export async function generateAdvice(
+  task: Task,
+  availableMinutes?: number,
+  options: { unasked?: boolean } = {},
+): Promise<TaskAdvice> {
+  if (options.unasked && useSubscriptionStore.getState().pro === null) return generateAdviceHeuristic(task);
   try {
     const existingPlan = (task.subtasks ?? []).map((subtask) => ({
       id: subtask.id,
@@ -71,6 +84,7 @@ export async function generateAdvice(task: Task, availableMinutes?: number): Pro
     if (!result.unavailable) cacheAdvice(cacheKey, advice);
     return advice;
   } catch (error) {
+    if (error instanceof PlanLimitError && !options.unasked) throw error;
     console.warn("[generateAdvice] falling back to heuristic", error);
     return generateAdviceHeuristic(task);
   }

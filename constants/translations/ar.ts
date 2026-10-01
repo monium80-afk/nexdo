@@ -1,4 +1,5 @@
 import type { Translations } from "@/lib/i18n";
+import type { TrialUnit } from "@/lib/plan";
 
 // Arabic copy — same shape as en.ts (TypeScript checks it against that file).
 
@@ -35,6 +36,15 @@ const shiftLength = (amount: number, unit: ShiftUnit) => {
   }[unit];
   return `بمقدار ${label}`;
 };
+
+/** "3 أيام" — how long a free trial lasts. */
+const trialLength = (count: number, unit: TrialUnit) =>
+  ({
+    day: counted(count, "يوم", "أيام", "يومين"),
+    week: counted(count, "أسبوع", "أسابيع", "أسبوعين"),
+    month: counted(count, "شهر", "أشهر", "شهرين"),
+    year: counted(count, "سنة", "سنوات", "سنتين"),
+  })[unit];
 
 /** The unit beside the repeat stepper's number: singular for 1, dual for 2, plural for 3–10. */
 const stepperUnit = (n: number, one: string, few: string, two: string) => {
@@ -448,7 +458,7 @@ export const ar: Translations = {
 
   live: {
     open: "تحدّث لإضافة المهام أو تعديلها",
-    title: "الصوت المباشر",
+    title: "الميكروفون السحري",
     connecting: "جارٍ الاتصال…",
     listening: (clock: string) => `أستمع · ${clock}`,
     finishing: "ألتقط كلماتك الأخيرة…",
@@ -463,11 +473,10 @@ export const ar: Translations = {
     done: "تم",
     problems: {
       permission: "يحتاج نكسدو إلى الميكروفون ليسمعك. يمكنك السماح بذلك من الإعدادات.",
-      unavailable: "تعذّر بدء الصوت المباشر. تحقق من اتصالك وأعد المحاولة.",
+      unavailable: "تعذّر بدء الميكروفون السحري. تحقق من اتصالك وأعد المحاولة.",
       connection: "انقطع الاتصال. ما قلته قبل ذلك ما زال محسوبًا.",
-      timeLimit: "يتوقف الصوت المباشر بعد 5 دقائق — اضغط «تحدّث مجددًا» للمتابعة.",
-      silence: "توقف الاستماع بعد لحظة صمت — اضغط «تحدّث مجددًا» للمتابعة.",
-    },
+      timeLimit: "يتوقف الميكروفون السحري بعد 5 دقائق — اضغط «تحدّث مجددًا» للمتابعة.",
+      silence: "توقف الاستماع بعد لحظة صمت — اضغط «تحدّث مجددًا» للمتابعة.",    },
   },
 
   assistant: {
@@ -636,7 +645,6 @@ export const ar: Translations = {
     pro: "نكسدو برو",
     upgrade: "الترقية إلى نكسدو برو",
     upgradeBody: "شهريًا أو سنويًا — يمكنك الإلغاء في أي وقت.",
-    upgradeError: "تعذّر فتح شاشة الاشتراك. تحقّق من اتصالك وأعد المحاولة.",
     restorePurchases: "استعادة المشتريات",
     restoring: "جارٍ الاستعادة…",
     restoreDone: "عاد نكسدو برو إلى هذا الحساب.",
@@ -652,8 +660,8 @@ export const ar: Translations = {
     aiChat: "صندوق الذكاء الاصطناعي",
     autoMode: "الوضع التلقائي",
     autoModeBody: "إضافة المهام وتحديثها فورًا، دون أن أطلب منك التأكيد أولاً.",
-    voiceButton: "التحدث بدلًا من الكتابة",
-    voiceButtonBody: "يصبح الزر الأوسط في شريط التنقل ميكروفونًا يفتح الصوت المباشر، بدلًا من نموذج إضافة مهمة.",
+    voiceButton: "الميكروفون السحري",
+    voiceButtonBody: "تحدّث لإضافة المهام وتعديلها: يصبح الزر الأوسط في شريط التنقل ميكروفونًا، بدلًا من فتح نموذج إضافة مهمة. ضمن نكسدو برو.",
     clearHistory: "مسح سجل المحادثة",
     clearConfirmTitle: "مسح سجل المحادثة؟",
     clearConfirmBody: "سيؤدي هذا إلى حذف كل رسائل محادثة الذكاء الاصطناعي. لن تتأثر مهامك.",
@@ -686,13 +694,101 @@ export const ar: Translations = {
     themes: { light: "فاتح", dark: "داكن", system: "النظام" },
     language: "اللغة",
 
-    support: "الدعم",
-    help: "المساعدة وإرسال ملاحظات",
-    helpBody: "أخبرنا بما لا يعمل أو بما تودّ إضافته.",
+    support: "المساعدة والدعم",
+    help: "الأسئلة الشائعة / المساعدة",
+    helpBody: "إجابات الأسئلة الشائعة، أو تواصل معنا.",
+    sendFeedback: "إرسال ملاحظات",
     privacy: "سياسة الخصوصية",
     terms: "شروط الاستخدام",
     version: (version: string) => `نكسدو الإصدار ${version}`,
     linkError: "تعذّر فتح هذا الرابط. أعد المحاولة.",
+  },
+
+  plan: {
+    meters: {
+      chat: "رسائل محادثة الذكاء الاصطناعي",
+      media: "الصور والمستندات",
+      voice: "الملاحظات الصوتية",
+      live: "الميكروفون السحري",
+      assist: "التقسيمات والنصائح",
+    },
+    minutes: (count: number) => `${count} د`,
+    used: {
+      chat: "استخدمت رسائل محادثة الذكاء الاصطناعي لهذا الشهر.",
+      media: "استخدمت الصور والمستندات المتاحة لهذا الشهر.",
+      voice: "استخدمت دقائق الملاحظات الصوتية لهذا الشهر.",
+      live: "استخدمت دقائق الميكروفون السحري لهذا الشهر.",
+      assist: "استخدمت التقسيمات والنصائح المتاحة لهذا الشهر.",
+    },
+    liveProOnly: "الميكروفون السحري متاح مع نكسدو برو.",
+    resets: "يتجدّد رصيدك في اليوم الأول من الشهر.",
+    upgradeHint: "نكسدو برو يمنحك أكثر بكثير كل شهر — وإضافة المهام يدويًا مجانية دائمًا.",
+    limitTitle: "بلغت الحد الشهري",
+    thisMonth: "هذا الشهر",
+    names: { free: "الخطة المجانية", pro: "نكسدو برو" },
+    usedOf: (used: number, limit: string) => `${used} من ${limit}`,
+    proOnly: "برو فقط",
+  },
+
+  paywall: {
+    close: "إغلاق",
+    title: "دع نكسدو يفكّر أكثر عنك.",
+    subtitle: (taskCount: number) =>
+      taskCount === 0
+        ? "برو يمنح الذكاء الاصطناعي مساحة ليخطّط مهامك معك."
+        : `رتّب نكسدو ${tasksObject(taskCount)} لك بالفعل. برو يمنح الذكاء الاصطناعي مساحة ليواصل التخطيط معك.`,
+    yearly: "سنوي",
+    monthly: "شهري",
+    save: (percent: number) => `وفّر ${percent}%`,
+    aMonth: (price: string) => `${price} شهريًا`,
+    perMonth: "شهريًا",
+    eachMonth: "كل شهر",
+    free: "مجاني",
+    pro: "برو",
+    unlimitedNote: "إضافة المهام يدويًا وصفحة «الآن» والتذكيرات غير محدودة في الخطتين.",
+    startTrial: (count: number, unit: TrialUnit) => `ابدأ تجربة مجانية لمدة ${trialLength(count, unit)}`,
+    subscribe: "اشترك في نكسدو برو",
+    working: "لحظة…",
+    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
+      `مجانًا لمدة ${trialLength(count, unit)}، ثم ${price} ${yearly ? "سنويًا" : "شهريًا"}. يمكنك الإلغاء في أي وقت.`,
+    terms: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}، ويتجدّد حتى تلغيه.`,
+    continueFree: "المتابعة بالخطة المجانية",
+    restore: "استعادة المشتريات",
+    termsLink: "الشروط",
+    privacyLink: "الخصوصية",
+    loading: "جارٍ تحميل الخطط…",
+    loadError: "تعذّر تحميل الخطط. تحقّق من اتصالك وأعد المحاولة.",
+    retry: "أعد المحاولة",
+    purchaseError: "لم تكتمل عملية الشراء. أعد المحاولة.",
+    purchasePending: "عملية الشراء بانتظار الموافقة. سيُفعَّل نكسدو برو فور تأكيدها.",
+    offline: "أنت غير متصل. اتصل بالإنترنت وأعد المحاولة.",
+    welcomeTitle: "أنت الآن على نكسدو برو",
+    welcomeBody: "رصيدك الشهري الجديد جاهز.",
+  },
+
+  feedback: {
+    title: "إرسال ملاحظات",
+    subtitle: "ساعدنا على تحسين نكسدو.",
+    typeLabel: "نوع الملاحظات",
+    types: { suggestion: "اقتراح", bug: "خلل", general: "ملاحظات عامة", other: "أخرى" },
+    messageLabel: "رسالتك",
+    messagePlaceholder: "أخبرنا بما تريد…",
+    messageRequired: "اكتب رسالة أولاً.",
+    optional: "اختياري",
+    screenshotLabel: "لقطة شاشة",
+    addScreenshot: "إرفاق لقطة شاشة",
+    screenshotAttached: "تم إرفاق لقطة الشاشة",
+    viewScreenshot: "عرض لقطة الشاشة",
+    removeScreenshot: "إزالة لقطة الشاشة",
+    screenshotInvalid: "لا يمكن إرفاق هذه الصورة. اختر لقطة شاشة أو صورة أصغر من 5 ميغابايت.",
+    screenshotError: "تعذّر رفع لقطة الشاشة. أعد المحاولة، أو أزلها وأرسل بدونها.",
+    privacyNote: "تُرسل مع حسابك في نكسدو وإصدار التطبيق ونوع الهاتف، فلا حاجة لإضافة بريدك الإلكتروني.",
+    submit: "إرسال الملاحظات",
+    sending: "جارٍ الإرسال…",
+    success: "شكراً لملاحظاتك.",
+    successBody: "نقرأ كل رسالة، وهي تساعدنا في تحديد ما نصلحه ونبنيه بعد ذلك.",
+    error: "تعذر إرسال ملاحظاتك. تحقق من اتصالك وحاول مجدداً.",
+    rateLimited: "أرسلت ملاحظات كثيرة في وقت قصير. حاول مرة أخرى بعد قليل.",
   },
 
   notifications: {

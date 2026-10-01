@@ -1,15 +1,21 @@
 import { Platform } from "react-native";
-import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE, type CustomerInfo, type PurchasesError } from "react-native-purchases";
-import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
+import Purchases, {
+  LOG_LEVEL,
+  PURCHASES_ERROR_CODE,
+  type CustomerInfo,
+  type PurchasesError,
+  type PurchasesPackage,
+} from "react-native-purchases";
+import RevenueCatUI from "react-native-purchases-ui";
 
+import { PRO_ENTITLEMENT } from "@/lib/plan";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
-// Nexdo Pro through RevenueCat. The plans (monthly, yearly), the offering
-// that bundles them and the paywall's design all live in the RevenueCat
-// dashboard, so none of them is named here — only the entitlement that both
-// plans unlock.
-
-export const PRO_ENTITLEMENT = "nexdo_pro";
+// Nexdo Pro through RevenueCat. The two subscriptions (monthly, yearly), their
+// prices and the offering that bundles them live in the RevenueCat dashboard
+// and the stores, so none of them is named here: the paywall
+// (app/paywall.tsx) shows whatever the current offering holds. What each plan
+// includes is the app's own business — lib/plan.ts.
 
 // The Test Store key only ever runs in development: RevenueCat makes a
 // release build that carries one crash on purpose, so store builds read only
@@ -93,22 +99,51 @@ export async function refreshCustomerInfo() {
   }
 }
 
+function isOffline(code: PURCHASES_ERROR_CODE | undefined): boolean {
+  return code === PURCHASES_ERROR_CODE.NETWORK_ERROR || code === PURCHASES_ERROR_CODE.OFFLINE_CONNECTION_ERROR;
+}
+
+/** The plans on sale: the current offering's monthly and yearly packages. Either can be missing if the dashboard doesn't have it. */
+export type ProPlans = { monthly: PurchasesPackage | null; annual: PurchasesPackage | null };
+
 /**
- * RevenueCat's paywall for the current offering (monthly and yearly), as
- * designed in its dashboard. Opens only if the account isn't Pro yet; a
- * failed purchase is explained inside the paywall itself, so the caller only
- * needs to act on ERROR.
+ * What the paywall sells, with the store's own prices in the buyer's
+ * currency. Throws when the plans can't be loaded (offline, or no offering
+ * set up yet) — the paywall offers a retry.
  */
-export async function presentProPaywall(): Promise<PAYWALL_RESULT> {
+export async function loadProPlans(): Promise<ProPlans> {
   await queue; // a tap right after launch waits for sign-in to reach RevenueCat
-  if (!configured) return PAYWALL_RESULT.ERROR;
+  if (!configured) throw new Error("[purchases] not configured");
+  const { current } = await Purchases.getOfferings();
+  const plans = { monthly: current?.monthly ?? null, annual: current?.annual ?? null };
+  if (!plans.monthly && !plans.annual) throw new Error("[purchases] the current offering has no monthly or yearly package");
+  return plans;
+}
+
+export type PurchaseOutcome = "purchased" | "cancelled" | "pending" | "offline" | "error";
+
+/** Buys one plan through the store's own purchase sheet. Never throws. */
+export async function purchasePlan(plan: PurchasesPackage): Promise<PurchaseOutcome> {
   try {
-    return await RevenueCatUI.presentPaywallIfNeeded({ requiredEntitlementIdentifier: PRO_ENTITLEMENT });
+    const { customerInfo } = await Purchases.purchasePackage(plan);
+    publish(customerInfo);
+    if (customerInfo.entitlements.active[PRO_ENTITLEMENT]) return "purchased";
+    // Paid for, but RevenueCat didn't unlock Pro: the product isn't attached
+    // to the entitlement in the dashboard.
+    console.warn(`[purchases] ${plan.product.identifier} bought, but "${PRO_ENTITLEMENT}" isn't active`);
+    return "error";
   } catch (error) {
-    console.warn("[purchases] paywall failed", error);
-    return PAYWALL_RESULT.ERROR;
-  } finally {
-    await refreshCustomerInfo();
+    const code = errorCode(error);
+    if (code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) return "cancelled";
+    // Waiting on something outside the app (a parent's approval, a slow
+    // payment): Pro arrives through the customer-info listener when it clears.
+    if (code === PURCHASES_ERROR_CODE.PAYMENT_PENDING_ERROR) return "pending";
+    // This phone's store account already has the subscription: bring it over.
+    if (code === PURCHASES_ERROR_CODE.PRODUCT_ALREADY_PURCHASED_ERROR) {
+      return (await restorePurchases()) === "restored" ? "purchased" : "error";
+    }
+    console.warn("[purchases] purchase failed", error);
+    return isOffline(code) ? "offline" : "error";
   }
 }
 
@@ -124,9 +159,7 @@ export async function restorePurchases(): Promise<RestoreOutcome> {
     return customerInfo.entitlements.active[PRO_ENTITLEMENT] ? "restored" : "nothing";
   } catch (error) {
     console.warn("[purchases] restore failed", error);
-    const code = errorCode(error);
-    const offline = code === PURCHASES_ERROR_CODE.NETWORK_ERROR || code === PURCHASES_ERROR_CODE.OFFLINE_CONNECTION_ERROR;
-    return offline ? "offline" : "error";
+    return isOffline(errorCode(error)) ? "offline" : "error";
   }
 }
 

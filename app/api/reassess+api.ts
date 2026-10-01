@@ -3,8 +3,8 @@ import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { languageInstruction } from "@/lib/ai/language";
 import type { PlanStep } from "@/lib/ai/types";
-import { claimUserCall } from "@/lib/aiUsageLimit";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
+import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
   badRequest,
@@ -335,7 +335,9 @@ export async function POST(request: Request) {
   const body = parseReassessBody(raw);
   if (!body) return badRequest();
 
-  const limitResponse = await claimUserCall(auth.userId, "reassess");
+  // A note for the AI is a message to it: it counts as one of the month's AI
+  // chat messages.
+  const limitResponse = await claimPlanUsage(request, auth.userId, "chat");
   if (limitResponse) return limitResponse;
 
   try {
@@ -345,6 +347,7 @@ export async function POST(request: Request) {
     // made-up reassessment would change the task on a guess. The app keeps
     // the task as it is, keeps the note in the box, and offers a retry.
     console.error("[api/reassess]", error);
+    await refundPlanUsage(auth.userId, "chat");
     return Response.json({ error: "Reassessment unavailable" }, { status: 502 });
   }
 }

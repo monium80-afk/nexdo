@@ -41,7 +41,8 @@ const CONFETTI_DELAY_MS = 230;
 const CONFETTI_MS = 950;
 const TEXT_DELAY_MS = 420;
 const DISC_SPRING = { damping: 9, stiffness: 210, mass: 0.7 };
-const DISC_SHADOW = { boxShadow: "0 12px 28px -8px rgba(10, 60, 30, 0.55)" };
+// No shadow under the disc: a blurred shadow on a view that scales and spins
+// is redrawn every frame on Android, and it was a real part of the stutter.
 
 const CONFETTI_COLORS = [colors.onAccent, "#FFD166", colors.orange[300], "#FFFFFF", colors.orange[400], "#FFE8A3"];
 // Spread all the way round, each piece its own distance, size and spin — fixed
@@ -132,16 +133,23 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
   const secondRipple = useSharedValue(0);
   const burst = useSharedValue(0);
 
+  // The flood circle can only be drawn once the overlay knows its size, a
+  // layout later — so it starts then, rather than already part-grown.
+  const sized = size !== null;
+  useEffect(() => {
+    if (reduceMotion || !sized) return;
+    flood.set(withTiming(1, { duration: FLOOD_MS, easing: Easing.out(Easing.cubic) }));
+  }, [flood, reduceMotion, sized]);
+
   useEffect(() => {
     if (reduceMotion) return;
-    flood.set(withTiming(1, { duration: FLOOD_MS, easing: Easing.out(Easing.cubic) }));
     pop.set(withDelay(DISC_DELAY_MS, withSpring(1, DISC_SPRING)));
     draw.set(withDelay(CHECK_DELAY_MS, withTiming(1, { duration: CHECK_MS, easing: Easing.out(Easing.cubic) })));
     firstRipple.set(withDelay(RIPPLE_DELAY_MS[0], withTiming(1, { duration: 700, easing: Easing.out(Easing.quad) })));
     secondRipple.set(withDelay(RIPPLE_DELAY_MS[1], withTiming(1, { duration: 800, easing: Easing.out(Easing.quad) })));
     burst.set(withDelay(CONFETTI_DELAY_MS, withTiming(1, { duration: CONFETTI_MS, easing: Easing.linear })));
     reveal.set(withDelay(TEXT_DELAY_MS, withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) })));
-  }, [burst, draw, firstRipple, flood, pop, reduceMotion, reveal, secondRipple]);
+  }, [burst, draw, firstRipple, pop, reduceMotion, reveal, secondRipple]);
 
   const floodStyle = useAnimatedStyle(() => ({ transform: [{ scale: flood.value }] }));
   const discStyle = useAnimatedStyle(() => ({
@@ -196,7 +204,7 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
           )}
           <Animated.View
             className="items-center justify-center rounded-full bg-on-accent"
-            style={[{ width: DISC_SIZE, height: DISC_SIZE }, DISC_SHADOW, discStyle]}
+            style={[{ width: DISC_SIZE, height: DISC_SIZE }, discStyle]}
           >
             <Svg width={DISC_SIZE} height={DISC_SIZE}>
               <AnimatedPath

@@ -13,7 +13,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { PrimaryButton } from "@/components/Button";
@@ -55,7 +54,7 @@ const HAND_BACK_MS = 180;
  * A session opening out of its Next card, and closing back into it.
  *
  * Only an empty shell changes size: a card-coloured shape that grows to fill
- * the screen, taking on the session's glow as it goes. The session itself is
+ * the screen, taking on the session's backdrop as it goes. The session itself is
  * laid out at full size once, faded in when the shell is there — resizing it
  * every frame used to squeeze and re-wrap everything in it on the way. Closing
  * runs the other way: the session fades, the shell shrinks onto the card it
@@ -68,12 +67,15 @@ function FocusCardTransition({
   closing,
   onLanded,
   onExited,
+  onCelebrated,
   onDetails,
 }: {
   focus: FocusCardState;
   screenWidth: number;
   screenHeight: number;
   closing: boolean;
+  /** The task was finished in the session and its celebration has played: close. */
+  onCelebrated: () => void;
   /** The shell is back over the card: time to show the card again under it. */
   onLanded: () => void;
   onExited: () => void;
@@ -148,7 +150,7 @@ function FocusCardTransition({
     borderRadius: CARD_RADIUS * (1 - expand.value),
     opacity: shell.value,
   }));
-  // The Next card's own surface over the session's glow, fading as it grows.
+  // The Next card's own surface over the session's backdrop, fading as it grows.
   const cardSurfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
   const contentStyle = useAnimatedStyle(() => ({
     opacity: content.value,
@@ -170,7 +172,7 @@ function FocusCardTransition({
             borderWidth: 1,
             borderColor: colors.hairlineCharcoal,
           },
-          // Embers glowing behind the glass of the session card.
+          // The session's charcoal, behind the glass of the session card.
           gradients.session,
           shellStyle,
         ]}
@@ -188,6 +190,7 @@ function FocusCardTransition({
             focusMode
             onStart={() => {}}
             onComplete={() => {}}
+            onCelebrated={onCelebrated}
             onDetails={() => onDetails(focus.task.id)}
           />
         </Animated.View>
@@ -218,38 +221,6 @@ function QueueDots({ index, total }: { index: number; total: number }) {
 }
 
 const DOT_GLOW = { boxShadow: "0 2px 6px rgba(242, 101, 42, 0.55)" };
-
-/**
- * Soft peach dunes along the foot of the page, behind the buttons. They sit
- * just above the tab bar, which floats over the page, and their solid foot
- * runs on down to the bottom of the screen — so that's what the bar's rounded
- * corners show.
- */
-function BottomWaves() {
-  const colors = useColors();
-  const { width } = useWindowDimensions();
-  const tabBarHeight = useTabBarHeight();
-  return (
-    <View pointerEvents="none" className="absolute bottom-0 left-0 right-0">
-      <Svg width={width} height={130} viewBox="0 0 360 130" preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id="duneBack" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#FBDDBC" stopOpacity={0.85} />
-            <Stop offset="1" stopColor="#F9D0A6" stopOpacity={0.9} />
-          </LinearGradient>
-          {/* Solid at the foot, in the colour it carries on in below. */}
-          <LinearGradient id="duneFront" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#F8CFA2" stopOpacity={0.8} />
-            <Stop offset="1" stopColor={colors.pageFoot.dunes} stopOpacity={1} />
-          </LinearGradient>
-        </Defs>
-        <Path d="M0 58 C 70 30, 150 40, 220 58 S 320 70, 360 36 L 360 130 L 0 130 Z" fill="url(#duneBack)" />
-        <Path d="M0 96 C 60 70, 130 78, 200 94 S 310 104, 360 80 L 360 130 L 0 130 Z" fill="url(#duneFront)" />
-      </Svg>
-      <View style={{ height: tabBarHeight, backgroundColor: colors.pageFoot.dunes }} />
-    </View>
-  );
-}
 
 export default function Next() {
   const colors = useColors();
@@ -358,18 +329,19 @@ export default function Next() {
     if (!stillRunning) leaveSession();
   }, [activeSession, allPendingTasks, leaveSession]);
 
+  // Finished in the session, the card closes it itself once its celebration
+  // has played (onCelebrated), before the task is marked done. This catches
+  // the rest: the session ended, or the task was finished somewhere else.
   useEffect(() => {
     if (!focusState || focusClosing) return;
-    if (focusedTask?.status === "completed") {
-      const timer = setTimeout(() => setFocusClosing(true), 1100);
-      return () => clearTimeout(timer);
-    }
     const stillFocused = activeSession?.taskIds.includes(focusState.task.id) ?? false;
-    if (!stillFocused) {
+    if (focusedTask?.status === "completed" || !stillFocused) {
       const timer = setTimeout(() => setFocusClosing(true), 0);
       return () => clearTimeout(timer);
     }
   }, [activeSession, focusClosing, focusState, focusedTask?.status]);
+
+  const handleFocusCelebrated = useCallback(() => setFocusClosing(true), []);
 
   const measureInRoot = useCallback((bounds: CardBounds, onMeasured: (localBounds: CardBounds) => void) => {
     const root = rootRef.current;
@@ -439,7 +411,6 @@ export default function Next() {
   if (!currentTask && !focusState) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-        <BottomWaves />
         {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
         <Animated.View
           entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
@@ -472,14 +443,12 @@ export default function Next() {
         const { width, height } = event.nativeEvent.layout;
         setRootSize((current) => current.width === width && current.height === height ? current : { width, height });
       }}>
-      {/* Warm light from the top-right corner, running up under the status
-          bar, and peach dunes along the foot — the page's own scenery. */}
+      {/* Warm light from the top-right corner, running up under the status bar. */}
       <View
         pointerEvents="none"
         className="absolute left-0 right-0"
         style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
       />
-      <BottomWaves />
 
       <View className="px-6 pb-1 pt-2">
         <View className="flex-row items-center gap-1.5">
@@ -559,6 +528,7 @@ export default function Next() {
           closing={focusClosing}
           onLanded={handleFocusLanded}
           onExited={clearFocus}
+          onCelebrated={handleFocusCelebrated}
           onDetails={handleDetails}
         />
       ) : null}

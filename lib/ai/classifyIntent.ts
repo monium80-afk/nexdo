@@ -14,6 +14,7 @@ import type { StructuredAction } from "@/lib/ai/types";
 import { apiPost } from "@/lib/api";
 import { deadlineInstant, makeDeadline } from "@/lib/deadline";
 import { getLanguage, translate } from "@/lib/i18n";
+import { PlanLimitError } from "@/lib/plan";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { IMPORTANCE_LEVELS, rankTasksForNext, type ImportanceLevel } from "@/lib/scoring";
 import type { TaskChanges, TaskFilter, TaskOperation, TaskStatusFilter, TaskTarget } from "@/lib/taskOperations";
@@ -518,6 +519,7 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 
 // Layer A (Task Manager) — see data/aiPrompts.ts and app/api/inbox+api.ts.
 // Falls back to the heuristic classifier above on any network/parse failure.
+// Throws only PlanLimitError.
 export async function classifyIntent(input: ClassifyIntentInput): Promise<ClassifiedTurn> {
   try {
     const selected = selectRelevantTasks(input.text, input.tasks, input.recentTaskIds, input.currentTaskId, MAX_TASKS_SENT);
@@ -540,6 +542,10 @@ export async function classifyIntent(input: ClassifyIntentInput): Promise<Classi
       realId: (alias) => (alias ? (fromAlias.get(alias) ?? null) : null),
     });
   } catch (error) {
+    // The month's AI messages are used up — not an outage. The offline rules
+    // below would quietly stand in for the AI; the caller says what happened
+    // instead.
+    if (error instanceof PlanLimitError) throw error;
     console.warn("[classifyIntent] falling back to heuristic", error);
     // The heuristic reads raw words, so the "[Attached image]" labels a
     // message with files is built from come back out first.

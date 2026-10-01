@@ -208,7 +208,7 @@ export function ReassessmentNotice({
       content = (
         <NoticeCard
           icon={<Feather name="alert-circle" size={14} color={colors.overdue[500]} />}
-          title={state.reason === "ai" ? r.aiFailed : r.saveFailed}
+          title={state.reason === "limit" ? t.plan.used.chat : state.reason === "ai" ? r.aiFailed : r.saveFailed}
         >
           <QuotedNote text={state.pending.noteText} />
           <View className="flex-row items-center gap-5 pt-1">

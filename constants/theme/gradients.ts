@@ -38,25 +38,25 @@ export const gradients = {
     "radial-gradient(circle at 100% 0%, rgba(252, 180, 120, 0.55) 0%, rgba(252, 196, 140, 0.18) 40%, rgba(252, 196, 140, 0) 65%)",
   ),
   /**
-   * Soft peach washes at the edges of a cream page. Sized in points, and kept
-   * clear of the page's foot, where the tab bar floats over it.
+   * Soft grey shading at the edges of a cream page — depth without colour.
+   * Sized in points, and kept clear of the page's foot, where the tab bar
+   * floats over it.
    */
   pageGlow: fill(
-    "radial-gradient(circle 240px at 108% 38%, rgba(253, 206, 150, 0.5) 0%, rgba(253, 206, 150, 0) 100%), " +
-      "radial-gradient(circle 200px at -12% 66%, rgba(253, 196, 140, 0.38) 0%, rgba(253, 196, 140, 0) 100%)",
+    "radial-gradient(circle 240px at 108% 38%, rgba(96, 90, 84, 0.07) 0%, rgba(96, 90, 84, 0) 100%), " +
+      "radial-gradient(circle 200px at -12% 66%, rgba(96, 90, 84, 0.05) 0%, rgba(96, 90, 84, 0) 100%)",
   ),
 
   /** A charcoal card on the cream page (the Next card): lit from its top-left. */
   charcoalCard: fill("linear-gradient(165deg, #342C25 0%, #231D18 45%, #1B1612 100%)"),
   /**
-   * The focus session's backdrop: embers glowing behind the glass. It fills
-   * the page down to the bottom of the screen, under the floating tab bar.
+   * The focus session's backdrop: plain charcoal, a touch lighter at the top.
+   * No orange — the user found the ember glow too bright (2026-09-30). It
+   * fills the page down to the bottom of the screen, under the floating tab
+   * bar, and is redrawn every frame the session opens and closes, so it stays
+   * one simple gradient.
    */
-  session: fill(
-    "radial-gradient(circle 300px at 88% 6%, rgba(247, 150, 70, 0.2) 0%, rgba(247, 150, 70, 0) 100%), " +
-      "radial-gradient(circle 260px at 10% 76%, rgba(226, 98, 46, 0.15) 0%, rgba(226, 98, 46, 0) 100%), " +
-      "linear-gradient(180deg, #3A2D22 0%, #241C16 55%, #2E231B 100%)",
-  ),
+  session: fill("linear-gradient(180deg, #2C2926 0%, #201E1C 55%, #1C1A18 100%)"),
   /** The Next card's "#1 Priority" pill. */
   rankPill: fill("linear-gradient(135deg, rgba(242, 101, 42, 0.38) 0%, rgba(242, 101, 42, 0.18) 100%)"),
 } satisfies Record<string, ViewStyle>;

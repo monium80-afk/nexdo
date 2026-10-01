@@ -9,7 +9,10 @@ import { gradients } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Translations } from "@/lib/i18n";
+import { openPaywall } from "@/lib/paywall";
+import { isPurchasesEnabled } from "@/lib/purchases";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 // Derived from Tabs itself so this always matches whatever prop shape expo-router expects.
@@ -49,17 +52,23 @@ function TabIcon({
   }
 }
 
-// A plus that opens the Add Task form, or — with "Talk instead of type" on in
+// A plus that opens the Add Task form, or — with "Magic mic" on in
 // Settings — a microphone that opens Live voice. Same button either way.
 function AddTabButton({ onShowTasks }: { onShowTasks: () => void }) {
   const colors = useColors();
   const router = useRouter();
   const t = useTranslation();
   const voice = useSettingsStore((state) => state.voiceAddButton);
+  const isPro = useIsPro();
 
   const handlePress = () => {
     if (!voice) {
       router.push("/add");
+      return;
+    }
+    // Live voice is part of Pro: on Free the mic opens the paywall instead.
+    if (!isPro && isPurchasesEnabled) {
+      openPaywall("live");
       return;
     }
     // The Tasks page goes underneath first, so when Live voice is closed it
