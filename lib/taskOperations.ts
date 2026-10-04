@@ -163,6 +163,26 @@ export function isListed(task: Task): boolean {
   return task.status === "pending" || task.status === "completed";
 }
 
+/** How long a finished task stays on the list before the app deletes it. */
+export const COMPLETED_RETENTION_DAYS = 7;
+
+/**
+ * The finished tasks whose time is up: completed COMPLETED_RETENTION_DAYS ago
+ * or longer. Counted from the latest completion — reopening a task clears
+ * `completedAt`, so finishing it again starts the count over. A finished task
+ * saved without that time is counted from its last change instead.
+ */
+export function expiredCompletedIds(tasks: Task[], now: Date): string[] {
+  const cutoff = now.getTime() - COMPLETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  return tasks
+    .filter((task) => {
+      if (task.status !== "completed") return false;
+      const completedAt = Date.parse(task.completedAt ?? task.updatedAt);
+      return Number.isFinite(completedAt) && completedAt <= cutoff;
+    })
+    .map((task) => task.id);
+}
+
 function fold(text: string): string {
   return text
     .normalize("NFD")

@@ -23,8 +23,8 @@ const SIZES = {
 } as const;
 
 /**
- * The tinted square an icon sits in beside a label — a Settings row, an Add
- * Task section, the "Open AI Chat" row. Tone says what kind of thing it is:
+ * The tinted square an icon sits in beside a label — a Settings row, the
+ * "Open AI Chat" row. Tone says what kind of thing it is:
  * orange for the app's own features, red for something destructive, green
  * for repeating/finished things.
  */

@@ -2,7 +2,7 @@ import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
@@ -20,7 +20,7 @@ import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
-import { lightColors } from "@/constants/theme";
+import { gradients } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
@@ -164,7 +164,7 @@ function PlanTask({ task, progress }: { task: (typeof TASKS)[number]; progress: 
   return (
     <Animated.View
       className={task.urgent ? "rounded-full bg-orange-500" : "rounded-full bg-cream-300"}
-      style={[{ width: `${PLAN_TASK_WIDTH * 100}%`, height: TASK_HEIGHT }, taskStyle]}
+      style={[{ width: `${PLAN_TASK_WIDTH * 100}%`, height: TASK_HEIGHT }, task.urgent ? gradients.accent : null, taskStyle]}
     />
   );
 }
@@ -239,13 +239,14 @@ export default function OnboardingSort() {
     >
       <View className="flex-1 flex-row gap-3">
         <View className="flex-1">
-          {/* Everything loose, above the filter. */}
-          <View className="flex-1" style={styles.cardShadow}>
+          {/* Everything loose, above the filter — a charcoal card like the
+              Next card. The shadow is on a wrapper, outside the card's clip. */}
+          <View className="flex-1 rounded-[22px] bg-charcoal-900" style={CHARCOAL_SHADOW}>
             <GestureDetector gesture={pushMess}>
               <View
                 onLayout={handleMessLayout}
-                className="flex-1 overflow-hidden rounded-[22px] bg-charcoal-900"
-                style={{ borderCurve: "continuous" }}
+                className="flex-1 overflow-hidden rounded-[22px] hairline-charcoal bg-charcoal-900"
+                style={[{ borderCurve: "continuous" }, gradients.charcoalCard]}
               >
                 <MessGlow />
                 {TASKS.map((task) => (
@@ -262,21 +263,23 @@ export default function OnboardingSort() {
               The app sits in the line, because the app is what does the
               sorting: everything passes through it to get to the plan. */}
           <View className="flex-row items-center gap-2.5 py-2">
-            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={styles.filterGlow} />
+            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={FILTER_GLOW} />
+            {/* Lifted off the line it sits on, so the logo reads as sitting
+                *in* the filter rather than being another dot on it. */}
             <View
-              className="h-8 w-8 items-center justify-center rounded-full border border-cream-300 bg-cream-50"
-              style={styles.filterBadge}
+              className="card card--cream h-8 w-8 items-center justify-center rounded-full"
+              style={gradients.card}
             >
               <GemLogo size={17} />
             </View>
-            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={styles.filterGlow} />
+            <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={FILTER_GLOW} />
           </View>
 
-          {/* What comes out the other side. */}
-          <View className="flex-1" style={styles.cardShadow}>
+          {/* What comes out the other side — a raised cream card. */}
+          <View className="flex-1 rounded-[22px] bg-cream-50" style={CREAM_SHADOW}>
             <View
-              className="flex-1 gap-1.5 overflow-hidden rounded-[22px] bg-cream-50 px-4 pb-2.5 pt-3"
-              style={{ borderCurve: "continuous" }}
+              className="flex-1 gap-1.5 overflow-hidden rounded-[22px] border border-cream-200 bg-cream-50 px-4 pb-2.5 pt-3"
+              style={[{ borderCurve: "continuous" }, gradients.card]}
             >
               <Text className="eyebrow text-ink-cream-muted">{t.onboardingSort.plan}</Text>
               <View className="flex-1 items-center justify-center gap-1.5">
@@ -305,8 +308,8 @@ export default function OnboardingSort() {
                 accessibilityLabel={t.onboardingSort.dragHandle}
               >
                 <View
-                  className="items-center justify-center gap-[3px] rounded-full border-[3px] border-cream-50 bg-orange-500"
-                  style={[{ height: GRIP_SIZE, width: GRIP_SIZE }, styles.gripGlow]}
+                  className="glow-accent items-center justify-center gap-[3px] rounded-full border-[3px] border-cream-50 bg-orange-500"
+                  style={[{ height: GRIP_SIZE, width: GRIP_SIZE }, gradients.accent]}
                 >
                   <View className="h-[2px] w-3 rounded-full bg-on-accent" />
                   <View className="h-[2px] w-3 rounded-full bg-on-accent" />
@@ -320,48 +323,9 @@ export default function OnboardingSort() {
   );
 }
 
-// Fixed, not themed: a shadow stays dark, and the glows are the one orange both themes share.
-const styles = StyleSheet.create({
-  cardShadow: Platform.select({
-    ios: {
-      shadowColor: lightColors.ink.cream,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.1,
-      shadowRadius: 20,
-    },
-    android: { shadowColor: lightColors.ink.cream, elevation: 6 },
-    default: {},
-  }),
-  filterGlow: Platform.select({
-    ios: {
-      shadowColor: lightColors.orange[500],
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.7,
-      shadowRadius: 10,
-    },
-    android: { shadowColor: lightColors.orange[500], elevation: 8 },
-    default: {},
-  }),
-  // Lifted off the line it sits on, so the logo reads as sitting *in* the
-  // filter rather than being another dot on it.
-  filterBadge: Platform.select({
-    ios: {
-      shadowColor: lightColors.ink.cream,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.16,
-      shadowRadius: 6,
-    },
-    android: { shadowColor: lightColors.ink.cream, elevation: 10 },
-    default: {},
-  }),
-  gripGlow: Platform.select({
-    ios: {
-      shadowColor: lightColors.orange[500],
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.55,
-      shadowRadius: 12,
-    },
-    android: { shadowColor: lightColors.orange[500], elevation: 10 },
-    default: {},
-  }),
-});
+// The app's own shadows (global.css): a charcoal card floating on the cream
+// page as the Next card does, and --shadow-card under the cream one.
+const CHARCOAL_SHADOW = { boxShadow: "0 24px 40px -18px rgba(30, 16, 6, 0.6)" };
+const CREAM_SHADOW = { boxShadow: "0 10px 24px -8px rgba(92, 58, 26, 0.19)" };
+/** The filter line glowing on both sides — it is too thin for glow-accent's offset shadow. */
+const FILTER_GLOW = { boxShadow: "0 0 8px rgba(242, 101, 42, 0.55)" };

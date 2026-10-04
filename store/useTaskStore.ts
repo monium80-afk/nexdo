@@ -15,6 +15,7 @@ import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask, type Importanc
 import { deleteTaskRows, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
 import {
   completeTaskDelta,
+  expiredCompletedIds,
   matchesFilter,
   planOperation,
   skipMissedDelta,
@@ -465,6 +466,8 @@ type TaskStore = {
   restoreTask: (id: string) => void;
   /** Applies the "skip missed" rule of every repeating task; returns how many tasks it changed. */
   applyMissedOccurrences: (now?: Date) => number;
+  /** Deletes the tasks finished a week ago or longer (COMPLETED_RETENTION_DAYS); returns how many went. */
+  deleteExpiredCompleted: (now?: Date) => number;
   /**
    * Edits a task. On a repeating task, `scope` decides whether later
    * occurrences follow ("future"/"series") or only this one changes ("this",
@@ -712,6 +715,17 @@ export const useTaskStore = create<TaskStore>()(
         if (upserts.length > 0) get().applyPlan({ upserts, deletes: [] }, now);
         else set((state) => ({ tasks: recalcAll(state.tasks, now) }));
         return upserts.length;
+      },
+
+      // Finished tasks don't pile up: a week after it was completed, a task is
+      // deleted from the phone and the account alike — the same delete as one
+      // made by hand, so one made offline is sent again later. Runs once the
+      // account's list has loaded and whenever the app comes back to the
+      // foreground.
+      deleteExpiredCompleted: (now = new Date()) => {
+        const expired = expiredCompletedIds(get().tasks, now);
+        if (expired.length > 0) get().applyPlan({ upserts: [], deletes: expired }, now);
+        return expired.length;
       },
 
       // Edits, completion, reopening and deletion all go through the same

@@ -14,7 +14,7 @@ import {
     type NativeSyntheticEvent,
 } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -22,6 +22,7 @@ import { AuthTextField } from "@/components/AuthTextField";
 import { SetupProgressBar } from "@/components/SetupProgressBar";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
+import { gradients } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -72,6 +73,7 @@ export default function SignUp() {
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const enterStyle = useScreenEnterAnimation();
   // Fixed for the life of the screen, like the Plan step: the order and the
   // due labels both read "now".
@@ -152,6 +154,12 @@ export default function SignUp() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }}>
+      {/* The onboarding steps' warm corner light (OnboardingLayout). */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+      />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -176,7 +184,7 @@ export default function SignUp() {
             </View>
 
             {hasPlan ? (
-              <View className="card card--cream mt-6" style={{ height: PLAN_CARD_HEIGHT }}>
+              <View className="card card--cream mt-6" style={[{ height: PLAN_CARD_HEIGHT }, gradients.card]}>
                 {/* Fewer than three rows sit centred in the card; more than
                     three scroll inside it. nestedScrollEnabled so Android hands
                     the drag to this list rather than to the page around it. */}
@@ -283,7 +291,7 @@ export default function SignUp() {
                     disabled={fetchStatus === "fetching"}
                     scaleTo={0.98}
                     className="btn btn--primary mt-1"
-                    style={fetchStatus === "fetching" ? { opacity: 0.6 } : undefined}
+                    style={[gradients.accent, fetchStatus === "fetching" ? { opacity: 0.6 } : null]}
                   >
                     <Text className="font-grotesk-bold text-lg text-on-accent">
                       {t.auth.signUpButton}

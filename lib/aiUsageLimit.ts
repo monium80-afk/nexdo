@@ -4,13 +4,14 @@
 // Supabase keeps the count (supabase/schema.sql, ai_usage), so it holds
 // across server instances.
 //
-// Every other AI route is bounded by the account's plan instead — a monthly
-// count the server keeps itself (lib/serverPlan.ts). Live voice's minutes are
-// the one thing the server can't measure: the audio goes from the phone
-// straight to Google, so the app reports how long it listened
-// (app/api/live-usage+api.ts). This ceiling is the stop behind that report:
-// however little a tampered app admits to, it can only open so many sessions
-// of up to 6 minutes a day.
+// Every AI route is bounded by the account's plan — a monthly count the
+// server keeps itself (lib/serverPlan.ts). Live voice's minutes are the one
+// thing the server can't measure: the audio goes from the phone straight to
+// Google, so a session's time is taken when it opens and the app reports how
+// much of it was really used (app/api/live-usage+api.ts), which gives the
+// rest back. This ceiling is the stop behind that report: however little a
+// tampered app admits to, it can only open so many sessions a day, each no
+// longer than its token allows.
 import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
 
 export type AiRoute = "live-session";
@@ -34,9 +35,10 @@ export async function claimUserCall(userId: string, route: AiRoute): Promise<Res
       p_daily_limit: DAILY_LIMITS[route],
     });
   } catch (error) {
-    // Open rather than closed, unlike the signed-out trial: this guards
-    // against an account being abused, and a Supabase hiccup shouldn't switch
-    // the AI off for everyone signed in. Loud, so a missing setup isn't missed.
+    // Open rather than closed: this only guards against an account being
+    // abused, and the session's monthly allowance, checked right after it
+    // (lib/serverPlan.ts), is closed when Supabase can't be reached. Loud, so
+    // a missing setup isn't missed.
     if (error instanceof RpcConfigError) {
       console.error("[aiUsageLimit] SUPABASE_SECRET_KEY is missing — add it to your .env file");
     } else {

@@ -399,6 +399,16 @@ function normalizeAction(raw: unknown): InboxAction | null {
   };
 }
 
+/** Text compared the way a person would: case, spacing and punctuation aside. */
+function looseText(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/** The model handed back everything it was given — usually the message, echoed: this turn made no progress. */
+function madeNoProgress(message: string, remainingMessage: string): boolean {
+  return looseText(remainingMessage).includes(looseText(message));
+}
+
 // The part of the message this turn's action is about — the remainder the
 // model handed back belongs to a later turn (and its deadline, if any).
 function instructionText(message: string, remainingMessage: string | null): string {
@@ -665,13 +675,14 @@ export async function POST(request: Request) {
   const body = parseBody(raw);
   if (!body) return badRequest();
 
+  const claimedAt = new Date();
   const limitResponse = auth.userId
     ? await claimPlanUsage(request, auth.userId, "chat")
     : await claimTrialCall(request, "inbox");
   if (limitResponse) return limitResponse;
 
   const result = await resolveInboxMessage(body);
-  if (result.unavailable && auth.userId) await refundPlanUsage(auth.userId, "chat");
+  if (result.unavailable && auth.userId) await refundPlanUsage(auth.userId, "chat", claimedAt);
   return Response.json(result);
 }
 
@@ -696,11 +707,16 @@ export async function resolveInboxMessage(
   // choking on a long message; re-sending every fragment here would only hit
   // the same wall several more times at once.
   let googleRefused = false;
-  // True only when the loop used up every turn and the model *still* handed
-  // back unresolved text — the one exit worth falling back to fragment
-  // recovery for. Every other way out (nothing left, the model echoing the
-  // same text back, an error) has already produced all it is going to.
+  // True when the loop used up every turn and the model *still* handed back
+  // unresolved text — worth falling back to fragment recovery for, like a
+  // stalled turn below. The other ways out (nothing left, an error) have
+  // already produced all they are going to.
   let ranOutOfTurns = false;
+  // A turn that made no progress on a message holding more than one
+  // instruction. Its action is one of them, but which part is left can't be
+  // told: looping again would repeat it, and stopping would silently drop
+  // the rest. It is set aside and the message re-read piece by piece instead.
+  let stalled: SingleTurnResult | null = null;
   // The model occasionally stops mid-answer (seen in the eval: JSON cut off
   // after ~200 characters). The same request usually comes back whole, so the
   // first turn gets one more try before the user sees an apology.
@@ -734,18 +750,29 @@ export async function resolveInboxMessage(
     }
 
     if (turn === 0) intent = result.intent;
+    const remaining = result.remainingMessage;
+    const noProgress = remaining !== null && madeNoProgress(message, remaining);
+    if (noProgress && splitIntoFragments(message).length > 1) {
+      stalled = result;
+      break;
+    }
     actions.push(result.action);
     if (result.reply) replies.push(result.reply);
 
-    // No leftover, or the model just echoed the same text back (no real
-    // progress) — either way, stop rather than loop pointlessly.
-    if (!result.remainingMessage || result.remainingMessage === message) break;
-    message = result.remainingMessage;
+    // Nothing left — or no progress on what reads as a single instruction,
+    // where there is nothing else to find.
+    if (!remaining || noProgress) break;
+    message = remaining;
     ranOutOfTurns = turn === MAX_TURNS - 1;
   }
 
-  if ((ranOutOfTurns || (laterTurnFailed && !googleRefused)) && message) {
+  if ((ranOutOfTurns || stalled || (laterTurnFailed && !googleRefused)) && message) {
     const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body, askModel);
+    // Every piece failed: the stalled turn's own action beats nothing.
+    if (stalled && recovered.actions.length === 0) {
+      actions.push(stalled.action);
+      if (stalled.reply) replies.push(stalled.reply);
+    }
     actions.push(...recovered.actions);
     replies.push(...recovered.replies);
     if (recovered.intent) intent = recovered.intent;

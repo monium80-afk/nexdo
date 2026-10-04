@@ -595,6 +595,7 @@ export const ar: Translations = {
     nothingChangedMany: "هذه المهام هكذا بالفعل — لم يتغير شيء.",
     notFound: "لم أجد هذه المهمة — ربما حُذفت. لم يتغير شيء.",
     whichDates: "لم أفهم أي تواريخ تقصد — هل يمكنك قولها بطريقة أخرى؟ لم يتغير شيء.",
+    whichTasks: "لم أفهم أي مهام تقصد — هل يمكنك تحديدها؟ لم يتغير شيء.",
     nothingMatched: "لا توجد مهام مطابقة، لذا لم يتغير شيء.",
     someNotFound: (n: number) => (n === 1 ? "لم أجد مهمة واحدة." : `لم أجد ${tasksObject(n)}.`),
     confirmComplete: (n: number, titles: string) => `هل أحدد ${tasksObject(n)} كمنجزة؟ ${titles}.`,

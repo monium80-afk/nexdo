@@ -330,7 +330,7 @@ export async function createLiveSessionToken(params: {
   /** The BidiGenerateContent setup — model, transcription options — the session is locked to. */
   setup: Record<string, unknown>;
   /** After this the token is dead — the ceiling on one session's length (and bill). */
-  sessionMinutes: number;
+  sessionSeconds: number;
 }): Promise<{ websocketUrl: string }> {
   const now = Date.now();
   // The setup's own fields go straight into bidiGenerateContentSetup —
@@ -339,7 +339,7 @@ export async function createLiveSessionToken(params: {
   const body = JSON.stringify({
     uses: 1,
     newSessionExpireTime: new Date(now + LIVE_CONNECT_WINDOW_MS).toISOString(),
-    expireTime: new Date(now + params.sessionMinutes * 60 * 1000).toISOString(),
+    expireTime: new Date(now + params.sessionSeconds * 1000).toISOString(),
     bidiGenerateContentSetup: params.setup,
   });
 
@@ -361,6 +361,30 @@ export async function createLiveSessionToken(params: {
     };
   }
   throw notFound ?? new Error("No live token endpoint answered");
+}
+
+// Google turns every second of audio into 32 tokens, whatever the file's
+// format or bitrate (measured on this model 2026-10-03: 10 s → 320, 95 s →
+// 3,041).
+const AUDIO_TOKENS_PER_SECOND = 32;
+
+/**
+ * How many seconds of audio Google hears in a file — counted by Google
+ * itself, before anything is billed (counting is free). A length worked out
+ * from the file's size can be far off: a low-bitrate file holds much more
+ * audio than its size suggests.
+ */
+export async function measureAudioSeconds(params: { mimeType: string; base64: string }): Promise<number> {
+  const response = await fetch(`${GEMINI_API}/models/${GEMINI_MODEL}:countTokens`, {
+    method: "POST",
+    headers: geminiHeaders(),
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: params.mimeType, data: params.base64 } }] }] }),
+  });
+  if (!response.ok) throw new GeminiHttpError(response.status, await response.text());
+  const data = (await response.json()) as { promptTokensDetails?: { modality?: string; tokenCount?: number }[] };
+  const tokens = data.promptTokensDetails?.find((detail) => detail.modality === "AUDIO")?.tokenCount;
+  if (typeof tokens !== "number") throw new Error("Gemini counted no audio in the file");
+  return tokens / AUDIO_TOKENS_PER_SECOND;
 }
 
 // Multimodal extraction (photo/voice/document -> plain text) for the AI

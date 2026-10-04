@@ -569,6 +569,7 @@ export const en = {
     nothingChangedMany: "Those tasks already look like that — nothing changed.",
     notFound: "I couldn't find that task — it may have been deleted. Nothing was changed.",
     whichDates: "I couldn't tell which dates you mean — could you put it another way? Nothing was changed.",
+    whichTasks: "I couldn't tell which tasks you mean — could you say which ones? Nothing was changed.",
     nothingMatched: "No tasks match that, so nothing was changed.",
     someNotFound: (n: number) => `${n} ${plural(n, "task", "tasks")} couldn't be found.`,
     confirmComplete: (n: number, titles: string) => `Mark ${n} ${plural(n, "task", "tasks")} as done? ${titles}.`,

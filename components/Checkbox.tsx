@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect } from "react";
-import Animated, { interpolate, interpolateColor, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { MOTION } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
@@ -11,6 +11,15 @@ const BOX_EDGE = "#5A4A3C";
 /**
  * The task list's checkbox, drawn only — whatever holds it does the tapping,
  * so a whole row can toggle it. `overdue` gives an open box a red edge.
+ *
+ * Whether it's ticked is drawn straight from `checked`: the fill, the edge and
+ * the tick are ordinary styles. Only the little squeeze and pop on a change is
+ * animated, and that starts and ends at the box's normal size. Reanimated can
+ * lose the last value of an animation that has finished, putting the view back
+ * to how it was first drawn — with the colours animated, that left a finished
+ * task with an empty box. package.json now switches that Reanimated behaviour
+ * off for the whole app (FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS), but this
+ * box doesn't rely on it.
  */
 export function Checkbox({ checked, tone = "default" }: { checked: boolean; tone?: "default" | "overdue" }) {
   const colors = useColors();
@@ -25,27 +34,27 @@ export function Checkbox({ checked, tone = "default" }: { checked: boolean; tone
   }, [checked, progress, reduceMotion]);
 
   const boxStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(progress.value, [0, 1], ["rgba(0,0,0,0)", colors.orange[500]]),
-    borderColor: interpolateColor(
-      progress.value,
-      [0, 1],
-      [tone === "overdue" ? colors.overdue[500] : BOX_EDGE, colors.orange[500]],
-    ),
     transform: [{ scale: interpolate(progress.value, [0, 0.75, 1], [1, 0.92, 1]) }],
   }));
   const checkStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ scale: interpolate(progress.value, [0, 1], [0.75, 1]) }],
+    transform: [{ scale: interpolate(progress.value, [0, 0.5, 1], [1, 1.2, 1]) }],
   }));
+
+  const edge = checked ? colors.orange[500] : tone === "overdue" ? colors.overdue[500] : BOX_EDGE;
 
   // The tick is laid over the box rather than inside it, so to layout the box
   // holds no text — its baseline is its bottom edge, and a row aligned by
   // baseline sets a title's first line right on it (see TaskCard).
   return (
-    <Animated.View className="h-[22px] w-[22px] rounded-[7px] border-2" style={boxStyle}>
-      <Animated.View className="absolute inset-0 items-center justify-center" style={checkStyle}>
-        <Feather name="check" size={14} color={colors.onAccent} />
-      </Animated.View>
+    <Animated.View
+      className={checked ? "h-[22px] w-[22px] rounded-[7px] border-2 bg-orange-500" : "h-[22px] w-[22px] rounded-[7px] border-2"}
+      style={[{ borderColor: edge }, boxStyle]}
+    >
+      {checked ? (
+        <Animated.View className="absolute inset-0 items-center justify-center" style={checkStyle}>
+          <Feather name="check" size={14} color={colors.onAccent} />
+        </Animated.View>
+      ) : null}
     </Animated.View>
   );
 }

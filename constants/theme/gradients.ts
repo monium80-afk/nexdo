@@ -17,6 +17,28 @@ export const gradients = {
   accent: fill("linear-gradient(160deg, #FB9459 0%, #F26A2F 50%, #E4521E 100%)"),
   /** A finished-it action (Complete). */
   success: fill("linear-gradient(160deg, #45B971 0%, #28995A 100%)"),
+  /**
+   * The "task complete" overlay (CompletedOverlay), which fills a card with
+   * green: light falling on it from the top-left, and a deeper foot — the
+   * same lighting as the charcoal card it covers.
+   */
+  successSheen: fill(
+    "radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.06) 38%, rgba(255, 255, 255, 0) 62%), " +
+      "linear-gradient(180deg, rgba(9, 66, 36, 0) 42%, rgba(9, 66, 36, 0.4) 100%)",
+  ),
+  /** Its disc: a cream card's fill, lit from the top-left. */
+  successDisc: fill("linear-gradient(145deg, #FFFFFF 0%, #FFF8EE 55%, #F4E6D2 100%)"),
+  /**
+   * The glow around the disc and the shadow under it. Gradients rather than
+   * box shadows: both scale with the disc, and Android redraws a blurred
+   * shadow on every frame of that.
+   */
+  successHalo: fill(
+    "radial-gradient(circle 110px at 50% 50%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0) 100%)",
+  ),
+  successShadow: fill(
+    "radial-gradient(circle 60px at 50% 50%, rgba(7, 54, 29, 0.42) 0%, rgba(7, 54, 29, 0.2) 48%, rgba(7, 54, 29, 0) 100%)",
+  ),
 
   /** A raised cream card — a whisper of light at the top. */
   card: fill("linear-gradient(180deg, #FFFCF7 0%, #FCF5EA 100%)"),

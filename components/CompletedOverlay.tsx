@@ -13,7 +13,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { colors, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
@@ -41,8 +41,21 @@ const CONFETTI_DELAY_MS = 230;
 const CONFETTI_MS = 950;
 const TEXT_DELAY_MS = 420;
 const DISC_SPRING = { damping: 9, stiffness: 210, mass: 0.7 };
-// No shadow under the disc: a blurred shadow on a view that scales and spins
-// is redrawn every frame on Android, and it was a real part of the stutter.
+
+// The disc's depth. No box shadow anywhere near it: a blurred shadow on a view
+// that scales and spins is redrawn every frame on Android, and it was a real
+// part of the stutter. The glow around the disc and the shadow under it are
+// radial gradients instead (gradients.successHalo / successShadow) — plain
+// fills, which cost nothing to scale.
+const HALO_SIZE = 220;
+const SHADOW_SIZE = 120;
+/** How far below the disc's centre its shadow sits: lit from above, like every card. */
+const SHADOW_DROP = 14;
+const TITLE_SHADOW = {
+  textShadowColor: "rgba(7, 54, 29, 0.35)",
+  textShadowOffset: { width: 0, height: 2 },
+  textShadowRadius: 8,
+};
 
 const CONFETTI_COLORS = [colors.onAccent, "#FFD166", colors.orange[300], "#FFFFFF", colors.orange[400], "#FFE8A3"];
 // Spread all the way round, each piece its own distance, size and spin — fixed
@@ -111,8 +124,9 @@ function Ripple({ progress }: { progress: SharedValue<number> }) {
 
 /**
  * What a card becomes for a moment once its task is done. Green floods out of
- * the button that finished it, a white disc springs in, the tick draws itself
- * across it, rings ripple out and confetti bursts — then "Task complete".
+ * the button that finished it and takes the light of the card it covers; a
+ * disc springs in on its own glow and shadow, the tick draws itself across
+ * it, rings ripple out and confetti bursts — then "Task complete".
  * A completed task drops straight out of the Next queue, so this is the beat
  * that says "that one's done" before the next task takes its place.
  *
@@ -152,8 +166,21 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
   }, [burst, draw, firstRipple, pop, reduceMotion, reveal, secondRipple]);
 
   const floodStyle = useAnimatedStyle(() => ({ transform: [{ scale: flood.value }] }));
+  // The light settles on the green as it finishes spreading.
+  const sheenStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(flood.value, [0.4, 1], [0, 1], Extrapolation.CLAMP),
+  }));
   const discStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pop.value }, { rotate: `${interpolate(pop.value, [0, 1], [-35, 0])}deg` }],
+  }));
+  // Both arrive with the disc, and overshoot with its spring.
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pop.value, [0, 0.6], [0, 1], Extrapolation.CLAMP),
+    transform: [{ scale: interpolate(pop.value, [0, 1], [0.5, 1]) }],
+  }));
+  const shadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pop.value, [0, 0.6], [0, 1], Extrapolation.CLAMP),
+    transform: [{ scale: pop.value }],
   }));
   const checkProps = useAnimatedProps(() => ({ strokeDashoffset: CHECK_LENGTH * (1 - draw.value) }));
   const textStyle = useAnimatedStyle(() => ({
@@ -190,9 +217,40 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
       className="absolute bottom-0 left-0 right-0 top-0 overflow-hidden"
     >
       {floodCircle}
+      <Animated.View
+        pointerEvents="none"
+        className="absolute bottom-0 left-0 right-0 top-0"
+        style={[gradients.successSheen, sheenStyle]}
+      />
 
       <View className="absolute bottom-0 left-0 right-0 top-0 items-center justify-center gap-5 px-8">
         <View style={{ width: DISC_SIZE, height: DISC_SIZE }}>
+          <Animated.View
+            className="absolute"
+            style={[
+              {
+                left: (DISC_SIZE - SHADOW_SIZE) / 2,
+                top: (DISC_SIZE - SHADOW_SIZE) / 2 + SHADOW_DROP,
+                width: SHADOW_SIZE,
+                height: SHADOW_SIZE,
+              },
+              gradients.successShadow,
+              shadowStyle,
+            ]}
+          />
+          <Animated.View
+            className="absolute"
+            style={[
+              {
+                left: (DISC_SIZE - HALO_SIZE) / 2,
+                top: (DISC_SIZE - HALO_SIZE) / 2,
+                width: HALO_SIZE,
+                height: HALO_SIZE,
+              },
+              gradients.successHalo,
+              haloStyle,
+            ]}
+          />
           {reduceMotion ? null : (
             <>
               <Ripple progress={firstRipple} />
@@ -203,14 +261,21 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
             </>
           )}
           <Animated.View
-            className="items-center justify-center rounded-full bg-on-accent"
-            style={[{ width: DISC_SIZE, height: DISC_SIZE }, discStyle]}
+            className="items-center justify-center rounded-full border border-white bg-on-accent"
+            style={[{ width: DISC_SIZE, height: DISC_SIZE }, gradients.successDisc, discStyle]}
           >
             <Svg width={DISC_SIZE} height={DISC_SIZE}>
+              {/* The tick in the Complete button's own green, light to deep. */}
+              <Defs>
+                <LinearGradient id="tick" x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0" stopColor="#3DB56E" />
+                  <Stop offset="1" stopColor={colors.success[500]} />
+                </LinearGradient>
+              </Defs>
               <AnimatedPath
                 d={CHECK_PATH}
                 fill="none"
-                stroke={colors.success[500]}
+                stroke="url(#tick)"
                 strokeWidth={7}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -222,7 +287,9 @@ export function CompletedOverlay({ title, origin }: { title: string; origin?: Ov
         </View>
 
         <Animated.View className="items-center gap-1.5" style={textStyle}>
-          <Text className="font-grotesk-bold text-[22px] tracking-tight text-on-accent">{t.next.taskComplete}</Text>
+          <Text className="font-grotesk-bold text-[22px] tracking-tight text-on-accent" style={TITLE_SHADOW}>
+            {t.next.taskComplete}
+          </Text>
           <Text numberOfLines={2} style={rtl} className="text-center font-grotesk-medium text-sm text-on-accent/80">
             {title}
           </Text>

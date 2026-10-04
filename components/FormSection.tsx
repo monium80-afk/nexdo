@@ -2,17 +2,16 @@ import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import type { FeatherIconName } from "@/components/Button";
-import { IconTile, type IconTileTone } from "@/components/IconTile";
 import { SectionHeader, type SectionAction } from "@/components/SectionHeader";
 
 /**
- * One part of a form (Add Task): an icon tile on the left, and the section's
- * label with its controls in a column beside it. Sits on a light panel unless
- * `plain` — the first field of a form, which stands on the page by itself.
+ * One part of a form (Add Task, Send feedback): the section's label, with its
+ * icon beside it, over its controls — which run the full width of the section.
+ * Sits on a light panel unless `plain` — the first field of a form, which
+ * stands on the page by itself.
  */
 export function FormSection({
   icon,
-  tone = "orange",
   label,
   required,
   action,
@@ -20,8 +19,8 @@ export function FormSection({
   plain = false,
   children,
 }: {
+  /** A Feather icon name — drawn muted — or an icon of your own. */
   icon: FeatherIconName | ReactNode;
-  tone?: IconTileTone;
   label: string;
   required?: boolean;
   action?: SectionAction;
@@ -29,14 +28,11 @@ export function FormSection({
   plain?: boolean;
   children: ReactNode;
 }) {
+  // A plain section's content lines up with a panel's: its padding plus its 1px edge.
   return (
-    <View className={plain ? "flex-row gap-3 px-3" : "panel flex-row gap-3 p-3"}>
-      <IconTile icon={icon} tone={tone} />
-      {/* The label's line sits level with the middle of the tile. */}
-      <View className="flex-1 gap-3 pt-[9px]">
-        <SectionHeader label={label} required={required} action={action} hint={hint} />
-        {children}
-      </View>
+    <View className={plain ? "gap-3 px-[15px]" : "panel gap-3 p-[14px]"}>
+      <SectionHeader icon={icon} label={label} required={required} action={action} hint={hint} />
+      {children}
     </View>
   );
 }

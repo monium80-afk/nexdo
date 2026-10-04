@@ -1,11 +1,13 @@
 import { useAuth } from "@clerk/expo";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
+import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -16,6 +18,9 @@ import { rankTasksForNext } from "@/lib/scoring";
 import { getDueInfo } from "@/lib/taskMeta";
 import { buildTask } from "@/store/useTaskStore";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
+
+// The Next card's own shadow (NextTaskCardStack).
+const CARD_SHADOW = { boxShadow: "0 26px 40px -18px rgba(30, 16, 6, 0.6)" };
 
 export default function OnboardingFocus() {
   const colors = useColors();
@@ -63,6 +68,7 @@ export default function OnboardingFocus() {
     [drafts, now],
   );
   const top = ranked[0];
+  const due = top ? getDueInfo(top, now) : null;
 
   // A tip that makes the task easier to do, not a reason it was picked — the
   // urgency pill already covers that. Only the headline: that's the AI's whole
@@ -103,40 +109,67 @@ export default function OnboardingFocus() {
       nextLabel={t.onboardingFocus.next}
       onNext={handleNext}
     >
-      {top ? (
-        <View className="gap-4 rounded-[20px] border border-orange-500 bg-charcoal-900 p-5">
+      {top && due ? (
+        // The Next card itself: its surface, rank pill, score pill and details row.
+        <View
+          className="gap-4 rounded-[28px] hairline-charcoal bg-charcoal-900 p-5"
+          style={[gradients.charcoalCard, CARD_SHADOW]}
+        >
           <View className="flex-row flex-wrap items-center justify-between gap-2">
-            <View className="flex-row items-center gap-2 rounded-full bg-orange-500 px-4 py-2">
-              <Feather name="zap" size={14} color={colors.onAccent} />
-              <Text className="eyebrow text-on-accent">{t.onboardingFocus.nextFocus}</Text>
+            <View
+              className="flex-row items-center gap-1.5 rounded-full py-0.5 pl-1.5 pr-2.5"
+              style={gradients.rankPill}
+            >
+              <Ionicons name="flame" size={13} color={colors.orange[400]} />
+              <Text className="font-grotesk-bold text-[13px] text-orange-300">{t.onboardingFocus.nextFocus}</Text>
             </View>
-            <View className="rounded-full border border-orange-500/70 bg-orange-500/15 px-3.5 py-2">
-              <Text className="font-grotesk-bold text-xs text-orange-500">
+            <View className="glass flex-row items-center gap-1.5 rounded-full px-2.5 py-0.5">
+              <GemLogo size={13} onDark />
+              <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">
                 {t.onboardingFocus.urgency(top.priorityScore)}
               </Text>
             </View>
           </View>
 
-          <View className="gap-2">
-            <Text className="font-grotesk-bold text-2xl text-ink-charcoal" style={rtl}>
+          <View className="gap-2.5">
+            <Text className="font-grotesk-bold text-[22px] leading-[26px] tracking-tight text-ink-charcoal" style={rtl}>
               {top.title}
             </Text>
-            <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
-              <View className="flex-row items-center gap-1.5">
-                <Feather name="calendar" size={13} color={colors.orange[500]} />
-                <Text className="font-grotesk-bold text-sm text-orange-500">{getDueInfo(top, now).pillLabel}</Text>
+            {/* Only an overdue deadline gets a badge — solid red, as on the Next card. */}
+            <View className="flex-row flex-wrap items-center gap-x-2 gap-y-2">
+              <View
+                className={
+                  due.tone === "overdue"
+                    ? "badge--overdue-solid flex-row items-center gap-1.5 rounded-[10px] px-2 py-1"
+                    : "flex-row items-center gap-1.5"
+                }
+              >
+                <Ionicons
+                  name="calendar-clear-outline"
+                  size={14}
+                  color={due.tone === "overdue" ? colors.onAccent : colors.ink.charcoal}
+                />
+                <Text
+                  className={
+                    due.tone === "overdue"
+                      ? "font-grotesk-bold text-[13px] text-on-accent"
+                      : "font-grotesk-semibold text-[13px] text-ink-charcoal"
+                  }
+                >
+                  {due.tone === "overdue" ? t.due.overdue : due.pillLabel}
+                </Text>
               </View>
-              <Text className="text-sm text-ink-charcoal-muted">·</Text>
+              <View className="h-[13px] w-px bg-white/20" />
               <View className="flex-row items-center gap-1.5">
-                <Feather name="clock" size={13} color={colors.ink.charcoalMuted} />
-                <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
+                <Ionicons name="time-outline" size={14} color={colors.ink.charcoal} />
+                <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">
                   {formatDuration(top.estimatedMinutes)}
                 </Text>
               </View>
             </View>
           </View>
 
-          <View className="card--charcoal-inset gap-2 rounded-2xl border p-4">
+          <View className="glass gap-2 rounded-[18px] p-4">
             <View className="flex-row items-center gap-2">
               {/* The same bulb the session card uses for AI advice, so this
                   reads as the assistant speaking rather than a new thing. */}

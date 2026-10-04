@@ -118,7 +118,8 @@ const CASES: Case[] = [
   },
   {
     name: "new deadline: moved, the work left alone",
-    task: { title: "History essay", dueDate: at(2, 23, 59), estimatedMinutes: 120 },
+    // Due yesterday, so "next Monday" is a move whatever day the eval runs.
+    task: { title: "History essay", dueDate: at(-1, 23, 59), estimatedMinutes: 120 },
     say: "The teacher gave us until next Monday.",
     check: (before, after, state) => {
       const due = after.dueDate ? new Date(after.dueDate) : null;

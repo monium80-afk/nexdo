@@ -1,11 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
-import { View, useWindowDimensions, type TextLayoutEvent } from "react-native";
+import { Text, View, useWindowDimensions, type TextLayoutEvent } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
-  interpolateColor,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -58,6 +57,12 @@ const STRIKE_THICKNESS_EM = 1 / 18;
 // A tick, in ms from the tap: the box squashes and springs past full size,
 // the ring and sparks burst as it grows, the strike crosses the title — then the
 // card holds a beat before the task is completed and the list slides it down.
+//
+// Everything animated here either starts and ends at the card's normal look
+// (the pop, the bump) or is taken away when the tick is over (the burst, the
+// strike). What says "done" afterwards — the ticked box, the muted, struck
+// title, the sunken card — is drawn from the task itself, never left behind by
+// an animation: see Checkbox.
 const BURST_DELAY_MS = 80;
 const BURST_MS = 560;
 const STRIKE_DELAY_MS = 140;
@@ -93,11 +98,11 @@ function StrikeLine({
     return {
       width: drawn,
       left: fromRight ? line.x + line.width - drawn : line.x,
-      backgroundColor: interpolateColor(progress.value, [0, 1], [colors.ink.cream, colors.ink.creamMuted]),
     };
   });
 
-  return <Animated.View className="absolute" style={[{ top, height: thickness }, style]} />;
+  // In the title's own ink: the two turn muted together once the task is completed.
+  return <Animated.View className="absolute bg-ink-cream" style={[{ top, height: thickness }, style]} />;
 }
 
 type TaskCardProps = {
@@ -140,23 +145,17 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
     [],
   );
 
-  const done = useSharedValue(isCompleted ? 1 : 0);
+  const strike = useSharedValue(0);
   const pop = useSharedValue(1);
   const bump = useSharedValue(1);
   const burst = useSharedValue(0);
 
+  // Back to the start once a tick is over — its lines are gone by then — so
+  // the next one draws from nothing.
   useEffect(() => {
-    done.value = celebrating
-      ? withDelay(STRIKE_DELAY_MS, withTiming(1, { duration: STRIKE_MS, easing: MOTION.easing.enter }))
-      : withTiming(isCompleted ? 1 : 0, {
-          duration: reduceMotion ? 0 : MOTION.duration.standard,
-          easing: MOTION.easing.standard,
-        });
-  }, [celebrating, done, isCompleted, reduceMotion]);
+    if (!celebrating) strike.set(0);
+  }, [celebrating, strike]);
 
-  const titleStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(done.value, [0, 1], [colors.ink.cream, colors.ink.creamMuted]),
-  }));
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const bumpStyle = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }));
 
@@ -207,6 +206,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
         withDelay(BURST_DELAY_MS, withTiming(1, { duration: BURST_MS, easing: MOTION.easing.enter })),
       ),
     );
+    strike.set(withDelay(STRIKE_DELAY_MS, withTiming(1, { duration: STRIKE_MS, easing: MOTION.easing.enter })));
     completeTimer.current = setTimeout(finishCheck, CHECK_HOLD_MS);
   };
 
@@ -239,19 +239,19 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
         <View className="flex-1 gap-2.5">
           <View className="flex-row items-baseline gap-2">
             <View className="flex-1">
-              <Animated.Text
+              <Text
                 className={
                   isCompleted
-                    ? "font-grotesk-semibold text-[18px] leading-[23px] tracking-tight line-through"
-                    : "font-grotesk-bold text-[18px] leading-[23px] tracking-tight"
+                    ? "font-grotesk-semibold text-[18px] leading-[23px] tracking-tight text-ink-cream-muted line-through"
+                    : "font-grotesk-bold text-[18px] leading-[23px] tracking-tight text-ink-cream"
                 }
-                style={[rtl, titleStyle]}
+                style={rtl}
                 onTextLayout={(event) => {
                   titleLines.current = event.nativeEvent.lines;
                 }}
               >
                 {task.title}
-              </Animated.Text>
+              </Text>
               {/* Drawn only while the tick plays; once the task is completed the
                   title's own line-through takes over at the same spot. */}
               {celebrating
@@ -261,7 +261,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
                       line={line}
                       index={index}
                       count={strikeLines.length}
-                      progress={done}
+                      progress={strike}
                       fontSize={TITLE_SIZE * fontScale}
                       fromRight={rtl !== undefined}
                     />

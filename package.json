@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "deploy:server": "expo export --platform web && npx eas-cli deploy --prod --environment production",
     "test": "node --import ./tests/register.mjs --test \"tests/*.test.ts\"",
     "eval:ai": "node --env-file=.env --experimental-transform-types --import ./tests/register.mjs tests/ai-eval.ts",
     "eval:reassess": "node --env-file=.env --experimental-transform-types --import ./tests/register.mjs tests/ai-eval-reassess.ts"
@@ -73,6 +74,11 @@
   },
   "overrides": {
     "lightningcss": "1.30.1"
+  },
+  "reanimated": {
+    "staticFeatureFlags": {
+      "FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS": false
+    }
   },
   "private": true
 }

@@ -3,11 +3,12 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { KeyboardAvoidingView, Platform, Text, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { HighlightedText } from "@/components/HighlightedText";
 import { SetupProgressBar } from "@/components/SetupProgressBar";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
@@ -94,6 +95,7 @@ export function OnboardingLayout({
   useStatusBarStyle("dark");
   const t = useTranslation();
   const rtl = useRtlText();
+  const insets = useSafeAreaInsets();
 
   // 1 = settled in place, 0 = TRAVEL below it and fully transparent. Entering
   // and leaving are the same journey, run in opposite directions.
@@ -143,6 +145,14 @@ export function OnboardingLayout({
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }}>
+      {/* Warm light from the top-right corner, running up under the status
+          bar — the same light as the Next page and the paywall. */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+      />
+
       {/* Only the dump step has anything to type into; on every other step the
           keyboard never comes up and this adds nothing. */}
       <KeyboardAvoidingView
@@ -202,6 +212,7 @@ export function OnboardingLayout({
               scaleTo={0.97}
               accessibilityRole="button"
               accessibilityLabel={nextLabel}
+              style={gradients.accent}
               className="btn btn--primary mt-4 gap-3 rounded-full"
             >
               <Text className="font-grotesk-bold text-xl text-on-accent">{nextLabel}</Text>
@@ -217,7 +228,7 @@ export function OnboardingLayout({
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel={t.onboarding.next}
-                className="h-11 w-11 items-center justify-center rounded-full bg-charcoal-800"
+                className="btn--charcoal-solid h-11 w-11 items-center justify-center rounded-full"
               >
                 <Feather name="arrow-right" size={18} color={colors.onAccent} />
               </AnimatedPressable>

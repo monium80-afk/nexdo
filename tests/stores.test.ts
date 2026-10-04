@@ -146,6 +146,61 @@ describe("repeating tasks in the store", () => {
   });
 });
 
+describe("finished tasks are deleted a week after they were completed", () => {
+  it("deletes only the ones whose week is up, on the phone and in the database", async () => {
+    const old = seed({ title: "Old", estimatedMinutes: 30, priorityLevel: "low" });
+    const recent = seed({ title: "Recent", estimatedMinutes: 30, priorityLevel: "low" });
+    const open = seed({ title: "Open", estimatedMinutes: 30, priorityLevel: "low" });
+    useTaskStore.getState().executeOperation({ kind: "complete", target: { taskIds: [old] } }, new Date(Date.now() - 7 * DAY));
+    useTaskStore.getState().executeOperation({ kind: "complete", target: { taskIds: [recent] } }, new Date(Date.now() - 7 * DAY + 60_000));
+    await flush();
+
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(), 1);
+    await flush();
+    assert.equal(task(old), undefined);
+    assert.equal(dbRow(old), undefined);
+    assert.equal(task(recent)?.status, "completed");
+    assert.equal(task(open)?.status, "pending");
+    assert.deepEqual(fakeDb.writes.at(-1), { table: "tasks", kind: "delete", ids: [old] });
+
+    // Nothing left to delete: no request at all.
+    fakeDb.writes = [];
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(), 0);
+    await flush();
+    assert.deepEqual(fakeDb.writes, []);
+  });
+
+  it("reopening a task and finishing it again starts the week over", async () => {
+    const id = seed({ title: "Report", estimatedMinutes: 30, priorityLevel: "medium" });
+    useTaskStore.getState().executeOperation({ kind: "complete", target: { taskIds: [id] } }, new Date(Date.now() - 10 * DAY));
+    useTaskStore.getState().reopenTask(id);
+    // Open again, however long ago it was first finished.
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(), 0);
+
+    useTaskStore.getState().completeTask(id);
+    await flush();
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(new Date(Date.now() + 6 * DAY)), 0);
+    assert.equal(task(id)?.status, "completed");
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(new Date(Date.now() + 7 * DAY + 60_000)), 1);
+    await flush();
+    assert.equal(task(id), undefined);
+    assert.equal(dbRow(id), undefined);
+  });
+
+  it("a finished occurrence of a repeating task goes; the open one stays", async () => {
+    const id = seed({ title: "Gym", estimatedMinutes: 60, priorityLevel: "medium", dueDate: at(1, 7), recurrence: { frequency: "weekly" } });
+    useTaskStore.getState().completeTask(id);
+    await flush();
+
+    assert.equal(useTaskStore.getState().deleteExpiredCompleted(new Date(Date.now() + 8 * DAY)), 1);
+    await flush();
+    const left = useTaskStore.getState().tasks;
+    assert.equal(left.length, 1);
+    assert.equal(left[0].status, "pending");
+    assert.equal(fakeDb.rows("tasks").length, 1);
+  });
+});
+
 describe("bulk operations reach the database in one request", () => {
   it("postponing every open task writes all of them together, and nothing else", async () => {
     const a = seed({ title: "Essay", estimatedMinutes: 90, priorityLevel: "high", dueDate: at(2) });
@@ -299,6 +354,17 @@ describe("AI chat: the reply matches what was written", () => {
     assert.equal(useTaskStore.getState().tasks.find((candidate) => candidate.id === open)?.status, "completed");
   });
 
+  it("asks which tasks when a bulk change names none, rather than reaching every task — even in auto mode", async () => {
+    useSettingsStore.setState({ aiAutoMode: true });
+    seed({ title: "A", estimatedMinutes: 30, priorityLevel: "low" });
+    seed({ title: "B", estimatedMinutes: 30, priorityLevel: "low" });
+    await flush();
+    modelAnswers([action({ type: "COMPLETE_TASKS", reply: "Done!" })]);
+    const reply = await say("mark them done");
+    assert.equal(reply, "I couldn't tell which tasks you mean — could you say which ones? Nothing was changed.");
+    assert.ok(useTaskStore.getState().tasks.every((candidate) => candidate.status === "pending"));
+  });
+
   it("marks only the keyword-matched assignments done, after confirming the list", async () => {
     const one = seed({ title: "Math assignment", estimatedMinutes: 30, priorityLevel: "medium" });
     const two = seed({ title: "History assignment", estimatedMinutes: 30, priorityLevel: "medium" });
@@ -370,5 +436,47 @@ describe("AI chat: the reply matches what was written", () => {
     assert.equal(useChatStore.getState().isAiTyping, false);
     // What the chat screen reads to open the paywall.
     assert.equal(useChatStore.getState().planLimit, "chat");
+  });
+});
+
+describe("the inbox route, when the model makes no progress", () => {
+  /** A model that adds a task per message it's given, handing the first message back whole, as if nothing of it were done. */
+  function echoingModel(asked: string[]) {
+    return async ({ userContent }: { userContent: string }) => {
+      // The request JSON is the last line, after any language notes.
+      const { message } = JSON.parse(userContent.split("\n").at(-1)!) as { message: string };
+      asked.push(message);
+      const title = message.replace(/^\w/, (letter) => letter.toUpperCase());
+      return {
+        intent: "create_task",
+        action: { type: "CREATE_TASK", fields: { title }, confirmationRequired: true },
+        remainingMessage: asked.length === 1 ? ` ${message.toUpperCase()} ` : null,
+        reply: `Added ${title}.`,
+      };
+    };
+  }
+
+  const body = (message: string): InboxRequestBody => ({
+    message,
+    now: new Date().toISOString(),
+    recentTaskIds: [],
+    tasks: [],
+    history: [],
+    language: "en",
+  });
+
+  it("re-reads a compound message piece by piece instead of dropping the rest", async () => {
+    const asked: string[] = [];
+    const result = await resolveInboxMessage(body("buy milk, call mom"), echoingModel(asked) as never);
+    assert.deepEqual(asked.slice(1).sort(), ["buy milk", "call mom"]);
+    // The stuck turn's own "buy milk" is set aside, not added twice.
+    assert.deepEqual(result.actions.map((entry) => entry.fields.title).sort(), ["Buy milk", "Call mom"]);
+  });
+
+  it("keeps the one action of a single instruction, with nothing more to look for", async () => {
+    const asked: string[] = [];
+    const result = await resolveInboxMessage(body("buy milk"), echoingModel(asked) as never);
+    assert.deepEqual(asked, ["buy milk"]);
+    assert.deepEqual(result.actions.map((entry) => entry.fields.title), ["Buy milk"]);
   });
 });

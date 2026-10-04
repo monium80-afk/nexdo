@@ -53,6 +53,7 @@ class FakeSocket {
 const SESSION: LiveSessionResponseBody = {
   url: "wss://example.test/live?access_token=auth_tokens/abc",
   setup: { setup: { model: "models/gemini-3.8-live" } },
+  sessionId: "3f2b9c1e-5d4a-4b8e-9a7c-1e2d3f4a5b6c",
 };
 
 function toolCall(...calls: { name: string; args?: Record<string, unknown>; id?: string }[]) {
@@ -347,14 +348,15 @@ describe("live voice session", () => {
     assert.equal(voice.getState().problem, "planLimit");
   });
 
-  it("reports how long it listened, once per session", async () => {
-    const listened: number[] = [];
-    const { voice, sockets } = await listening({ onListened: (seconds) => listened.push(seconds) });
+  it("reports how long it listened, once per session, with the session's id", async () => {
+    const listened: [number, string | undefined][] = [];
+    const { voice, sockets } = await listening({ onListened: (seconds, sessionId) => listened.push([seconds, sessionId]) });
     assert.deepEqual(listened, [], "nothing to report while it's still listening");
     voice.stop();
     voice.dispose();
     assert.equal(listened.length, 1);
-    assert.ok(listened[0] >= 0);
+    assert.ok(listened[0][0] >= 0);
+    assert.equal(listened[0][1], SESSION.sessionId);
 
     // A second session on the same screen is reported separately.
     await voice.start();
@@ -365,12 +367,28 @@ describe("live voice session", () => {
     assert.equal(listened.length, 2, "a dropped connection still counts what was used");
   });
 
-  it("reports nothing for a session that never got to listen", async () => {
-    const listened: number[] = [];
-    const { voice, sockets } = setup({ onListened: (seconds) => listened.push(seconds) });
+  it("reports 0 for a session that never got to listen, so its time is given back", async () => {
+    const listened: [number, string | undefined][] = [];
+    const { voice, sockets } = setup({ onListened: (seconds, sessionId) => listened.push([seconds, sessionId]) });
     await voice.start();
     sockets[0].dropConnection();
-    assert.deepEqual(listened, []);
+    assert.deepEqual(listened, [[0, SESSION.sessionId]]);
+  });
+
+  it("reports 0 for a session stopped while the server was still opening it", async () => {
+    const listened: [number, string | undefined][] = [];
+    let open: (session: LiveSessionResponseBody) => void = () => {};
+    const { voice, sockets } = setup({
+      requestSession: () => new Promise((resolve) => (open = resolve)),
+      onListened: (seconds, sessionId) => listened.push([seconds, sessionId]),
+    });
+    const starting = voice.start();
+    await flush();
+    voice.stop();
+    open(SESSION);
+    await starting;
+    assert.deepEqual(listened, [[0, SESSION.sessionId]]);
+    assert.equal(sockets.length, 0);
   });
 
   it("ignores a late tool call from a session that's already over", async () => {

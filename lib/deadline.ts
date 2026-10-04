@@ -34,9 +34,11 @@ const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // How far a stored `dueDate` may sit from the one its deadline gives before it
 // is taken to have been moved by something that only knew `dueDate` (an older
-// app version on another device). Within one time zone it should match to the
-// millisecond; across zones a date-only deadline's end-of-day can differ by up
-// to 26 hours between the phone that wrote it and this one.
+// app version on another device). It should match to the millisecond: an
+// exact deadline is worked out in its own time zone, so every phone gets the
+// same instant. Only a date-only deadline's end-of-day is the saving phone's
+// own, up to 26 hours from this one's — and an exact one's too when this
+// phone can't read the zone it was set in.
 const SAME_ZONE_TOLERANCE_MS = 60_000;
 const CROSS_ZONE_TOLERANCE_MS = 27 * 60 * 60 * 1000;
 
@@ -278,7 +280,9 @@ export function reconcileDeadline<T extends { deadline?: TaskDeadline; dueDate?:
   // moved by it. Either way that's the newer change.
   if (!task.dueDate) return withDeadline(task, undefined);
   const stored = Date.parse(task.dueDate);
-  const tolerance = isDeviceZone(deadline.timeZone) ? SAME_ZONE_TOLERANCE_MS : CROSS_ZONE_TOLERANCE_MS;
+  const sameInstantEverywhere =
+    isDeviceZone(deadline.timeZone) || (!!deadline.time && zoneOffsetMs(stored, deadline.timeZone!) !== null);
+  const tolerance = sameInstantEverywhere ? SAME_ZONE_TOLERANCE_MS : CROSS_ZONE_TOLERANCE_MS;
   if (!Number.isNaN(stored) && Math.abs(stored - deadlineInstant(deadline).getTime()) > tolerance) {
     return withDeadline(task, deadlineFromInstant(task.dueDate));
   }

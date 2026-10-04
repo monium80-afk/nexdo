@@ -29,8 +29,23 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
   it("a day without a time is a date-only deadline — no hour is invented", () => {
     assert.deepEqual(parseDeadlinePhrase("October 15", NOW), { date: "2026-10-15", time: undefined });
     assert.deepEqual(parseDeadlinePhrase("tomorrow", NOW), { date: "2026-09-30", time: undefined });
-    assert.deepEqual(parseDeadlinePhrase("next Monday", NOW), { date: "2026-10-12", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("next Monday", NOW), { date: "2026-10-05", time: undefined });
     assert.deepEqual(parseDeadlinePhrase("in two weeks", NOW), { date: "2026-10-13", time: undefined });
+  });
+
+  it('"next <day>" is that day of next week, which runs Monday to Sunday', () => {
+    // A Tuesday: next week's Tuesday and Friday, not this week's.
+    assert.deepEqual(parseDeadlinePhrase("next Tuesday", NOW), { date: "2026-10-06", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("next Friday", NOW), { date: "2026-10-09", time: undefined });
+    // A Saturday: Monday is the day after tomorrow; tomorrow is still this week's Sunday.
+    const saturday = local(2026, 10, 3, 10);
+    assert.deepEqual(parseDeadlinePhrase("next Monday", saturday), { date: "2026-10-05", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("next Saturday", saturday), { date: "2026-10-10", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("next Sunday", saturday), { date: "2026-10-11", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("lundi prochain", saturday, "fr"), { date: "2026-10-05", time: undefined });
+    // Without "next", the next one to come.
+    assert.deepEqual(parseDeadlinePhrase("Monday", saturday), { date: "2026-10-05", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("Saturday", saturday), { date: "2026-10-10", time: undefined });
   });
 
   it("a day with a time is an exact deadline", () => {
@@ -193,6 +208,24 @@ describe("reading older and other-device data", () => {
     assert.deepEqual(reconcileDeadline(movedByOldApp).deadline?.date, "2026-10-20");
     const removedByOldApp = { ...task, dueDate: undefined };
     assert.equal(reconcileDeadline(removedByOldApp).deadline, undefined);
+  });
+
+  it("an exact deadline set in another zone and moved an hour by an older app keeps the move", () => {
+    const task = withDeadline(makeTask({ id: "t" }), makeDeadline({ date: "2026-10-20", time: "09:00" }, "America/New_York"));
+    const anHourLater = new Date(Date.parse(task.dueDate!) + 60 * 60 * 1000).toISOString();
+    const reconciled = reconcileDeadline({ ...task, dueDate: anHourLater });
+    assert.equal(reconciled.dueDate, anHourLater);
+    // 10:00 in New York is 16:00 here in Paris.
+    assert.deepEqual([reconciled.deadline?.date, reconciled.deadline?.time], ["2026-10-20", "16:00"]);
+    // Untouched, it stays New York's 9:00.
+    assert.deepEqual(reconcileDeadline(task).deadline, task.deadline);
+  });
+
+  it("a date-only deadline saved in another zone isn't mistaken for a moved one", () => {
+    const task = withDeadline(makeTask({ id: "t" }), makeDeadline({ date: "2026-10-20" }, "America/New_York"));
+    // The phone that saved it ended the day six hours after this one does.
+    const savedThere = new Date(Date.parse(task.dueDate!) + 6 * 60 * 60 * 1000).toISOString();
+    assert.deepEqual(reconcileDeadline({ ...task, dueDate: savedThere }).deadline, task.deadline);
   });
 
   it("a consistent deadline is left exactly as it is", () => {

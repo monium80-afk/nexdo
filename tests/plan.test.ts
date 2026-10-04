@@ -2,10 +2,18 @@
 // Free vs Pro: the allowances themselves, how the server reads RevenueCat's
 // answer about an account, and who gets asked at all.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 
 import { displayLimit, isPlanLimitBody, PLAN_HEADER, PLAN_LIMITS } from "@/lib/plan";
-import { hasActiveEntitlement, readPlanUsage, resolvePlan } from "@/lib/serverPlan";
+import {
+  claimPlanUsage,
+  hasActiveEntitlement,
+  readPlanUsage,
+  refundPlanUsage,
+  resolvePlan,
+  settleLiveSession,
+  startLiveSession,
+} from "@/lib/serverPlan";
 
 const NOW = Date.parse("2026-10-01T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -142,13 +150,130 @@ describe("which plan a request is on", () => {
     assert.equal(await resolvePlan(request, "user_bad_key"), "free");
   });
 
-  it("takes the app's word when RevenueCat can't be reached", async (t) => {
+  it("counts a Pro claim it can't check as Free — past Free's allowance it's 'try again later', not the paywall", async (t) => {
     process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
-    t.mock.method(globalThis, "fetch", async () => {
-      throw new Error("network down");
+    withSupabaseKeys();
+    const limits: unknown[] = [];
+    let used = PLAN_LIMITS.free.chat - 1;
+    t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).startsWith("https://api.revenuecat.com")) throw new Error("network down");
+      const body = JSON.parse(String(init?.body)) as { p_amount: number; p_limit: number };
+      limits.push(body.p_limit);
+      if (used + body.p_amount > body.p_limit) return Response.json(-1);
+      used += body.p_amount;
+      return Response.json(used);
     });
     t.mock.method(console, "warn", () => {});
-    const request = new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
-    assert.equal(await resolvePlan(request, "user_outage"), "pro");
+    const request = () => new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
+
+    assert.equal(await resolvePlan(request(), "user_outage"), "free");
+    // Free's last message goes through…
+    assert.equal(await claimPlanUsage(request(), "user_outage", "chat"), null);
+    assert.deepEqual(limits, [PLAN_LIMITS.free.chat]);
+    // …and the next one is "unavailable", which the app doesn't answer with the paywall.
+    const refused = await claimPlanUsage(request(), "user_outage", "chat");
+    assert.equal(refused?.status, 503);
+    assert.deepEqual(await refused?.json(), { error: "usage_unavailable" });
+    // Live voice isn't part of Free at all.
+    const live = await startLiveSession(request(), "user_outage", 300);
+    assert.ok("refused" in live && live.refused.status === 503);
+  });
+});
+
+function withSupabaseKeys() {
+  process.env.EXPO_PUBLIC_SUPABASE_URL = "https://db.nexdo.test";
+  process.env.SUPABASE_SECRET_KEY = "sb_secret_test";
+}
+
+/** The Supabase function a mocked fetch was asked to run, and with what. */
+function rpcCall(call: { arguments: unknown[] }) {
+  return {
+    name: String(call.arguments[0]).split("/rpc/")[1],
+    args: JSON.parse(String((call.arguments[1] as RequestInit).body)) as Record<string, unknown>,
+  };
+}
+
+const freeRequest = () => new Request("https://nexdo.test/api/inbox", { method: "POST" });
+
+describe("spending the month's allowance", () => {
+  it("refuses rather than waving the request through when the count can't be read", async (t) => {
+    withSupabaseKeys();
+    t.mock.method(globalThis, "fetch", async () => new Response("unavailable", { status: 503 }));
+    t.mock.method(console, "error", () => {});
+    const response = await claimPlanUsage(freeRequest(), "user_free", "chat");
+    assert.equal(response?.status, 503);
+
+    // A server missing its key doesn't hand out unlimited AI either.
+    delete process.env.SUPABASE_SECRET_KEY;
+    assert.equal((await claimPlanUsage(freeRequest(), "user_free", "chat"))?.status, 503);
+  });
+
+  it("answers the paywall's 429 when the amount doesn't fit", async (t) => {
+    withSupabaseKeys();
+    t.mock.method(globalThis, "fetch", async () => Response.json(-1));
+    const response = await claimPlanUsage(freeRequest(), "user_free", "voice", 95);
+    assert.equal(response?.status, 429);
+    assert.deepEqual(await response?.json(), { error: "plan_limit", meter: "voice", plan: "free" });
+  });
+
+  it("gives back a failed request's use — but not into a month it wasn't taken from", async (t) => {
+    withSupabaseKeys();
+    const fetchMock = t.mock.method(globalThis, "fetch", async () => Response.json(4));
+    await refundPlanUsage("user_free", "voice", new Date(), 30);
+    assert.equal(fetchMock.mock.callCount(), 1);
+    assert.deepEqual(rpcCall(fetchMock.mock.calls[0]), {
+      name: "claim_ai_plan_usage",
+      args: { p_user_id: "user_free", p_meter: "voice", p_amount: -30, p_limit: null },
+    });
+
+    const lastMonth = new Date();
+    lastMonth.setUTCDate(0);
+    await refundPlanUsage("user_free", "voice", lastMonth, 30);
+    assert.equal(fetchMock.mock.callCount(), 1, "a claim from last month isn't taken off this one");
+  });
+});
+
+describe("Live voice sessions", () => {
+  const proRequest = () => new Request("https://nexdo.test/api/live-session", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
+  const SESSION_ID = "3f2b9c1e-5d4a-4b8e-9a7c-1e2d3f4a5b6c";
+
+  /** RevenueCat says Pro; the Supabase functions answer with `answers` by name. */
+  function backend(t: TestContext, answers: Record<string, unknown>) {
+    process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
+    withSupabaseKeys();
+    return t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.startsWith("https://api.revenuecat.com")) {
+        return Response.json({ request_date_ms: Date.now(), subscriber: { entitlements: { nexdo_pro: { expires_date: iso(Date.now() + HOUR) } } } });
+      }
+      return Response.json(answers[href.split("/rpc/")[1]]);
+    });
+  }
+
+  it("are paid for when they open, up to what's left, and settled once the app reports", async (t) => {
+    const fetchMock = backend(t, { start_ai_live_session: { id: SESSION_ID, seconds: 120 }, settle_ai_live_session: 100 });
+    assert.deepEqual(await startLiveSession(proRequest(), "user_live", 300), { sessionId: SESSION_ID, seconds: 120 });
+    await settleLiveSession("user_live", SESSION_ID, 19.6);
+
+    const calls = fetchMock.mock.calls.filter((call) => String(call.arguments[0]).includes("/rpc/")).map(rpcCall);
+    assert.deepEqual(calls, [
+      { name: "start_ai_live_session", args: { p_user_id: "user_live", p_seconds: 300, p_limit: PLAN_LIMITS.pro.live } },
+      { name: "settle_ai_live_session", args: { p_user_id: "user_live", p_session_id: SESSION_ID, p_seconds: 20 } },
+    ]);
+  });
+
+  it("aren't opened once the month's minutes are used up", async (t) => {
+    backend(t, { start_ai_live_session: null });
+    const session = await startLiveSession(proRequest(), "user_live_out", 300);
+    assert.ok("refused" in session);
+    assert.equal(session.refused.status, 429);
+    assert.deepEqual(await session.refused.json(), { error: "plan_limit", meter: "live", plan: "pro" });
+  });
+
+  it("aren't opened on Free, without asking Supabase", async (t) => {
+    const fetchMock = t.mock.method(globalThis, "fetch", async () => Response.json(null));
+    const session = await startLiveSession(freeRequest(), "user_free", 300);
+    assert.ok("refused" in session && session.refused.status === 429);
+    assert.equal(fetchMock.mock.callCount(), 0);
   });
 });

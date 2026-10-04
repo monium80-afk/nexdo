@@ -1,4 +1,4 @@
-import { extractTextFromMedia } from "@/lib/ai/gemini";
+import { extractTextFromMedia, measureAudioSeconds } from "@/lib/ai/gemini";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -98,19 +98,40 @@ const MAX_BODY_BYTES = 9 * 1024 * 1024;
 // prompt channel rather than a caption.
 const MAX_INSTRUCTION_LENGTH = 500;
 
-// A voice note is counted by its length. The app says how long it is; the
-// file's size puts a floor under that, so a request can't call ten minutes of
-// audio one second. The floor assumes a bitrate far above anything the app
-// records (compressed audio is about 16 KB a second, uncompressed WAV under
-// 200), so an honest length is never raised by it.
+// A voice note is counted by its length — what Google hears in it, measured
+// before it's transcribed (measureAudioSeconds). The length the app states,
+// with the file's size as a floor under it, only stands in when that can't
+// be measured: a low-bitrate file holds far more audio than its size
+// suggests, so on their own those two let a tampered app pass off a long
+// recording as a short one. The floor assumes a bitrate far above anything
+// the app records (compressed audio is about 16 KB a second, uncompressed
+// WAV under 200), so an honest length is never raised by it.
 const TYPICAL_BYTES_PER_SECOND = 16_000;
 const MAX_BYTES_PER_SECOND = { compressed: 40_000, wav: 200_000 };
+// Well past anything the app records (MAX_BODY_BYTES alone stops its own
+// recordings at a few minutes). Also what bounds a signed-out request, whose
+// trial counts calls rather than seconds.
 const MAX_VOICE_SECONDS = 15 * 60;
 
-function voiceSeconds(declared: number | undefined, bytes: number, mimeType: string): number {
+function estimatedVoiceSeconds(declared: number | undefined, bytes: number, mimeType: string): number {
   const ceiling = mimeType.includes("wav") ? MAX_BYTES_PER_SECOND.wav : MAX_BYTES_PER_SECOND.compressed;
   const seconds = Math.max(declared ?? bytes / TYPICAL_BYTES_PER_SECOND, bytes / ceiling);
   return Math.min(MAX_VOICE_SECONDS, Math.max(1, Math.ceil(seconds)));
+}
+
+/** A voice note's length in whole seconds, or null for one longer than the app ever records. */
+async function voiceSeconds(params: { declared: number | undefined; bytes: number; mimeType: string; base64: string }): Promise<number | null> {
+  let seconds: number;
+  try {
+    seconds = await measureAudioSeconds(params);
+  } catch (error) {
+    console.warn(
+      "[api/extract-text] couldn't measure a voice note, going by its stated length:",
+      error instanceof Error ? error.message : error,
+    );
+    return estimatedVoiceSeconds(params.declared, params.bytes, params.mimeType.toLowerCase());
+  }
+  return seconds > MAX_VOICE_SECONDS ? null : Math.max(1, Math.ceil(seconds));
 }
 
 // Open to signed-out callers only for onboarding's free run: the brain dump
@@ -154,14 +175,15 @@ export async function POST(request: Request) {
   // What this file uses of the account's month — given back below if the
   // model then can't read it.
   const { userId } = auth;
-  const usage =
-    kind === "voice"
-      ? {
-          meter: "voice" as const,
-          amount: voiceSeconds(clampNumber(parsed.durationSeconds, 0, MAX_VOICE_SECONDS), bytes, mimeType.toLowerCase()),
-        }
-      : { meter: "media" as const, amount: 1 };
+  let usage: { meter: "voice" | "media"; amount: number } = { meter: "media", amount: 1 };
+  if (kind === "voice") {
+    const declared = clampNumber(parsed.durationSeconds, 0, MAX_VOICE_SECONDS);
+    const seconds = await voiceSeconds({ declared, bytes, mimeType, base64 });
+    if (seconds === null) return badRequest();
+    usage = { meter: "voice", amount: seconds };
+  }
 
+  const claimedAt = new Date();
   const limitResponse = userId
     ? await claimPlanUsage(request, userId, usage.meter, usage.amount)
     : await claimTrialCall(request, "extract-text");
@@ -188,7 +210,7 @@ export async function POST(request: Request) {
     // caller's catch branch runs and says "couldn't transcribe" instead.
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[api/extract-text] ${kind} ${mimeType} ${bytes}B failed:`, reason);
-    if (userId) await refundPlanUsage(userId, usage.meter, usage.amount);
+    if (userId) await refundPlanUsage(userId, usage.meter, claimedAt, usage.amount);
     return Response.json({ text: "", error: "extraction_failed" } satisfies ExtractTextResponseBody, { status: 502 });
   }
 }

@@ -11,12 +11,13 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AuthTextField } from "@/components/AuthTextField";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
+import { gradients } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -30,6 +31,7 @@ export default function SignIn() {
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const enterStyle = useScreenEnterAnimation();
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
@@ -91,6 +93,12 @@ export default function SignIn() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }}>
+      {/* The onboarding steps' warm corner light (OnboardingLayout). */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+      />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -144,7 +152,7 @@ export default function SignIn() {
                     disabled={fetchStatus === "fetching"}
                     scaleTo={0.98}
                     className="btn btn--primary mt-1"
-                    style={fetchStatus === "fetching" ? { opacity: 0.6 } : undefined}
+                    style={[gradients.accent, fetchStatus === "fetching" ? { opacity: 0.6 } : null]}
                   >
                     <Text className="font-grotesk-bold text-lg text-on-accent">
                       {t.auth.logIn}

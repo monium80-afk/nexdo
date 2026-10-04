@@ -96,8 +96,10 @@ export function useAuthSync() {
     hydrateTasks(userId).then(async () => {
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
       // Now that the list is the account's: series set to skip missed
-      // occurrences move on to the current one (a no-op if already done).
+      // occurrences move on to the current one (a no-op if already done), and
+      // tasks finished a week ago or longer are deleted.
       useTaskStore.getState().applyMissedOccurrences();
+      useTaskStore.getState().deleteExpiredCompleted();
       subscribeTasks(userId);
       await waitForOnboardingHydration();
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
@@ -111,11 +113,13 @@ export function useAuthSync() {
     });
 
     // Back in the foreground after a while: scores move with the clock (a task
-    // that turned overdue overnight), and a "skip missed" series may have a
-    // new occurrence due. Unsaved changes get another try too.
+    // that turned overdue overnight), a "skip missed" series may have a new
+    // occurrence due, and a finished task's week may be up. Unsaved changes
+    // get another try too.
     const appState = AppState.addEventListener("change", (state) => {
       if (state !== "active" || useTaskStore.getState().syncUserId !== userId) return;
       useTaskStore.getState().applyMissedOccurrences();
+      useTaskStore.getState().deleteExpiredCompleted();
       void useTaskStore.getState().saveUnsyncedTasks();
     });
 

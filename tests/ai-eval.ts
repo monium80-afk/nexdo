@@ -2,6 +2,8 @@
 // Live eval of the AI chat's task operations against the real model.
 //
 //   npm run eval:ai            (needs GEMINI_API_KEY in .env; ~40 Gemini calls, a few cents)
+//   EVAL_ONLY=scope npm run eval:ai   (only the cases whose name contains "scope")
+//   EVAL_VERBOSE=1                    (prints every case's conversation, not only failures')
 //
 // Everything is real except storage: the chat and task stores run as in the
 // app, the request goes through the inbox route's own validation and model
@@ -82,6 +84,8 @@ type Case = {
   say: string;
   /** Say "yes" if the app asks for confirmation. */
   confirm?: boolean;
+  /** What the user says next, answering the question the app asked. */
+  followUp?: string;
   check: (reply: string, before: Snapshot, answer: string) => string | null;
 };
 
@@ -295,6 +299,23 @@ const CASES: Case[] = [
     check: (reply, before) => (unchanged(before) && reply.includes("?") ? null : "changed without asking"),
   },
   {
+    name: "answering the scope question moves just that occurrence",
+    say: "move gym to tuesday",
+    followUp: "just this one",
+    confirm: true,
+    check: () =>
+      tasks().some((task) => task.title === "Gym" && task.status === "pending" && task.dueDate && new Date(task.dueDate).getDay() === 2)
+        ? null
+        : "not moved",
+  },
+  {
+    name: "answering the scope question deletes the whole series",
+    say: "delete the gym task",
+    followUp: "all of them, the whole series",
+    confirm: true,
+    check: () => (tasks().some((task) => task.title === "Gym") ? "still there" : null),
+  },
+  {
     name: "stop a task repeating",
     say: "stop repeating the gym task",
     check: () => (byTitle("Gym") && !byTitle("Gym")!.recurrence ? null : "still repeating"),
@@ -305,7 +326,9 @@ async function run() {
   useSettingsStore.setState({ language: "en", aiAutoMode: false });
   const failures: string[] = [];
   let passed = 0;
-  for (const testCase of CASES) {
+  const only = process.env.EVAL_ONLY;
+  const cases = only ? CASES.filter((testCase) => testCase.name.includes(only)) : CASES;
+  for (const testCase of cases) {
     fakeDb.reset();
     useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: "eval", ownerId: "eval" });
     useChatStore.setState({ messages: [], pendingActions: [], lastUndo: null, recentlyMentionedTaskIds: [], redirectToNext: null });
@@ -315,17 +338,26 @@ async function run() {
 
     let reply = await say(testCase.say);
     const firstReply = reply;
+    if (testCase.followUp) reply = await say(testCase.followUp);
+    const followUpReply = reply;
     if (testCase.confirm && pending().some((entry) => entry.action.type !== "CREATE_TASK")) reply = await say("yes");
     const problem = testCase.check(reply, before, firstReply);
+    if (process.env.EVAL_VERBOSE) {
+      console.log(`  user: ${testCase.say}\n  reply: ${firstReply}` + (testCase.followUp ? `\n  user: ${testCase.followUp}\n  reply: ${followUpReply}` : ""));
+    }
     if (problem) {
-      failures.push(`✖ ${testCase.name}: ${problem}\n    user: ${testCase.say}\n    reply: ${firstReply}${reply !== firstReply ? `\n    after yes: ${reply}` : ""}`);
+      failures.push(
+        `✖ ${testCase.name}: ${problem}\n    user: ${testCase.say}\n    reply: ${firstReply}` +
+          (testCase.followUp ? `\n    user: ${testCase.followUp}\n    reply: ${followUpReply}` : "") +
+          (reply !== followUpReply ? `\n    after yes: ${reply}` : ""),
+      );
       console.log(`✖ ${testCase.name}`);
     } else {
       passed += 1;
       console.log(`✔ ${testCase.name}`);
     }
   }
-  console.log(`\n${passed}/${CASES.length} passed`);
+  console.log(`\n${passed}/${cases.length} passed`);
   if (failures.length) console.log(`\n${failures.join("\n\n")}`);
   process.exitCode = failures.length ? 1 : 0;
 }

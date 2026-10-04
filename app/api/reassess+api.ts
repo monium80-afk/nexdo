@@ -337,6 +337,7 @@ export async function POST(request: Request) {
 
   // A note for the AI is a message to it: it counts as one of the month's AI
   // chat messages.
+  const claimedAt = new Date();
   const limitResponse = await claimPlanUsage(request, auth.userId, "chat");
   if (limitResponse) return limitResponse;
 
@@ -347,7 +348,7 @@ export async function POST(request: Request) {
     // made-up reassessment would change the task on a guess. The app keeps
     // the task as it is, keeps the note in the box, and offers a retry.
     console.error("[api/reassess]", error);
-    await refundPlanUsage(auth.userId, "chat");
+    await refundPlanUsage(auth.userId, "chat", claimedAt);
     return Response.json({ error: "Reassessment unavailable" }, { status: 502 });
   }
 }

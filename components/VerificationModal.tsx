@@ -85,7 +85,7 @@ export function VerificationModal({
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View className="card--cream-elevated gap-5 rounded-t-2xl p-6 pb-10">
+          <View className="card--cream-elevated gap-5 rounded-t-[30px] p-6 pb-10">
             <View className="items-center gap-2">
               <Text className="text-card-title text-center text-ink-cream">
                 {t.auth.checkEmail}
@@ -105,12 +105,12 @@ export function VerificationModal({
               {Array.from({ length: CODE_LENGTH }).map((_, index) => (
                 <View
                   key={index}
-                  className={`h-14 w-11 items-center justify-center rounded-2xl border bg-cream-50 ${
+                  className={`input h-14 w-11 items-center justify-center ${
                     error
                       ? "border-overdue-500"
                       : index < code.length
                         ? "border-orange-500"
-                        : "border-cream-300"
+                        : "border-cream-200"
                   }`}
                 >
                   <Text className="font-grotesk-bold text-xl text-ink-cream">

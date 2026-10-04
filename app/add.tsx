@@ -279,12 +279,12 @@ export default function Add() {
               {customDeadlineOpen ? <DeadlineDatePicker value={customDeadline} onChange={setCustomDeadline} /> : null}
             </FormSection>
 
-            <FormSection icon="repeat" tone="green" label={t.recurrence.title}>
+            <FormSection icon="repeat" label={t.recurrence.title}>
               <RecurrencePicker value={recurrence} onChange={setRecurrence} deadline={chosenDeadline} nested />
             </FormSection>
 
             <FormSection
-              icon={<Ionicons name="flame" size={17} color={colors.orange[500]} />}
+              icon={<Ionicons name="flame" size={14} color={colors.ink.creamMuted} />}
               label={t.form.priority}
             >
               <View className="flex-row gap-2">

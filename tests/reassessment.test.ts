@@ -203,10 +203,11 @@ describe("reassessing a task for new context", () => {
   });
 
   it("a new deadline: moves it, keeps its time of day, rescores — and touches nothing else", async () => {
+    // Due yesterday, so "next Monday" is a move whatever day the test runs.
     const before = seed({
       id: "hist",
       title: "History essay",
-      dueDate: at(2, 23, 59),
+      dueDate: at(-1, 23, 59),
       estimatedMinutes: 120,
       subtasks: [step("a", "Outline", 30, "current", 0), step("b", "Draft", 90, "pending", 1)],
       currentStepId: "a",

@@ -80,9 +80,11 @@ export function useLiveVoice() {
         level.value = withTiming(value, { duration: 120 });
       },
       // The audio goes straight to Google, so the server only knows how long
-      // a session ran if the app tells it (app/api/live-usage+api.ts).
-      onListened: (seconds) => {
-        apiPost("/api/live-usage", { seconds } satisfies LiveUsageRequestBody).catch((error) =>
+      // a session ran if the app tells it (app/api/live-usage+api.ts) — and
+      // until it does, the session counts in full.
+      onListened: (seconds, sessionId) => {
+        if (!sessionId) return;
+        apiPost("/api/live-usage", { sessionId, seconds } satisfies LiveUsageRequestBody).catch((error) =>
           console.warn("[liveVoice] couldn't report listening time", error),
         );
       },

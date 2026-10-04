@@ -1,25 +1,30 @@
-import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
-import { recordPlanUsage } from "@/lib/serverPlan";
+import { settleLiveSession } from "@/lib/serverPlan";
 import { asObject, badRequest, BadRequestError, clampNumber, readJsonBody } from "@/lib/serverRequest";
 
-// Live voice's minutes, counted. A session's audio goes from the phone
-// straight to Google, so this server never hears how long it ran — the app
-// says so here once it stops listening (lib/liveVoice.ts), and that is added
-// to the account's month (lib/serverPlan.ts).
+// Live voice's minutes, settled. A session's audio goes from the phone
+// straight to Google, so this server never hears how long it ran: its time
+// was taken from the account's month when it opened (app/api/live-session+api.ts),
+// and the app says here how long it really listened once it stops
+// (lib/liveVoice.ts), which gives the rest back (lib/serverPlan.ts).
 //
-// The number is the app's word. What a tampered app could gain by lying is
-// bounded from the other side: app/api/live-session+api.ts only hands out so
-// many sessions a day, each at most a few minutes long.
+// The number is still the app's word. A tampered app that says a session
+// used nothing gets that session's time back — but no more than that, since
+// a session can't outlast its token, and app/api/live-session+api.ts only
+// opens so many a day. An app that never reports keeps it all counted.
 
 export type LiveUsageRequestBody = {
-  /** How long the session listened. */
+  /** The session, as /api/live-session named it. */
+  sessionId: string;
+  /** How long it listened. */
   seconds: number;
 };
 
 const MAX_BODY_BYTES = 1024;
-// The app stops at MAX_LIVE_SECONDS; the slack covers a slow last sentence.
-const MAX_REPORTED_SECONDS = MAX_LIVE_SECONDS + 60;
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Anything past a session's own time is ignored when it's settled; this only
+// keeps the number sane.
+const MAX_REPORTED_SECONDS = 24 * 60 * 60;
 
 export async function POST(request: Request) {
   const auth = await authenticate(request);
@@ -34,9 +39,11 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const seconds = clampNumber(asObject(raw).seconds, 0, MAX_REPORTED_SECONDS);
-  if (seconds === undefined) return badRequest();
+  const body = asObject(raw);
+  const sessionId = typeof body.sessionId === "string" && SESSION_ID_PATTERN.test(body.sessionId) ? body.sessionId : undefined;
+  const seconds = clampNumber(body.seconds, 0, MAX_REPORTED_SECONDS);
+  if (!sessionId || seconds === undefined) return badRequest();
 
-  if (seconds > 0) await recordPlanUsage(auth.userId, "live", Math.ceil(seconds));
+  await settleLiveSession(auth.userId, sessionId, Math.ceil(seconds));
   return Response.json({ ok: true });
 }

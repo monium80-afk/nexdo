@@ -571,6 +571,7 @@ export const es: Translations = {
     nothingChangedMany: "Esas tareas ya están así; no he cambiado nada.",
     notFound: "No encuentro esa tarea; puede que se haya eliminado. No he cambiado nada.",
     whichDates: "No sé bien a qué fechas te refieres, ¿puedes decirlo de otra forma? No he cambiado nada.",
+    whichTasks: "No sé bien a qué tareas te refieres, ¿puedes decirme cuáles? No he cambiado nada.",
     nothingMatched: "Ninguna tarea coincide, así que no he cambiado nada.",
     someNotFound: (n: number) => (n === 1 ? "No he encontrado 1 tarea." : `No he encontrado ${n} tareas.`),
     confirmComplete: (n: number, titles: string) =>

@@ -70,6 +70,25 @@ describe("live voice tools", () => {
     assert.equal(tasks().length, 1);
   });
 
+  it("puts what was said about a task already on the list onto it, instead of a copy — and it can be undone", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "Gym", dueDatePhrase: "tomorrow at 7 am", estimatedMinutes: 45 }));
+    assert.deepEqual(result, { ok: true, taskId: "t1", note: "Already on the list — updated it instead of adding a copy." });
+    assert.equal(tasks().length, 1);
+    const gym = byTitle("Gym")!;
+    assert.equal(new Date(gym.dueDate!).getHours(), 7);
+    assert.equal(gym.estimatedMinutes, 45);
+
+    // Said again just the same, it changes nothing — and says so.
+    const again = runner.run(call("add_task", { title: "gym", dueDatePhrase: "tomorrow at 7 am", estimatedMinutes: 45 }));
+    assert.equal(again.ok, false);
+    assert.equal(again.taskId, "t1");
+
+    assert.equal(runner.undo(), true);
+    assert.equal(byTitle("Gym")!.dueDate, undefined);
+    assert.equal(byTitle("Gym")!.estimatedMinutes, 60);
+  });
+
   it("ignores the same call made again straight away, even with its arguments reordered", () => {
     const { runner, gym } = withGym();
     runner.run(call("add_task", { title: "Call mom", dueDatePhrase: "tomorrow at 6 pm" }));

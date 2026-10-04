@@ -814,8 +814,11 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
       date.setDate(date.getDate() - diff);
       return resolve(date);
     }
-    const diff = (i - date.getDay() + 7) % 7 || 7; // next occurrence, never today
-    date.setDate(date.getDate() + (new RegExp(`\\bnext\\s+${WEEKDAYS[i]}\\b`).test(lower) ? diff + 7 : diff));
+    // "next friday" is that day of next week (weeks run Monday to Sunday, as
+    // for "next week" above): on a Tuesday, a week from Friday — but on a
+    // Saturday, "next monday" is the day after tomorrow, not nine days off.
+    if (new RegExp(`\\bnext\\s+${WEEKDAYS[i]}\\b`).test(lower)) return resolve(addDays(weekStart(now), 7 + ((i + 6) % 7)));
+    date.setDate(date.getDate() + ((i - date.getDay() + 7) % 7 || 7)); // next occurrence, never today
     return resolve(date);
   }
 

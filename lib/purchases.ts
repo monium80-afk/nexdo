@@ -124,6 +124,10 @@ export type PurchaseOutcome = "purchased" | "cancelled" | "pending" | "offline" 
 
 /** Buys one plan through the store's own purchase sheet. Never throws. */
 export async function purchasePlan(plan: PurchasesPackage): Promise<PurchaseOutcome> {
+  // An account change still on its way to RevenueCat finishes first, so the
+  // purchase is made for — and its Pro shown to — the account now signed in.
+  await queue;
+  if (!configured) return "error";
   try {
     const { customerInfo } = await Purchases.purchasePackage(plan);
     publish(customerInfo);

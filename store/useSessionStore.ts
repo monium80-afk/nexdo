@@ -104,14 +104,18 @@ export const useSessionStore = create<SessionStore>()(
       dropTask: (taskId) =>
         set((state) => {
           const session = state.session;
-          if (!session) return {};
+          const dropped = session ? session.taskIds.indexOf(taskId) : -1;
+          if (!session || dropped < 0) return {};
           const taskIds = session.taskIds.filter((id) => id !== taskId);
           if (taskIds.length === 0) return { session: null };
+          // A task before the focused one going moves the focus down a place
+          // with it; the focused one going hands it to the task after.
+          const activeIndex = dropped < session.activeIndex ? session.activeIndex - 1 : session.activeIndex;
           return {
             session: {
               ...session,
               taskIds,
-              activeIndex: Math.min(session.activeIndex, taskIds.length - 1),
+              activeIndex: Math.min(activeIndex, taskIds.length - 1),
             },
           };
         }),

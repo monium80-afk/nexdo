@@ -146,6 +146,7 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
+  const claimedAt = new Date();
   const limitResponse = auth.userId
     ? await claimPlanUsage(request, auth.userId, "assist")
     : await claimTrialCall(request, "next");
@@ -166,11 +167,11 @@ export async function POST(request: Request) {
     });
     const response = normalizeResponse(result, language);
     // No advice came back: that isn't one of the month's answers.
-    if (response.unavailable && auth.userId) await refundPlanUsage(auth.userId, "assist");
+    if (response.unavailable && auth.userId) await refundPlanUsage(auth.userId, "assist", claimedAt);
     return Response.json(response);
   } catch (error) {
     console.error("[api/next]", error);
-    if (auth.userId) await refundPlanUsage(auth.userId, "assist");
+    if (auth.userId) await refundPlanUsage(auth.userId, "assist", claimedAt);
     return Response.json(fallbackResponse(language));
   }
 }

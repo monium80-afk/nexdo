@@ -4,7 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\build-dev-android.ps1
 #
 # Needed again only when something native changes: a package with native code
-# is added or upgraded, or app.json's plugins/permissions change. Day to day,
+# is added or upgraded, app.json's plugins/permissions change, or package.json's
+# "reanimated" > "staticFeatureFlags" do (they're compiled in). Day to day,
 # `npx expo start` and the installed app are enough.
 #
 # Java comes from Android Studio (there is no JAVA_HOME on this PC), and

@@ -208,6 +208,17 @@ async function savedReply(message: string, taskIds: string[]): Promise<string> {
   return saved ? message : `${message} ${translate().assistant.notSavedYet}`;
 }
 
+// The AsyncStorage snapshot and the Supabase fetch both land asynchronously
+// on startup. The snapshot holds the messages that never reached Supabase
+// (`unsynced`) — merged before it arrives, they'd be missed, and replaced by
+// the remote list rather than sent again. So hydrateFromSupabase waits for it,
+// as useTaskStore's does (resolved by onRehydrateStorage below, on success
+// *and* on failure, so a storage error can't leave it pending forever).
+let resolveRehydrated: () => void = () => {};
+const rehydrated = new Promise<void>((resolve) => {
+  resolveRehydrated = resolve;
+});
+
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => {
@@ -383,7 +394,7 @@ export const useChatStore = create<ChatStore>()(
         hydrateFromSupabase: async (userId) => {
           set({ syncUserId: userId });
           try {
-            const remoteMessages = await fetchMessages(userId);
+            const [remoteMessages] = await Promise.all([fetchMessages(userId), rehydrated]);
             if (get().syncUserId !== userId) return;
             const { messages, unsynced } = get();
             const localOnly = messages.filter((message) => unsynced[message.id] === userId);
@@ -738,6 +749,10 @@ export const useChatStore = create<ChatStore>()(
       name: "nexdo-chat",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ messages: state.messages, unsynced: state.unsynced }),
+      // Runs with (state) on success and (undefined, error) on failure —
+      // either way the local snapshot is as loaded as it will get, which is
+      // what hydrateFromSupabase is waiting on.
+      onRehydrateStorage: () => () => resolveRehydrated(),
     },
   ),
 );

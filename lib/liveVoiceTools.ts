@@ -157,9 +157,23 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
         const title = text(args.title);
         if (!title) return { ok: false, error: "A task needs a title." };
         // Never a second copy of something already on the list — whether the
-        // model misheard, repeated itself, or the user said it twice.
+        // model misheard, repeated itself, or the user said it twice. What was
+        // said about it still counts, though: a deadline, length, priority or
+        // repeat goes onto the task already there ("update it instead", as the
+        // live prompt puts it), rather than being dropped.
         const existing = useTaskStore.getState().tasks.find((task) => task.status === "pending" && titleKey(task.title) === titleKey(title));
-        if (existing) return { ok: true, taskId: aliasFor(existing.id), note: "Already on the list — nothing added." };
+        if (existing) {
+          const alias = aliasFor(existing.id);
+          if (Object.values(details).every((value) => value === undefined)) {
+            return { ok: true, taskId: alias, note: "Already on the list — nothing added." };
+          }
+          // Not ok when it changed nothing (it already looked like that) or
+          // couldn't be applied: the model hears why, and nothing is counted.
+          const updated = perform(inboxAction("UPDATE_TASK", alias, details));
+          return updated.ok
+            ? { ...updated, note: "Already on the list — updated it instead of adding a copy." }
+            : { ...updated, taskId: alias };
+        }
         return perform(
           inboxAction("CREATE_TASK", null, { ...details, title, estimatedMinutes: details.estimatedMinutes ?? guessDuration(title) }),
         );

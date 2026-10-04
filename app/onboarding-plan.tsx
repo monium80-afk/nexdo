@@ -5,7 +5,9 @@ import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { GemLogo } from "@/components/GemLogo";
+import { MetaPill } from "@/components/MetaPill";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -16,12 +18,18 @@ import { previewDueLabel } from "@/lib/taskMeta";
 import { posthog } from "@/lib/posthog";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
+const SCROLL_BLEED = { marginHorizontal: -8 };
+const SCROLL_CONTENT = { gap: 12, paddingHorizontal: 8, paddingTop: 2, paddingBottom: 12 };
+
 /**
  * One extracted task, exactly as the app will score it once it is real: the
  * same computePriorityScore the task list runs on, off the same draft fields,
- * so the number here is not a preview of a different calculation.
+ * so the number here is not a preview of a different calculation. Drawn as
+ * the AI chat's proposed-task card is — the Tasks page's surface and details
+ * row — so it reads as what will land in the list.
  */
 function PlanCard({ draft, now }: { draft: ExtractedTaskDraft; now: Date }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
 
@@ -35,31 +43,31 @@ function PlanCard({ draft, now }: { draft: ExtractedTaskDraft; now: Date }) {
   );
 
   return (
-    <View className="gap-2 rounded-2xl border border-cream-300 bg-cream-50 p-4">
-      <View className="flex-row items-start justify-between gap-3">
-        <Text className="flex-1 font-grotesk-bold text-base text-ink-cream" numberOfLines={1} style={rtl}>
-          {draft.title}
-        </Text>
-        <View className="flex-row items-center gap-1.5 rounded-full bg-cream-200 px-3 py-1.5">
-          <GemLogo size={13} />
-          <Text className="font-grotesk-bold text-xs text-ink-cream">{t.onboardingPlan.score(score)}</Text>
-        </View>
-      </View>
+    <View className="card card--cream-soft gap-1.5 p-4" style={gradients.card}>
+      <Text className="font-grotesk-bold text-base text-ink-cream" numberOfLines={1} style={rtl}>
+        {draft.title}
+      </Text>
 
-      <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-        <Text
-          className={
+      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+        <MetaPill
+          icon={<Feather name="calendar" size={13} color={draft.dueDate ? colors.orange[500] : colors.ink.creamSubtle} />}
+          label={previewDueLabel(draft.dueDate, draft.dueHasTime, now, t)}
+          labelClassName={
             draft.dueDate
-              ? "font-grotesk-bold text-sm text-orange-500"
+              ? "font-grotesk-semibold text-sm text-ink-cream"
               : "font-grotesk-medium text-sm text-ink-cream-muted"
           }
-        >
-          {previewDueLabel(draft.dueDate, draft.dueHasTime, now, t)}
-        </Text>
-        <Text className="text-sm text-ink-cream-subtle">·</Text>
-        <Text className="font-grotesk-medium text-sm text-ink-cream-muted">
-          {formatDuration(draft.estimatedMinutes)}
-        </Text>
+        />
+        <MetaPill
+          icon={<GemLogo size={12} />}
+          label={t.onboardingPlan.score(score)}
+          labelClassName="font-grotesk-semibold text-sm text-ink-cream-muted"
+        />
+        <MetaPill
+          icon={<Feather name="clock" size={13} color={colors.ink.creamMuted} />}
+          label={formatDuration(draft.estimatedMinutes)}
+          labelClassName="font-grotesk-medium text-sm text-ink-cream-muted"
+        />
       </View>
     </View>
   );
@@ -89,8 +97,8 @@ export default function OnboardingPlan() {
       percent={75}
       eyebrow={
         <View className="flex-row items-center gap-2">
-          <Feather name="check" size={16} color={colors.olive[500]} />
-          <Text className="eyebrow text-olive-500">{t.onboardingPlan.extracted(drafts.length)}</Text>
+          <Feather name="check" size={16} color={colors.success[500]} />
+          <Text className="eyebrow text-success-500">{t.onboardingPlan.extracted(drafts.length)}</Text>
         </View>
       }
       headline={t.onboardingPlan.headline}
@@ -98,9 +106,12 @@ export default function OnboardingPlan() {
       nextLabel={t.onboardingPlan.next}
       onNext={handleNext}
     >
+      {/* Widened past the page margins and padded back, so the scroll's
+          edges don't clip the cards' shadows. */}
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ gap: 12, paddingBottom: 4 }}
+        style={SCROLL_BLEED}
+        contentContainerStyle={SCROLL_CONTENT}
         showsVerticalScrollIndicator={false}
       >
         {drafts.map((draft, index) => (

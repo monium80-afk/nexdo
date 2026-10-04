@@ -584,6 +584,7 @@ export const de: Translations = {
     nothingChangedMany: "Diese Aufgaben sind schon so — nichts geändert.",
     notFound: "Ich finde diese Aufgabe nicht — vielleicht wurde sie gelöscht. Es wurde nichts geändert.",
     whichDates: "Ich bin nicht sicher, welche Daten du meinst — kannst du es anders sagen? Es wurde nichts geändert.",
+    whichTasks: "Ich bin nicht sicher, welche Aufgaben du meinst — kannst du sagen, welche? Es wurde nichts geändert.",
     nothingMatched: "Keine Aufgabe passt dazu, also wurde nichts geändert.",
     someNotFound: (n: number) => (n === 1 ? "1 Aufgabe wurde nicht gefunden." : `${n} Aufgaben wurden nicht gefunden.`),
     confirmComplete: (n: number, titles: string) => `${n} ${plural(n, "Aufgabe", "Aufgaben")} als erledigt markieren? ${titles}.`,

@@ -10,11 +10,16 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { gradients } from "@/constants/theme";
+
 type SetupProgressBarProps = {
   percent: number;
 };
 
 const DURATION = 700;
+
+// The inset shadow of card--cream-inset, for a track too thin to take its border.
+const TRACK_INSET = { boxShadow: "inset 0 1px 2px rgba(92, 58, 26, 0.12)" };
 
 /**
  * How full the bar is right now — for the whole setup run, not for one screen.
@@ -59,10 +64,12 @@ export function SetupProgressBar({ percent }: SetupProgressBarProps) {
     <View className="flex-row items-center pt-2">
       {/* The track clips the fill, so the fill can scale as a plain rectangle
           and still read as a pill. */}
-      <View className="mr-4 h-2 flex-1 overflow-hidden rounded-full bg-cream-200">
+      {/* Pressed into the page, with the lit orange of the app's buttons
+          filling it. */}
+      <View className="mr-4 h-2 flex-1 overflow-hidden rounded-full bg-cream-200" style={TRACK_INSET}>
         <Animated.View
           className="h-full w-full rounded-full bg-orange-500"
-          style={[{ transformOrigin: "left" }, fillStyle]}
+          style={[{ transformOrigin: "left" }, gradients.accent, fillStyle]}
         />
       </View>
       {/* Fixed width, right-aligned: "0%" and "100%" are different widths, so a

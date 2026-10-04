@@ -54,8 +54,13 @@ export type LiveVoiceDeps = {
   undoCount: () => number;
   /** How loud the microphone is (0–1) with every buffer sent, then 0 once it stops — for the sound waves. */
   onLevel?: (level: number) => void;
-  /** How long a session listened, once it stops — what the month's Live voice minutes are counted in. */
-  onListened?: (seconds: number) => void;
+  /**
+   * How long a session listened, once it stops — once for every session the
+   * server opened, 0 for one that never got to listen. The server took the
+   * session's time from the month's Live voice minutes up front; this
+   * report, with the session's id, gives back what wasn't used.
+   */
+  onListened?: (seconds: number, sessionId: string | undefined) => void;
   /** Development only: what was heard and done, for checking it in the terminal. */
   log?: (message: string) => void;
 };
@@ -86,15 +91,21 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   // How long this session may listen: MAX_LIVE_SECONDS, or what is left of
   // the month's minutes when the server says that is less.
   let sessionSeconds = MAX_LIVE_SECONDS;
+  // The session the server has given time to, until it's told how much of
+  // it was used.
+  let unreported: { sessionId: string | undefined } | null = null;
   // When the microphone started streaming (ms), until its time is reported.
   let listeningSince: number | null = null;
 
-  // Called wherever the microphone stops; reports the session's length once.
+  // Called wherever the microphone stops or a session ends; reports the
+  // session once, with 0 if it never got to listen.
   const reportListened = () => {
-    if (listeningSince === null) return;
-    const seconds = Math.ceil((Date.now() - listeningSince) / 1000);
+    if (!unreported) return;
+    const seconds = listeningSince === null ? 0 : Math.ceil((Date.now() - listeningSince) / 1000);
+    const { sessionId } = unreported;
+    unreported = null;
     listeningSince = null;
-    deps.onListened?.(seconds);
+    deps.onListened?.(seconds, sessionId);
   };
 
   const closeSocket = () => {
@@ -273,7 +284,12 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       end("error", "unavailable");
       return;
     }
-    if (current !== session) return;
+    if (current !== session) {
+      // Stopped while the server was opening it: none of its time was used.
+      deps.onListened?.(0, live.sessionId);
+      return;
+    }
+    unreported = { sessionId: live.sessionId };
     sessionSeconds = Math.min(MAX_LIVE_SECONDS, Math.max(1, live.maxSeconds ?? MAX_LIVE_SECONDS));
 
     const opened = deps.openSocket(live.url);

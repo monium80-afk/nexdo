@@ -578,6 +578,7 @@ export const fr: Translations = {
     nothingChangedMany: "Ces tâches sont déjà ainsi : rien n'a changé.",
     notFound: "Je ne trouve pas cette tâche — elle a peut-être été supprimée. Rien n'a été modifié.",
     whichDates: "Je n'ai pas compris de quelles dates il s'agit — pouvez-vous reformuler ? Rien n'a été modifié.",
+    whichTasks: "Je n'ai pas compris de quelles tâches il s'agit — pouvez-vous préciser lesquelles ? Rien n'a été modifié.",
     nothingMatched: "Aucune tâche ne correspond : rien n'a été modifié.",
     someNotFound: (n: number) => (n === 1 ? "1 tâche est introuvable." : `${n} tâches sont introuvables.`),
     confirmComplete: (n: number, titles: string) =>

@@ -20,6 +20,7 @@ import Animated, {
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -116,8 +117,12 @@ function DumpControl({
     <View className="items-center" onLayout={handleLayout}>
       {/* The stretch lives on the shell, not on the pressable: AnimatedPressable
           takes plain styles only, and overflow-hidden keeps the wider face
-          clipped to the circle while it is still a circle. */}
-      <Animated.View className="overflow-hidden rounded-full bg-orange-500" style={shellStyle}>
+          clipped to the circle while it is still a circle. Lit and glowing
+          like the app's other orange buttons. */}
+      <Animated.View
+        className="glow-accent overflow-hidden rounded-full bg-orange-500"
+        style={[gradients.accent, shellStyle]}
+      >
         <AnimatedPressable
           onPress={isReady ? onOrganize : onMicPress}
           disabled={mode === "transcribing"}
@@ -304,7 +309,10 @@ export default function OnboardingDump() {
         percent={50}
         centered
         mark={
-          <View className="h-16 w-16 items-center justify-center rounded-[16px] border border-cream-300 bg-cream-50">
+          <View
+            className="card card--cream h-16 w-16 items-center justify-center rounded-[18px]"
+            style={[{ borderCurve: "continuous" }, gradients.card]}
+          >
             <GemLogo size={40} />
           </View>
         }
@@ -343,9 +351,10 @@ export default function OnboardingDump() {
         />
       )}
     >
+      {/* The AI chat's composer card: the same lifted cream surface. */}
       <View
-        className="shrink rounded-[20px] border border-orange-500 bg-cream-50 p-5"
-        style={{ height: BOX_HEIGHT, minHeight: BOX_MIN_HEIGHT }}
+        className="card card--cream-soft shrink p-5"
+        style={[{ height: BOX_HEIGHT, minHeight: BOX_MIN_HEIGHT }, gradients.card]}
       >
         <TextInput
           value={dump}

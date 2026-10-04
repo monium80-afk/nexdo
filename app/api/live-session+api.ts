@@ -5,7 +5,7 @@ import { languageName } from "@/lib/ai/language";
 import { claimUserCall } from "@/lib/aiUsageLimit";
 import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
-import { remainingPlanUsage } from "@/lib/serverPlan";
+import { settleLiveSession, startLiveSession } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -43,6 +43,12 @@ export type LiveSessionResponseBody = {
    * of the month's Live voice minutes if that is less.
    */
   maxSeconds?: number;
+  /**
+   * The session's time is taken from the month's allowance up front; sent
+   * back with /api/live-usage once it's over, so what it didn't use is given
+   * back.
+   */
+  sessionId?: string;
 };
 
 // The low-latency Live model — the "extended thinking" one reasons in the
@@ -50,10 +56,11 @@ export type LiveSessionResponseBody = {
 // ≈$0.005/min; text in $0.75/M tokens; text out $4.50/M (Google, 2026-09).
 const LIVE_MODEL = "models/gemini-3.8-live";
 
-// The app stops listening at 5 minutes (lib/liveVoice.ts); the token dies a
-// minute after that, so a client that ignored the limit still can't keep a
-// session running on this key.
-const SESSION_MINUTES = 6;
+// The app stops listening once the session's time is up (lib/liveVoice.ts);
+// the token dies a minute after that — time to connect, and for Google to act
+// on the last sentence — so a client that ignored the limit still can't keep
+// a session running on this key.
+const TOKEN_GRACE_SECONDS = 60;
 
 const MAX_BODY_BYTES = 256 * 1024;
 // More than /api/inbox's 30: a live session can't ask for a different slice
@@ -246,8 +253,9 @@ export function parseBody(raw: unknown): LiveSessionRequestBody {
 // Signed-in only. The one AI run a signed-out install gets (onboarding) never
 // streams audio, and a live session is billed by the minute. It is also part
 // of Pro only (lib/plan.ts), counted in minutes of listening: this route
-// checks there are some left, and the app reports what a session used once
-// it's over (app/api/live-usage+api.ts).
+// takes the session's time from the month up front, and the app reports what
+// it really used once it's over (app/api/live-usage+api.ts), which gives the
+// rest back.
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
@@ -261,26 +269,31 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const allowance = await remainingPlanUsage(request, auth.userId, "live");
-  if ("refused" in allowance) return allowance.refused;
-
-  // Each token is a session of up to SESSION_MINUTES, so the daily count of
-  // tokens bounds live voice's cost per account whatever the app reports.
+  // The stop behind the app's reports: a tampered app could say a session
+  // used nothing, but it can only open so many a day.
   const limitResponse = await claimUserCall(auth.userId, "live-session");
   if (limitResponse) return limitResponse;
 
+  const session = await startLiveSession(request, auth.userId, MAX_LIVE_SECONDS);
+  if ("refused" in session) return session.refused;
+
   const setup = liveSetup(parseBody(raw));
   try {
-    const { websocketUrl } = await createLiveSessionToken({ setup, sessionMinutes: SESSION_MINUTES });
+    const { websocketUrl } = await createLiveSessionToken({
+      setup,
+      sessionSeconds: session.seconds + TOKEN_GRACE_SECONDS,
+    });
     return Response.json({
       url: websocketUrl,
       setup: { setup },
-      maxSeconds: Math.min(MAX_LIVE_SECONDS, allowance.remaining),
+      maxSeconds: session.seconds,
+      sessionId: session.sessionId,
     } satisfies LiveSessionResponseBody);
   } catch (error) {
     // Logged in full here (a missing key, a quota, a rejected setup); the
-    // phone only needs to know it can't start.
+    // phone only needs to know it can't start. Nothing was listened to.
     console.error("[api/live-session]", error instanceof Error ? error.message : error);
+    await settleLiveSession(auth.userId, session.sessionId, 0);
     return Response.json({ error: "live_unavailable" }, { status: 502 });
   }
 }

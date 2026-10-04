@@ -18,6 +18,7 @@ import Svg, { Path } from "react-native-svg";
 
 import { GemLogo } from "@/components/GemLogo";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { gradients } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
@@ -73,9 +74,10 @@ function AnalyzingMark() {
         className="absolute rounded-full border border-orange-500"
         style={[{ height: RING_SIZE, width: RING_SIZE }, ringStyle]}
       />
+      {/* An orange icon tile, made round. */}
       <View
-        className="items-center justify-center rounded-full bg-orange-100"
-        style={{ height: DISC_SIZE, width: DISC_SIZE }}
+        className="tile tile--orange rounded-full"
+        style={[{ height: DISC_SIZE, width: DISC_SIZE }, gradients.tileOrange]}
       >
         <GemLogo size={40} />
       </View>
@@ -120,7 +122,7 @@ function AnalyzingStep({ label, state }: { label: string; state: "done" | "activ
     // The spring overshoots past 1; colour and breathing only care how far in.
     const settled = Math.min(grow.value, 1);
     return {
-      backgroundColor: interpolateColor(settled, [0, 0.6], [colors.orange[500], colors.olive[500]]),
+      backgroundColor: interpolateColor(settled, [0, 0.6], [colors.orange[500], colors.success[500]]),
       transform: [{ scale: DOT_SCALE * (1 + 0.4 * breathe.value * (1 - settled)) + (1 - DOT_SCALE) * grow.value }],
     };
   });
@@ -141,12 +143,12 @@ function AnalyzingStep({ label, state }: { label: string; state: "done" | "activ
               ? "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-cream-300"
               : state === "active"
                 ? "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-orange-500"
-                : "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-olive-500"
+                : "absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-success-500"
           }
         />
         {state === "done" ? (
           <Animated.View
-            className="absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-olive-500"
+            className="absolute left-0 top-0 h-7 w-7 rounded-full border-2 border-success-500"
             style={rippleStyle}
           />
         ) : null}
@@ -265,7 +267,7 @@ export default function OnboardingAnalyzing() {
       // Nothing to press: this step leaves on its own once the AI answers.
       footer={() => null}
     >
-      <View className="gap-4 rounded-[20px] border border-cream-300 bg-cream-50 p-5">
+      <View className="card card--cream-soft gap-4 p-5" style={gradients.card}>
         {t.onboardingAnalyzing.steps.map((label, index) => (
           <AnalyzingStep
             key={label}

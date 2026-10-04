@@ -178,7 +178,7 @@ function singleTarget(action: InboxAction, ctx: MapContext): TaskTarget | null {
   return id ? { taskIds: [id] } : null;
 }
 
-type BulkTargetResult = { target: TaskTarget } | { notFound: true };
+type BulkTargetResult = { target: TaskTarget } | { notFound: true } | { unclear: true };
 
 function bulkTarget(action: InboxAction, ctx: MapContext): BulkTargetResult | null {
   const ids = (action.taskIds ?? []).map((alias) => ctx.realId(alias)).filter((id): id is string => !!id);
@@ -189,6 +189,10 @@ function bulkTarget(action: InboxAction, ctx: MapContext): BulkTargetResult | nu
   // Ids for the tasks it could see, keywords for ones it couldn't: both count.
   if (ids.length > 0 && filter.keywords?.length) return { target: { taskIds: ids, filter } };
   if (ids.length > 0) return { target: { taskIds: ids } };
+  // Nothing says which tasks at all. "Every task" is a filter too — status
+  // "all" or "pending" (data/aiPrompts.ts) — so this is a request the model
+  // didn't pin down: ask, rather than reach every task on the list.
+  if (!hasFilterCriteria) return { unclear: true };
   return { target: { filter } };
 }
 
@@ -274,6 +278,7 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
     const result = bulkTarget(action, ctx);
     if (!result) return { type: "CLARIFY", question: t.ops.whichDates, candidates: [], confirmationTier: "safe" };
     if ("notFound" in result) return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
+    if ("unclear" in result) return { type: "CLARIFY", question: t.ops.whichTasks, candidates: [], confirmationTier: "safe" };
     return { type: "OPERATE", operation: operationFor(bulkKind, result.target, action, ctx, true), confirmationTier: "confirm-required" };
   }
 

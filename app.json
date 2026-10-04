@@ -16,12 +16,14 @@
     },
     "android": {
       "package": "com.nexdo.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/logo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"]
     },
     "web": {
       "output": "server",
@@ -69,7 +71,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Nexdo to access your microphone to record voice notes and to add or change tasks by voice."
+          "microphonePermission": "Allow Nexdo to access your microphone to record voice notes and to add or change tasks by voice.",
+          "enableBackgroundPlayback": false
         }
       ],
       "@react-native-community/datetimepicker",
@@ -83,6 +86,14 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "posthogHost": "https://us.i.posthog.com",
+      "router": {},
+      "eas": {
+        "projectId": "8816ac88-75f1-40b8-8acf-feb36da3393c"
+      }
+    },
+    "owner": "monium80"
   }
 }
