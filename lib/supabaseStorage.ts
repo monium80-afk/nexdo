@@ -48,8 +48,12 @@ function safeFileName(fileName: string): string {
 // expo-audio) into the private chat-attachments bucket, under a per-user
 // folder so storage RLS can scope access. Returns the storage path to store
 // on the ChatAttachment instead of the local uri.
-export async function uploadAttachment(localUri: string, userId: string, fileName: string, mimeType?: string): Promise<string> {
-  if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType.toLowerCase())) {
+//
+// The bucket itself refuses anything over MAX_ATTACHMENT_BYTES or not in
+// ALLOWED_MIME_TYPES (supabase/schema.sql), so the type is always sent:
+// without one, storage would label the file text/plain.
+export async function uploadAttachment(localUri: string, userId: string, fileName: string, mimeType: string): Promise<string> {
+  if (!ALLOWED_MIME_TYPES.includes(mimeType.toLowerCase())) {
     throw new Error(`Unsupported file type: ${mimeType}`);
   }
 
@@ -64,7 +68,7 @@ export async function uploadAttachment(localUri: string, userId: string, fileNam
   const path = `${userId}/${Date.now()}-${safeFileName(fileName)}`;
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, bytes, {
-    contentType: mimeType,
+    contentType: mimeType.toLowerCase(),
     upsert: false,
   });
   if (error) throw error;
@@ -81,30 +85,4 @@ export async function getAttachmentSignedUrl(path: string): Promise<string> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) throw error;
   return data.signedUrl;
-}
-
-// Account deletion only. Every attachment lives under "<userId>/", so listing
-// that one folder covers the account. list() returns a page at a time, and
-// each page is removed before asking for the next one.
-const LIST_PAGE_SIZE = 100;
-
-export async function deleteAllAttachments(userId: string): Promise<void> {
-  await deleteUserFolder(BUCKET, userId);
-}
-
-/** Empties "<userId>/" in a bucket laid out one folder per user. */
-export async function deleteUserFolder(bucket: string, userId: string): Promise<void> {
-  for (;;) {
-    const { data, error } = await supabase.storage.from(bucket).list(userId, { limit: LIST_PAGE_SIZE });
-    if (error) throw error;
-    if (!data || data.length === 0) return;
-
-    const { data: removed, error: removeError } = await supabase.storage
-      .from(bucket)
-      .remove(data.map((file) => `${userId}/${file.name}`));
-    if (removeError) throw removeError;
-    if (!removed || removed.length === 0) throw new Error("Attachment removal made no progress");
-
-    if (data.length < LIST_PAGE_SIZE) return;
-  }
 }

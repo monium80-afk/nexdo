@@ -113,6 +113,8 @@ const MAX_BYTES_PER_SECOND = { compressed: 40_000, wav: 200_000 };
 // trial counts calls rather than seconds.
 const MAX_VOICE_SECONDS = 15 * 60;
 
+const EXTRACT_BUDGET_MS = 26_000;
+
 function estimatedVoiceSeconds(declared: number | undefined, bytes: number, mimeType: string): number {
   const ceiling = mimeType.includes("wav") ? MAX_BYTES_PER_SECOND.wav : MAX_BYTES_PER_SECOND.compressed;
   const seconds = Math.max(declared ?? bytes / TYPICAL_BYTES_PER_SECOND, bytes / ceiling);
@@ -142,6 +144,11 @@ async function voiceSeconds(params: { declared: number | undefined; bytes: numbe
 // Signed in, a photo or document is one of the account's files for the month
 // and a voice note uses its length in voice minutes (lib/serverPlan.ts).
 export async function POST(request: Request) {
+  // The app's 30 s wait (lib/api.ts) began before it sent the file, so the
+  // reading has to be done within this of the request arriving — upload,
+  // length check and plan check included.
+  const deadline = Date.now() + EXTRACT_BUDGET_MS;
+
   // See the same call in app/api/inbox+api.ts for why this 503s rather than
   // falling through to the anonymous path.
   const auth = await authenticate(request);
@@ -199,6 +206,7 @@ export async function POST(request: Request) {
       mimeType,
       base64,
       instruction: `${INSTRUCTIONS[kind]}${languageNote}${focusNote(userInstruction)}`,
+      deadline,
     });
     if (!text) console.warn(`[api/extract-text] ${kind} ${mimeType} ${bytes}B -> empty (model read nothing in it)`);
     return Response.json({ text } satisfies ExtractTextResponseBody);

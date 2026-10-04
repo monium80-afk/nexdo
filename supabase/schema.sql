@@ -176,9 +176,26 @@ $$;
 -- Storage: private bucket for chat attachments, one folder per user
 -- (objects are stored as "<clerk_user_id>/<filename>")
 -- ---------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('chat-attachments', 'chat-attachments', false)
-on conflict (id) do nothing;
+-- 6 MB each, and only what the app attaches and the AI can read — the same
+-- limits as lib/supabaseStorage.ts, held here too so a modified client can't
+-- fill its folder with anything else. Same statements as
+-- supabase/migrations/20261004000000_chat_attachment_limits.sql.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'chat-attachments',
+  'chat-attachments',
+  false,
+  6291456,
+  array[
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+    'audio/aac', 'audio/mp4', 'audio/m4a', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/webm',
+    'application/pdf', 'text/plain', 'text/csv', 'text/markdown'
+  ]
+)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "chat_attachments_owner_select" on storage.objects;
 create policy "chat_attachments_owner_select" on storage.objects
@@ -688,9 +705,12 @@ grant insert (source, feedback_type, message, details, screenshot_path, app_vers
 grant insert (source, feedback_type, message, contact_email)
   on public.feedback to anon;
 
--- Account deletion (components/AccountSheet.tsx) removes the account's
--- feedback along with everything else. Users can't select or delete feedback
--- directly, so this is the one way in, and it only ever touches their own rows.
+-- Account deletion removes the account's feedback along with everything else.
+-- Since 2026-10-04 the server does that with the service role
+-- (app/api/delete-account+api.ts); this function is kept for app builds from
+-- before then, which delete from the phone. Users can't select or delete
+-- feedback directly, so this is their one way in, and it only ever touches
+-- their own rows.
 create or replace function public.delete_my_feedback()
 returns void
 language sql

@@ -12,17 +12,19 @@ import { TextField } from "@/components/TextField";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import type { DeleteAccountResponseBody } from "@/app/api/delete-account+api";
 import { showAlert } from "@/lib/alert";
-import { deleteAllFeedback } from "@/lib/feedback";
+import { apiPost } from "@/lib/api";
 import { posthog } from "@/lib/posthog";
 import { resetPurchaser } from "@/lib/purchases";
-import { deleteAllAttachments } from "@/lib/supabaseStorage";
-import { deleteAllMessages, deleteAllTasks } from "@/lib/supabaseSync";
 import { useChatStore } from "@/store/useChatStore";
 import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 const MIN_PASSWORD_LENGTH = 8;
+
+/** Every file in the account's storage goes too, so this can take longer than an AI answer. */
+const DELETE_ACCOUNT_TIMEOUT_MS = 60_000;
 
 type AccountSheetProps = {
   visible: boolean;
@@ -167,17 +169,11 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
     }
   };
 
-  // The synced data goes before the Clerk user does: deleting the user kills
-  // the session token, and every Supabase row is behind an RLS policy that
-  // matches that token's `sub`, so anything left here would be stranded in the
-  // database for good.
-  //
-  // Storage, the tables and Clerk can't be deleted all-or-nothing together,
-  // so the steps are ordered for wherever one fails: what's left is still a
-  // working account. Feedback first (the app never shows it); then the chat —
-  // its messages before the files they show, so none points at a deleted
-  // file; the tasks last. The user is told whether anything is already gone,
-  // and a retry finishes the job: every step is idempotent.
+  // The server deletes the account and everything stored for it
+  // (app/api/delete-account+api.ts) — data first, the Clerk user last, with
+  // its own keys, so neither the session nor Clerk's client-side settings can
+  // leave the user signed in to an empty account. If it stops partway, the
+  // account is still there and trying again finishes the job.
   const handleDeleteAccount = () => {
     // The store bills the subscription, not Nexdo — deleting the account
     // can't stop it, so a Pro user is told where to cancel.
@@ -191,32 +187,26 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           if (!user) return;
           setDeleting(true);
           setError(null);
-          const steps = [
-            () => deleteAllFeedback(user.id),
-            // As "Clear chat history" does: the phone's copy goes too (so it
-            // can't show the files deleted next), after any message still
-            // uploading has landed. Then this account's rows by id, in case
-            // the chat wasn't synced to it yet.
-            async () => {
-              await clearChatHistory();
-              await deleteAllMessages(user.id);
-            },
-            () => deleteAllAttachments(user.id),
-            () => deleteAllTasks(user.id),
-            () => user.delete(),
-          ];
-          let stepsDone = 0;
+          // As "Clear chat history" does: any message still uploading lands
+          // first (so none arrives after the server's delete), and an AI
+          // reply still on its way is dropped.
           try {
-            for (const step of steps) {
-              await step();
-              stepsDone += 1;
-            }
+            await clearChatHistory();
+          } catch (clearError) {
+            console.warn("[AccountSheet] couldn't clear the chat before deleting", clearError);
+            setError(t.account.deleteError);
+            setDeleting(false);
+            return;
+          }
+          try {
+            await apiPost<DeleteAccountResponseBody>("/api/delete-account", {}, undefined, DELETE_ACCOUNT_TIMEOUT_MS);
             // Only once it's gone, so a failed deletion isn't counted as one.
             posthog.capture("account_deleted");
             posthog.reset();
           } catch (deleteError) {
             console.warn("[AccountSheet] account deletion failed", deleteError);
-            setError(stepsDone > 0 ? t.account.deletePartialError : t.account.deleteError);
+            // The chat is already gone, and the server may have got further.
+            setError(t.account.deletePartialError);
             setDeleting(false);
             return;
           }

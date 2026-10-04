@@ -19,7 +19,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useTranslation } from "@/hooks/useTranslation";
 import { adviceToText, generateAdvice } from "@/lib/ai/generateAdvice";
-import { extractAttachmentText } from "@/lib/ai/media";
+import { extractAttachmentText, resolveMimeType } from "@/lib/ai/media";
 import { showAlert } from "@/lib/alert";
 import { isImageAttachment, messageAttachments } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
@@ -336,7 +336,9 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
             attachment.uri,
             user.id,
             attachment.name ?? `${attachment.kind}-${Date.now()}-${index}`,
-            attachment.mimeType,
+            // The type the AI will read it as — never missing, and "image/jpg"
+            // (which some pickers report) already made "image/jpeg".
+            resolveMimeType(attachment),
           );
           return { ...attachment, uri: path };
         } catch (error) {

@@ -34,9 +34,11 @@ Use the following stack:
 - Zustand
 - AsyncStorage
 - Clerk for authentication
-- Stream / GetStream for video and real-time communication
-- Stream Vision Agents for AI video teacher capability
-- Server-side API routes or backend functions for secrets, tokens, and AI calls
+- Supabase for the database (tasks, chat), file storage and realtime sync — Clerk's token is what Supabase's row-level security checks
+- Gemini (Google) for every AI feature, called only from the API routes
+- RevenueCat for Nexdo Pro subscriptions
+- PostHog for analytics
+- Expo Router API routes (`app/api/**/+api.ts`), hosted on EAS Hosting, for secrets, tokens, plan limits and AI calls
 
 Do not introduce new major libraries unless there is a strong reason.
 
@@ -356,12 +358,12 @@ Examples:
 ```txt
 lib/
   clerk.ts
-  stream.ts
+  supabase.ts
   api.ts
-  cn.ts
+  purchases.ts
 ```
 
-Never expose secret keys in the mobile app.
+Never expose secret keys in the mobile app. Files named `lib/server*.ts` and `lib/ai/gemini.ts` are server-only: only the API routes import them.
 
 ---
 
@@ -399,14 +401,15 @@ When the user asks to build a feature:
 
 ---
 
-## AI / Stream / Vision Agent Rules
+## AI Rules
 
-Use backend/serverless for:
+Use the API routes (`app/api/**/+api.ts`) for:
 
--AI API keys and model calls (OpenAI, Anthropic, Gemini, etc.)
+-AI API keys and model calls (Gemini)
 -Audio/Speech processing & transcription (voice task extraction)
--Vision Agent sessions & OCR (document, image, and screenshot task analysis)
--Streaming token generation and real-time AI responses
+-Reading photos and documents (task extraction from images and files)
+-Minting the single-use token Magic mic (Live voice) opens its session with
+-Checking and counting each account's monthly plan limits (lib/serverPlan.ts)
 
 Never expose secrets in the frontend.
 
@@ -424,7 +427,7 @@ Do not build custom auth.
 
 Use hardcoded JSON/TS for default task templates, sample workflows, and prompt structures.
 
-Do not introduce a database unless explicitly requested.
+The database schema lives in `supabase/schema.sql` (safe to re-run), with each change also as a file in `supabase/migrations/`. Don't add tables or columns without asking.
 
 ---
 
@@ -451,6 +454,7 @@ Run:
 ```bash
 npm run lint
 npm run typecheck
+npm test
 ```
 
 Fix errors.
@@ -467,14 +471,14 @@ Explain what changed and how to test.
 
 ## Important Constraints
 
-No database for this version.
-
 Use:
 
 - JSON for content
-- Zustand for state
-- AsyncStorage for persistence
-- backend only for secure operations
+- Zustand for state, with AsyncStorage persistence for the phone's own copy
+- Supabase as the account's copy (tasks and chat sync in the background — lib/supabaseSync.ts)
+- the API routes only for secure operations
+
+When the app's data handling changes, the privacy policy in `../nexdo-website/privacy/` has to change with it.
 
 ---
 

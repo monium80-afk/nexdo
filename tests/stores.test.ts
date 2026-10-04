@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import { parseBody, resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
+import { GeminiTimeoutError } from "@/lib/ai/gemini";
 import { PlanLimitError } from "@/lib/plan";
 import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -478,5 +479,24 @@ describe("the inbox route, when the model makes no progress", () => {
     const result = await resolveInboxMessage(body("buy milk"), echoingModel(asked) as never);
     assert.deepEqual(asked, ["buy milk"]);
     assert.deepEqual(result.actions.map((entry) => entry.fields.title), ["Buy milk"]);
+  });
+});
+
+describe("the inbox route, when time runs out", () => {
+  it("answers with the apology (so the message is refunded) instead of re-sending every piece", async () => {
+    let calls = 0;
+    const deadlines = new Set<number>();
+    const timingOut = async ({ deadline }: { deadline?: number }) => {
+      calls += 1;
+      if (deadline !== undefined) deadlines.add(deadline);
+      throw new GeminiTimeoutError("no answer in time");
+    };
+    const result = await resolveInboxMessage(
+      { message: "buy milk, call mom, book the dentist", now: new Date().toISOString(), recentTaskIds: [], tasks: [], history: [], language: "en" },
+      timingOut as never,
+    );
+    assert.equal(calls, 1, "no recovery calls after a timeout");
+    assert.equal(deadlines.size, 1, "the call was given the request's deadline");
+    assert.equal(result.unavailable, true);
   });
 });

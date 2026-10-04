@@ -403,11 +403,17 @@ function keepLocalOnlyFields(remote: Task, local: Task | undefined): Task {
  * row it left behind. A task only this phone has is kept if it never reached
  * Supabase; one that did and is gone now was deleted on another device, and
  * stays deleted. `toPush` is every local version Supabase is behind on.
+ *
+ * `fetchStartedAt`: a task changed on this phone after the fetch was sent may
+ * have been saved too late for it — no longer unsynced, yet missing from the
+ * rows that came back. It's kept (and sent again) rather than taken for
+ * deleted.
  */
 function mergeRemoteTasks(
   remote: Task[],
   local: Task[],
   unsynced: Record<string, string>,
+  fetchStartedAt = Number.POSITIVE_INFINITY,
 ): { tasks: Task[]; toPush: Task[] } {
   const localById = new Map(local.map((task) => [task.id, task]));
   const remoteIds = new Set(remote.map((task) => task.id));
@@ -422,7 +428,9 @@ function mergeRemoteTasks(
     return keepLocalOnlyFields(remoteTask, localTask);
   });
 
-  const neverSaved = local.filter((task) => !remoteIds.has(task.id) && task.id in unsynced);
+  const neverSaved = local.filter(
+    (task) => !remoteIds.has(task.id) && (task.id in unsynced || Date.parse(task.updatedAt) >= fetchStartedAt),
+  );
   toPush.push(...neverSaved);
   return { tasks: [...neverSaved, ...tasks], toPush };
 }
@@ -445,7 +453,13 @@ type TaskStore = {
   pendingDeletes: Record<string, string>;
   /** The account the local list belongs to — persisted, so it outlives an app restart. */
   ownerId: string | null;
-  hydrateFromSupabase: (userId: string) => Promise<void>;
+  /**
+   * Loads the account's tasks and merges them with this phone's. Safe to run
+   * again at any time (hooks/useAuthSync.ts does, on coming back to the app).
+   * Resolves to whether the account's list was actually read — false when the
+   * fetch failed, so the caller can try again.
+   */
+  hydrateFromSupabase: (userId: string) => Promise<boolean>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
   /**
@@ -540,7 +554,7 @@ export const useTaskStore = create<TaskStore>()(
         set({ syncUserId: userId });
         try {
           await rehydrated;
-          if (get().syncUserId !== userId) return;
+          if (get().syncUserId !== userId) return false;
 
           // A list another account left behind (its session ended without
           // signing out here) is set aside for that account, never merged in.
@@ -572,13 +586,14 @@ export const useTaskStore = create<TaskStore>()(
           await AsyncStorage.removeItem(stashKey(userId));
           await AsyncStorage.removeItem(deletesStashKey(userId));
 
+          const fetchStartedAt = Date.now();
           const fetched = await fetchTasks(userId);
-          if (get().syncUserId !== userId) return;
+          if (get().syncUserId !== userId) return false;
           // A task deleted here whose delete never reached Supabase stays
           // deleted: its row is left out, and the delete goes out again below.
           const { pendingDeletes } = get();
           const remoteTasks = fetched.filter((task) => !isSampleTask(task) && !(task.id in pendingDeletes));
-          const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, get().unsynced);
+          const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, get().unsynced, fetchStartedAt);
           const tasks = normalizePersistedTasks(merged);
           // Everything not being pushed now matches Supabase; syncUpsert marks
           // the rest unsynced again until their saves are confirmed.
@@ -589,8 +604,10 @@ export const useTaskStore = create<TaskStore>()(
             .forEach((task) => syncUpsert(task, userId));
           syncDeleteMany(Object.keys(pendingDeletes), userId);
           fetched.filter(isSampleTask).forEach((task) => syncDelete(task.id, userId));
+          return true;
         } catch (error) {
           console.warn("[useTaskStore] hydrate failed", error);
+          return false;
         }
       },
 

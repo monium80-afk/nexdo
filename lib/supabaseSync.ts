@@ -135,11 +135,28 @@ async function retryOnJwtTiming<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+// Supabase hands back at most 1,000 rows a request (the project's default
+// "max rows"). One request used to be all there was: past that, the tasks it
+// left out vanished from the phone — the merge reads a missing row as deleted
+// elsewhere. So the list is read a page at a time, in a fixed order.
+const TASK_PAGE_SIZE = 1000;
+
 export async function fetchTasks(userId: string): Promise<Task[]> {
   return retryOnJwtTiming(async () => {
-    const { data, error } = await supabase.from("tasks").select("*").eq("user_id", userId);
-    if (error) throw error;
-    return (data as TaskRow[]).map(fromTaskRow);
+    const rows: TaskRow[] = [];
+    for (let from = 0; ; from += TASK_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("user_id", userId)
+        .order("id", { ascending: true })
+        .range(from, from + TASK_PAGE_SIZE - 1);
+      if (error) throw error;
+      const page = data as TaskRow[];
+      rows.push(...page);
+      if (page.length < TASK_PAGE_SIZE) break;
+    }
+    return rows.map(fromTaskRow);
   });
 }
 
@@ -236,12 +253,6 @@ export async function deleteTaskRows(taskIds: string[], userId: string): Promise
   if (error) throw error;
 }
 
-/** Account deletion only — removes every task the account ever synced. */
-export async function deleteAllTasks(userId: string): Promise<void> {
-  const { error } = await supabase.from("tasks").delete().eq("user_id", userId);
-  if (error) throw error;
-}
-
 export function subscribeToTasks(userId: string, onChange: (task: Task, event: "INSERT" | "UPDATE" | "DELETE", oldId?: string) => void): RealtimeChannel {
   return supabase
     .channel(`tasks:${userId}`)
@@ -296,15 +307,17 @@ function fromMessageRow(row: MessageRow): ChatMessage {
   };
 }
 
-export async function fetchMessages(userId: string): Promise<ChatMessage[]> {
+/** The newest `limit` messages, oldest first — the end of the conversation, as the thread shows it. */
+export async function fetchMessages(userId: string, limit: number): Promise<ChatMessage[]> {
   return retryOnJwtTiming(async () => {
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
       .eq("user_id", userId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(limit);
     if (error) throw error;
-    return (data as MessageRow[]).map(fromMessageRow);
+    return (data as MessageRow[]).map(fromMessageRow).reverse();
   });
 }
 

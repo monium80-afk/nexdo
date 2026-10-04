@@ -269,13 +269,19 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  // The stop behind the app's reports: a tampered app could say a session
-  // used nothing, but it can only open so many a day.
-  const limitResponse = await claimUserCall(auth.userId, "live-session");
-  if (limitResponse) return limitResponse;
-
+  // The plan first: a Free account (no Magic mic at all) or one out of
+  // minutes is turned away without using up one of the day's sessions.
   const session = await startLiveSession(request, auth.userId, MAX_LIVE_SECONDS);
   if ("refused" in session) return session.refused;
+
+  // The stop behind the app's reports: a tampered app could say a session
+  // used nothing, but it can only open so many a day. Over that, the time
+  // just taken goes back.
+  const limitResponse = await claimUserCall(auth.userId, "live-session");
+  if (limitResponse) {
+    await settleLiveSession(auth.userId, session.sessionId, 0);
+    return limitResponse;
+  }
 
   const setup = liveSetup(parseBody(raw));
   try {

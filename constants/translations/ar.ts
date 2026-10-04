@@ -946,6 +946,8 @@ export const ar: Translations = {
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
     logIn: "تسجيل الدخول",
+    usePassword: "تسجيل الدخول بكلمة المرور بدلاً من ذلك",
+    useCode: "أرسل لي رمزًا بالبريد الإلكتروني بدلاً من ذلك",
     continueWithEmail: "أو تابع بالبريد الإلكتروني",
     noAccount: "ليس لديك حساب؟",
     signUp: "إنشاء حساب",

@@ -18,6 +18,11 @@ export type DeadlineValue = "today" | "tomorrow" | "friday" | "weekend" | "nextW
 // Chip labels live in the translations: form.durationOptions / form.deadlines.
 export const DURATION_OPTIONS: number[] = [15, 30, 45, 60, 90, 120, 180];
 
+/** The longest title the AI is sent in full (MAX_TITLE_LENGTH in lib/serverRequest.ts). */
+export const MAX_TASK_TITLE_LENGTH = 200;
+/** Digits a custom length may have: up to 9,999 minutes, under what the AI routes accept. */
+export const MAX_CUSTOM_MINUTES_DIGITS = 4;
+
 export const DEADLINE_OPTIONS: DeadlineValue[] = ["today", "tomorrow", "friday", "weekend", "nextWeek", "none"];
 
 /**

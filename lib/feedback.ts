@@ -3,7 +3,6 @@ import { Platform } from "react-native";
 
 import { readFileBytes } from "@/lib/localFile";
 import { supabase } from "@/lib/supabase";
-import { deleteUserFolder } from "@/lib/supabaseStorage";
 
 // Settings → Send feedback. Rows go to the `feedback`
 // table (supabase/schema.sql), which the app can add to but never read back.
@@ -90,20 +89,4 @@ export async function sendFeedback({
   if (screenshotPath) void supabase.storage.from(SCREENSHOT_BUCKET).remove([screenshotPath]);
   // The database's rate-limit trigger answers 429 with this code.
   return error.code === "rate_limited" ? "rate_limited" : "failed";
-}
-
-// Account deletion. Before supabase/migrations/20260930120000_feedback.sql
-// has been run, the bucket and the function don't exist — and no feedback
-// can have been stored either — so their absence isn't a reason to stop an
-// account from being deleted.
-export async function deleteAllFeedback(userId: string): Promise<void> {
-  try {
-    await deleteUserFolder(SCREENSHOT_BUCKET, userId);
-  } catch (error) {
-    if (!(error instanceof Error && /bucket not found/i.test(error.message))) throw error;
-  }
-
-  const { error } = await supabase.rpc("delete_my_feedback");
-  // PGRST202: no such function.
-  if (error && error.code !== "PGRST202") throw error;
 }

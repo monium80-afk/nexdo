@@ -925,6 +925,8 @@ export const es: Translations = {
     email: "CORREO ELECTRÓNICO",
     password: "CONTRASEÑA",
     logIn: "Iniciar sesión",
+    usePassword: "Iniciar sesión con contraseña",
+    useCode: "Prefiero recibir un código por correo",
     continueWithEmail: "o continúa con tu correo",
     noAccount: "¿No tienes cuenta?",
     signUp: "Regístrate",

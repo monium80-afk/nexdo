@@ -948,6 +948,8 @@ export const en = {
     email: "EMAIL",
     password: "PASSWORD",
     logIn: "Log in",
+    usePassword: "Log in with a password instead",
+    useCode: "Email me a code instead",
     continueWithEmail: "or continue with email",
     noAccount: "Don't have an account?",
     signUp: "Sign up",

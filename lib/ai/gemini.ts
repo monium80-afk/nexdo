@@ -1,7 +1,7 @@
 // Server-only: imported exclusively by app/api/**/+api.ts route handlers,
 // which run on the Expo server runtime, not in the app bundle — this is
 // what keeps GEMINI_API_KEY (no EXPO_PUBLIC_ prefix) out of the client.
-// See AGENTS.md "AI / Stream / Vision Agent Rules".
+// See AGENTS.md "AI Rules".
 
 // Pinned rather than a rolling "-latest" alias, which can silently move
 // onto a brand-new release with a tiny temporary free-tier quota (this
@@ -30,6 +30,34 @@ const GEMINI_URL = `${GEMINI_API}/models/${GEMINI_MODEL}:generateContent`;
 // every time, so retrying it would only make the user wait longer for it.
 const RETRYABLE_STATUSES = [500, 503, 504];
 const RETRY_DELAYS_MS = [1000, 2500];
+
+// The app stops waiting after 30 s (lib/api.ts). A call still running past
+// that is worse than a failed one: nobody sees the answer, yet it was paid
+// for, and the request counted against the month's allowance (a failure is
+// refunded). So each model call — retries included — has to be done within
+// this, which leaves the route time for its sign-in and plan checks.
+const DEFAULT_CALL_BUDGET_MS = 22_000;
+/** Not worth starting an attempt with less time than this left. */
+const MIN_ATTEMPT_MS = 1_500;
+/** The prompt cache and audio-length requests are quick; a slow one is skipped, not waited on. */
+const QUICK_REQUEST_TIMEOUT_MS = 6_000;
+const LIVE_TOKEN_TIMEOUT_MS = 10_000;
+
+/** The time a call had ran out before Google answered. */
+export class GeminiTimeoutError extends Error {}
+
+/** fetch(), given up on at `deadline` (ms since the epoch). */
+async function fetchBefore(url: string, init: RequestInit, deadline: number): Promise<Response> {
+  const remaining = deadline - Date.now();
+  if (remaining < MIN_ATTEMPT_MS) throw new GeminiTimeoutError("no time left for the call");
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(remaining) });
+  } catch (error) {
+    const name = (error as { name?: string } | null)?.name;
+    if (name === "TimeoutError" || name === "AbortError") throw new GeminiTimeoutError(`no answer within ${remaining} ms`);
+    throw error;
+  }
+}
 
 export type GeminiJsonSchema = Record<string, unknown>;
 
@@ -119,7 +147,7 @@ async function cacheDisplayName(systemPrompt: string): Promise<string> {
 }
 
 async function cacheRequest(path: string, init: RequestInit = {}): Promise<{ name: string; expireTime: string }> {
-  const response = await fetch(`${GEMINI_API}/${path}`, { ...init, headers: geminiHeaders() });
+  const response = await fetchBefore(`${GEMINI_API}/${path}`, { ...init, headers: geminiHeaders() }, Date.now() + QUICK_REQUEST_TIMEOUT_MS);
   if (!response.ok) throw new GeminiHttpError(response.status, await response.text());
   return response.json();
 }
@@ -131,7 +159,11 @@ function toPromptCache(cache: { name: string; expireTime: string }): PromptCache
 // Another instance may already have made it. A list of caches is one page for
 // this app — it only ever keeps one per prompt version.
 async function findPromptCache(displayName: string): Promise<PromptCache | null> {
-  const response = await fetch(`${GEMINI_API}/cachedContents?pageSize=100`, { headers: geminiHeaders() });
+  const response = await fetchBefore(
+    `${GEMINI_API}/cachedContents?pageSize=100`,
+    { headers: geminiHeaders() },
+    Date.now() + QUICK_REQUEST_TIMEOUT_MS,
+  );
   if (!response.ok) throw new GeminiHttpError(response.status, await response.text());
   const { cachedContents = [] } = (await response.json()) as {
     cachedContents?: { name: string; displayName?: string; model?: string; expireTime: string }[];
@@ -210,9 +242,12 @@ async function promptCacheName(systemPrompt: string): Promise<string | null> {
     pendingCaches.set(displayName, pending);
   }
   // A renewal doesn't have to be waited for while the current cache still
-  // has time left; only a first acquisition does.
+  // has time left; only a first acquisition does — and not for long: it can
+  // take a find, a create and a renew, and the call itself needs the time.
+  // A slow one carries on for the calls after this one.
   if (current && remaining > CACHE_MIN_REMAINING_MS) return current.name;
-  return (await pending)?.name ?? null;
+  const giveUp = new Promise<null>((resolve) => setTimeout(() => resolve(null), QUICK_REQUEST_TIMEOUT_MS));
+  return (await Promise.race([pending, giveUp]))?.name ?? null;
 }
 
 /** A cache Google says doesn't exist any more (deleted, or expired early) — stop handing it out. */
@@ -230,7 +265,10 @@ async function callGemini(params: {
   cachedContent?: string;
   parts: GeminiPart[];
   responseSchema?: GeminiJsonSchema;
+  /** When to give up (ms since the epoch); DEFAULT_CALL_BUDGET_MS from now if not given. */
+  deadline?: number;
 }): Promise<string> {
+  const deadline = params.deadline ?? Date.now() + DEFAULT_CALL_BUDGET_MS;
   const request: RequestInit = {
     method: "POST",
     headers: geminiHeaders(),
@@ -257,12 +295,14 @@ async function callGemini(params: {
     }),
   };
 
-  let response = await fetch(GEMINI_URL, request);
+  let response = await fetchBefore(GEMINI_URL, request, deadline);
   for (const delay of RETRY_DELAYS_MS) {
     if (!RETRYABLE_STATUSES.includes(response.status)) break;
+    // A retry that couldn't finish in time would only delay the failure.
+    if (Date.now() + delay + MIN_ATTEMPT_MS > deadline) break;
     console.warn(`[gemini] ${response.status}, retrying in ${delay}ms`);
     await new Promise((resolve) => setTimeout(resolve, delay));
-    response = await fetch(GEMINI_URL, request);
+    response = await fetchBefore(GEMINI_URL, request, deadline);
   }
 
   if (!response.ok) {
@@ -290,8 +330,15 @@ export async function generateStructuredJson(params: {
    * caching" above). Only worth it for a long prompt sent often — the inbox.
    */
   cacheSystemPrompt?: boolean;
+  /**
+   * When to give up (ms since the epoch) — a route making several calls for
+   * one request passes one deadline to all of them. Throws
+   * GeminiTimeoutError once it's passed.
+   */
+  deadline?: number;
 }): Promise<unknown> {
-  const call = { label: params.label, parts: [{ text: params.userContent }], responseSchema: params.responseSchema };
+  const deadline = params.deadline ?? Date.now() + DEFAULT_CALL_BUDGET_MS;
+  const call = { label: params.label, parts: [{ text: params.userContent }], responseSchema: params.responseSchema, deadline };
   const cachedContent = params.cacheSystemPrompt ? await promptCacheName(params.systemPrompt) : null;
 
   let text: string;
@@ -345,7 +392,11 @@ export async function createLiveSessionToken(params: {
 
   let notFound: GeminiHttpError | null = null;
   for (const version of LIVE_TOKEN_VERSIONS) {
-    const response = await fetch(`${GEMINI_ORIGIN}/${version}/auth_tokens`, { method: "POST", headers: geminiHeaders(), body });
+    const response = await fetchBefore(
+      `${GEMINI_ORIGIN}/${version}/auth_tokens`,
+      { method: "POST", headers: geminiHeaders(), body },
+      Date.now() + LIVE_TOKEN_TIMEOUT_MS,
+    );
     if (response.status === 404) {
       notFound = new GeminiHttpError(404, await response.text());
       continue;
@@ -375,11 +426,15 @@ const AUDIO_TOKENS_PER_SECOND = 32;
  * audio than its size suggests.
  */
 export async function measureAudioSeconds(params: { mimeType: string; base64: string }): Promise<number> {
-  const response = await fetch(`${GEMINI_API}/models/${GEMINI_MODEL}:countTokens`, {
-    method: "POST",
-    headers: geminiHeaders(),
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: params.mimeType, data: params.base64 } }] }] }),
-  });
+  const response = await fetchBefore(
+    `${GEMINI_API}/models/${GEMINI_MODEL}:countTokens`,
+    {
+      method: "POST",
+      headers: geminiHeaders(),
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: params.mimeType, data: params.base64 } }] }] }),
+    },
+    Date.now() + QUICK_REQUEST_TIMEOUT_MS,
+  );
   if (!response.ok) throw new GeminiHttpError(response.status, await response.text());
   const data = (await response.json()) as { promptTokensDetails?: { modality?: string; tokenCount?: number }[] };
   const tokens = data.promptTokensDetails?.find((detail) => detail.modality === "AUDIO")?.tokenCount;
@@ -396,10 +451,13 @@ export async function extractTextFromMedia(params: {
   mimeType: string;
   base64: string;
   instruction: string;
+  /** When to give up (ms since the epoch). */
+  deadline?: number;
 }): Promise<string> {
   const text = await callGemini({
     label: params.label,
     parts: [{ inlineData: { mimeType: params.mimeType, data: params.base64 } }, { text: params.instruction }],
+    deadline: params.deadline,
   });
   return text.trim();
 }

@@ -11,6 +11,8 @@ import {
   deadlineToDraft,
   draftToDeadline,
   DURATION_OPTIONS,
+  MAX_CUSTOM_MINUTES_DIGITS,
+  MAX_TASK_TITLE_LENGTH,
   type DeadlineDraft,
   type DeadlineValue,
 } from "@/components/TaskFormFields";
@@ -125,6 +127,7 @@ export function TaskEditPanel({
           }}
           placeholder={t.form.editTitlePlaceholder}
           returnKeyType="done"
+          maxLength={MAX_TASK_TITLE_LENGTH}
           error={titleError}
         />
         {titleError ? <Text className="font-grotesk-medium text-sm text-overdue-500">{t.form.titleRequired}</Text> : null}
@@ -160,6 +163,7 @@ export function TaskEditPanel({
             }}
             placeholder={t.form.minutesPlaceholder}
             keyboardType="number-pad"
+            maxLength={MAX_CUSTOM_MINUTES_DIGITS}
             error={durationError}
             trailing={<Text className="font-grotesk-medium text-sm text-ink-cream-muted">{t.form.minutesUnit}</Text>}
           />

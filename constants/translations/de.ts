@@ -940,6 +940,8 @@ export const de: Translations = {
     email: "E-MAIL",
     password: "PASSWORT",
     logIn: "Anmelden",
+    usePassword: "Lieber mit Passwort anmelden",
+    useCode: "Lieber einen Code per E-Mail erhalten",
     continueWithEmail: "oder weiter mit E-Mail",
     noAccount: "Noch kein Konto?",
     signUp: "Registrieren",

@@ -94,9 +94,11 @@ export default function SignUp() {
   const [password, setPassword] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [sendCodeError, setSendCodeError] = useState<string | null>(null);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   const handleSocialAuth = async (provider: "google" | "apple") => {
     posthog.capture('sign_up_social_tapped', { provider })
+    setSocialError(null);
     try {
       const { createdSessionId } = await startSSOFlow({
         strategy: provider === "google" ? "oauth_google" : "oauth_apple",
@@ -105,12 +107,14 @@ export default function SignUp() {
         posthog.capture('sign_up_completed', { method: 'social', provider })
         router.replace("/");
       }
+      // No session and no error: the browser was closed — nothing to say.
     } catch (err) {
       console.error("Social sign-up error:", JSON.stringify(err, null, 2));
       posthog.captureException(err instanceof Error ? err : new Error(String(err)), {
         context: 'sign_up_social',
         provider,
       })
+      setSocialError(t.auth.somethingWrong);
     }
   };
 
@@ -118,7 +122,13 @@ export default function SignUp() {
     if (!email || !password) return;
     setSendCodeError(null);
     const { error } = await signUp.password({ emailAddress: email, password });
-    if (error) return;
+    if (error) {
+      // A problem with the address or password shows under that field
+      // (below); anything else — the bot check, no connection, too many
+      // tries — used to show nothing at all.
+      setSendCodeError(error.longMessage ?? t.auth.somethingWrong);
+      return;
+    }
 
     const { error: verificationError } = await signUp.verifications.sendEmailCode();
     if (verificationError) {
@@ -247,6 +257,11 @@ export default function SignUp() {
                 provider="apple"
                 onPress={() => handleSocialAuth("apple")}
               />
+              {socialError ? (
+                <Text className="text-sm font-grotesk-medium text-overdue-500" style={rtl}>
+                  {socialError}
+                </Text>
+              ) : null}
             </View>
 
             <Animated.View layout={REVEAL_LAYOUT} className="mt-5 gap-3">
@@ -281,7 +296,8 @@ export default function SignUp() {
                     </Text>
                   ) : null}
                   <View nativeID="clerk-captcha" />
-                  {sendCodeError ? (
+                  {/* Only when no field above already says what's wrong. */}
+                  {sendCodeError && !errors.fields.emailAddress && !errors.fields.password ? (
                     <Text className="text-sm font-grotesk-medium text-overdue-500">
                       {sendCodeError}
                     </Text>

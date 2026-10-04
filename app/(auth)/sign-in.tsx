@@ -36,12 +36,22 @@ export default function SignIn() {
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
   const [showEmailForm, setShowEmailForm] = useState(false);
+  // An emailed code by default. A password is there for accounts that set one
+  // at sign-up — and for app store reviewers, who can't read a code sent to
+  // the demo account's inbox.
+  const [withPassword, setWithPassword] = useState(false);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
-  const [sendCodeError, setSendCodeError] = useState<string | null>(null);
+  // Which code the modal is checking: the sign-in itself, or the one Clerk
+  // asks for after a password on a phone it hasn't seen before.
+  const [codeStep, setCodeStep] = useState<"signIn" | "newDevice">("signIn");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   const handleSocialAuth = async (provider: "google" | "apple") => {
     posthog.capture('sign_in_social_tapped', { provider })
+    setSocialError(null);
     try {
       const { createdSessionId } = await startSSOFlow({
         strategy: provider === "google" ? "oauth_google" : "oauth_apple",
@@ -50,45 +60,91 @@ export default function SignIn() {
         posthog.capture('sign_in_completed', { method: 'social', provider })
         router.replace("/");
       }
+      // No session and no error: the browser was closed — nothing to say.
     } catch (err) {
       console.error("Social sign-in error:", JSON.stringify(err, null, 2));
       posthog.captureException(err instanceof Error ? err : new Error(String(err)), {
         context: 'sign_in_social',
         provider,
       })
+      setSocialError(t.auth.somethingWrong);
     }
+  };
+
+  const finishSignIn = async (method: "email" | "password") => {
+    const { error } = await signIn.finalize({
+      navigate: () => {
+        posthog.capture('sign_in_completed', { method })
+        router.replace("/")
+      },
+    });
+    return error ? (error.longMessage ?? t.auth.somethingWrong) : undefined;
+  };
+
+  const handleSendCode = async () => {
+    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
+    if (error) {
+      setFormError(error.longMessage ?? t.auth.sendCodeError);
+      return;
+    }
+    setCodeStep("signIn");
+    setModalVisible(true);
+  };
+
+  const handlePasswordLogIn = async () => {
+    if (!password) return;
+    const { error } = await signIn.password({ emailAddress: email, password });
+    if (error) {
+      setFormError(error.longMessage ?? t.auth.somethingWrong);
+      return;
+    }
+    if (signIn.status === "complete") {
+      const finalizeError = await finishSignIn("password");
+      if (finalizeError) setFormError(finalizeError);
+      return;
+    }
+    // A password from a phone Clerk hasn't seen this account on is confirmed
+    // with a code sent to the account's email (Clerk's Client Trust).
+    const emailCodeOffered = signIn.supportedSecondFactors.some((factor) => factor.strategy === "email_code");
+    if ((signIn.status === "needs_client_trust" || signIn.status === "needs_second_factor") && emailCodeOffered) {
+      const { error: sendError } = await signIn.mfa.sendEmailCode();
+      if (sendError) {
+        setFormError(sendError.longMessage ?? t.auth.sendCodeError);
+        return;
+      }
+      setCodeStep("newDevice");
+      setModalVisible(true);
+      return;
+    }
+    setFormError(t.auth.somethingWrong);
   };
 
   const handleLogIn = async () => {
     if (!email) return;
-    setSendCodeError(null);
-    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
-    if (error) {
-      setSendCodeError(error.longMessage ?? t.auth.sendCodeError);
-      return;
-    }
-    setModalVisible(true);
+    setFormError(null);
+    if (withPassword) await handlePasswordLogIn();
+    else await handleSendCode();
   };
 
-  // A problem with the address shows as that; anything else (no connection,
-  // too many tries) as what sending the code ran into.
-  const logInError = errors.fields.identifier?.message ?? sendCodeError;
+  const toggleWithPassword = () => {
+    setWithPassword((current) => !current);
+    setFormError(null);
+  };
+
+  // A problem with the address or password shows as that; anything else (no
+  // connection, too many tries) as what the request ran into.
+  const fieldError = errors.fields.identifier?.message ?? (withPassword ? errors.fields.password?.message : undefined);
+  const logInError = fieldError ?? formError;
 
   const handleVerifyCode = async (code: string) => {
-    const { error } = await signIn.emailCode.verifyCode({ code });
+    const { error } =
+      codeStep === "newDevice" ? await signIn.mfa.verifyEmailCode({ code }) : await signIn.emailCode.verifyCode({ code });
     if (error) return error.longMessage ?? t.auth.invalidCode;
 
     if (signIn.status === "complete") {
-      const { error: finalizeError } = await signIn.finalize({
-        navigate: () => {
-          posthog.capture('sign_in_completed', { method: 'email' })
-          router.replace("/")
-        },
-      });
-      if (finalizeError) {
-        return finalizeError.longMessage ?? t.auth.invalidCode;
-      }
+      return finishSignIn(codeStep === "newDevice" ? "password" : "email");
     }
+    return t.auth.somethingWrong;
   };
 
   return (
@@ -126,6 +182,11 @@ export default function SignIn() {
                 provider="apple"
                 onPress={() => handleSocialAuth("apple")}
               />
+              {socialError ? (
+                <Text className="text-sm font-grotesk-medium text-overdue-500" style={rtl}>
+                  {socialError}
+                </Text>
+              ) : null}
             </View>
 
             <Animated.View layout={REVEAL_LAYOUT} className="mt-5 gap-3">
@@ -142,6 +203,15 @@ export default function SignIn() {
                     keyboardType="email-address"
                     autoComplete="email"
                   />
+                  {withPassword ? (
+                    <AuthTextField
+                      label={t.auth.password}
+                      value={password}
+                      onChangeText={setPassword}
+                      secureEntry
+                      autoComplete="current-password"
+                    />
+                  ) : null}
                   {logInError ? (
                     <Text className="text-sm font-grotesk-medium text-overdue-500">
                       {logInError}
@@ -156,6 +226,11 @@ export default function SignIn() {
                   >
                     <Text className="font-grotesk-bold text-lg text-on-accent">
                       {t.auth.logIn}
+                    </Text>
+                  </AnimatedPressable>
+                  <AnimatedPressable onPress={toggleWithPassword} className="items-center">
+                    <Text className="font-grotesk-semibold text-sm text-ink-cream-muted underline">
+                      {withPassword ? t.auth.useCode : t.auth.usePassword}
                     </Text>
                   </AnimatedPressable>
                 </Animated.View>

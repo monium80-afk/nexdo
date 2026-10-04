@@ -932,6 +932,8 @@ export const fr: Translations = {
     email: "E-MAIL",
     password: "MOT DE PASSE",
     logIn: "Se connecter",
+    usePassword: "Se connecter avec un mot de passe",
+    useCode: "Recevoir plutôt un code par e-mail",
     continueWithEmail: "ou continuer avec un e-mail",
     noAccount: "Pas encore de compte ?",
     signUp: "S'inscrire",

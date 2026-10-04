@@ -21,6 +21,8 @@ import {
     deadlineToDraft,
     draftToDeadline,
     DURATION_OPTIONS,
+    MAX_CUSTOM_MINUTES_DIGITS,
+    MAX_TASK_TITLE_LENGTH,
     PriorityCard,
     type DeadlineDraft,
     type DeadlineValue,
@@ -210,6 +212,7 @@ export default function Add() {
                   if (titleTouched) setTitleTouched(false);
                 }}
                 placeholder={t.form.titlePlaceholder}
+                maxLength={MAX_TASK_TITLE_LENGTH}
                 error={titleTouched}
               />
               {titleTouched ? (
@@ -248,6 +251,7 @@ export default function Add() {
                   onChangeText={handleCustomDurationChange}
                   placeholder={t.form.minutesPlaceholder}
                   keyboardType="number-pad"
+                  maxLength={MAX_CUSTOM_MINUTES_DIGITS}
                   error={customDurationError}
                   trailing={<Text className="font-grotesk-medium text-sm text-ink-cream-muted">{t.form.minutesUnit}</Text>}
                 />

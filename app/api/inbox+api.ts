@@ -1,7 +1,7 @@
 import { TASK_MANAGER_INTEGRATION_NOTES, TASK_MANAGER_SYSTEM_PROMPT } from "@/data/aiPrompts";
 import type { TaskContext } from "@/lib/ai/context";
 import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/ai/extractTasks";
-import { GeminiHttpError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
+import { GeminiHttpError, GeminiTimeoutError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
 import { hasExplicitTime, isAmbiguousDate, parseDatePhrase } from "@/lib/ai/parseDate";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
@@ -505,8 +505,10 @@ async function classifyOneInstruction(params: {
   history: { role: "user" | "ai"; text: string }[];
   language?: AppLanguage;
   askModel: AskModel;
+  /** When the whole request has to be answered by (ms since the epoch). */
+  deadline: number;
 }): Promise<SingleTurnResult> {
-  const { language, askModel, ...userContent } = params;
+  const { language, askModel, deadline, ...userContent } = params;
   // The language notes ride at the top of the message rather than at the end
   // of the system prompt. That keeps the system prompt identical for every
   // user, which is what lets it be read from one cache (lib/ai/gemini.ts).
@@ -517,6 +519,7 @@ async function classifyOneInstruction(params: {
     cacheSystemPrompt: true,
     userContent: languageNotes ? `${languageNotes}\n\n${JSON.stringify(userContent)}` : JSON.stringify(userContent),
     responseSchema: SINGLE_TURN_SCHEMA,
+    deadline,
   });
   const raw = result as Partial<SingleTurnResult>;
   const action = normalizeAction(raw.action) ?? { ...NO_ACTION };
@@ -561,10 +564,16 @@ function splitIntoFragments(text: string): string[] {
 // on top of MAX_TURNS still covers a full assignment sheet.
 const MAX_RECOVERY_FRAGMENTS = 10;
 
+// The whole message — every turn and any recovery — is answered within this.
+// The app stops waiting at 30 s (lib/api.ts), and the sign-in and plan checks
+// before the model need a moment too.
+const INBOX_BUDGET_MS = 22_000;
+
 async function classifyFragmentsIndependently(
   fragments: string[],
   context: Omit<InboxRequestBody, "message">,
   askModel: AskModel,
+  deadline: number,
 ): Promise<{ actions: InboxAction[]; replies: string[]; intent: string | null }> {
   if (fragments.length > MAX_RECOVERY_FRAGMENTS) {
     console.warn(`[api/inbox] recovery capped: ${fragments.length} fragments, classifying the first ${MAX_RECOVERY_FRAGMENTS}`);
@@ -581,6 +590,7 @@ async function classifyFragmentsIndependently(
         history: context.history,
         language: context.language,
         askModel,
+        deadline,
       }),
     ),
   );
@@ -696,6 +706,9 @@ export async function resolveInboxMessage(
   body: InboxRequestBody,
   askModel: AskModel = generateStructuredJson,
 ): Promise<InboxResponseBody> {
+  // Every turn and every recovery call shares one deadline, so a request that
+  // takes several calls still answers before the app stops waiting.
+  const deadline = Date.now() + INBOX_BUDGET_MS;
   const actions: InboxAction[] = [];
   const replies: string[] = [];
   let intent = "UNRELATED";
@@ -703,9 +716,9 @@ export async function resolveInboxMessage(
   let firstTurnFailed = false;
   let laterTurnFailed = false;
   // Google itself turned the call away (a used-up quota, a bad key, an outage
-  // that outlasted the retries). Fragment recovery exists for the model
-  // choking on a long message; re-sending every fragment here would only hit
-  // the same wall several more times at once.
+  // that outlasted the retries), or the request's time ran out. Fragment
+  // recovery exists for the model choking on a long message; re-sending every
+  // fragment here would only hit the same wall several more times at once.
   let googleRefused = false;
   // True when the loop used up every turn and the model *still* handed back
   // unresolved text — worth falling back to fragment recovery for, like a
@@ -735,6 +748,7 @@ export async function resolveInboxMessage(
         history: body.history,
         language: body.language,
         askModel,
+        deadline,
       });
     } catch (error) {
       console.error("[api/inbox]", error);
@@ -745,7 +759,7 @@ export async function resolveInboxMessage(
       }
       if (turn === 0) firstTurnFailed = true;
       else laterTurnFailed = true;
-      googleRefused = error instanceof GeminiHttpError;
+      googleRefused = error instanceof GeminiHttpError || error instanceof GeminiTimeoutError;
       break; // keep whatever earlier turns already produced
     }
 
@@ -767,7 +781,7 @@ export async function resolveInboxMessage(
   }
 
   if ((ranOutOfTurns || stalled || (laterTurnFailed && !googleRefused)) && message) {
-    const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body, askModel);
+    const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body, askModel, deadline);
     // Every piece failed: the stalled turn's own action beats nothing.
     if (stalled && recovered.actions.length === 0) {
       actions.push(stalled.action);
@@ -781,7 +795,7 @@ export async function resolveInboxMessage(
   if (firstTurnFailed && !googleRefused) {
     const fragments = splitIntoFragments(body.message);
     if (fragments.length > 1) {
-      const recovered = await classifyFragmentsIndependently(fragments, body, askModel);
+      const recovered = await classifyFragmentsIndependently(fragments, body, askModel, deadline);
       actions.push(...recovered.actions);
       replies.push(...recovered.replies);
       if (recovered.intent) intent = recovered.intent;

@@ -3,6 +3,9 @@
 // logs every write so a test can check exactly what reached the database.
 
 type Row = Record<string, unknown> & { id: string };
+
+/** Supabase's default cap on the rows one request returns. */
+const MAX_ROWS = 1000;
 type Filter = { column: string; values: unknown[] };
 type Listener = { table: string; handler: (payload: unknown) => void };
 
@@ -63,6 +66,9 @@ function matches(row: Row, filters: Filter[]) {
 function query(name: string) {
   const filters: Filter[] = [];
   let mode: "select" | "delete" = "select";
+  let sort: { column: string; ascending: boolean } | null = null;
+  // Rows a select may return, as PostgREST's .limit() / .range() do.
+  let window: { from: number; to: number } | null = null;
   const builder = {
     select() {
       mode = "select";
@@ -80,7 +86,16 @@ function query(name: string) {
       filters.push({ column, values });
       return builder;
     },
-    order() {
+    order(column: string, options?: { ascending?: boolean }) {
+      sort = { column, ascending: options?.ascending ?? true };
+      return builder;
+    },
+    limit(count: number) {
+      window = { from: 0, to: count - 1 };
+      return builder;
+    },
+    range(from: number, to: number) {
+      window = { from, to };
       return builder;
     },
     upsert(input: Row | Row[]) {
@@ -105,7 +120,15 @@ function query(name: string) {
         fakeDb.writes.push({ table: name, kind: "delete", ids: doomed.map((row) => row.id) });
         return resolve({ error: null });
       }
-      return resolve({ data: [...table(name).values()].filter((row) => matches(row, filters)), error: null });
+      let data = [...table(name).values()].filter((row) => matches(row, filters));
+      if (sort) {
+        const { column, ascending } = sort;
+        data.sort((a, b) => String(a[column]).localeCompare(String(b[column])) * (ascending ? 1 : -1));
+      }
+      // Like a real Supabase project, never more than 1,000 rows a request.
+      const from = window?.from ?? 0;
+      data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS));
+      return resolve({ data, error: null });
     },
   };
   return builder;

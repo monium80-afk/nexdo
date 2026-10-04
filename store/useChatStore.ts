@@ -9,6 +9,7 @@ import { createCandidateId } from "@/lib/ai/extractTasks";
 import { extractAttachmentsText } from "@/lib/ai/media";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import { isImageAttachment } from "@/lib/chatAttachments";
+import { isCancellation, isConfirmation, isUndoRequest } from "@/lib/chatReplies";
 import { getLanguage, translate } from "@/lib/i18n";
 import { describeConfirmation, describeScopeQuestion } from "@/lib/operationMessages";
 import { PlanLimitError, type Meter } from "@/lib/plan";
@@ -22,16 +23,10 @@ import type { Task } from "@/types/task";
 
 const RECENT_TASK_LIMIT = 5;
 const HISTORY_TURNS = 6;
-// English, French, Spanish and German replies are all understood, whatever the app language.
-// A letter lookahead rather than \b, which doesn't treat accented letters as part of a word.
-const YES_PATTERN =
-  /^(yes|yep|yeah|sure|do it|confirm|ok|okay|go ahead|oui|ouais|d'accord|vas-y|allez-y|confirme|confirmer|s[íi]|claro|vale|dale|de acuerdo|adelante|hazlo|confirma|confirmar|ja|jap|jep|klar|gerne?|genau|passt|einverstanden|los|mach (?:das|es|schon)|mach's|best[äa]tigen?)(?![a-zà-ÿ])/i;
-const NO_PATTERN =
-  /^(no|nope|cancel|never ?mind|don'?t|non|annule|annuler|laisse tomber|pas maintenant|cancela|cancelar|d[ée]jalo|olv[íi]dalo|mejor no|ahora no|nein|n[öo]|abbrechen|brich ab|lass (?:es|das)|lieber nicht|jetzt nicht|vergiss es)(?![a-zà-ÿ])/i;
-// Literal "undo" is intercepted here rather than sent to the AI — see
-// TASK_MANAGER_SYSTEM_PROMPT §6.2, which is written assuming this.
-const UNDO_PATTERN =
-  /^(undo( (that|it))?|revert( (that|it))?|d[ée]faire( [çc]a)?|d[ée]fais( [çc]a)?|deshacer( eso)?|deshazlo|deshaz( eso)?|r[üu]ckg[äa]ngig( machen)?|mach (?:das |es )?r[üu]ckg[äa]ngig|mach's r[üu]ckg[äa]ngig)[.!]?$/i;
+// The newest messages a sign-in loads (and the phone keeps). A thread is drawn
+// in full, and Supabase hands back at most 1,000 rows a request — reading the
+// oldest ones first, a long-used account used to lose its latest messages.
+const MAX_LOADED_MESSAGES = 300;
 
 // Invalidates any in-flight classifyIntent() call so its response is
 // dropped if the user signs out (or the store resets) before it resolves —
@@ -110,7 +105,8 @@ type ChatStore = {
   syncUserId: string | null;
   /** Messages Supabase hasn't confirmed yet: id → the account they're being saved to. */
   unsynced: Record<string, string>;
-  hydrateFromSupabase: (userId: string) => Promise<void>;
+  /** Loads the account's conversation. Safe to run again; resolves to whether it was actually read. */
+  hydrateFromSupabase: (userId: string) => Promise<boolean>;
   subscribeToRealtime: (userId: string) => void;
   unsubscribeFromRealtime: () => void;
   /**
@@ -394,8 +390,8 @@ export const useChatStore = create<ChatStore>()(
         hydrateFromSupabase: async (userId) => {
           set({ syncUserId: userId });
           try {
-            const [remoteMessages] = await Promise.all([fetchMessages(userId), rehydrated]);
-            if (get().syncUserId !== userId) return;
+            const [remoteMessages] = await Promise.all([fetchMessages(userId, MAX_LOADED_MESSAGES), rehydrated]);
+            if (get().syncUserId !== userId) return false;
             const { messages, unsynced } = get();
             const localOnly = messages.filter((message) => unsynced[message.id] === userId);
             const localIds = new Set(localOnly.map((message) => message.id));
@@ -404,8 +400,10 @@ export const useChatStore = create<ChatStore>()(
             );
             set({ messages: merged.length > 0 ? merged : initialMessages(), unsynced: {} });
             localOnly.forEach((message) => syncUpsert(message, userId));
+            return true;
           } catch (error) {
             console.warn("[useChatStore] hydrate failed", error);
+            return false;
           }
         },
 
@@ -525,18 +523,20 @@ export const useChatStore = create<ChatStore>()(
               }
             }
 
-            if (UNDO_PATTERN.test(effectiveText)) {
+            if (isUndoRequest(effectiveText)) {
               get().undoLastAction();
               return;
             }
 
+            // A bare yes or no answers the change waiting for one. Anything
+            // more is a new instruction, which drops the waiting change.
             const { pendingActions } = get();
             if (pendingActions.length > 0) {
-              if (YES_PATTERN.test(effectiveText)) {
+              if (isConfirmation(effectiveText)) {
                 get().confirmPendingActions();
                 return;
               }
-              if (NO_PATTERN.test(effectiveText)) {
+              if (isCancellation(effectiveText)) {
                 get().cancelPendingActions();
                 return;
               }
@@ -748,7 +748,9 @@ export const useChatStore = create<ChatStore>()(
     {
       name: "nexdo-chat",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ messages: state.messages, unsynced: state.unsynced }),
+      // The phone keeps the newest stretch of the conversation, like a fresh
+      // load does; the rest stays in the account.
+      partialize: (state) => ({ messages: state.messages.slice(-MAX_LOADED_MESSAGES), unsynced: state.unsynced }),
       // Runs with (state) on success and (undefined, error) on failure —
       // either way the local snapshot is as loaded as it will get, which is
       // what hydrateFromSupabase is waiting on.

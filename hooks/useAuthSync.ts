@@ -19,6 +19,16 @@ import { useTaskStore } from "@/store/useTaskStore";
 const NEW_ACCOUNT_WINDOW_MS = 60_000;
 
 /**
+ * Back in the app after at least this long, the account's tasks and chat are
+ * read again: realtime only delivers changes while the app is open, so
+ * anything another device did meanwhile would otherwise wait for a restart.
+ */
+const RESYNC_AFTER_MS = 30_000;
+
+/** A load that failed (offline at launch) is tried again after these waits, then on coming back to the app. */
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000];
+
+/**
  * Whether the account was made by the sign-up that opened this session,
  * rather than on some earlier visit. Logging back in only adds a new session
  * to an account that already existed. Both timestamps are Clerk's, so the
@@ -94,14 +104,50 @@ export function useAuthSync() {
     setClerkTokenGetter(() => getToken());
     setApiTokenGetter(() => getToken());
 
-    hydrateTasks(userId).then(async () => {
-      if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
-      // Now that the list is the account's: series set to skip missed
-      // occurrences move on to the current one (a no-op if already done), and
-      // tasks finished a week ago or longer are deleted.
+    // When the account's tasks and chat were last read in full, and the
+    // retry waiting for a load that failed.
+    let syncedAt = 0;
+    let retries = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let syncing: Promise<void> | null = null;
+
+    // Series set to skip missed occurrences move on to the current one (a
+    // no-op if already done), and tasks finished a week ago or longer are
+    // deleted. Scores move with the clock too (a task that turned overdue
+    // overnight), which both of these recalculate.
+    const tidyTasks = () => {
+      if (useTaskStore.getState().syncUserId !== userId) return;
       useTaskStore.getState().applyMissedOccurrences();
       useTaskStore.getState().deleteExpiredCompleted();
+    };
+
+    // Reads the account's tasks and chat and merges them with the phone's.
+    // One at a time; a failed read is tried again on a backoff.
+    const sync = (): Promise<void> => {
+      syncing ??= (async () => {
+        clearTimeout(retryTimer);
+        const [tasksRead, chatRead] = await Promise.all([hydrateTasks(userId), hydrateChat(userId)]);
+        if (!isActive) return;
+        if (tasksRead) tidyTasks();
+        if (tasksRead && chatRead) {
+          syncedAt = Date.now();
+          retries = 0;
+        } else if (retries < RETRY_DELAYS_MS.length) {
+          retryTimer = setTimeout(() => void sync(), RETRY_DELAYS_MS[retries]);
+          retries += 1;
+        }
+      })().finally(() => {
+        syncing = null;
+      });
+      return syncing;
+    };
+
+    void sync().then(async () => {
+      if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
+      // Realtime from here on, whether or not the first read worked: changes
+      // made elsewhere arrive as they happen, and the retry fills in the rest.
       subscribeTasks(userId);
+      subscribeChat(userId);
       await waitForOnboardingHydration();
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
       const savedDrafts = claimOnboardingDrafts(isNewAccount(clerk.user?.createdAt, clerk.session?.createdAt));
@@ -109,27 +155,29 @@ export function useAuthSync() {
       // on the list, and this is the one moment Pro is offered unasked.
       if (savedDrafts && isPurchasesEnabled) openPaywall();
     });
-    hydrateChat(userId).then(() => {
-      if (isActive && useChatStore.getState().syncUserId === userId) subscribeChat(userId);
-    });
     // Magic mic sessions whose usage couldn't be reported when they ended
     // (lib/liveUsageReports.ts) — until it is, each counts in full.
     void flushLiveUsageReports(userId);
 
-    // Back in the foreground after a while: scores move with the clock (a task
-    // that turned overdue overnight), a "skip missed" series may have a new
-    // occurrence due, and a finished task's week may be up. Unsaved changes
-    // and Magic mic usage reports get another try too.
+    // Back in the foreground: after a while (or after a load that never
+    // worked), everything is read again — which also sends any unsaved
+    // change. Otherwise unsaved changes get another try on their own. Either
+    // way the list is tidied, and Magic mic usage reports are retried.
     const appState = AppState.addEventListener("change", (state) => {
       if (state !== "active" || useTaskStore.getState().syncUserId !== userId) return;
-      useTaskStore.getState().applyMissedOccurrences();
-      useTaskStore.getState().deleteExpiredCompleted();
-      void useTaskStore.getState().saveUnsyncedTasks();
+      if (Date.now() - syncedAt >= RESYNC_AFTER_MS) {
+        retries = 0;
+        void sync();
+      } else {
+        tidyTasks();
+        void useTaskStore.getState().saveUnsyncedTasks();
+      }
       void flushLiveUsageReports(userId);
     });
 
     return () => {
       isActive = false;
+      clearTimeout(retryTimer);
       appState.remove();
       unsubscribeTasks();
       unsubscribeChat();
