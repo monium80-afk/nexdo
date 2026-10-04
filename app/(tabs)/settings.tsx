@@ -5,7 +5,7 @@ import Constants from "expo-constants";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -25,6 +25,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { apiPost } from "@/lib/api";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { openPaywall } from "@/lib/paywall";
@@ -372,12 +373,16 @@ export default function Settings() {
   // phone says yes; if the phone won't ask again, the way to its settings is shown.
   const enableWithPermission = async (enable: () => void) => {
     const granted = await requestNotificationPermission();
-    setPermission(await getNotificationPermission());
+    const current = await getNotificationPermission();
+    setPermission(current);
     if (granted) {
       enable();
       return;
     }
-    Alert.alert(t.settings.notificationsBlockedTitle, t.settings.notificationsBlockedBody, [
+    // Not something the phone's settings can change (the web build, Expo Go
+    // on Android): there's nowhere to send the user.
+    if (current === "unsupported") return;
+    showAlert(t.settings.notificationsBlockedTitle, t.settings.notificationsBlockedBody, [
       { text: t.common.cancel, style: "cancel" },
       { text: t.settings.openPhoneSettings, onPress: () => Linking.openSettings() },
     ]);
@@ -414,7 +419,7 @@ export default function Settings() {
   };
 
   const handleClearHistory = () => {
-    Alert.alert(t.settings.clearConfirmTitle, t.settings.clearConfirmBody, [
+    showAlert(t.settings.clearConfirmTitle, t.settings.clearConfirmBody, [
       { text: t.common.cancel, style: "cancel" },
       {
         text: t.settings.clear,
@@ -436,7 +441,7 @@ export default function Settings() {
       await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.warn("[Settings] couldn't open link", error);
-      Alert.alert(t.settings.linkError);
+      showAlert(t.settings.linkError);
     }
   };
 
@@ -457,11 +462,11 @@ export default function Settings() {
       offline: t.settings.restoreOffline,
       error: t.settings.restoreError,
     };
-    Alert.alert(messages[outcome]);
+    showAlert(messages[outcome]);
   };
 
   const handleManageSubscription = async () => {
-    if (!(await presentCustomerCenter())) Alert.alert(t.settings.manageError);
+    if (!(await presentCustomerCenter())) showAlert(t.settings.manageError);
   };
 
   const signOutNow = async () => {
@@ -502,7 +507,7 @@ export default function Settings() {
       return;
     }
     setIsSigningOut(false);
-    Alert.alert(t.settings.unsavedTasksTitle, t.settings.unsavedTasksBody(unsaved), [
+    showAlert(t.settings.unsavedTasksTitle, t.settings.unsavedTasksBody(unsaved), [
       { text: t.common.cancel, style: "cancel" },
       { text: t.settings.signOutAnyway, onPress: () => signOutNow() },
     ]);

@@ -2,7 +2,7 @@ import { useClerk, useUser } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BottomSheet } from "@/components/BottomSheet";
@@ -12,6 +12,7 @@ import { TextField } from "@/components/TextField";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { deleteAllFeedback } from "@/lib/feedback";
 import { posthog } from "@/lib/posthog";
 import { resetPurchaser } from "@/lib/purchases";
@@ -40,6 +41,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const handleChatSignOut = useChatStore((state) => state.handleSignOut);
+  const clearChatHistory = useChatStore((state) => state.clearHistory);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
   const isPro = useIsPro();
 
@@ -168,13 +170,19 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   // The synced data goes before the Clerk user does: deleting the user kills
   // the session token, and every Supabase row is behind an RLS policy that
   // matches that token's `sub`, so anything left here would be stranded in the
-  // database for good. If a cleanup step fails the account is left intact, and
-  // the deletes are all idempotent, so retrying is safe.
+  // database for good.
+  //
+  // Storage, the tables and Clerk can't be deleted all-or-nothing together,
+  // so the steps are ordered for wherever one fails: what's left is still a
+  // working account. Feedback first (the app never shows it); then the chat —
+  // its messages before the files they show, so none points at a deleted
+  // file; the tasks last. The user is told whether anything is already gone,
+  // and a retry finishes the job: every step is idempotent.
   const handleDeleteAccount = () => {
     // The store bills the subscription, not Nexdo — deleting the account
     // can't stop it, so a Pro user is told where to cancel.
     const body = isPro ? `${t.account.deleteBody}\n\n${t.account.deleteProNote}` : t.account.deleteBody;
-    Alert.alert(t.account.deleteTitle, body, [
+    showAlert(t.account.deleteTitle, body, [
       { text: t.common.cancel, style: "cancel" },
       {
         text: t.account.deleteConfirm,
@@ -183,18 +191,32 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           if (!user) return;
           setDeleting(true);
           setError(null);
+          const steps = [
+            () => deleteAllFeedback(user.id),
+            // As "Clear chat history" does: the phone's copy goes too (so it
+            // can't show the files deleted next), after any message still
+            // uploading has landed. Then this account's rows by id, in case
+            // the chat wasn't synced to it yet.
+            async () => {
+              await clearChatHistory();
+              await deleteAllMessages(user.id);
+            },
+            () => deleteAllAttachments(user.id),
+            () => deleteAllTasks(user.id),
+            () => user.delete(),
+          ];
+          let stepsDone = 0;
           try {
-            await deleteAllAttachments(user.id);
-            await deleteAllFeedback(user.id);
-            await deleteAllMessages(user.id);
-            await deleteAllTasks(user.id);
-
+            for (const step of steps) {
+              await step();
+              stepsDone += 1;
+            }
+            // Only once it's gone, so a failed deletion isn't counted as one.
             posthog.capture("account_deleted");
             posthog.reset();
-            await user.delete();
           } catch (deleteError) {
             console.warn("[AccountSheet] account deletion failed", deleteError);
-            setError(t.account.deleteError);
+            setError(stepsDone > 0 ? t.account.deletePartialError : t.account.deleteError);
             setDeleting(false);
             return;
           }

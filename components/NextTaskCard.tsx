@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View, type ViewProps } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View, type ViewProps } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -25,6 +25,7 @@ import { useSessionCountdown } from "@/hooks/useSessionCountdown";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { formatDuration } from "@/lib/formatDuration";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
@@ -450,7 +451,7 @@ export function NextTaskCard({
   // Confirmed, because the clock is thrown away with the session and a stray
   // tap mid-focus would be the worst moment to lose it.
   const handleCancelSession = () => {
-    Alert.alert(t.session.cancelTitle, t.session.cancelBody, [
+    showAlert(t.session.cancelTitle, t.session.cancelBody, [
       { text: t.session.keepGoing, style: "cancel" },
       { text: t.session.endSession, style: "destructive", onPress: leaveSession },
     ]);

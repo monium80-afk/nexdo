@@ -1,13 +1,14 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useState } from "react";
-import { Alert, Platform, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { Chip } from "@/components/Chip";
 import { colors, gradients } from "@/constants/theme";
 import { useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { deadlineToLocalDate, makeDeadline, type DeadlineInput } from "@/lib/deadline";
 import { pad, toLocalDateKey } from "@/lib/localDate";
 import type { TaskDeadline, TaskPriorityLevel } from "@/types/task";
@@ -140,7 +141,7 @@ export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; 
     if (isInPast(next)) {
       // Said out loud rather than swallowed: the dialog closing with the row
       // unchanged reads as the app having ignored the tap.
-      Alert.alert(t.form.deadlineInPast);
+      showAlert(t.form.deadlineInPast);
       return;
     }
     onChange(next);

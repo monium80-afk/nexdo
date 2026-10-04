@@ -842,6 +842,7 @@ export const fr: Translations = {
     deleteConfirm: "Supprimer le compte",
     deleting: "Suppression…",
     deleteError: "Impossible de supprimer votre compte. Réessayez.",
+    deletePartialError: "La suppression de votre compte n'a pas pu aller jusqu'au bout — une partie de vos données est déjà supprimée, mais le compte existe toujours. Réessayez pour terminer.",
   },
 
   onboarding: {

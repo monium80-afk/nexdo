@@ -9,7 +9,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AttachmentPreviewRow } from "@/components/AttachmentPreviewRow";
@@ -17,6 +17,7 @@ import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { beginRecording, endRecording } from "@/lib/recordingMode";
 import type { ChatAttachment } from "@/types/chat";
 
@@ -121,7 +122,7 @@ export function InboxInput({
 
     const permission = await requestRecordingPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(t.chat.micPermissionTitle, t.chat.micPermissionBody);
+      showAlert(t.chat.micPermissionTitle, t.chat.micPermissionBody);
       return;
     }
 
@@ -132,14 +133,14 @@ export function InboxInput({
     } catch (error) {
       console.warn("[InboxInput] recording start failed", error);
       endRecording("voiceNote");
-      Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
+      showAlert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
     }
   };
 
   const handleCameraPress = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(t.chat.cameraPermissionTitle, t.chat.cameraPermissionBody);
+      showAlert(t.chat.cameraPermissionTitle, t.chat.cameraPermissionBody);
       return;
     }
 
@@ -166,7 +167,7 @@ export function InboxInput({
     // files and one clip should still attach the four.
     const files = result.assets.filter((asset) => !isVideoFile(asset));
     if (files.length < result.assets.length) {
-      Alert.alert(t.chat.videoNotSupportedTitle, t.chat.videoNotSupportedBody);
+      showAlert(t.chat.videoNotSupportedTitle, t.chat.videoNotSupportedBody);
     }
     if (files.length === 0) return;
 

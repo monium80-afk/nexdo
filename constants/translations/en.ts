@@ -847,6 +847,7 @@ export const en = {
     deleteConfirm: "Delete account",
     deleting: "Deleting…",
     deleteError: "Couldn't delete your account. Try again.",
+    deletePartialError: "Couldn't finish deleting your account — some of your data is already gone, but the account is still here. Try again to finish.",
   },
 
   /** The chrome every onboarding step shares, then step 1's own copy. */

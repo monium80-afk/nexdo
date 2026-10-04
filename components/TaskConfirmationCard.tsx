@@ -15,7 +15,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { formatDuration } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
-import { deadlineFromDate, deadlineInstant } from "@/lib/deadline";
+import { applyPickedDateTime, deadlineFromDate, deadlineInstant } from "@/lib/deadline";
 import { buildRule, describeRule, slotDeadline } from "@/lib/recurrence";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
 import { previewDueLabel } from "@/lib/taskMeta";
@@ -82,26 +82,20 @@ export function TaskConfirmationCard({
     onChange?.({ estimatedMinutes: Number.isNaN(parsed) ? 0 : parsed });
   };
 
+  // What the picker shows: the draft's deadline, or — with none yet — a time
+  // fixed when the card appeared, so a pick can be told apart from it.
+  const [blankPickerValue] = useState(() => new Date());
+  const pickerValue = draft.dueDate ? new Date(draft.dueDate) : blankPickerValue;
+
   const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
     const mode = picker;
     if (Platform.OS === "android") setPicker(null);
     if (event.type === "dismissed" || !selected) return;
-    const base = draft.dueDate ? new Date(draft.dueDate) : new Date();
-    // Picking a time (or the combined iOS date+time spinner) means the user
-    // has now set one explicitly.
-    let dueHasTime = draft.dueHasTime;
-    if (mode === "time") {
-      base.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      dueHasTime = true;
-    } else {
-      base.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-      // iOS shows date and time in one spinner; Android needs a second dialog.
-      if (Platform.OS === "ios") {
-        base.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-        dueHasTime = true;
-      }
-    }
-    onChange?.({ dueDate: base.toISOString(), dueHasTime });
+    // iOS shows date and time in one spinner (only a changed time makes the
+    // deadline exact); Android asks for the time in a second dialog.
+    const part = Platform.OS === "ios" ? "both" : mode === "time" ? "time" : "date";
+    const next = applyPickedDateTime(pickerValue, selected, part, !!draft.dueHasTime);
+    onChange?.({ dueDate: next.date.toISOString(), dueHasTime: next.hasTime });
     if (mode === "date" && Platform.OS === "android") setPicker("time");
   };
 
@@ -139,7 +133,7 @@ export function TaskConfirmationCard({
 
           {picker ? (
             <DateTimePicker
-              value={draft.dueDate ? new Date(draft.dueDate) : new Date()}
+              value={pickerValue}
               mode={Platform.OS === "ios" ? "datetime" : picker}
               display={Platform.OS === "ios" ? "inline" : "default"}
               onChange={handlePickerChange}

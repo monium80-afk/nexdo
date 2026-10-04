@@ -1,13 +1,14 @@
+import { getClerkInstance } from "@clerk/expo";
 import { requestRecordingPermissionsAsync, useAudioStream } from "expo-audio";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useSharedValue, withTiming } from "react-native-reanimated";
 
 import type { LiveSessionRequestBody, LiveSessionResponseBody } from "@/app/api/live-session+api";
-import type { LiveUsageRequestBody } from "@/app/api/live-usage+api";
 import { describeNow, selectRelevantTasks, taskToContext } from "@/lib/ai/context";
 import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
+import { reportLiveUsage } from "@/lib/liveUsageReports";
 import { createLiveVoice } from "@/lib/liveVoice";
 import { createLiveToolRunner } from "@/lib/liveVoiceTools";
 import { beginRecording, endRecording } from "@/lib/recordingMode";
@@ -81,12 +82,13 @@ export function useLiveVoice() {
       },
       // The audio goes straight to Google, so the server only knows how long
       // a session ran if the app tells it (app/api/live-usage+api.ts) — and
-      // until it does, the session counts in full.
+      // until it does, the session counts in full. Kept until it gets through.
       onListened: (seconds, sessionId) => {
-        if (!sessionId) return;
-        apiPost("/api/live-usage", { sessionId, seconds } satisfies LiveUsageRequestBody).catch((error) =>
-          console.warn("[liveVoice] couldn't report listening time", error),
-        );
+        // The session was this account's: Magic mic closes before anyone
+        // can sign out.
+        const userId = getClerkInstance()?.user?.id;
+        if (!sessionId || !userId) return;
+        void reportLiveUsage(userId, { sessionId, seconds });
       },
       log: __DEV__ ? (message) => console.log(`[liveVoice] ${message}`) : undefined,
     });

@@ -2,7 +2,7 @@ import { useUser } from "@clerk/expo";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,6 +20,7 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useTranslation } from "@/hooks/useTranslation";
 import { adviceToText, generateAdvice } from "@/lib/ai/generateAdvice";
 import { extractAttachmentText } from "@/lib/ai/media";
+import { showAlert } from "@/lib/alert";
 import { isImageAttachment, messageAttachments } from "@/lib/chatAttachments";
 import { getLanguage, translate } from "@/lib/i18n";
 import { showPlanLimit } from "@/lib/paywall";
@@ -369,14 +370,14 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
     if (attachments.length > 0 && storedAttachments.length === 0) {
       setPendingAttachments((current) => [...current, ...failedAttachments]);
       setDraft((current) => current || text);
-      Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadFailedBody);
+      showAlert(t.chat.uploadFailedTitle, t.chat.uploadFailedBody);
       return;
     }
     // Some made it. The message is still worth sending, but the ones that
     // didn't are said out loud instead of quietly missing from it.
     if (storedAttachments.length < attachments.length) {
       setPendingAttachments((current) => [...current, ...failedAttachments]);
-      Alert.alert(t.chat.uploadFailedTitle, t.chat.uploadPartialBody(attachments.length - storedAttachments.length));
+      showAlert(t.chat.uploadFailedTitle, t.chat.uploadPartialBody(attachments.length - storedAttachments.length));
     }
 
     // The message carries the storage paths, but the text is read from the
@@ -418,7 +419,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
         if (transcript) {
           setDraft((current) => (current.trim() ? `${current.trimEnd()} ${transcript}` : transcript));
         } else {
-          Alert.alert(t.chat.couldntCatch, t.chat.attachmentReplies.voice);
+          showAlert(t.chat.couldntCatch, t.chat.attachmentReplies.voice);
         }
       } catch (error) {
         // Out of this month's voice minutes — nothing wrong with the recording.
@@ -426,7 +427,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
           showPlanLimit(error.meter);
         } else {
           console.warn("[ai-chat] voice transcription failed", error);
-          Alert.alert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
+          showAlert(t.chat.couldntTranscribe, t.chat.attachmentReplies.voice);
         }
       } finally {
         setIsTranscribing(false);

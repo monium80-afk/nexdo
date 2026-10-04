@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import Purchases, {
+  INTRO_ELIGIBILITY_STATUS,
   LOG_LEVEL,
   PURCHASES_ERROR_CODE,
   type CustomerInfo,
@@ -8,6 +9,7 @@ import Purchases, {
 } from "react-native-purchases";
 import RevenueCatUI from "react-native-purchases-ui";
 
+import { storeTrial, type FreeTrial } from "@/lib/freeTrial";
 import { PRO_ENTITLEMENT } from "@/lib/plan";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
@@ -103,21 +105,51 @@ function isOffline(code: PURCHASES_ERROR_CODE | undefined): boolean {
   return code === PURCHASES_ERROR_CODE.NETWORK_ERROR || code === PURCHASES_ERROR_CODE.OFFLINE_CONNECTION_ERROR;
 }
 
+/** One plan on sale, and the free trial — if any — this account would start it with. */
+export type ProPlan = { package: PurchasesPackage; trial: FreeTrial | null };
+
 /** The plans on sale: the current offering's monthly and yearly packages. Either can be missing if the dashboard doesn't have it. */
-export type ProPlans = { monthly: PurchasesPackage | null; annual: PurchasesPackage | null };
+export type ProPlans = { monthly: ProPlan | null; annual: ProPlan | null };
+
+/**
+ * Which of these products' free trials this account can still have. Only the
+ * App Store needs asking. An answer RevenueCat can't give counts as no, as it
+ * advises: the paywall never promises a trial the purchase sheet then won't
+ * give.
+ */
+async function trialEligibleProducts(productIds: string[]): Promise<Set<string>> {
+  if (Platform.OS !== "ios") return new Set(productIds);
+  try {
+    const answers = await Purchases.checkTrialOrIntroductoryPriceEligibility(productIds);
+    return new Set(
+      productIds.filter((id) => answers[id]?.status === INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE),
+    );
+  } catch (error) {
+    console.warn("[purchases] couldn't check free trial eligibility", error);
+    return new Set();
+  }
+}
 
 /**
  * What the paywall sells, with the store's own prices in the buyer's
- * currency. Throws when the plans can't be loaded (offline, or no offering
- * set up yet) — the paywall offers a retry.
+ * currency and the free trial this account can still have. Throws when the
+ * plans can't be loaded (offline, or no offering set up yet) — the paywall
+ * offers a retry.
+ *
+ * Reads the dashboard's current offering ("default") rather than naming one,
+ * so what's on sale can change there without an app update.
  */
 export async function loadProPlans(): Promise<ProPlans> {
   await queue; // a tap right after launch waits for sign-in to reach RevenueCat
   if (!configured) throw new Error("[purchases] not configured");
   const { current } = await Purchases.getOfferings();
-  const plans = { monthly: current?.monthly ?? null, annual: current?.annual ?? null };
-  if (!plans.monthly && !plans.annual) throw new Error("[purchases] the current offering has no monthly or yearly package");
-  return plans;
+  const packages = [current?.monthly, current?.annual].filter((plan): plan is PurchasesPackage => Boolean(plan));
+  if (packages.length === 0) throw new Error("[purchases] the current offering has no monthly or yearly package");
+
+  const eligible = await trialEligibleProducts(packages.map((plan) => plan.product.identifier));
+  const withTrial = (plan: PurchasesPackage | null | undefined): ProPlan | null =>
+    plan ? { package: plan, trial: eligible.has(plan.product.identifier) ? storeTrial(plan.product) : null } : null;
+  return { monthly: withTrial(current?.monthly), annual: withTrial(current?.annual) };
 }
 
 export type PurchaseOutcome = "purchased" | "cancelled" | "pending" | "offline" | "error";

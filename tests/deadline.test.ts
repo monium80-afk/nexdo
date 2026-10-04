@@ -8,6 +8,8 @@ import { describe, it } from "node:test";
 
 import { isAmbiguousDate, looksLikeDate, parseDateRange, parseDeadlinePhrase } from "@/lib/ai/parseDate";
 import {
+  applyPickedDateTime,
+  deadlineFromDate,
   deadlineFromInstant,
   deadlineInstant,
   formatDeadline,
@@ -262,6 +264,31 @@ describe("changing a deadline", () => {
     const dateOnly = makeDeadline({ date: "2026-10-20" })!;
     assert.equal(shiftDeadline(dateOnly, { amount: 2, unit: "hours" }), null);
     assert.equal(shiftDeadline(dateOnly, { amount: 48, unit: "hours" })?.date, "2026-10-22");
+  });
+
+  it("picking just another day on iOS's date-and-time spinner keeps a date-only deadline date-only", () => {
+    // A date-only deadline shows as the end of its day.
+    const endOfDay = new Date(2026, 9, 15, 23, 59, 59, 999);
+    const anotherDay = applyPickedDateTime(endOfDay, new Date(2026, 9, 17, 23, 59), "both", false);
+    assert.equal(anotherDay.hasTime, false);
+    assert.deepEqual(deadlineFromDate(anotherDay.date, anotherDay.hasTime), { date: "2026-10-17", timeZone: "Europe/Paris" });
+
+    // No deadline yet: the spinner opened at the time the card appeared, which nobody chose either.
+    const opened = new Date(2026, 9, 1, 14, 37, 12);
+    assert.equal(applyPickedDateTime(opened, new Date(2026, 9, 20, 14, 37), "both", false).hasTime, false);
+
+    // Turning the time is choosing one.
+    const atNine = applyPickedDateTime(endOfDay, new Date(2026, 9, 17, 9, 0), "both", false);
+    assert.equal(atNine.hasTime, true);
+    assert.deepEqual([atNine.date.getDate(), atNine.date.getHours(), atNine.date.getMinutes()], [17, 9, 0]);
+  });
+
+  it("on Android's separate dialogs, a day keeps the time it had and a time sets one", () => {
+    const exact = new Date(2026, 9, 15, 9, 30);
+    const moved = applyPickedDateTime(exact, new Date(2026, 9, 18, 0, 0), "date", true);
+    assert.deepEqual([moved.date.getDate(), moved.date.getHours(), moved.date.getMinutes(), moved.hasTime], [18, 9, 30, true]);
+    const timed = applyPickedDateTime(new Date(2026, 9, 15, 23, 59), new Date(2026, 0, 1, 18, 15), "time", false);
+    assert.deepEqual([timed.date.getDate(), timed.date.getHours(), timed.date.getMinutes(), timed.hasTime], [15, 18, 15, true]);
   });
 
   it("an instant from a picker is read as an exact deadline", () => {

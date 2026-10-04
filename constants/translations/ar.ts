@@ -856,6 +856,7 @@ export const ar: Translations = {
     deleteConfirm: "حذف الحساب",
     deleting: "جارٍ الحذف…",
     deleteError: "تعذّر حذف حسابك. أعد المحاولة.",
+    deletePartialError: "تعذّر إكمال حذف حسابك — حُذف جزء من بياناتك بالفعل، لكن الحساب ما زال موجودًا. أعد المحاولة لإكمال الحذف.",
   },
 
   onboarding: {

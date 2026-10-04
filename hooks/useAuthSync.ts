@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 
 import { setApiTokenGetter } from "@/lib/api";
+import { flushLiveUsageReports } from "@/lib/liveUsageReports";
 import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { identifyPurchaser, isPurchasesEnabled } from "@/lib/purchases";
@@ -111,16 +112,20 @@ export function useAuthSync() {
     hydrateChat(userId).then(() => {
       if (isActive && useChatStore.getState().syncUserId === userId) subscribeChat(userId);
     });
+    // Magic mic sessions whose usage couldn't be reported when they ended
+    // (lib/liveUsageReports.ts) — until it is, each counts in full.
+    void flushLiveUsageReports(userId);
 
     // Back in the foreground after a while: scores move with the clock (a task
     // that turned overdue overnight), a "skip missed" series may have a new
     // occurrence due, and a finished task's week may be up. Unsaved changes
-    // get another try too.
+    // and Magic mic usage reports get another try too.
     const appState = AppState.addEventListener("change", (state) => {
       if (state !== "active" || useTaskStore.getState().syncUserId !== userId) return;
       useTaskStore.getState().applyMissedOccurrences();
       useTaskStore.getState().deleteExpiredCompleted();
       void useTaskStore.getState().saveUnsyncedTasks();
+      void flushLiveUsageReports(userId);
     });
 
     return () => {

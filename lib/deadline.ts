@@ -229,6 +229,30 @@ export function resolveDeadlineInput(
 }
 
 /**
+ * A deadline after a pick on the system date picker, from the one it showed
+ * (`current`). `part` is what the picker asked for: "date", "time", or
+ * "both" — iOS's one spinner for the two, where a new day arrives with the
+ * time it was already showing (a date-only deadline's end of day, or the
+ * time it opened at). So there only a time that was actually changed makes
+ * the deadline exact; picking just another day keeps a date-only one so.
+ */
+export function applyPickedDateTime(
+  current: Date,
+  selected: Date,
+  part: "date" | "time" | "both",
+  hasTime: boolean,
+): { date: Date; hasTime: boolean } {
+  const date = new Date(current);
+  if (part !== "time") date.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+  const timeChanged = selected.getHours() !== current.getHours() || selected.getMinutes() !== current.getMinutes();
+  if (part === "time" || (part === "both" && timeChanged)) {
+    date.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    return { date, hasTime: true };
+  }
+  return { date, hasTime };
+}
+
+/**
  * Moves a deadline. Days, weeks and months move the calendar day and keep the
  * time (so 9:00 stays 9:00 across a clock change); minutes and hours move an
  * exact deadline's instant. A date-only deadline has no time to move by a few

@@ -13,9 +13,10 @@
 #
 # The JS bundle reads .env like `expo start` does; EXPO_PUBLIC_API_URL is set
 # here so the app talks to the hosted server (https://nexdo.expo.app) instead
-# of a dev server. Release builds ignore the RevenueCat test_ key
-# (lib/purchases.ts), so without EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY in
-# .env Nexdo Pro is simply hidden.
+# of a dev server. Nexdo Pro is sold through Google Play with RevenueCat's
+# Google key (goog_…), which .env must have — the build stops without it.
+# Release builds never read the Test Store key (lib/purchases.ts); once the
+# bundle is built it is checked to hold the Google key and not the test one.
 
 $ErrorActionPreference = "Stop"
 $project = Split-Path -Parent $PSScriptRoot
@@ -29,6 +30,16 @@ foreach ($line in Get-Content (Join-Path $signing "keystore.properties")) {
 }
 $keystore = Join-Path $signing $props.storeFile
 if (-not (Test-Path $keystore)) { throw "Upload keystore not found: $keystore" }
+
+# .env's values, for the RevenueCat checks below. Nothing from it is printed.
+$dotenv = @{}
+foreach ($line in Get-Content (Join-Path $project ".env")) {
+  if ($line -match '^\s*([A-Z0-9_]+)\s*=\s*"?(.*?)"?\s*$') { $dotenv[$Matches[1]] = $Matches[2] }
+}
+$googleKey = $dotenv["EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY"]
+if (-not $googleKey -or -not $googleKey.StartsWith("goog_")) {
+  throw "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY in .env must be RevenueCat's Google Play key (goog_...)"
+}
 
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 $env:GRADLE_USER_HOME = Join-Path $cache "gradle"
@@ -59,6 +70,22 @@ $aab = Join-Path $project "android\app\build\outputs\bundle\release\app-release.
 # Fails the script if the bundle was signed with anything but the upload key.
 $cert = & "$env:JAVA_HOME\bin\keytool.exe" -printcert -jarfile $aab | Out-String
 if ($cert -notmatch "CN=Nexdo") { throw "The bundle is not signed with the upload key:`n$cert" }
+
+# The compiled JS must sell through Google Play, never the Test Store, and
+# talk to the hosted server.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($aab)
+try {
+  $reader = New-Object System.IO.StreamReader($zip.GetEntry("base/assets/index.android.bundle").Open(), [System.Text.Encoding]::GetEncoding(28591))
+  $js = $reader.ReadToEnd()
+  $reader.Close()
+} finally {
+  $zip.Dispose()
+}
+if (-not $js.Contains($googleKey)) { throw "The bundle doesn't hold the RevenueCat Google key from .env" }
+$testKey = $dotenv["EXPO_PUBLIC_REVENUECAT_TEST_API_KEY"]
+if ($testKey -and $js.Contains($testKey)) { throw "The bundle holds the RevenueCat Test Store key - don't upload it" }
+if (-not $js.Contains($env:EXPO_PUBLIC_API_URL)) { throw "The bundle doesn't point at $env:EXPO_PUBLIC_API_URL" }
 
 $config = Get-Content (Join-Path $project "app.json") -Raw | ConvertFrom-Json
 $name = "nexdo-$($config.expo.version)-$($config.expo.android.versionCode).aab"

@@ -2,7 +2,7 @@ import { useAuth } from "@clerk/expo";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -28,6 +28,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { showAlert } from "@/lib/alert";
 import { formatDeadline, type DeadlineInput } from "@/lib/deadline";
 import { formatDuration } from "@/lib/formatDuration";
 import { addDaysToKey, toLocalDateKey } from "@/lib/localDate";
@@ -80,8 +81,9 @@ function dayLabel(date: string, today: string, t: Translations): string {
 }
 
 /**
- * Asks which occurrences a change reaches. The web build has no native alert
- * to ask with, so there it keeps to the safe default: this occurrence only.
+ * Asks which occurrences a change reaches. A browser's dialog can only say
+ * yes or no (lib/alert.ts), so the web build keeps to the safe default: this
+ * occurrence only.
  */
 function chooseScope(
   title: string,
@@ -94,7 +96,7 @@ function chooseScope(
     onChoose("this");
     return;
   }
-  Alert.alert(title, body, [
+  showAlert(title, body, [
     { text: cancelLabel, style: "cancel" },
     ...options.map((option) => ({
       text: option.label,
@@ -296,11 +298,7 @@ export default function TaskDetail() {
 
   const handleStopRepeating = () => {
     const stop = () => updateTask(task.id, { recurrence: null });
-    if (Platform.OS === "web") {
-      stop();
-      return;
-    }
-    Alert.alert(t.taskDetail.stopRepeatingTitle, t.taskDetail.stopRepeatingBody, [
+    showAlert(t.taskDetail.stopRepeatingTitle, t.taskDetail.stopRepeatingBody, [
       { text: t.common.cancel, style: "cancel" },
       { text: t.taskDetail.stopRepeating, style: "destructive", onPress: stop },
     ]);
@@ -383,9 +381,9 @@ export default function TaskDetail() {
 
   const handleDelete = () => {
     const repeating = Boolean(task.recurrence) && task.status === "pending";
-    // The web build has no native alert (react-native-web leaves Alert.alert
-    // empty), so it asks with the browser's own confirm — and only ever
-    // deletes this occurrence of a repeating task, the safe default.
+    // A browser's dialog can only say yes or no (lib/alert.ts), so the web
+    // build asks that — and only ever deletes this occurrence of a repeating
+    // task, the safe default.
     if (Platform.OS === "web") {
       if (!window.confirm(`${t.taskDetail.deleteConfirmTitle}\n\n${t.taskDetail.deleteConfirmBody}`)) return;
       deleteTask(task.id, repeating ? "this" : undefined);
@@ -409,7 +407,7 @@ export default function TaskDetail() {
       );
       return;
     }
-    Alert.alert(t.taskDetail.deleteConfirmTitle, t.taskDetail.deleteConfirmBody, [
+    showAlert(t.taskDetail.deleteConfirmTitle, t.taskDetail.deleteConfirmBody, [
       { text: t.common.cancel, style: "cancel" },
       {
         text: t.common.delete,
@@ -640,7 +638,7 @@ export default function TaskDetail() {
                             <IconButton
                               icon="trash-2"
                               onPress={() =>
-                                Alert.alert(t.taskDetail.deleteConfirmTitle, t.taskDetail.deleteConfirmBody, [
+                                showAlert(t.taskDetail.deleteConfirmTitle, t.taskDetail.deleteConfirmBody, [
                                   { text: t.common.cancel, style: "cancel" },
                                   {
                                     text: t.common.delete,

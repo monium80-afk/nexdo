@@ -848,6 +848,7 @@ export const de: Translations = {
     deleteConfirm: "Konto löschen",
     deleting: "Wird gelöscht…",
     deleteError: "Dein Konto konnte nicht gelöscht werden. Versuch es noch einmal.",
+    deletePartialError: "Dein Konto konnte nicht vollständig gelöscht werden — ein Teil deiner Daten ist schon weg, aber das Konto gibt es noch. Versuch es noch einmal, um es abzuschließen.",
   },
 
   onboarding: {

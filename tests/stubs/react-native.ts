@@ -25,4 +25,12 @@ export const Appearance = {
 
 export const useColorScheme = () => Appearance.getColorScheme();
 
+/** What was asked natively, for a test to look at. */
+export const alertCalls: unknown[][] = [];
+export const Alert = {
+  alert: (...args: unknown[]) => {
+    alertCalls.push(args);
+  },
+};
+
 export default { Platform, Appearance };

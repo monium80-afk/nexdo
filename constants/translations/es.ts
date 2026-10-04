@@ -835,6 +835,7 @@ export const es: Translations = {
     deleteConfirm: "Eliminar la cuenta",
     deleting: "Eliminando…",
     deleteError: "No se pudo eliminar tu cuenta. Inténtalo de nuevo.",
+    deletePartialError: "No se pudo terminar de eliminar tu cuenta: parte de tus datos ya se borró, pero la cuenta sigue existiendo. Inténtalo de nuevo para terminar.",
   },
 
   onboarding: {

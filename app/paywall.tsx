@@ -3,8 +3,7 @@ import { Feather } from "@expo/vector-icons";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, Text, View, type TextStyle } from "react-native";
-import type { PurchasesPackage } from "react-native-purchases";
+import { ActivityIndicator, ScrollView, Text, View, type TextStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -15,9 +14,10 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, type Meter, type Plan, type TrialUnit } from "@/lib/plan";
+import { showAlert } from "@/lib/alert";
+import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, type Meter, type Plan } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
-import { loadProPlans, purchasePlan, restorePurchases, type ProPlans } from "@/lib/purchases";
+import { loadProPlans, purchasePlan, restorePurchases, type ProPlan, type ProPlans } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -28,8 +28,6 @@ type PlansState = { status: "loading" } | { status: "error" } | { status: "ready
 // The order the comparison lists what a plan counts in.
 const COMPARED: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
 
-const TRIAL_UNITS: readonly TrialUnit[] = ["day", "week", "month", "year"];
-
 // Same raised tray as Add Task's footer.
 const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
 
@@ -38,15 +36,13 @@ const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
 const CENTERED_RTL: TextStyle = { writingDirection: "rtl" };
 
 /**
- * The free trial a plan starts with, if the store has one set up for it.
- * Whether this buyer can still have it is the store's call — its own
- * purchase sheet states the final terms before anything is charged.
+ * Whether the store bills this plan once a year — what its renewal line says.
+ * Read from the product's own billing period; the plan's slot in the offering
+ * only fills in when the store doesn't give one.
  */
-function freeTrial(plan: PurchasesPackage): { count: number; unit: TrialUnit } | null {
-  const intro = plan.product.introPrice;
-  if (!intro || intro.price !== 0 || intro.periodNumberOfUnits <= 0) return null;
-  const unit = intro.periodUnit.toLowerCase() as TrialUnit;
-  return TRIAL_UNITS.includes(unit) ? { count: intro.periodNumberOfUnits, unit } : null;
+function billedYearly(plan: ProPlan, inAnnualSlot: boolean): boolean {
+  const period = plan.package.product.subscriptionPeriod;
+  return period ? period === "P1Y" || period === "P12M" : inAnnualSlot;
 }
 
 /** A price worked out here (a year at the monthly rate) rather than given by the store. */
@@ -232,16 +228,18 @@ function Paywall() {
   const monthly = plans?.monthly ?? null;
   const annual = plans?.annual ?? null;
   const selected = choice === "annual" ? (annual ?? monthly) : (monthly ?? annual);
-  const selectedIsYearly = selected !== null && selected === annual;
-  const trial = selected ? freeTrial(selected) : null;
+  const selectedIsYearly = selected !== null && billedYearly(selected, selected === annual);
+  const trial = selected?.trial ?? null;
+  const monthlyProduct = monthly?.package.product ?? null;
+  const annualProduct = annual?.package.product ?? null;
 
   // A year paid monthly, to set the yearly price against.
-  const yearAtMonthlyRate = monthly
-    ? (monthly.product.pricePerYearString ?? formatPrice(monthly.product.price * 12, monthly.product.currencyCode, t.locale))
+  const yearAtMonthlyRate = monthlyProduct
+    ? (monthlyProduct.pricePerYearString ?? formatPrice(monthlyProduct.price * 12, monthlyProduct.currencyCode, t.locale))
     : null;
   const savedPercent =
-    monthly && annual && monthly.product.price > 0
-      ? Math.round((1 - annual.product.price / (monthly.product.price * 12)) * 100)
+    monthlyProduct && annualProduct && monthlyProduct.price > 0
+      ? Math.round((1 - annualProduct.price / (monthlyProduct.price * 12)) * 100)
       : 0;
 
   const limitLabel = (plan: Plan, meter: Meter) => {
@@ -253,17 +251,17 @@ function Paywall() {
   const handlePurchase = async () => {
     if (!selected || busy) return;
     setBusy(true);
-    const outcome = await purchasePlan(selected);
+    const outcome = await purchasePlan(selected.package);
     setBusy(false);
     if (outcome === "cancelled") return;
     if (outcome === "purchased") {
       posthog.capture("paywall_purchased", { plan: selectedIsYearly ? "yearly" : "monthly", trial: trial !== null });
       // The screen closes itself as soon as Pro is on (see above).
-      Alert.alert(t.paywall.welcomeTitle, t.paywall.welcomeBody);
+      showAlert(t.paywall.welcomeTitle, t.paywall.welcomeBody);
       return;
     }
     const messages = { pending: t.paywall.purchasePending, offline: t.paywall.offline, error: t.paywall.purchaseError };
-    Alert.alert(messages[outcome]);
+    showAlert(messages[outcome]);
   };
 
   const handleRestore = async () => {
@@ -277,7 +275,7 @@ function Paywall() {
       offline: t.settings.restoreOffline,
       error: t.settings.restoreError,
     };
-    Alert.alert(messages[outcome]);
+    showAlert(messages[outcome]);
   };
 
   const handleOpenLink = async (url: string) => {
@@ -285,7 +283,7 @@ function Paywall() {
       await WebBrowser.openBrowserAsync(url);
     } catch (error) {
       console.warn("[paywall] couldn't open link", error);
-      Alert.alert(t.settings.linkError);
+      showAlert(t.settings.linkError);
     }
   };
 
@@ -321,25 +319,25 @@ function Paywall() {
         <View className="pt-[26px]">
           {state.status === "ready" ? (
             <View className="flex-row gap-[10px]" accessibilityRole="radiogroup">
-              {annual ? (
+              {annualProduct ? (
                 <PlanCard
                   label={t.paywall.yearly}
-                  price={annual.product.priceString}
+                  price={annualProduct.priceString}
                   crossedOutPrice={savedPercent > 0 ? yearAtMonthlyRate : null}
                   detail={
-                    annual.product.pricePerMonthString
-                      ? t.paywall.aMonth(annual.product.pricePerMonthString)
-                      : t.paywall.aMonth(formatPrice(annual.product.price / 12, annual.product.currencyCode, t.locale))
+                    annualProduct.pricePerMonthString
+                      ? t.paywall.aMonth(annualProduct.pricePerMonthString)
+                      : t.paywall.aMonth(formatPrice(annualProduct.price / 12, annualProduct.currencyCode, t.locale))
                   }
                   badge={savedPercent > 0 ? t.paywall.save(savedPercent) : null}
                   selected={selected === annual}
                   onPress={() => setChoice("annual")}
                 />
               ) : null}
-              {monthly ? (
+              {monthlyProduct ? (
                 <PlanCard
                   label={t.paywall.monthly}
-                  price={monthly.product.priceString}
+                  price={monthlyProduct.priceString}
                   detail={t.paywall.perMonth}
                   selected={selected === monthly}
                   onPress={() => setChoice("monthly")}
@@ -418,8 +416,8 @@ function Paywall() {
             style={rtl ? CENTERED_RTL : undefined}
           >
             {trial
-              ? t.paywall.trialTerms(trial.count, trial.unit, selected.product.priceString, selectedIsYearly)
-              : t.paywall.terms(selected.product.priceString, selectedIsYearly)}
+              ? t.paywall.trialTerms(trial.count, trial.unit, selected.package.product.priceString, selectedIsYearly)
+              : t.paywall.terms(selected.package.product.priceString, selectedIsYearly)}
           </Text>
         ) : null}
       </View>

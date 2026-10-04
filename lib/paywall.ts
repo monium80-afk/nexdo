@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { Alert } from "react-native";
 
+import { showAlert } from "@/lib/alert";
 import { translate } from "@/lib/i18n";
 import type { Meter } from "@/lib/plan";
 import { planLimitMessage } from "@/lib/planLimit";
@@ -27,5 +27,5 @@ export function showPlanLimit(meter: Meter, alreadySaid = false) {
     openPaywall(meter);
     return;
   }
-  if (!alreadySaid) Alert.alert(translate().plan.limitTitle, planLimitMessage(meter));
+  if (!alreadySaid) showAlert(translate().plan.limitTitle, planLimitMessage(meter));
 }
