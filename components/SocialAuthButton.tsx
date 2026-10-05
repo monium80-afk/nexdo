@@ -9,9 +9,10 @@ import { useTranslation } from "@/hooks/useTranslation";
 type SocialAuthButtonProps = {
   provider: "google" | "apple";
   onPress?: () => void;
+  disabled?: boolean;
 };
 
-export function SocialAuthButton({ provider, onPress }: SocialAuthButtonProps) {
+export function SocialAuthButton({ provider, onPress, disabled }: SocialAuthButtonProps) {
   const colors = useColors();
   const t = useTranslation();
   const isApple = provider === "apple";
@@ -19,9 +20,11 @@ export function SocialAuthButton({ provider, onPress }: SocialAuthButtonProps) {
   return (
     <AnimatedPressable
       onPress={onPress}
+      disabled={disabled}
       className={`btn flex-row items-center justify-center gap-3 ${
         isApple ? "btn--charcoal-solid" : "bg-cream-50 btn--secondary-cream"
       }`}
+      style={disabled ? { opacity: 0.6 } : null}
     >
       {isApple ? (
         <FontAwesome name="apple" size={20} color={colors.onAccent} />
