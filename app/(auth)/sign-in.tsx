@@ -1,7 +1,7 @@
 import { useSignIn } from "@clerk/expo";
 import { useSSO } from "@clerk/expo/experimental";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +22,7 @@ import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { clerkErrorDetails } from "@/lib/clerk";
 import { posthog } from "@/lib/posthog";
 
 const REVEAL_LAYOUT = LinearTransition.duration(250);
@@ -40,7 +41,17 @@ export default function SignIn() {
   const [modalVisible, setModalVisible] = useState(false);
   const [sendCodeError, setSendCodeError] = useState<string | null>(null);
 
+  // A ref, not state: a second tap can land before the re-render that
+  // disables the buttons, and Clerk rejects a second SSO flow.
+  const socialAuthInFlight = useRef(false);
+  const [pendingProvider, setPendingProvider] = useState<"google" | "apple" | null>(null);
+  const [socialAuthError, setSocialAuthError] = useState<string | null>(null);
+
   const handleSocialAuth = async (provider: "google" | "apple") => {
+    if (socialAuthInFlight.current) return;
+    socialAuthInFlight.current = true;
+    setPendingProvider(provider);
+    setSocialAuthError(null);
     posthog.capture('sign_in_social_tapped', { provider })
     try {
       const { createdSessionId } = await startSSOFlow({
@@ -52,10 +63,18 @@ export default function SignIn() {
       }
     } catch (err) {
       console.error("Social sign-in error:", JSON.stringify(err, null, 2));
+      const { code, longMessage, status } = clerkErrorDetails(err);
       posthog.captureException(err instanceof Error ? err : new Error(String(err)), {
         context: 'sign_in_social',
         provider,
+        clerk_code: code,
+        clerk_long_message: longMessage,
+        clerk_status: status,
       })
+      setSocialAuthError(longMessage ?? t.auth.somethingWrong);
+    } finally {
+      socialAuthInFlight.current = false;
+      setPendingProvider(null);
     }
   };
 
@@ -121,11 +140,20 @@ export default function SignIn() {
               <SocialAuthButton
                 provider="google"
                 onPress={() => handleSocialAuth("google")}
+                disabled={pendingProvider !== null}
+                loading={pendingProvider === "google"}
               />
               <SocialAuthButton
                 provider="apple"
                 onPress={() => handleSocialAuth("apple")}
+                disabled={pendingProvider !== null}
+                loading={pendingProvider === "apple"}
               />
+              {socialAuthError ? (
+                <Text className="text-sm font-grotesk-medium text-overdue-500">
+                  {socialAuthError}
+                </Text>
+              ) : null}
             </View>
 
             <Animated.View layout={REVEAL_LAYOUT} className="mt-5 gap-3">
