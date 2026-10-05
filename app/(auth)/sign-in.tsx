@@ -19,6 +19,7 @@ import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
 import { gradients } from "@/constants/theme";
 import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
+import { useSocialAuthSession } from "@/hooks/useSocialAuthSession";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -35,6 +36,7 @@ export default function SignIn() {
   const enterStyle = useScreenEnterAnimation();
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
+  const socialAuth = useSocialAuthSession();
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -120,11 +122,13 @@ export default function SignIn() {
             <View className="mt-8 gap-3">
               <SocialAuthButton
                 provider="google"
-                onPress={() => handleSocialAuth("google")}
+                onPress={() => socialAuth.start(() => handleSocialAuth("google"))}
+                disabled={socialAuth.pending}
               />
               <SocialAuthButton
                 provider="apple"
-                onPress={() => handleSocialAuth("apple")}
+                onPress={() => socialAuth.start(() => handleSocialAuth("apple"))}
+                disabled={socialAuth.pending}
               />
             </View>
 

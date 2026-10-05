@@ -15,6 +15,7 @@ const EXTENSIONS = [".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.js"];
 const STUBS = {
   "react-native": "tests/stubs/react-native.ts",
   "@react-native-async-storage/async-storage": "tests/stubs/async-storage.ts",
+  "expo-web-browser": "tests/stubs/web-browser.ts",
   "@/lib/supabase": "tests/stubs/supabase.ts",
   "@/lib/api": "tests/stubs/api.ts",
   "@/lib/notifications": "tests/stubs/noop.ts",
