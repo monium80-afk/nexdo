@@ -7,6 +7,4 @@ export function dismissAuthSession() {
   dismissCalls.count += 1;
 }
 
-export function maybeCompleteAuthSession() {
-  return { type: "failed", message: "Not supported on this platform" };
-}
+export function maybeCompleteAuthSession() {}

@@ -20,15 +20,14 @@ export function dismissAuthSession() {
  * Runs `flow` unless another Google/Apple sign-in is still open. expo-web-browser
  * holds one auth session for the whole app: a second tap while the browser is
  * open throws on Android, because the first session's redirect handler is
- * still set. Returns false when it skipped `flow`.
+ * still set.
  */
-export async function runAuthSession(flow: () => Promise<void>): Promise<boolean> {
-  if (inFlight) return false;
+export async function runAuthSession(flow: () => Promise<void>) {
+  if (inFlight) return;
   inFlight = true;
   try {
     dismissAuthSession();
     await flow();
-    return true;
   } finally {
     inFlight = false;
   }

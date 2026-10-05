@@ -1,6 +1,4 @@
 /// <reference types="node" />
-// Google/Apple sign-in, one at a time: a second tap while the browser is
-// still open must not start a second auth session.
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { Platform } from "react-native";
@@ -20,7 +18,7 @@ function openFlow() {
     runs += 1;
     await done;
   };
-  return { flow, finish: () => finish(), runs: () => runs };
+  return { flow, finish, runs: () => runs };
 }
 
 afterEach(() => {
@@ -29,33 +27,25 @@ afterEach(() => {
 });
 
 describe("runAuthSession", () => {
-  it("skips a second tap while the first sign-in is open", async () => {
+  it("skips a second tap while the first sign-in is open, then runs the next one", async () => {
     const first = openFlow();
     const second = openFlow();
+    const third = openFlow();
 
     const firstRun = runAuthSession(first.flow);
-    assert.equal(await runAuthSession(second.flow), false);
+    await runAuthSession(second.flow);
     assert.equal(second.runs(), 0);
+    assert.equal(dismissCalls.count, 1);
 
-    first.finish();
-    assert.equal(await firstRun, true);
-    assert.equal(first.runs(), 1);
-  });
-
-  it("starts a new sign-in once the last one ends", async () => {
-    const first = openFlow();
-    const firstRun = runAuthSession(first.flow);
     first.finish();
     await firstRun;
-
-    const second = openFlow();
-    const secondRun = runAuthSession(second.flow);
-    second.finish();
-    assert.equal(await secondRun, true);
-    assert.equal(second.runs(), 1);
+    third.finish();
+    await runAuthSession(third.flow);
+    assert.equal(first.runs(), 1);
+    assert.equal(third.runs(), 1);
   });
 
-  it("starts a new sign-in after the last one throws", async () => {
+  it("runs the next sign-in after the last one throws", async () => {
     await assert.rejects(
       runAuthSession(async () => {
         throw new Error("cancelled");
@@ -63,17 +53,9 @@ describe("runAuthSession", () => {
     );
 
     const next = openFlow();
-    const nextRun = runAuthSession(next.flow);
     next.finish();
-    assert.equal(await nextRun, true);
-  });
-
-  it("closes a sheet left open before it starts", async () => {
-    const flow = openFlow();
-    const run = runAuthSession(flow.flow);
-    assert.equal(dismissCalls.count, 1);
-    flow.finish();
-    await run;
+    await runAuthSession(next.flow);
+    assert.equal(next.runs(), 1);
   });
 });
 
