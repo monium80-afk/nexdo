@@ -3,11 +3,12 @@ import { Feather } from "@expo/vector-icons";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View, type TextStyle } from "react-native";
+import { ScrollView, Text, View, type TextStyle } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { PrimaryButton, SecondaryButton } from "@/components/Button";
+import { PrimaryButton } from "@/components/Button";
+import { chosenPlan, PlanPicker, type PlanChoice, type PlansState } from "@/components/PlanPicker";
 import { SUPPORT_LINKS } from "@/constants/support";
 import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
@@ -17,13 +18,9 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, type Meter, type Plan } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
-import { loadProPlans, purchasePlan, restorePurchases, type ProPlan, type ProPlans } from "@/lib/purchases";
+import { billedYearly, loadProPlans, purchasePlan, restorePurchases } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
-
-type PlanChoice = "annual" | "monthly";
-
-type PlansState = { status: "loading" } | { status: "error" } | { status: "ready"; plans: ProPlans };
 
 // The order the comparison lists what a plan counts in.
 const COMPARED: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
@@ -34,89 +31,6 @@ const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
 // Centred Arabic: read right to left, but kept in the middle (useRtlText
 // would pull it to the right edge).
 const CENTERED_RTL: TextStyle = { writingDirection: "rtl" };
-
-/**
- * Whether the store bills this plan once a year — what its renewal line says.
- * Read from the product's own billing period; the plan's slot in the offering
- * only fills in when the store doesn't give one.
- */
-function billedYearly(plan: ProPlan, inAnnualSlot: boolean): boolean {
-  const period = plan.package.product.subscriptionPeriod;
-  return period ? period === "P1Y" || period === "P12M" : inAnnualSlot;
-}
-
-/** A price worked out here (a year at the monthly rate) rather than given by the store. */
-function formatPrice(amount: number, currencyCode: string, locale: string): string {
-  try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currencyCode}`;
-  }
-}
-
-/** One selectable plan: charcoal with an orange edge once picked, sunk into the page otherwise. */
-function PlanCard({
-  label,
-  price,
-  crossedOutPrice,
-  detail,
-  badge,
-  selected,
-  onPress,
-}: {
-  label: string;
-  price: string;
-  /** What the same year costs paid monthly — struck through beside the yearly price. */
-  crossedOutPrice?: string | null;
-  detail: string;
-  badge?: string | null;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const rtl = useRtlText();
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      scaleTo={0.98}
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      style={selected ? gradients.charcoalCard : undefined}
-      className={`flex-1 gap-0.5 rounded-[20px] border-2 px-[15px] pb-[14px] pt-[16px] ${
-        selected ? "border-orange-500 bg-charcoal-900" : "border-cream-300 bg-cream-200/60"
-      }`}
-    >
-      {badge ? (
-        <View className="absolute -top-[12px] left-[14px] rounded-full bg-orange-500 px-[10px] py-[3px]" style={gradients.accent}>
-          <Text className="font-grotesk-bold text-[11px] text-on-accent">{badge}</Text>
-        </View>
-      ) : null}
-      <Text
-        className={`font-grotesk-bold text-[14px] ${selected ? "text-ink-charcoal-muted" : "text-ink-cream-muted"}`}
-        style={rtl}
-      >
-        {label}
-      </Text>
-      {/* Wraps on a narrow phone, so a long price never squeezes the one beside
-          it. In Arabic the row starts from the right, like the lines around it. */}
-      <View className={`flex-wrap items-baseline gap-x-1.5 ${rtl ? "flex-row-reverse" : "flex-row"}`}>
-        <Text className={`font-grotesk-bold text-[22px] ${selected ? "text-ink-charcoal" : "text-ink-cream"}`}>{price}</Text>
-        {crossedOutPrice ? (
-          <Text
-            className={`font-grotesk-medium text-[12px] line-through ${selected ? "text-ink-charcoal-muted" : "text-ink-cream-subtle"}`}
-          >
-            {crossedOutPrice}
-          </Text>
-        ) : null}
-      </View>
-      <Text
-        className={`font-grotesk-medium text-[12.5px] ${selected ? "text-ink-charcoal-muted" : "text-ink-cream-muted"}`}
-        style={rtl}
-      >
-        {detail}
-      </Text>
-    </AnimatedPressable>
-  );
-}
 
 /**
  * One line of the Free vs Pro comparison. The Pro cells are charcoal and
@@ -225,22 +139,9 @@ function Paywall() {
   }, [isPro, close]);
 
   const plans = state.status === "ready" ? state.plans : null;
-  const monthly = plans?.monthly ?? null;
-  const annual = plans?.annual ?? null;
-  const selected = choice === "annual" ? (annual ?? monthly) : (monthly ?? annual);
-  const selectedIsYearly = selected !== null && billedYearly(selected, selected === annual);
+  const selected = plans ? chosenPlan(plans, choice) : null;
+  const selectedIsYearly = plans !== null && selected !== null && billedYearly(selected, plans);
   const trial = selected?.trial ?? null;
-  const monthlyProduct = monthly?.package.product ?? null;
-  const annualProduct = annual?.package.product ?? null;
-
-  // A year paid monthly, to set the yearly price against.
-  const yearAtMonthlyRate = monthlyProduct
-    ? (monthlyProduct.pricePerYearString ?? formatPrice(monthlyProduct.price * 12, monthlyProduct.currencyCode, t.locale))
-    : null;
-  const savedPercent =
-    monthlyProduct && annualProduct && monthlyProduct.price > 0
-      ? Math.round((1 - annualProduct.price / (monthlyProduct.price * 12)) * 100)
-      : 0;
 
   const limitLabel = (plan: Plan, meter: Meter) => {
     if (PLAN_LIMITS[plan][meter] === 0) return "–";
@@ -317,51 +218,7 @@ function Paywall() {
 
         {/* Room above the cards for the badge that sits on the yearly one's edge. */}
         <View className="pt-[26px]">
-          {state.status === "ready" ? (
-            <View className="flex-row gap-[10px]" accessibilityRole="radiogroup">
-              {annualProduct ? (
-                <PlanCard
-                  label={t.paywall.yearly}
-                  price={annualProduct.priceString}
-                  crossedOutPrice={savedPercent > 0 ? yearAtMonthlyRate : null}
-                  detail={
-                    annualProduct.pricePerMonthString
-                      ? t.paywall.aMonth(annualProduct.pricePerMonthString)
-                      : t.paywall.aMonth(formatPrice(annualProduct.price / 12, annualProduct.currencyCode, t.locale))
-                  }
-                  badge={savedPercent > 0 ? t.paywall.save(savedPercent) : null}
-                  selected={selected === annual}
-                  onPress={() => setChoice("annual")}
-                />
-              ) : null}
-              {monthlyProduct ? (
-                <PlanCard
-                  label={t.paywall.monthly}
-                  price={monthlyProduct.priceString}
-                  detail={t.paywall.perMonth}
-                  selected={selected === monthly}
-                  onPress={() => setChoice("monthly")}
-                />
-              ) : null}
-            </View>
-          ) : (
-            // Same height as the cards, so the page doesn't jump when they arrive.
-            <View className="min-h-[96px] items-center justify-center gap-3 rounded-[20px] border-2 border-cream-300 bg-cream-200/60 px-4 py-3">
-              {state.status === "loading" ? (
-                <>
-                  <ActivityIndicator color={colors.orange[500]} />
-                  <Text className="font-grotesk-medium text-[13px] text-ink-cream-muted">{t.paywall.loading}</Text>
-                </>
-              ) : (
-                <>
-                  <Text className="text-center font-grotesk-medium text-[13px] text-ink-cream-muted" style={rtl}>
-                    {t.paywall.loadError}
-                  </Text>
-                  <SecondaryButton icon="refresh-cw" label={t.paywall.retry} onPress={handleRetry} />
-                </>
-              )}
-            </View>
-          )}
+          <PlanPicker state={state} choice={choice} onChoose={setChoice} onRetry={handleRetry} badge={t.paywall.save} />
         </View>
 
         <View className="pt-5">

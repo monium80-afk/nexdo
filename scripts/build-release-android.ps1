@@ -40,6 +40,12 @@ $googleKey = $dotenv["EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY"]
 if (-not $googleKey -or -not $googleKey.StartsWith("goog_")) {
   throw "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY in .env must be RevenueCat's Google Play key (goog_...)"
 }
+# Store builds sign people in to Clerk's production instance (clerk.getnexdo.app).
+# A development key (pk_test_) would put real users in the test instance.
+$clerkKey = $dotenv["EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"]
+if (-not $clerkKey -or -not $clerkKey.StartsWith("pk_live_")) {
+  throw "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in .env must be Clerk's production key (pk_live_...)"
+}
 
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 $env:GRADLE_USER_HOME = Join-Path $cache "gradle"
@@ -86,6 +92,7 @@ if (-not $js.Contains($googleKey)) { throw "The bundle doesn't hold the RevenueC
 $testKey = $dotenv["EXPO_PUBLIC_REVENUECAT_TEST_API_KEY"]
 if ($testKey -and $js.Contains($testKey)) { throw "The bundle holds the RevenueCat Test Store key - don't upload it" }
 if (-not $js.Contains($env:EXPO_PUBLIC_API_URL)) { throw "The bundle doesn't point at $env:EXPO_PUBLIC_API_URL" }
+if (-not $js.Contains($clerkKey)) { throw "The bundle doesn't hold Clerk's production key from .env" }
 
 $config = Get-Content (Join-Path $project "app.json") -Raw | ConvertFrom-Json
 $name = "nexdo-$($config.expo.version)-$($config.expo.android.versionCode).aab"

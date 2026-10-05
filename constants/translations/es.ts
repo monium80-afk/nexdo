@@ -455,6 +455,35 @@ export const es: Translations = {
       silence: "Dejé de escuchar tras un momento de silencio — toca Hablar de nuevo para seguir.",    },
   },
 
+  tour: {
+    next: "Siguiente",
+    done: "Entendido",
+    skip: "Saltar",
+    stepOf: (step: number, total: number) => `Paso ${step} de ${total}`,
+    steps: {
+      next: {
+        title: "Tu próximo paso",
+        body: "Nexdo pone arriba la tarea que más vale la pena hacer ahora. Desliza para ver las demás, o toca Empezar sesión para concentrarte.",
+      },
+      tasks: {
+        title: "Todas tus tareas",
+        body: "Todo lo que tienes pendiente, en una sola lista. Toca una tarea para cambiarla y márcala cuando la termines.",
+      },
+      add: {
+        title: "Añadir una tarea",
+        body: "Toca + para añadir una. Nexdo decide dónde encaja en tu plan.",
+      },
+      voice: {
+        title: "Micro mágico",
+        body: "Toca el micro y habla, sin más: Nexdo añade y cambia tareas mientras hablas.",
+      },
+      assistant: {
+        title: "Solo díselo a Nexdo",
+        body: "Escribe, habla o envía una foto. El Asistente lo convierte en tareas y ajusta tu plan cuando algo cambia.",
+      },
+    },
+  },
+
   assistant: {
     foundOne: (title: string) => `He encontrado 1 tarea: «${title}». ¿La añado?`,
     foundMany: (count: number, titles: string) => `He encontrado ${count} tareas: ${titles}. ¿Las añado?`,
@@ -677,6 +706,8 @@ export const es: Translations = {
     support: "AYUDA Y SOPORTE",
     help: "Preguntas frecuentes / Ayuda",
     helpBody: "Respuestas a preguntas frecuentes, o escríbenos.",
+    tour: "Recorrido por la app",
+    tourBody: "Un vistazo rápido a Nexdo.",
     sendFeedback: "Enviar comentarios",
     privacy: "Política de privacidad",
     terms: "Condiciones del servicio",
@@ -796,6 +827,8 @@ export const es: Translations = {
       `${count} ${plural(count, "tarea vence", "tareas vencen")} hoy.${top ? ` Empieza por «${top}».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "tarea abierta", "tareas abiertas")}.${top ? ` Empieza por «${top}».` : ""}`,
+    trialEndingTitle: "Tu prueba gratis termina en 2 días",
+    trialEndingBody: (date: string) => `Nexdo Pro empieza el ${date}. ¿No lo quieres? Cancélalo antes desde Ajustes.`,
   },
 
   profile: {
@@ -917,6 +950,46 @@ export const es: Translations = {
     thinking: "Pensando un consejo…",
     nothing: "Todavía no hay nada que decidir. Añade una tarea cuando todo esté listo y Nexdo elegirá por ti.",
     next: "Tiene sentido",
+  },
+
+  onboardingNotify: {
+    headline: "Un aviso, justo cuando importa.",
+    body: "No cincuenta notificaciones. Solo la que te mantiene al día.",
+    sampleTime: "ahora",
+    sampleBody: "Tu tarea de química es para mañana. ¿Empiezas ahora?",
+    allow: "Permitir notificaciones",
+    notNow: "Ahora no",
+  },
+
+  onboardingTrial: {
+    headline: "Esto es exactamente lo que pasa.",
+    body: "Sin sorpresas. Sin adivinar cuándo se te cobrará.",
+    today: "HOY",
+    day: (day: number) => `DÍA ${day}`,
+    anytime: "CUANDO QUIERAS",
+    startTitle: "Empieza tu prueba gratis",
+    startBody: "Acceso completo a Nexdo Pro. Sin cargos.",
+    remindTitle: "Te lo recordamos",
+    remindBody: "Un aviso 2 días antes de que acabe la prueba — tiempo de sobra para decidir.",
+    endTitle: "Termina la prueba",
+    endBody: (price: string, yearly: boolean) =>
+      `Se cobra ${price}/${yearly ? "año" : "mes"} — o cancela antes y no pagas nada.`,
+    cancelTitle: "Cancela cuando quieras",
+    cancelBody: "Desde Ajustes. Sin llamadas ni formularios.",
+    next: "Continuar",
+  },
+
+  onboardingPaywall: {
+    headline: "Esto es lo que incluye.",
+    body: "El plan gratis cubre lo básico. Pro le da a la IA de Nexdo mucho más margen, cada mes:",
+    bestValue: (percent: number) => `MEJOR OPCIÓN · AHORRA ${percent} %`,
+    features: {
+      chat: (count: number) => `${count} mensajes al chat de IA`,
+      media: (count: number) => `${count} fotos y documentos`,
+      voice: (minutes: number) => `${minutes} min de notas de voz`,
+      live: (minutes: number) => `${minutes} min de Micro mágico`,
+      assist: (count: number) => `${count} desgloses y consejos`,
+    },
   },
 
   auth: {

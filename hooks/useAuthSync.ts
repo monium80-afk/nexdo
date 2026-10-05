@@ -150,10 +150,13 @@ export function useAuthSync() {
       subscribeChat(userId);
       await waitForOnboardingHydration();
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
+      // Read before the claim, which clears it.
+      const { sawPaywall } = useOnboardingStore.getState();
       const savedDrafts = claimOnboardingDrafts(isNewAccount(clerk.user?.createdAt, clerk.session?.createdAt));
       // The end of setup for a new account: the tasks from its brain dump are
-      // on the list, and this is the one moment Pro is offered unasked.
-      if (savedDrafts && isPurchasesEnabled) openPaywall();
+      // on the list, and this is the one moment Pro is offered unasked —
+      // unless onboarding's own plans step already did, just before sign-up.
+      if (savedDrafts && isPurchasesEnabled && !sawPaywall) openPaywall();
     });
     // Magic mic sessions whose usage couldn't be reported when they ended
     // (lib/liveUsageReports.ts) — until it is, each counts in full.

@@ -4,13 +4,17 @@ import Purchases, {
   LOG_LEVEL,
   PURCHASES_ERROR_CODE,
   type CustomerInfo,
+  type PurchasesEntitlementInfo,
   type PurchasesError,
   type PurchasesPackage,
 } from "react-native-purchases";
 import RevenueCatUI from "react-native-purchases-ui";
 
 import { storeTrial, type FreeTrial } from "@/lib/freeTrial";
+import { translate } from "@/lib/i18n";
+import { setTrialReminder } from "@/lib/notifications";
 import { PRO_ENTITLEMENT } from "@/lib/plan";
+import { trialReminderTime } from "@/lib/trialReminder";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
 // Nexdo Pro through RevenueCat. The two subscriptions (monthly, yearly), their
@@ -42,39 +46,84 @@ function enqueue(task: () => Promise<void>) {
   return queue;
 }
 
+// When the trial reminder was last set for, so an unchanged trial isn't
+// rescheduled on every refresh. Undefined until the first customer info.
+let trialReminderAt: number | null | undefined;
+
+/**
+ * Keeps the "your trial ends in 2 days" notification in step with the
+ * subscription: set while a free trial is running and will renew, gone once
+ * it's cancelled, paid for or over.
+ */
+function syncTrialReminder(pro: PurchasesEntitlementInfo | null) {
+  const fireAt = trialReminderTime(pro, Date.now());
+  if (fireAt === trialReminderAt) return;
+  trialReminderAt = fireAt;
+  if (fireAt === null || !pro?.expirationDate) {
+    void setTrialReminder(null);
+    return;
+  }
+  const t = translate();
+  const endDate = new Date(pro.expirationDate).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
+  void setTrialReminder({ fireAt, title: t.notifications.trialEndingTitle, body: t.notifications.trialEndingBody(endDate) });
+}
+
 function publish(customerInfo: CustomerInfo | null) {
-  useSubscriptionStore.setState({
-    customerInfo,
-    pro: customerInfo?.entitlements.active[PRO_ENTITLEMENT] ?? null,
-  });
+  const pro = customerInfo?.entitlements.active[PRO_ENTITLEMENT] ?? null;
+  useSubscriptionStore.setState({ customerInfo, pro });
+  syncTrialReminder(pro);
 }
 
 function errorCode(error: unknown): PURCHASES_ERROR_CODE | undefined {
   return typeof error === "object" && error !== null && "code" in error ? (error as PurchasesError).code : undefined;
 }
 
+/** Starts RevenueCat — as this account, or, without one, as an anonymous user of its own. */
+function configure(apiKey: string, appUserID?: string) {
+  void Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.INFO : LOG_LEVEL.WARN);
+  Purchases.configure(appUserID ? { apiKey, appUserID } : { apiKey });
+  // Renewals, cancellations and purchases made elsewhere all arrive here
+  // on iOS and Android. Expo Go and web never call it, which is why every
+  // action below also refreshes by hand.
+  Purchases.addCustomerInfoUpdateListener(publish);
+  configured = true;
+}
+
 /**
  * Ties RevenueCat to the signed-in Clerk account, so Pro follows the account
- * to any phone it signs in on. Set up on the first sign-in rather than at
- * launch: nothing reaches RevenueCat for someone who never makes an account.
+ * to any phone it signs in on. Set up at sign-in — or a little earlier, at
+ * onboarding's paywall (startAnonymousPurchaser) — rather than at launch:
+ * nothing reaches RevenueCat for someone who never gets that far.
  */
 export function identifyPurchaser(userId: string) {
   if (!API_KEY) return Promise.resolve();
   const apiKey = API_KEY;
   return enqueue(async () => {
     if (!configured) {
-      void Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.INFO : LOG_LEVEL.WARN);
-      Purchases.configure({ apiKey, appUserID: userId });
-      // Renewals, cancellations and purchases made elsewhere all arrive here
-      // on iOS and Android. Expo Go and web never call it, which is why every
-      // action below also refreshes by hand.
-      Purchases.addCustomerInfoUpdateListener(publish);
-      configured = true;
+      configure(apiKey, userId);
     } else if ((await Purchases.getAppUserID()) !== userId) {
+      // From onboarding's anonymous user too: logging in a new account carries
+      // a subscription bought before sign-up over to it.
       const { customerInfo } = await Purchases.logIn(userId);
       publish(customerInfo);
       return;
     }
+    publish(await Purchases.getCustomerInfo());
+  });
+}
+
+/**
+ * For onboarding's paywall, which comes before there's an account to tie
+ * RevenueCat to: it starts on an anonymous user of its own, and signing up
+ * then logs that user in as the new account (identifyPurchaser), taking a
+ * subscription bought here along. Does nothing once RevenueCat is running.
+ */
+export function startAnonymousPurchaser() {
+  if (!API_KEY) return Promise.resolve();
+  const apiKey = API_KEY;
+  return enqueue(async () => {
+    if (configured) return;
+    configure(apiKey);
     publish(await Purchases.getCustomerInfo());
   });
 }
@@ -150,6 +199,41 @@ export async function loadProPlans(): Promise<ProPlans> {
   const withTrial = (plan: PurchasesPackage | null | undefined): ProPlan | null =>
     plan ? { package: plan, trial: eligible.has(plan.product.identifier) ? storeTrial(plan.product) : null } : null;
   return { monthly: withTrial(current?.monthly), annual: withTrial(current?.annual) };
+}
+
+let onboardingPlans: Promise<ProPlans> | null = null;
+
+/**
+ * The plans for onboarding's last steps, loaded once and shared: the
+ * notifications step starts the load, so the trial timeline and the paywall
+ * after it open ready. Starts RevenueCat if it isn't yet — there's no account
+ * at that point. A failed load is forgotten, so asking again retries.
+ */
+export function loadOnboardingPlans(): Promise<ProPlans> {
+  onboardingPlans ??= startAnonymousPurchaser()
+    .then(loadProPlans)
+    .catch((error: unknown) => {
+      onboardingPlans = null;
+      throw error;
+    });
+  return onboardingPlans;
+}
+
+/** The plan with a free trial — the yearly one if both have one. Onboarding's trial timeline describes it, and its paywall starts on it. */
+export function trialPlanOf(plans: ProPlans): ProPlan | null {
+  if (plans.annual?.trial) return plans.annual;
+  if (plans.monthly?.trial) return plans.monthly;
+  return null;
+}
+
+/**
+ * Whether the store bills this plan once a year — what its renewal line says.
+ * Read from the product's own billing period; the plan's slot in the offering
+ * only fills in when the store doesn't give one.
+ */
+export function billedYearly(plan: ProPlan, plans: ProPlans): boolean {
+  const period = plan.package.product.subscriptionPeriod;
+  return period ? period === "P1Y" || period === "P12M" : plan === plans.annual;
 }
 
 export type PurchaseOutcome = "purchased" | "cancelled" | "pending" | "offline" | "error";

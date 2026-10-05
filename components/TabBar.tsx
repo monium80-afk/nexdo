@@ -1,10 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
-import type { ComponentProps } from "react";
+import { useCallback, useRef, useState, type ComponentProps } from "react";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { AppTour, type TourAnchor } from "@/components/AppTour";
 import { gradients } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -54,7 +55,14 @@ function TabIcon({
 
 // A plus that opens the Add Task form, or — with "Magic mic" on in
 // Settings — a microphone that opens Live voice. Same button either way.
-function AddTabButton({ onShowTasks }: { onShowTasks: () => void }) {
+function AddTabButton({
+  onShowTasks,
+  onAnchor,
+}: {
+  onShowTasks: () => void;
+  /** Its centre along the bar, for the first-run tour to point at. */
+  onAnchor: (x: number) => void;
+}) {
   const colors = useColors();
   const router = useRouter();
   const t = useTranslation();
@@ -84,6 +92,10 @@ function AddTabButton({ onShowTasks }: { onShowTasks: () => void }) {
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={voice ? t.live.open : t.tabs.addTask}
+      onLayout={(event) => {
+        const { x, width } = event.nativeEvent.layout;
+        onAnchor(x + width / 2);
+      }}
       className="items-center"
     >
       {/* A glowing orange coin: lit at the top, casting its light on the bar. */}
@@ -120,11 +132,14 @@ function StandardTabButton({
   routeName,
   focused,
   onPress,
+  onAnchor,
   edgeClassName,
 }: {
   routeName: TabRouteName;
   focused: boolean;
   onPress: () => void;
+  /** The icon's centre along the bar, for the first-run tour to point at. */
+  onAnchor: (x: number) => void;
   /** Extra padding nudging the icon away from the centered Add button. */
   edgeClassName?: string;
 }) {
@@ -133,6 +148,14 @@ function StandardTabButton({
   // Orange is kept for the Add button and the small dot under the active tab,
   // so the selected icon doesn't compete with Add for attention.
   const tintColor = focused ? colors.ink.charcoal : IDLE_ICON;
+  // The icon's centre is the column's place on the bar plus the icon's place
+  // in the column (its edge padding moves it off-centre), each reported by
+  // its own layout — passed on once both are in.
+  const columnX = useRef<number | null>(null);
+  const iconCenter = useRef<number | null>(null);
+  const reportAnchor = () => {
+    if (columnX.current !== null && iconCenter.current !== null) onAnchor(columnX.current + iconCenter.current);
+  };
 
   return (
     <AnimatedPressable
@@ -141,10 +164,20 @@ function StandardTabButton({
       accessibilityRole="tab"
       accessibilityLabel={t.tabs[TAB_LABEL_KEYS[routeName]]}
       accessibilityState={{ selected: focused }}
+      onLayout={(event) => {
+        columnX.current = event.nativeEvent.layout.x;
+        reportAnchor();
+      }}
       // Full bar height, so the whole column is the touch target, not just the icon.
       className={`flex-1 items-center justify-center self-stretch ${edgeClassName ?? ""}`}
     >
-      <View>
+      <View
+        onLayout={(event) => {
+          const { x, width } = event.nativeEvent.layout;
+          iconCenter.current = x + width / 2;
+          reportAnchor();
+        }}
+      >
         <TabIcon routeName={routeName} color={tintColor} size={22} />
         {routeName === "tasks" && <PendingTaskBadge />}
         {/* Out of flow so every icon sits on the same line as the Add button. */}
@@ -182,6 +215,12 @@ const BAR_SHADOW = { boxShadow: "0 -10px 24px -12px rgba(30, 16, 6, 0.35)" };
 
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  // Where each slot's icon sits along the bar, for the first-run tour.
+  const [anchors, setAnchors] = useState<Partial<Record<TourAnchor | TabRouteName, number>>>({});
+  const setAnchor = useCallback((slot: TourAnchor | TabRouteName, x: number) => {
+    setAnchors((current) => (current[slot] === x ? current : { ...current, [slot]: x }));
+  }, []);
+  const showTab = useCallback((name: TabRouteName) => navigation.navigate(name), [navigation]);
 
   const renderRoute = (route: TabBarProps["state"]["routes"][number], index: number, edgeClassName?: string) => {
     const focused = state.index === index;
@@ -205,6 +244,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
         routeName={routeName}
         focused={focused}
         onPress={onPress}
+        onAnchor={(x) => setAnchor(routeName, x)}
         edgeClassName={edgeClassName}
       />
     );
@@ -223,21 +263,30 @@ export function TabBar({ state, navigation }: TabBarProps) {
   // tab page reaches the bottom of the screen, so its corners curve away into
   // the page itself.
   return (
-    <View
-      className="absolute bottom-0 left-0 right-0 rounded-t-[30px] border-t border-white/10 bg-charcoal-900"
-      style={[{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }, BAR_SHADOW]}
+    <AppTour
+      anchors={anchors}
+      barHeight={BAR_HEIGHT + insets.bottom}
+      iconY={insets.bottom + BAR_HEIGHT / 2}
+      currentTab={state.routes[state.index]?.name}
+      onShowTab={showTab}
     >
-      <View className="flex-1 flex-row items-center px-4">
-        {renderRoute(first, 0)}
-        {renderRoute(second, 1, "pr-3")}
-        <AddTabButton
-          onShowTasks={() => {
-            if (state.routes[state.index]?.name !== "tasks") navigation.navigate("tasks");
-          }}
-        />
-        {renderRoute(third, 2, "pl-3")}
-        {renderRoute(fourth, 3)}
+      <View
+        className="absolute bottom-0 left-0 right-0 rounded-t-[30px] border-t border-white/10 bg-charcoal-900"
+        style={[{ height: BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }, BAR_SHADOW]}
+      >
+        <View className="flex-1 flex-row items-center px-4">
+          {renderRoute(first, 0)}
+          {renderRoute(second, 1, "pr-3")}
+          <AddTabButton
+            onShowTasks={() => {
+              if (state.routes[state.index]?.name !== "tasks") navigation.navigate("tasks");
+            }}
+            onAnchor={(x) => setAnchor("add", x)}
+          />
+          {renderRoute(third, 2, "pl-3")}
+          {renderRoute(fourth, 3)}
+        </View>
       </View>
-    </View>
+    </AppTour>
   );
 }

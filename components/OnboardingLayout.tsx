@@ -42,6 +42,7 @@ export function OnboardingLayout({
   centered = false,
   mark,
   nextLabel,
+  beforeNext,
   footer,
   inlineFooter = false,
   leaving = false,
@@ -67,6 +68,12 @@ export function OnboardingLayout({
    */
   nextLabel?: string;
   /**
+   * Runs when the labelled button is pressed, before the step leaves — for a
+   * question the step asks on the way out (notification permission), so the
+   * system prompt shows over this step rather than over a blank screen.
+   */
+  beforeNext?: () => Promise<unknown>;
+  /**
    * Replaces the standard action with one the step draws itself — for a
    * control that has more than one state. It is handed the same "leave this
    * step" callback the standard button uses, so the exit still runs.
@@ -85,10 +92,12 @@ export function OnboardingLayout({
   leaving?: boolean;
   /**
    * A quiet text link under the step's action — for a way out that shouldn't
-   * compete with it (the first step's "I already have an account"). It leaves
-   * straight away, without the step's exit animation.
+   * compete with it. With `onPress` (the first step's "I already have an
+   * account") it leaves straight away, without the step's exit animation;
+   * without, it's a second way on ("Not now"): the same exit and `onNext` as
+   * the main button, minus `beforeNext`.
    */
-  secondaryAction?: { label: string; onPress: () => void };
+  secondaryAction?: { label: string; onPress?: () => void };
   children: ReactNode;
 }) {
   const colors = useColors();
@@ -106,6 +115,21 @@ export function OnboardingLayout({
   // Derived rather than mirrored, so a step that finishes on its own and a
   // step someone pressed drive the exit through exactly the same path.
   const phase: "entering" | "leaving" = pressed || leaving ? "leaving" : "entering";
+  // While beforeNext runs: the button is taken, but the step hasn't left yet.
+  const [preparing, setPreparing] = useState(false);
+
+  const handleNextPress = async () => {
+    if (preparing) return;
+    if (beforeNext) {
+      setPreparing(true);
+      try {
+        await beforeNext();
+      } finally {
+        setPreparing(false);
+      }
+    }
+    setPressed(true);
+  };
 
   // Held in a ref so that it is not a dependency of the effect below: a step
   // re-rendering for its own reasons (onboarding-sort measures its
@@ -207,17 +231,7 @@ export function OnboardingLayout({
           {footer ? (
             <View className={inlineFooter ? "pt-6" : "pt-4"}>{footer(() => setPressed(true))}</View>
           ) : nextLabel ? (
-            <AnimatedPressable
-              onPress={() => setPressed(true)}
-              scaleTo={0.97}
-              accessibilityRole="button"
-              accessibilityLabel={nextLabel}
-              style={gradients.accent}
-              className="btn btn--primary mt-4 gap-3 rounded-full"
-            >
-              <Text className="font-grotesk-bold text-xl text-on-accent">{nextLabel}</Text>
-              <Feather name="arrow-right" size={20} color={colors.onAccent} />
-            </AnimatedPressable>
+            <OnboardingButton label={nextLabel} onPress={() => void handleNextPress()} className="mt-4" />
           ) : (
             /* Kept small and low-contrast on purpose: the step's illustration is
                what there is to look at, and 44px is still a full touch target. */
@@ -237,7 +251,8 @@ export function OnboardingLayout({
 
           {secondaryAction ? (
             <AnimatedPressable
-              onPress={secondaryAction.onPress}
+              onPress={secondaryAction.onPress ?? (() => setPressed(true))}
+              disabled={preparing}
               scaleTo={0.98}
               hitSlop={8}
               accessibilityRole="button"
@@ -250,5 +265,39 @@ export function OnboardingLayout({
       </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * The full-width, glowing button an onboarding step ends in. Exported for a
+ * step that draws its own footer (the plans step) but keeps the same action.
+ */
+export function OnboardingButton({
+  label,
+  onPress,
+  disabled = false,
+  className = "",
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  /** Layout from the caller, e.g. a top margin. */
+  className?: string;
+}) {
+  const colors = useColors();
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      disabled={disabled}
+      scaleTo={0.97}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={gradients.accent}
+      className={`btn btn--primary gap-3 rounded-full ${disabled ? "opacity-60" : ""} ${className}`}
+    >
+      <Text className="font-grotesk-bold text-xl text-on-accent">{label}</Text>
+      <Feather name="arrow-right" size={20} color={colors.onAccent} />
+    </AnimatedPressable>
   );
 }

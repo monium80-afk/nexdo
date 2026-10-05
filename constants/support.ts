@@ -1,11 +1,11 @@
 /**
  * Where the Support section in Settings points.
  *
- * The site runs on Cloudflare's workers.dev address. Nexdo doesn't own
- * nexdo.app — never point this there. If Nexdo gets a domain of its own,
- * change it here: everything lives here so it's a one-file change.
+ * getnexdo.app is Nexdo's own domain (bought 2026-10-04, on Cloudflare,
+ * where the site is hosted). nexdo.app belongs to someone else — never point
+ * this there. Everything lives here, so a change of address is a one-file change.
  */
-const WEBSITE_URL = "https://nexdo.moumoubi938.workers.dev";
+const WEBSITE_URL = "https://getnexdo.app";
 
 export const SUPPORT_LINKS = {
   // FAQ, the support email and a message form, all on one page.

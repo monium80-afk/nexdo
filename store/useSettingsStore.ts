@@ -33,6 +33,8 @@ type SettingsStore = {
   importantExtraReminder: boolean;
   /** Whether Nexdo has already asked for notification permission on its own (it asks once, when a first deadline needs a reminder). */
   notificationPromptShown: boolean;
+  /** Whether the first-run tour (components/AppTour.tsx) has been finished or skipped on this phone. */
+  tourSeen: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;
   setAiAutoMode: (aiAutoMode: boolean) => void;
@@ -45,6 +47,7 @@ type SettingsStore = {
   toggleReminderOffset: (minutes: number) => void;
   setImportantExtraReminder: (importantExtraReminder: boolean) => void;
   setNotificationPromptShown: (notificationPromptShown: boolean) => void;
+  setTourSeen: (tourSeen: boolean) => void;
 };
 
 /** The settings the reminder engine reads, in its own shape. */
@@ -75,6 +78,7 @@ export const useSettingsStore = create<SettingsStore>()(
       reminderOffsets: DEFAULT_REMINDER_PREFERENCES.beforeOffsets,
       importantExtraReminder: DEFAULT_REMINDER_PREFERENCES.importantDayBefore,
       notificationPromptShown: false,
+      tourSeen: false,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setAiAutoMode: (aiAutoMode) => set({ aiAutoMode }),
@@ -92,6 +96,7 @@ export const useSettingsStore = create<SettingsStore>()(
         })),
       setImportantExtraReminder: (importantExtraReminder) => set({ importantExtraReminder }),
       setNotificationPromptShown: (notificationPromptShown) => set({ notificationPromptShown }),
+      setTourSeen: (tourSeen) => set({ tourSeen }),
     }),
     {
       name: "nexdo-settings",
@@ -111,6 +116,7 @@ export const useSettingsStore = create<SettingsStore>()(
         reminderOffsets: state.reminderOffsets,
         importantExtraReminder: state.importantExtraReminder,
         notificationPromptShown: state.notificationPromptShown,
+        tourSeen: state.tourSeen,
       }),
     },
   ),

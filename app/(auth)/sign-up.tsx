@@ -181,7 +181,7 @@ export default function SignUp() {
           {/* Outside the entrance animation, as on the onboarding steps: the
               setup bar is the one piece of chrome that holds still all the way
               through the flow. */}
-          <SetupProgressBar percent={94} />
+          <SetupProgressBar percent={97} />
 
           <Animated.View style={enterStyle}>
             <View className="mt-8 gap-3">

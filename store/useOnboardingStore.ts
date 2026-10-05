@@ -18,8 +18,15 @@ import type { ExtractedTaskDraft } from "@/lib/ai/types";
 type OnboardingStore = {
   dump: string;
   drafts: ExtractedTaskDraft[];
+  /**
+   * Whether this run reached the plans step (app/onboarding-paywall.tsx), so
+   * the paywall isn't offered a second time the moment the account exists.
+   * Persisted with the drafts and cleared with them.
+   */
+  sawPaywall: boolean;
   setDump: (dump: string) => void;
   setDrafts: (drafts: ExtractedTaskDraft[]) => void;
+  setSawPaywall: (sawPaywall: boolean) => void;
   /**
    * Hands the drafts over and empties the store in the same breath — the
    * moment someone signs in the run is over, whether the drafts become real
@@ -45,19 +52,21 @@ export const useOnboardingStore = create<OnboardingStore>()(
     (set, get) => ({
       dump: "",
       drafts: [],
+      sawPaywall: false,
       setDump: (dump) => set({ dump }),
       setDrafts: (drafts) => set({ drafts }),
+      setSawPaywall: (sawPaywall) => set({ sawPaywall }),
       claimDrafts: () => {
         const { drafts } = get();
-        if (drafts.length > 0) set({ dump: "", drafts: [] });
+        if (drafts.length > 0) set({ dump: "", drafts: [], sawPaywall: false });
         return drafts;
       },
-      reset: () => set({ dump: "", drafts: [] }),
+      reset: () => set({ dump: "", drafts: [], sawPaywall: false }),
     }),
     {
       name: "nexdo-onboarding",
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ drafts: state.drafts }),
+      partialize: (state) => ({ drafts: state.drafts, sawPaywall: state.sawPaywall }),
       onRehydrateStorage: () => () => resolveHydration(),
     },
   ),

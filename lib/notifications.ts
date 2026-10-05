@@ -187,6 +187,42 @@ export function clearAllNotifications(): Promise<void> {
   return reconcileNotifications([]);
 }
 
+/**
+ * The one notification that isn't about a task: the heads-up before a free
+ * trial turns into a paid plan (lib/trialReminder.ts). Outside the "nexdo-"
+ * prefix, so the task reconciler above leaves it alone.
+ */
+const TRIAL_REMINDER_ID = "trial-end";
+
+/** Schedules the trial reminder for `fireAt`, replacing any earlier one — or just cancels it, given null. */
+export async function setTrialReminder(reminder: { fireAt: number; title: string; body: string } | null): Promise<void> {
+  if (!isSupported) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(TRIAL_REMINDER_ID);
+    if (!reminder) return;
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await ensureChannelsAndActions();
+    await Notifications.scheduleNotificationAsync({
+      identifier: TRIAL_REMINDER_ID,
+      content: {
+        title: reminder.title,
+        body: reminder.body,
+        sound: "default",
+        // Where the subscription can be managed or cancelled.
+        data: { url: "/(tabs)/settings" },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: reminder.fireAt,
+        channelId: CHANNEL_IDS.reminders,
+      },
+    });
+  } catch (error) {
+    console.warn("[notifications] couldn't update the trial reminder", error);
+  }
+}
+
 export type NotificationTap = {
   /** "complete" when the user pressed "Mark as done", otherwise a plain tap. */
   action: "open" | "complete";

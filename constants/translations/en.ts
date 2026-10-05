@@ -446,6 +446,38 @@ export const en = {
       silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",    },
   },
 
+  /** The first-run tour over the tab bar (components/AppTour.tsx) — a sentence or two per stop, no more. */
+  tour: {
+    next: "Next",
+    done: "Got it",
+    skip: "Skip",
+    /** Read out by screen readers before each card. */
+    stepOf: (step: number, total: number) => `Step ${step} of ${total}`,
+    steps: {
+      next: {
+        title: "Your next move",
+        body: "Nexdo puts the task most worth doing right now on top. Swipe for the others, or tap Start session to focus.",
+      },
+      tasks: {
+        title: "All your tasks",
+        body: "Everything on your plate, in one list. Tap a task to change it, and tick it off when it's done.",
+      },
+      add: {
+        title: "Add a task",
+        body: "Tap + to add one. Nexdo works out where it fits in your plan.",
+      },
+      /** The same stop when Magic mic has turned the + into a microphone. */
+      voice: {
+        title: "Magic mic",
+        body: "Tap the mic and just talk — Nexdo adds and changes tasks as you speak.",
+      },
+      assistant: {
+        title: "Just tell Nexdo",
+        body: "Type, talk or send a photo. The Assistant turns it into tasks and reworks your plan when things change.",
+      },
+    },
+  },
+
   /** What the assistant says when the app itself (not the AI model) writes the reply. */
   assistant: {
     foundOne: (title: string) => `I found 1 task: "${title}". Want me to add it?`,
@@ -681,6 +713,8 @@ export const en = {
     support: "HELP & SUPPORT",
     help: "FAQ / Help",
     helpBody: "Answers to common questions, or get in touch.",
+    tour: "App tour",
+    tourBody: "A quick look around Nexdo.",
     sendFeedback: "Send feedback",
     privacy: "Privacy policy",
     terms: "Terms of service",
@@ -807,6 +841,9 @@ export const en = {
       `${count} ${plural(count, "task", "tasks")} due today.${top ? ` Start with "${top}".` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} open ${plural(count, "task", "tasks")}.${top ? ` Start with "${top}".` : ""}`,
+    /** Two days before a free trial turns into a paid plan (lib/trialReminder.ts). */
+    trialEndingTitle: "Your free trial ends in 2 days",
+    trialEndingBody: (date: string) => `Nexdo Pro starts on ${date}. Don't want it? Cancel before then from Settings.`,
   },
 
   profile: {
@@ -940,6 +977,50 @@ export const en = {
     thinking: "Thinking of a tip…",
     nothing: "There's nothing to decide on yet. Add a task once you're set up and Nexdo will pick for you.",
     next: "Makes sense",
+  },
+
+  /** Onboarding step 8 — asking for notifications, with a sample of one. */
+  onboardingNotify: {
+    headline: "One nudge, right when it matters.",
+    body: "Not fifty notifications. Just the one that keeps you on track.",
+    sampleTime: "now",
+    sampleBody: "Your chemistry assignment is due tomorrow. Want to start now?",
+    allow: "Allow notifications",
+    notNow: "Not now",
+  },
+
+  /** Onboarding step 9 — the free trial, day by day. Only shown when the store offers one. */
+  onboardingTrial: {
+    headline: "Here's exactly what happens.",
+    body: "No surprises. No guessing when you'll be charged.",
+    today: "TODAY",
+    day: (day: number) => `DAY ${day}`,
+    anytime: "ANYTIME",
+    startTitle: "Start your free trial",
+    startBody: "Full access to Nexdo Pro. Nothing charged.",
+    remindTitle: "We'll remind you",
+    remindBody: "A heads-up 2 days before your trial ends — plenty of time to decide.",
+    endTitle: "Trial ends",
+    endBody: (price: string, yearly: boolean) =>
+      `${price}/${yearly ? "year" : "month"} charged — or cancel any time before this to pay nothing.`,
+    cancelTitle: "Cancel anytime",
+    cancelBody: "Right from Settings. No calls, no forms.",
+    next: "Continue",
+  },
+
+  /** Onboarding step 10 — the plans, before the account is made. Prices come from the store. */
+  onboardingPaywall: {
+    headline: "Here's what's included.",
+    body: "Free covers the basics. Pro gives Nexdo's AI far more room, every month:",
+    bestValue: (percent: number) => `BEST VALUE · SAVE ${percent}%`,
+    /** What a Pro month includes, from lib/plan.ts. */
+    features: {
+      chat: (count: number) => `${count} AI chat messages`,
+      media: (count: number) => `${count} photos and documents`,
+      voice: (minutes: number) => `${minutes} min of voice notes`,
+      live: (minutes: number) => `${minutes} min of Magic mic`,
+      assist: (count: number) => `${count} breakdowns and advice`,
+    },
   },
 
   auth: {

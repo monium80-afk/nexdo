@@ -479,6 +479,35 @@ export const ar: Translations = {
       silence: "توقف الاستماع بعد لحظة صمت — اضغط «تحدّث مجددًا» للمتابعة.",    },
   },
 
+  tour: {
+    next: "التالي",
+    done: "فهمت",
+    skip: "تخطَّ",
+    stepOf: (step: number, total: number) => `الخطوة ${step} من ${total}`,
+    steps: {
+      next: {
+        title: "خطوتك التالية",
+        body: "يضع نكسدو في الأعلى المهمة الأجدر بالإنجاز الآن. اسحب لرؤية البقية، أو اضغط «ابدأ الجلسة» لتركّز.",
+      },
+      tasks: {
+        title: "كل مهامك",
+        body: "كل ما عليك في قائمة واحدة. اضغط على مهمة لتعديلها، وعلّمها عند إنجازها.",
+      },
+      add: {
+        title: "أضف مهمة",
+        body: "اضغط + لإضافة مهمة، وسيجد لها نكسدو مكانها في خطتك.",
+      },
+      voice: {
+        title: "الميكروفون السحري",
+        body: "اضغط على الميكروفون وتحدّث فقط — يضيف نكسدو المهام ويعدّلها أثناء كلامك.",
+      },
+      assistant: {
+        title: "فقط أخبر نكسدو",
+        body: "اكتب أو تحدّث أو أرسل صورة. يحوّلها المساعد إلى مهام ويعدّل خطتك عندما تتغيّر الأمور.",
+      },
+    },
+  },
+
   assistant: {
     foundOne: (title: string) => `وجدت مهمة واحدة: «${title}». هل أضيفها؟`,
     foundMany: (count: number, titles: string) =>
@@ -698,6 +727,8 @@ export const ar: Translations = {
     support: "المساعدة والدعم",
     help: "الأسئلة الشائعة / المساعدة",
     helpBody: "إجابات الأسئلة الشائعة، أو تواصل معنا.",
+    tour: "جولة في التطبيق",
+    tourBody: "نظرة سريعة على نكسدو.",
     sendFeedback: "إرسال ملاحظات",
     privacy: "سياسة الخصوصية",
     terms: "شروط الاستخدام",
@@ -817,6 +848,8 @@ export const ar: Translations = {
       `${tasksSubject(count)} مستحقة اليوم.${top ? ` ابدأ بـ«${top}».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${tasksSubject(count)} مفتوحة.${top ? ` ابدأ بـ«${top}».` : ""}`,
+    trialEndingTitle: "تنتهي تجربتك المجانية بعد يومين",
+    trialEndingBody: (date: string) => `يبدأ نكسدو برو يوم ${date}. لا تريده؟ ألغِه قبل ذلك من الإعدادات.`,
   },
 
   profile: {
@@ -938,6 +971,46 @@ export const ar: Translations = {
     thinking: "جارٍ تحضير نصيحة…",
     nothing: "لا شيء لتقرّره بعد. أضف مهمة بعد الإعداد وسيختار نكسدو لك.",
     next: "منطقي",
+  },
+
+  onboardingNotify: {
+    headline: "تذكير واحد، في الوقت المناسب تمامًا.",
+    body: "لا خمسين إشعارًا. فقط الإشعار الذي يبقيك على المسار.",
+    sampleTime: "الآن",
+    sampleBody: "واجب الكيمياء مطلوب غدًا. هل تريد أن تبدأ الآن؟",
+    allow: "السماح بالإشعارات",
+    notNow: "ليس الآن",
+  },
+
+  onboardingTrial: {
+    headline: "إليك ما سيحدث بالضبط.",
+    body: "بلا مفاجآت، وبلا تخمين لموعد الدفع.",
+    today: "اليوم",
+    day: (day: number) => `اليوم ${day}`,
+    anytime: "في أي وقت",
+    startTitle: "ابدأ تجربتك المجانية",
+    startBody: "وصول كامل إلى نكسدو برو، دون أي رسوم.",
+    remindTitle: "سنذكّرك",
+    remindBody: "تنبيه قبل انتهاء التجربة بيومين — وقت كافٍ لتقرّر.",
+    endTitle: "تنتهي التجربة",
+    endBody: (price: string, yearly: boolean) =>
+      `يُخصم ${price} ${yearly ? "سنويًا" : "شهريًا"} — أو ألغِ قبل ذلك ولن تدفع شيئًا.`,
+    cancelTitle: "ألغِ في أي وقت",
+    cancelBody: "مباشرةً من الإعدادات، بلا مكالمات ولا نماذج.",
+    next: "متابعة",
+  },
+
+  onboardingPaywall: {
+    headline: "إليك ما يتضمّنه الاشتراك.",
+    body: "الخطة المجانية تغطّي الأساسيات، أما برو فيمنح ذكاء نكسدو مساحة أكبر بكثير، كل شهر:",
+    bestValue: (percent: number) => `القيمة الأفضل · وفّر ${percent}%`,
+    features: {
+      chat: (count: number) => `${count} من رسائل محادثة الذكاء الاصطناعي`,
+      media: (count: number) => `${count} من الصور والمستندات`,
+      voice: (minutes: number) => `${minutes} دقيقة من الملاحظات الصوتية`,
+      live: (minutes: number) => `${minutes} دقيقة من الميكروفون السحري`,
+      assist: (count: number) => `${count} من التقسيمات والنصائح`,
+    },
   },
 
   auth: {

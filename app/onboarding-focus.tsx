@@ -97,7 +97,7 @@ export default function OnboardingFocus() {
 
   const handleNext = () => {
     posthog.capture("onboarding_focus_accepted", { had_pick: Boolean(top) });
-    router.push("/(auth)/sign-up");
+    router.push("/onboarding-notifications");
   };
 
   return (

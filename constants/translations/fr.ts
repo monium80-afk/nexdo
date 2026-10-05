@@ -454,6 +454,35 @@ export const fr: Translations = {
       silence: "Écoute arrêtée après un moment de silence — touchez Reparler pour continuer.",    },
   },
 
+  tour: {
+    next: "Suivant",
+    done: "Compris",
+    skip: "Passer",
+    stepOf: (step: number, total: number) => `Étape ${step} sur ${total}`,
+    steps: {
+      next: {
+        title: "Votre prochaine action",
+        body: "Nexdo place en haut la tâche qui vaut le plus la peine maintenant. Balayez pour voir les autres, ou touchez Lancer la session pour vous concentrer.",
+      },
+      tasks: {
+        title: "Toutes vos tâches",
+        body: "Tout ce que vous avez à faire, dans une seule liste. Touchez une tâche pour la modifier, cochez-la une fois terminée.",
+      },
+      add: {
+        title: "Ajouter une tâche",
+        body: "Touchez + pour en ajouter une. Nexdo trouve sa place dans votre plan.",
+      },
+      voice: {
+        title: "Micro magique",
+        body: "Touchez le micro et parlez, tout simplement : Nexdo ajoute et modifie vos tâches pendant que vous parlez.",
+      },
+      assistant: {
+        title: "Dites-le à Nexdo",
+        body: "Écrivez, parlez ou envoyez une photo. L'Assistant en fait des tâches et ajuste votre plan quand les choses changent.",
+      },
+    },
+  },
+
   assistant: {
     foundOne: (title: string) => `J'ai trouvé 1 tâche : « ${title} ». Voulez-vous que je l'ajoute ?`,
     foundMany: (count: number, titles: string) =>
@@ -684,6 +713,8 @@ export const fr: Translations = {
     support: "AIDE ET ASSISTANCE",
     help: "FAQ / Aide",
     helpBody: "Réponses aux questions courantes, ou contactez-nous.",
+    tour: "Visite de l'app",
+    tourBody: "Un petit tour de Nexdo.",
     sendFeedback: "Envoyer un commentaire",
     privacy: "Politique de confidentialité",
     terms: "Conditions d'utilisation",
@@ -803,6 +834,9 @@ export const fr: Translations = {
       `${count} ${plural(count, "tâche due", "tâches dues")} aujourd'hui.${top ? ` Commencez par « ${top} ».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "tâche ouverte", "tâches ouvertes")}.${top ? ` Commencez par « ${top} ».` : ""}`,
+    trialEndingTitle: "Votre essai gratuit se termine dans 2 jours",
+    trialEndingBody: (date: string) =>
+      `Nexdo Pro démarre le ${date}. Vous n'en voulez pas ? Annulez avant depuis les Réglages.`,
   },
 
   profile: {
@@ -924,6 +958,46 @@ export const fr: Translations = {
     thinking: "Je prépare un conseil…",
     nothing: "Il n'y a encore rien à décider. Ajoutez une tâche une fois installé et Nexdo choisira pour vous.",
     next: "Logique",
+  },
+
+  onboardingNotify: {
+    headline: "Un rappel, pile au bon moment.",
+    body: "Pas cinquante notifications. Juste celle qui vous garde sur la bonne voie.",
+    sampleTime: "maintenant",
+    sampleBody: "Votre devoir de chimie est à rendre demain. On s'y met maintenant ?",
+    allow: "Autoriser les notifications",
+    notNow: "Plus tard",
+  },
+
+  onboardingTrial: {
+    headline: "Voici exactement ce qui se passe.",
+    body: "Pas de surprise. Vous savez exactement quand vous serez débité.",
+    today: "AUJOURD'HUI",
+    day: (day: number) => `JOUR ${day}`,
+    anytime: "À TOUT MOMENT",
+    startTitle: "Commencez votre essai gratuit",
+    startBody: "Accès complet à Nexdo Pro. Rien n'est débité.",
+    remindTitle: "On vous prévient",
+    remindBody: "Un rappel 2 jours avant la fin de l'essai — largement le temps de décider.",
+    endTitle: "Fin de l'essai",
+    endBody: (price: string, yearly: boolean) =>
+      `${price}/${yearly ? "an" : "mois"} débités — ou annulez avant pour ne rien payer.`,
+    cancelTitle: "Annulez quand vous voulez",
+    cancelBody: "Directement depuis les Réglages. Sans appel, sans formulaire.",
+    next: "Continuer",
+  },
+
+  onboardingPaywall: {
+    headline: "Voici ce qui est inclus.",
+    body: "Le plan gratuit couvre l'essentiel. Pro donne bien plus de place à l'IA de Nexdo, chaque mois :",
+    bestValue: (percent: number) => `MEILLEURE OFFRE · −${percent} %`,
+    features: {
+      chat: (count: number) => `${count} messages au chat IA`,
+      media: (count: number) => `${count} photos et documents`,
+      voice: (minutes: number) => `${minutes} min de notes vocales`,
+      live: (minutes: number) => `${minutes} min de Micro magique`,
+      assist: (count: number) => `${count} découpages et conseils`,
+    },
   },
 
   auth: {

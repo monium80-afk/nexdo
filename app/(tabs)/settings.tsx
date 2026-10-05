@@ -287,6 +287,8 @@ export default function Settings() {
   const toggleReminderOffset = useSettingsStore((state) => state.toggleReminderOffset);
   const importantExtraReminder = useSettingsStore((state) => state.importantExtraReminder);
   const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
+  // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
+  const setTourSeen = useSettingsStore((state) => state.setTourSeen);
   const clearChatHistory = useChatStore((state) => state.clearHistory);
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
@@ -751,6 +753,15 @@ export default function Settings() {
                   label={t.settings.help}
                   body={t.settings.helpBody}
                   onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
+                />
+
+                <Divider inset />
+
+                <ActionRow
+                  icon="compass"
+                  label={t.settings.tour}
+                  body={t.settings.tourBody}
+                  onPress={() => setTourSeen(false)}
                 />
 
                 <Divider inset />

@@ -5,7 +5,11 @@ import { create } from "zustand";
 // customer info. Not persisted: the RevenueCat SDK keeps its own cached copy
 // on the phone, so Pro survives restarts and works offline.
 type SubscriptionStore = {
-  /** The signed-in account's RevenueCat customer info — null until it loads, and after sign-out. */
+  /**
+   * The signed-in account's RevenueCat customer info — or, during onboarding's
+   * paywall, the anonymous user's that becomes the account's at sign-up. Null
+   * until it loads, and after sign-out.
+   */
   customerInfo: CustomerInfo | null;
   /** The account's active `nexdo_pro` entitlement, or null when it isn't Pro. */
   pro: PurchasesEntitlementInfo | null;
