@@ -824,7 +824,8 @@ export const de: Translations = {
     completeAction: "Als erledigt markieren",
     dueTodayTitle: (title: string) => `Heute fällig: ${title}`,
     dueTodayBody: "Ohne Uhrzeit – irgendwann heute passt.",
-    dueAtBody: (time: string) => `Heute um ${time} fällig.`,
+    dueNowTitle: (title: string) => `Jetzt fällig: ${title}`,
+    dueNowBody: (time: string) => `Geplant für heute um ${time}.`,
     dueInBody: (offset: string, time: string) => `Fällig in ${offset}, um ${time}.`,
     offsetLabel: (minutes: number) =>
       minutes < 60

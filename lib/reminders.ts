@@ -18,11 +18,14 @@ import type { Task } from "@/types/task";
 //   only thing that ever mentions it).
 // - Date-only deadline: one reminder on the day, at the reminder time (9:00
 //   by default). The deadline has no time, so none is invented for it.
-// - Exact deadline: the same morning-of reminder while it's still before the
-//   deadline, plus any "before" offsets the user picked (15 min, 1 h, 1 day).
+// - Exact deadline: one reminder at the deadline itself, as Settings
+//   promises, plus any "before" offsets the user picked (15 min, 1 h, 1 day).
+//   It used to be the 9:00 one, so a task due at 18:00 added after 9:00 got
+//   no reminder at all — what made reminders look broken on the phone.
 // - High priority, if the user wants it: one more the day before.
-// - "Overdue alerts": one alert as an exact deadline passes. Never for a
-//   date-only one — that would be a midnight notification.
+// - "Overdue alerts": one alert as an exact deadline passes, in place of the
+//   reminder at the deadline (both at once would be one too many). Never for
+//   a date-only one — that would be a midnight notification.
 // - Only future times are scheduled: a reminder whose time has passed is
 //   dropped, not sent late, so opening the app never sets off a burst.
 // - Completed, skipped and archived tasks, and tasks with reminders muted,
@@ -140,15 +143,17 @@ export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: D
   const candidates: Candidate[] = [];
 
   if (prefs.deadlineReminders) {
-    const dayAt = atLocalTime(deadline.date, prefs.dayReminderTime);
-    // On the day. For an exact deadline, only while it's still ahead of it.
-    if (!deadline.time || dayAt < dueAt) {
+    // On the day: at the reminder time, or at the deadline itself when it has
+    // one — unless the overdue alert already goes off then.
+    if (!deadline.time) {
       candidates.push({
         kind: "due-day",
-        fireAt: dayAt,
+        fireAt: atLocalTime(deadline.date, prefs.dayReminderTime),
         title: copy.dueTodayTitle(task.title),
-        body: dueTime ? copy.dueAtBody(dueTime) : copy.dueTodayBody,
+        body: copy.dueTodayBody,
       });
+    } else if (!prefs.overdueAlerts) {
+      candidates.push({ kind: "due-day", fireAt: dueAt, title: copy.dueNowTitle(task.title), body: copy.dueNowBody(dueTime!) });
     }
     if (deadline.time) {
       for (const offset of [...new Set(prefs.beforeOffsets)].filter((value) => Number.isFinite(value) && value > 0)) {

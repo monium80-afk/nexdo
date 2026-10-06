@@ -1,6 +1,6 @@
 import { getClerkInstance } from "@clerk/expo";
-import { requestRecordingPermissionsAsync, useAudioStream } from "expo-audio";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync, useAudioStream } from "expo-audio";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useSharedValue, withTiming } from "react-native-reanimated";
 
@@ -31,6 +31,11 @@ export function useLiveVoice() {
   // state: it changes with every buffer, and only the waves need to move.
   const level = useSharedValue(0);
 
+  // Android shows its permission question as a separate screen, and React
+  // Native reports the app as gone to the background while it's up — which
+  // used to end the session it was asking for, every time (build 3).
+  const askingPermission = useRef(false);
+
   const { stream } = useAudioStream({
     sampleRate: SAMPLE_RATE,
     channels: 1,
@@ -47,7 +52,16 @@ export function useLiveVoice() {
     let runner = createLiveToolRunner(new Map());
 
     return createLiveVoice({
-      requestPermission: async () => (await requestRecordingPermissionsAsync()).granted,
+      requestPermission: async () => {
+        // Already allowed: answered without opening the system's screen.
+        if ((await getRecordingPermissionsAsync()).granted) return true;
+        askingPermission.current = true;
+        try {
+          return (await requestRecordingPermissionsAsync()).granted;
+        } finally {
+          askingPermission.current = false;
+        }
+      },
       requestSession: () => {
         const now = new Date();
         const tasks = selectRelevantTasks("", useTaskStore.getState().tasks, [], undefined, MAX_TASKS);
@@ -103,7 +117,7 @@ export function useLiveVoice() {
   // better to stop cleanly than leave the socket waiting for more.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
-      if (next === "background") voice.stop();
+      if (next === "background" && !askingPermission.current) voice.stop();
     });
     return () => subscription.remove();
   }, [voice]);

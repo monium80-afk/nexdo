@@ -818,7 +818,8 @@ export const fr: Translations = {
     completeAction: "Marquer comme faite",
     dueTodayTitle: (title: string) => `Pour aujourd'hui : ${title}`,
     dueTodayBody: "Pas d'heure précise — n'importe quand aujourd'hui.",
-    dueAtBody: (time: string) => `Pour aujourd'hui à ${time}.`,
+    dueNowTitle: (title: string) => `C'est l'heure : ${title}`,
+    dueNowBody: (time: string) => `Prévue aujourd'hui à ${time}.`,
     dueInBody: (offset: string, time: string) => `Dans ${offset}, à ${time}.`,
     offsetLabel: (minutes: number) =>
       minutes < 60

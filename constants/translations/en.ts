@@ -825,7 +825,9 @@ export const en = {
     completeAction: "Mark as done",
     dueTodayTitle: (title: string) => `Due today: ${title}`,
     dueTodayBody: "No set time — any time today works.",
-    dueAtBody: (time: string) => `Due today at ${time}.`,
+    /** At an exact deadline, the moment it arrives. */
+    dueNowTitle: (title: string) => `Due now: ${title}`,
+    dueNowBody: (time: string) => `Set for ${time} today.`,
     dueInBody: (offset: string, time: string) => `Due in ${offset}, at ${time}.`,
     offsetLabel: (minutes: number) =>
       minutes < 60

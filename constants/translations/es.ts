@@ -811,7 +811,8 @@ export const es: Translations = {
     completeAction: "Marcar como hecha",
     dueTodayTitle: (title: string) => `Para hoy: ${title}`,
     dueTodayBody: "Sin hora fija: cualquier momento de hoy sirve.",
-    dueAtBody: (time: string) => `Para hoy a ${clock(time)}.`,
+    dueNowTitle: (title: string) => `Es la hora: ${title}`,
+    dueNowBody: (time: string) => `Programada para hoy a ${clock(time)}.`,
     dueInBody: (offset: string, time: string) => `Vence en ${offset}, a ${clock(time)}.`,
     offsetLabel: (minutes: number) =>
       minutes < 60

@@ -832,7 +832,8 @@ export const ar: Translations = {
     completeAction: "تعليم كمنجزة",
     dueTodayTitle: (title: string) => `مستحقة اليوم: ${title}`,
     dueTodayBody: "بلا وقت محدد — أي وقت اليوم يناسب.",
-    dueAtBody: (time: string) => `مستحقة اليوم عند ${time}.`,
+    dueNowTitle: (title: string) => `حان وقتها: ${title}`,
+    dueNowBody: (time: string) => `موعدها اليوم عند ${time}.`,
     dueInBody: (offset: string, time: string) => `مستحقة بعد ${offset}، عند ${time}.`,
     offsetLabel: (minutes: number) =>
       minutes < 60

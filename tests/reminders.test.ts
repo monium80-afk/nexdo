@@ -51,12 +51,21 @@ describe("default reminder policy", () => {
     assert.equal(reminder.data.url, "/task/essay");
   });
 
-  it("exact deadline: the same morning reminder while it's still ahead of the deadline", () => {
-    const [reminder] = planTaskReminders(dueTask("exam", "2026-10-15", "19:00"), PREFS, NOW, en);
-    assert.equal(new Date(reminder.fireAt).getHours(), 9);
-    assert.match(reminder.body, /^Due today at 7:00/);
-    // Due at 8:00 — a 9:00 reminder would come after it, so there's none.
-    assert.deepEqual(planTaskReminders(dueTask("early", "2026-10-15", "08:00"), PREFS, NOW, en), []);
+  it("exact deadline: one reminder at the deadline itself, not at the morning reminder time", () => {
+    const [reminder, ...rest] = planTaskReminders(dueTask("exam", "2026-10-15", "19:00"), PREFS, NOW, en);
+    assert.equal(rest.length, 0);
+    assert.equal(reminder.kind, "due-day");
+    const at = new Date(reminder.fireAt);
+    assert.deepEqual([at.getDate(), at.getHours(), at.getMinutes()], [15, 19, 0]);
+    assert.equal(reminder.title, "Due now: exam");
+    assert.match(reminder.body, /^Set for 7:00/);
+    // Due before the morning reminder time — still reminded, at 8:00.
+    assert.deepEqual(times(dueTask("early", "2026-10-15", "08:00")), [{ kind: "due-day", at: "Thu Oct 15 2026 08:00" }]);
+  });
+
+  it("a task due later today, added after the reminder time, is still reminded at its time", () => {
+    // What the phone test hit: before, this got nothing at all.
+    assert.deepEqual(times(dueTask("call", "2026-09-29", "18:00")), [{ kind: "due-day", at: "Tue Sep 29 2026 18:00" }]);
   });
 
   it("a date-only task added after 9:00 on its day gets no reminder — never a late burst", () => {
@@ -77,13 +86,14 @@ describe("default reminder policy", () => {
 });
 
 describe("user preferences", () => {
-  it("offsets before an exact deadline, and the reminder time moved", () => {
+  it("offsets before an exact deadline; the reminder time only moves date-only reminders", () => {
     const prefs = { ...PREFS, dayReminderTime: "07:30", beforeOffsets: [60, 1440] };
     assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [
       { kind: "before", at: "Wed Oct 14 2026 19:00" },
-      { kind: "due-day", at: "Thu Oct 15 2026 07:30" },
       { kind: "before", at: "Thu Oct 15 2026 18:00" },
+      { kind: "due-day", at: "Thu Oct 15 2026 19:00" },
     ]);
+    assert.deepEqual(times(dueTask("essay", "2026-10-15"), prefs), [{ kind: "due-day", at: "Thu Oct 15 2026 07:30" }]);
   });
 
   it("offsets only apply to deadlines with a time", () => {
@@ -107,9 +117,18 @@ describe("user preferences", () => {
     assert.deepEqual(times(dueTask("essay", "2026-10-15"), prefs), []);
   });
 
+  it("with overdue alerts on, the alert takes the reminder's place at the deadline — one notification, not two", () => {
+    const prefs = { ...PREFS, overdueAlerts: true };
+    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [{ kind: "overdue", at: "Thu Oct 15 2026 19:00" }]);
+  });
+
   it("two reminders for one task minutes apart are one too many", () => {
-    // 9:00 on the day, and 15 minutes before 9:12 (8:57) — three minutes apart.
-    assert.equal(times(dueTask("call", "2026-10-15", "09:12"), { ...PREFS, beforeOffsets: [15] }).length, 1);
+    // The day before at 9:00, and a day before 9:03 — three minutes apart.
+    const prefs = { ...PREFS, importantDayBefore: true, beforeOffsets: [1440] };
+    assert.deepEqual(times(dueTask("call", "2026-10-15", "09:03", { importance: 75 }), prefs), [
+      { kind: "day-before", at: "Wed Oct 14 2026 09:00" },
+      { kind: "due-day", at: "Thu Oct 15 2026 09:03" },
+    ]);
   });
 });
 
