@@ -15,6 +15,7 @@ import { useTabBarHeight } from "@/components/TabBar";
 import { TaskConfirmationCard } from "@/components/TaskConfirmationCard";
 import { colors, gradients } from "@/constants/theme";
 import { INBOX_QUICK_ACTIONS } from "@/data/aiPrompts";
+import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -41,7 +42,7 @@ const MAX_IMAGE_RATIO = 16 / 9;
 // Each quick-action chip is tinted in its own colour, with a matching icon,
 // keyed by INBOX_QUICK_ACTIONS id. Add leads the row as the glowing one.
 const QUICK_ACTION_STYLES: Record<string, { tone: SuggestionTone; icon: ReactNode }> = {
-  "whats-next": { tone: "accent", icon: <Feather name="plus" size={QUICK_ACTION_ICON_SIZE} color={colors.onAccent} /> },
+  "whats-next": { tone: "orange", icon: <Feather name="plus" size={QUICK_ACTION_ICON_SIZE} color={colors.orange[500]} /> },
   "breakdown-top": {
     tone: "green",
     icon: <Feather name="check" size={QUICK_ACTION_ICON_SIZE} color={colors.quickAction.complete} />,
@@ -240,6 +241,9 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
   const tasks = useTaskStore((state) => state.tasks);
   const insets = useSafeAreaInsets();
   useStatusBarStyle("dark");
+  const headerEnter = useFocusEnter(0);
+  const bodyEnter = useFocusEnter(1);
+  const composerEnter = useFocusEnter(2);
   // The input is kept clear of the tab bar, which floats over the foot of the
   // page. On iOS an open keyboard covers the bar, and KeyboardAvoidingView
   // lifts the input clear of the keyboard itself — so the bar's room is only
@@ -451,13 +455,14 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-      <View className="flex-row items-center gap-3 px-6 pb-4 pt-2">
-        {/* Warm light from the top-right corner, running up under the status bar. */}
-        <View
-          pointerEvents="none"
-          className="absolute left-0 right-0"
-          style={[{ top: -insets.top, height: 360 + insets.top }, gradients.creamGlow]}
-        />
+      {/* Warm light from the top-right corner, running up under the status bar
+          — outside the header's entrance, so the light holds still. */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 360 + insets.top }, gradients.creamGlow]}
+      />
+      <Animated.View className="flex-row items-center gap-3 px-6 pb-4 pt-2" style={headerEnter}>
         <GemLogo size={44} />
         <View className="flex-1">
           <Text className="text-card-title text-ink-cream" numberOfLines={2}>
@@ -474,9 +479,10 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
             )}
           </Text>
         </View>
-      </View>
+      </Animated.View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <Animated.View className="flex-1" style={bodyEnter}>
         <ScrollView
           ref={scrollRef}
           className="flex-1"
@@ -545,8 +551,9 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
             </Animated.View>
           ) : null}
         </ScrollView>
+        </Animated.View>
 
-        <View className="gap-2 pt-1.5" style={{ paddingBottom: 7 + (keyboardOpen ? 0 : tabBarHeight) }}>
+        <Animated.View className="gap-2 pt-1.5" style={[{ paddingBottom: 7 + (keyboardOpen ? 0 : tabBarHeight) }, composerEnter]}>
           {!contextTask ? (
             // Padded inside the scroll rather than around it, so the chips'
             // shadows and glow aren't cut off at its edges.
@@ -579,7 +586,7 @@ function InboxChatScreen({ contextTaskId, availableMinutes }: { contextTaskId?: 
               isTranscribing={isTranscribing}
             />
           </View>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

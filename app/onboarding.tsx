@@ -62,10 +62,12 @@ export default function Onboarding() {
     >
       <View className="flex-1 items-center justify-center">
         <View className="relative w-[84%] pb-[26px] pt-[26px]">
+          {/* Flat, with no shadow: Android drew a tilted note's soft shadow as
+              a hard grey square around it (seen on the user's phone, 10-07). */}
           {STICKY_NOTES.map((note, index) => (
             <View
               key={index}
-              className="chip chip--idle absolute px-4 py-2"
+              className="absolute rounded-full border border-cream-300 bg-cream-50 px-4 py-2"
               style={{
                 ...note.style,
                 transform: [{ rotate: note.rotate }],

@@ -1,10 +1,12 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
+  Extrapolation,
   FadeIn,
+  interpolate,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -15,19 +17,23 @@ import { scheduleOnRN } from "react-native-worklets";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { PrimaryButton } from "@/components/Button";
+import { PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
+import { Chip } from "@/components/Chip";
 import { GemLogo } from "@/components/GemLogo";
 import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
 import { useTabBarHeight } from "@/components/TabBar";
 import { MOTION, gradients } from "@/constants/theme";
+import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/lib/formatDuration";
+import { keyToLocalDate, toLocalDateKey } from "@/lib/localDate";
 import { posthog } from "@/lib/posthog";
 import { recommendTasks } from "@/lib/priority";
+import { buildSchedule } from "@/lib/schedule";
 import { useSessionStore } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -39,26 +45,39 @@ type FocusCardState = {
   returnBounds: CardBounds;
 };
 
-// The Next card's corners (NextTaskCardStack's CARD_RADIUS), which the
-// session grows out of and shrinks back into.
-const CARD_RADIUS = 28;
-// Opening decelerates hard into place; closing accelerates away — Material's
-// "emphasized" curves, which read as one confident movement each way.
-const GROW = { duration: 360, easing: Easing.bezier(0.05, 0.7, 0.1, 1) };
-const SHRINK = { duration: 300, easing: Easing.bezier(0.3, 0, 0.8, 0.15) };
-const CONTENT_IN_MS = 220;
-const CONTENT_OUT_MS = 140;
-const HAND_BACK_MS = 180;
+// The session opens as a circle of its own charcoal growing out of the Start
+// button until it fills the screen — decelerating hard into place — and
+// closes by shrinking back into the card, accelerating away.
+const REVEAL_OPEN = { duration: 520, easing: Easing.bezier(0.2, 0, 0, 1) };
+const REVEAL_CLOSE = { duration: 360, easing: Easing.bezier(0.3, 0, 0.8, 0.15) };
+/** Partway through the reveal, the session's parts start rising in (NextTaskCard's sessionEnter). */
+const CONTENT_AT_MS = 200;
+const CONTENT_OUT_MS = 150;
+/** The circle's colour: the middle of the session's own gradient, which takes over once it's open. */
+const SESSION_BACKDROP = "#201E1C";
+
+function centerOf(bounds: CardBounds) {
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+}
+
+/** From `point`, how far it is to the screen's farthest corner. */
+function reachFrom(point: { x: number; y: number }, width: number, height: number) {
+  return Math.max(
+    Math.hypot(point.x, point.y),
+    Math.hypot(width - point.x, point.y),
+    Math.hypot(point.x, height - point.y),
+    Math.hypot(width - point.x, height - point.y),
+  );
+}
 
 /**
- * A session opening out of its Next card, and closing back into it.
+ * A session opening out of its Start button, and closing back into its card.
  *
- * Only an empty shell changes size: a card-coloured shape that grows to fill
- * the screen, taking on the session's backdrop as it goes. The session itself is
- * laid out at full size once, faded in when the shell is there — resizing it
- * every frame used to squeeze and re-wrap everything in it on the way. Closing
- * runs the other way: the session fades, the shell shrinks onto the card it
- * came from (or the one that took its place), and melts away over it.
+ * Only a transform animates: the circle is laid out once at its full size and
+ * scaled up from nothing, and the session itself is laid out once too — its
+ * parts rise in on their own (NextTaskCard) while the circle finishes. Closing
+ * runs the other way: the session fades, the circle shrinks onto the card it
+ * came from (or the one that took its place), and is gone.
  */
 function FocusCardTransition({
   focus,
@@ -76,109 +95,77 @@ function FocusCardTransition({
   closing: boolean;
   /** The task was finished in the session and its celebration has played: close. */
   onCelebrated: () => void;
-  /** The shell is back over the card: time to show the card again under it. */
+  /** The circle starts shrinking: time to show the card again under it. */
   onLanded: () => void;
   onExited: () => void;
   onDetails: (taskId: string) => void;
 }) {
-  const colors = useColors();
   const reduceMotion = useReducedMotion();
-  const x = useSharedValue(focus.origin.x);
-  const y = useSharedValue(focus.origin.y);
-  const width = useSharedValue(focus.origin.width);
-  const height = useSharedValue(focus.origin.height);
-  // 0 = the Next card it grew out of, 1 = the full-screen session.
-  const expand = useSharedValue(0);
-  const content = useSharedValue(0);
-  const shell = useSharedValue(1);
-  // The session's content is mounted once the shell has finished growing:
-  // mounting it alongside the growth cost the first frames of the animation.
+  const reveal = useSharedValue(0);
+  const content = useSharedValue(1);
   const [contentMounted, setContentMounted] = useState(reduceMotion);
+
+  // Out of the Start button, back into the card. One radius that covers the
+  // whole screen from either point, so moving the centre while the circle
+  // fills the screen is never seen.
+  const from = centerOf(focus.origin);
+  const to = centerOf(focus.returnBounds);
+  const radius = Math.max(reachFrom(from, screenWidth, screenHeight), reachFrom(to, screenWidth, screenHeight)) + 2;
+  const center = closing ? to : from;
 
   useEffect(() => {
     if (closing) return;
-    const grow = { ...GROW, duration: reduceMotion ? 0 : GROW.duration };
-    x.set(withTiming(0, grow));
-    y.set(withTiming(0, grow));
-    width.set(withTiming(screenWidth, grow));
-    height.set(withTiming(screenHeight, grow));
-    expand.set(
-      withTiming(1, grow, (finished) => {
-        if (finished) scheduleOnRN(setContentMounted, true);
-      }),
-    );
-  }, [closing, expand, height, reduceMotion, screenHeight, screenWidth, width, x, y]);
-
-  // Fades in once it's mounted — the frame after, so it's never seen at full strength first.
-  useEffect(() => {
-    if (!contentMounted || closing) return;
-    content.set(withTiming(1, { duration: reduceMotion ? 0 : CONTENT_IN_MS, easing: MOTION.easing.enter }));
-  }, [closing, content, contentMounted, reduceMotion]);
+    reveal.set(withTiming(1, { ...REVEAL_OPEN, duration: reduceMotion ? 0 : REVEAL_OPEN.duration }));
+    const timer = setTimeout(() => setContentMounted(true), reduceMotion ? 0 : CONTENT_AT_MS);
+    return () => clearTimeout(timer);
+  }, [closing, reduceMotion, reveal]);
 
   useEffect(() => {
     if (!closing) return;
-    const target = focus.returnBounds;
     const wait = reduceMotion ? 0 : CONTENT_OUT_MS;
-    const shrink = { ...SHRINK, duration: reduceMotion ? 0 : SHRINK.duration };
     content.set(withTiming(0, { duration: wait, easing: MOTION.easing.exit }));
-    x.set(withDelay(wait, withTiming(target.x, shrink)));
-    y.set(withDelay(wait, withTiming(target.y, shrink)));
-    width.set(withDelay(wait, withTiming(target.width, shrink)));
-    height.set(withDelay(wait, withTiming(target.height, shrink)));
-    expand.set(
+    // The card shows again under the circle as it starts to shrink.
+    const landed = setTimeout(onLanded, wait);
+    reveal.set(
       withDelay(
         wait,
-        withTiming(0, shrink, (finished) => {
-          if (!finished) return;
-          scheduleOnRN(onLanded);
-          // The card is showing again underneath: let the shell melt into it.
-          shell.set(
-            withTiming(0, { duration: reduceMotion ? 0 : HAND_BACK_MS }, (done) => {
-              if (done) scheduleOnRN(onExited);
-            }),
-          );
+        withTiming(0, { ...REVEAL_CLOSE, duration: reduceMotion ? 0 : REVEAL_CLOSE.duration }, (finished) => {
+          if (finished) scheduleOnRN(onExited);
         }),
       ),
     );
-  }, [closing, content, expand, focus.returnBounds, height, onExited, onLanded, reduceMotion, shell, width, x, y]);
+    return () => clearTimeout(landed);
+  }, [closing, content, onExited, onLanded, reduceMotion, reveal]);
 
-  const shellStyle = useAnimatedStyle(() => ({
-    left: x.value,
-    top: y.value,
-    width: width.value,
-    height: height.value,
-    borderRadius: CARD_RADIUS * (1 - expand.value),
-    opacity: shell.value,
+  const circleStyle = useAnimatedStyle(() => ({ transform: [{ scale: reveal.value }] }));
+  // The real backdrop — the session's gradient — takes over as the circle
+  // fills the screen, and hands back to the circle first on the way out.
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(reveal.value, [0.75, 1], [0, 1], Extrapolation.CLAMP),
   }));
-  // The Next card's own surface over the session's backdrop, fading as it grows.
-  const cardSurfaceStyle = useAnimatedStyle(() => ({ opacity: 1 - expand.value }));
-  const contentStyle = useAnimatedStyle(() => ({
-    opacity: content.value,
-    transform: [{ translateY: (1 - content.value) * 14 }],
-  }));
+  const contentStyle = useAnimatedStyle(() => ({ opacity: content.value }));
 
   return (
     <>
       {/* Blocks the task stack while leaving the persistent tab bar outside this screen interactive. */}
       <View pointerEvents="auto" style={StyleSheet.absoluteFill} />
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          {
-            position: "absolute",
-            zIndex: 20,
-            overflow: "hidden",
-            backgroundColor: colors.charcoal[900],
-            borderWidth: 1,
-            borderColor: colors.hairlineCharcoal,
-          },
-          // The session's charcoal, behind the glass of the session card.
-          gradients.session,
-          shellStyle,
-        ]}
-      >
-        <Animated.View style={[StyleSheet.absoluteFill, gradients.charcoalCard, cardSurfaceStyle]} />
-      </Animated.View>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 20, overflow: "hidden" }]}>
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              left: center.x - radius,
+              top: center.y - radius,
+              width: radius * 2,
+              height: radius * 2,
+              borderRadius: radius,
+              backgroundColor: SESSION_BACKDROP,
+            },
+            circleStyle,
+          ]}
+        />
+        <Animated.View style={[StyleSheet.absoluteFill, gradients.session, backdropStyle]} />
+      </View>
       {contentMounted ? (
         <Animated.View
           pointerEvents={closing ? "none" : "auto"}
@@ -199,28 +186,71 @@ function FocusCardTransition({
   );
 }
 
-// However long the queue, the dots stay a short row: past this many, each one
-// stands for a stretch of it and the lit one shows roughly where you are.
-const MAX_DOTS = 5;
+const PROGRESS_MS = 650;
+// Pressed into the card, like the setup bar (SetupProgressBar).
+const TRACK_INSET = { boxShadow: "inset 0 1px 3px rgba(92, 58, 26, 0.16)" };
 
-/** Where you are in the queue, as a row of dots. */
-function QueueDots({ index, total }: { index: number; total: number }) {
-  const count = Math.min(total, MAX_DOTS);
-  const active = total <= MAX_DOTS ? index : Math.round((index / Math.max(1, total - 1)) * (count - 1));
+/**
+ * Today at a glance, under the page's title: how many of today's tasks are
+ * left, how many are done, and one thick bar that fills a step each time one
+ * is finished. Full — and green — means nothing is left for today.
+ */
+function TodayCard({ done, left, minutesLeft }: { done: number; left: number; minutesLeft: number }) {
+  const t = useTranslation();
+  const colors = useColors();
+  const reduceMotion = useReducedMotion();
+  const total = done + left;
+  const fraction = total > 0 ? Math.min(1, done / total) : 0;
+  const finished = total > 0 && left === 0;
+  const fill = useSharedValue(fraction);
+  // The track's width, so the fill can slide in from the left as a whole pill
+  // — its rounded end stays round at any length, which scaling would squash.
+  const trackWidth = useSharedValue(0);
+
+  useEffect(() => {
+    fill.set(withTiming(fraction, { duration: reduceMotion ? 0 : PROGRESS_MS, easing: MOTION.easing.enter }));
+  }, [fill, fraction, reduceMotion]);
+
+  // A transform, not a width: it stays on the UI thread (see SetupProgressBar).
+  const fillStyle = useAnimatedStyle(() => ({
+    opacity: trackWidth.value > 0 ? 1 : 0,
+    transform: [{ translateX: (fill.value - 1) * trackWidth.value }],
+  }));
+
   return (
-    <View className="flex-row items-center gap-[5px]" importantForAccessibility="no-hide-descendants">
-      {Array.from({ length: count }, (_, dot) =>
-        dot === active ? (
-          <View key={dot} className="h-[8px] w-[8px] rounded-full bg-orange-500" style={DOT_GLOW} />
-        ) : (
-          <View key={dot} className="h-[6px] w-[6px] rounded-full bg-orange-200" />
-        ),
-      )}
+    <View className="card card--cream-soft gap-3 px-4 pb-4 pt-3.5" style={gradients.card}>
+      <View className="flex-row items-center justify-between gap-3">
+        <View className="shrink flex-row items-center gap-2">
+          {finished ? <Feather name="check-circle" size={17} color={colors.success[500]} /> : null}
+          <Text className={`font-grotesk-bold text-[17px] ${finished ? "text-success-500" : "text-ink-cream"}`}>
+            {finished ? t.next.doneForToday : t.next.tasksLeft(left)}
+          </Text>
+        </View>
+        <Text className="font-grotesk-semibold text-[13px] text-ink-cream-muted">{t.next.doneOfTotal(done, total)}</Text>
+      </View>
+      <View
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={t.next.todayProgress(done, total)}
+        accessibilityValue={{ min: 0, max: total, now: done }}
+        onLayout={(event) => trackWidth.set(event.nativeEvent.layout.width)}
+        className="h-[14px] overflow-hidden rounded-full bg-cream-200"
+        style={TRACK_INSET}
+      >
+        <Animated.View
+          className={`h-full w-full rounded-full ${finished ? "bg-success-500" : "bg-orange-500"}`}
+          style={[finished ? gradients.success : gradients.accent, fillStyle]}
+        />
+      </View>
+      {!finished && minutesLeft > 0 ? (
+        <View className="flex-row items-center gap-1.5">
+          <Feather name="clock" size={13} color={colors.ink.creamMuted} />
+          <Text className="font-grotesk-medium text-[13px] text-ink-cream-muted">{t.next.workLeft(formatDuration(minutesLeft))}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
-
-const DOT_GLOW = { boxShadow: "0 2px 6px rgba(242, 101, 42, 0.55)" };
 
 export default function Next() {
   const colors = useColors();
@@ -264,34 +294,73 @@ export default function Next() {
   // The task whose card is showing — the card follows its task, not its place.
   const [followedId, setFollowedId] = useState<string | undefined>(undefined);
 
-  // What to do next, best first: open tasks only (never completed, skipped or
-  // archived), pinned ones ahead, then the priority engine's ranking — which
-  // counts how well each fits the time budget, when one was given.
-  const allPendingTasks = useMemo(
+  // The page's entrance, each time the tab comes into view: the title, then
+  // today's card, then the cards.
+  const titleEnter = useFocusEnter(0);
+  const cardEnter = useFocusEnter(1);
+  const bodyEnter = useFocusEnter(2);
+
+  // The day the page is for — checked again whenever the tab comes back into
+  // view, so a phone left open overnight moves on to the new day.
+  const [dayKey, setDayKey] = useState(() => toLocalDateKey(new Date()));
+  useFocusEffect(
+    useCallback(() => {
+      setDayKey(toLocalDateKey(new Date()));
+    }, []),
+  );
+
+  // Today, as the Schedule shows it (lib/schedule.ts): the open tasks due
+  // today, the ones due today already done, and how long the rest takes.
+  // Late tasks stay on the day they were due, and tasks without a deadline
+  // aren't on any day — neither is on this page (the user's call, 2026-10-07).
+  const today = useMemo(() => {
+    const now = new Date();
+    const key = toLocalDateKey(now);
+    const [plan] = buildSchedule(tasks, { now, from: key, until: key });
+    return {
+      ids: new Set(plan.items.map((item) => item.task.id)),
+      done: plan.done.length,
+      minutesLeft: plan.plannedMinutes,
+    };
+    // dayKey isn't read: it's there to work today out again on a new day.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, dayKey]);
+
+  // Every open task, best first: pinned ones ahead, then the priority
+  // engine's ranking — which counts how well each fits the time budget, when
+  // one was given.
+  const rankedTasks = useMemo(
     () => recommendTasks(tasks, { now: new Date(), availableMinutes: activeBudget }, stickyTopId).map((entry) => entry.task),
     [tasks, activeBudget, stickyTopId],
   );
+  // Today's tasks, in that order. A task with a session running on it always
+  // stays — its card holds the clock, and the only way to stop it.
+  const todayTasks = useMemo(
+    () => rankedTasks.filter((task) => today.ids.has(task.id) || activeSession?.taskIds.includes(task.id)),
+    [rankedTasks, today, activeSession],
+  );
+  // "I've only got 20 minutes" asks for something that fits, whatever day
+  // it's due, so with a time budget every open task is in the running.
+  const pool = activeBudget === undefined ? todayTasks : rankedTasks;
   // Narrowed to what actually fits the stated window — but never down to an
-  // empty screen: if nothing fits, the whole queue is better than nothing,
-  // and the banner says so.
+  // empty screen: if nothing fits, today's tasks are better than nothing, and
+  // the banner says so.
   const fittingTasks = useMemo(
     () =>
       activeBudget === undefined
-        ? allPendingTasks
-        : allPendingTasks.filter(
+        ? pool
+        : pool.filter(
             (task) =>
               // A task with a session running on it is never filtered away:
               // the clock, and the only way to stop it, live in that card.
               activeSession?.taskIds.includes(task.id) ||
               (task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget),
           ),
-    [allPendingTasks, activeBudget, activeSession],
+    [pool, activeBudget, activeSession],
   );
   const budgetHasMatches =
-    activeBudget === undefined || allPendingTasks.some(
-      (task) => task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget,
-    );
-  const pendingTasks = budgetHasMatches ? fittingTasks : allPendingTasks;
+    activeBudget === undefined || pool.some((task) => task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget);
+  const pendingTasks = budgetHasMatches ? fittingTasks : todayTasks;
   const total = pendingTasks.length;
 
   // The card follows its task, not its position: if the ranking moves while
@@ -308,7 +377,7 @@ export default function Next() {
   // Kept in step during render (React's "adjusting state when a prop
   // changes"), not in an effect, so the stack never draws a frame out of step.
   // Each only changes when what it tracks does, so this settles in one pass.
-  const topId = allPendingTasks[0]?.id;
+  const topId = pool[0]?.id;
   if (topId !== stickyTopId) setStickyTopId(topId);
   if (currentTask?.id !== followedId) setFollowedId(currentTask?.id);
   if (currentIndex !== activeIndex) setActiveIndex(currentIndex);
@@ -321,13 +390,13 @@ export default function Next() {
 
   // The session's card is gone once its task is finished or deleted — nothing
   // is left to show the clock, so the session ends with it. Checked against
-  // every pending task, not the ones the time filter is showing: a running
-  // task that simply doesn't fit the stated window is still running.
+  // every open task, not the ones the time filter (or today) is showing: a
+  // running task that simply doesn't fit the stated window is still running.
   useEffect(() => {
     if (!activeSession) return;
-    const stillRunning = allPendingTasks.some((task) => activeSession.taskIds.includes(task.id));
+    const stillRunning = rankedTasks.some((task) => activeSession.taskIds.includes(task.id));
     if (!stillRunning) leaveSession();
-  }, [activeSession, allPendingTasks, leaveSession]);
+  }, [activeSession, rankedTasks, leaveSession]);
 
   // Finished in the session, the card closes it itself once its celebration
   // has played (onCelebrated), before the task is marked done. This catches
@@ -408,10 +477,67 @@ export default function Next() {
     setFocusLanded(false);
   }, []);
 
+  const openSchedule = () => {
+    posthog.capture("schedule_opened", { from: "next" });
+    router.push("/schedule");
+  };
+
+  // Done against what's left of today's tasks. The card shows once there's a
+  // day to measure: anything due today, open or done.
+  const todayLeft = todayTasks.length;
+  const todayTotal = today.done + todayLeft;
+  const dateLabel = keyToLocalDate(dayKey).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
+
+  // The page says what it is at the top: today's date over "Today", then
+  // today's progress — so it reads as today's list, not the whole backlog.
+  const header = (
+    <>
+      {/* Warm light from the top-right corner, running up under the status bar. */}
+      <View
+        pointerEvents="none"
+        className="absolute left-0 right-0"
+        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
+      />
+
+      <View className="px-6 pb-1 pt-2">
+        <Animated.View className="flex-row items-start gap-3" style={titleEnter}>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-1.5">
+              <GemLogo size={16} />
+              <Text className="eyebrow text-orange-500">{dateLabel}</Text>
+            </View>
+            <Text className="mt-1 font-grotesk-bold text-[30px] leading-[36px] tracking-tight text-ink-cream" style={rtl}>
+              {t.next.today}
+            </Text>
+          </View>
+          {/* The one way into the Schedule: the week ahead, day by day. */}
+          <Chip
+            label={t.next.schedule}
+            icon={() => <Feather name="calendar" size={14} color={colors.orange[500]} />}
+            onPress={openSchedule}
+            className="mt-1"
+          />
+        </Animated.View>
+        {todayTotal > 0 ? (
+          <Animated.View className="mt-4" style={cardEnter}>
+            <TodayCard done={today.done} left={todayLeft} minutesLeft={today.minutesLeft} />
+          </Animated.View>
+        ) : null}
+      </View>
+    </>
+  );
+
   if (!currentTask && !focusState) {
+    // Nothing left for today: all of today's tasks are done (the bar is
+    // full), or none is due today while there are open tasks elsewhere — on
+    // other days, late, or without a deadline — or no open task at all.
+    const finishedToday = today.done > 0;
+    const laterOnly = !finishedToday && rankedTasks.length > 0;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
+        {header}
         {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
+        <Animated.View className="flex-1" style={bodyEnter}>
         <Animated.View
           entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
           className="flex-1 items-center justify-center gap-3 px-6"
@@ -419,19 +545,33 @@ export default function Next() {
           style={{ paddingBottom: tabBarHeight }}
         >
           <View
-            pointerEvents="none"
-            className="absolute left-0 right-0"
-            style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
-          />
-          <View
-            className="tile tile--orange h-[52px] w-[52px] rounded-[16px]"
-            style={gradients.tileOrange}
+            className={`tile h-[52px] w-[52px] rounded-[16px] ${finishedToday ? "tile--green" : "tile--orange"}`}
+            style={finishedToday ? gradients.tileGreen : gradients.tileOrange}
           >
-            <Ionicons name="checkmark-done" size={26} color={colors.orange[500]} />
+            <Ionicons
+              name={laterOnly ? "calendar-outline" : "checkmark-done"}
+              size={26}
+              color={finishedToday ? colors.success[500] : colors.orange[500]}
+            />
           </View>
-          <Text className="text-card-title text-center text-ink-cream">{t.next.allCaughtUp}</Text>
-          <Text className="text-body text-center text-ink-cream-muted">{t.next.allCaughtUpBody}</Text>
-          <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
+          <Text className="text-card-title text-center text-ink-cream">
+            {finishedToday ? t.next.doneForToday : laterOnly ? t.next.nothingToday : t.next.allCaughtUp}
+          </Text>
+          <Text className="text-body text-center text-ink-cream-muted">
+            {finishedToday ? t.next.doneForTodayBody : laterOnly ? t.next.nothingTodayBody : t.next.allCaughtUpBody}
+          </Text>
+          {finishedToday || laterOnly ? (
+            <>
+              <SecondaryButton icon="calendar" size="lg" label={t.next.openSchedule} onPress={openSchedule} className="mt-2" />
+              {/* Tasks without a deadline are on no day — this is the way to them. */}
+              {laterOnly ? (
+                <TextButton label={t.next.seeTasks} tone="accent" onPress={() => router.navigate("/tasks")} />
+              ) : null}
+            </>
+          ) : (
+            <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
+          )}
+        </Animated.View>
         </Animated.View>
       </SafeAreaView>
     );
@@ -443,22 +583,7 @@ export default function Next() {
         const { width, height } = event.nativeEvent.layout;
         setRootSize((current) => current.width === width && current.height === height ? current : { width, height });
       }}>
-      {/* Warm light from the top-right corner, running up under the status bar. */}
-      <View
-        pointerEvents="none"
-        className="absolute left-0 right-0"
-        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
-      />
-
-      <View className="px-6 pb-1 pt-2">
-        <View className="flex-row items-center gap-1.5">
-          <GemLogo size={16} />
-          <Text className="eyebrow text-orange-500">{t.next.eyebrow}</Text>
-        </View>
-        <Text className="mt-2 font-grotesk-bold text-[19px] leading-[24px] tracking-tight text-ink-cream" style={rtl}>
-          {t.next.heading}
-        </Text>
-      </View>
+      {header}
 
       <View className="flex-1">
         <ScrollView
@@ -466,6 +591,7 @@ export default function Next() {
           contentContainerStyle={{ paddingTop: 18, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
+          <Animated.View style={bodyEnter}>
           {activeBudget !== undefined ? (
             <View className="mx-6 mb-4 flex-row items-center gap-2 rounded-2xl border border-orange-500/40 bg-orange-100 px-4 py-2.5">
               <Feather name="clock" size={14} color={colors.orange[600]} />
@@ -490,34 +616,18 @@ export default function Next() {
             </View>
           ) : null}
 
-          {/* Read out as one phrase ("#1 of 12 in priority") rather than digit by digit. */}
           {currentTask ? (
-            <>
-              <View
-                accessible
-                accessibilityLabel={t.next.rankOf(currentIndex + 1, total)}
-                className="flex-row items-center gap-3 px-6"
-              >
-                <View className="card card--cream-soft rounded-[12px] px-2.5 py-1" style={gradients.card}>
-                  <Text className="font-grotesk-bold text-[15px] text-ink-cream">
-                    {currentIndex + 1}
-                    <Text className="font-grotesk-medium text-ink-cream-subtle">{` / ${total}`}</Text>
-                  </Text>
-                </View>
-                <QueueDots index={currentIndex} total={total} />
-              </View>
-
-              <NextTaskCardStack
-                tasks={pendingTasks}
-                currentIndex={currentIndex}
-                onIndexChange={handleIndexChange}
-                onStart={handleStartSession}
-                onDetails={handleDetails}
-                focusTaskId={focusState && !focusLanded ? focusState.task.id : undefined}
-                onFocusBoundsChange={handleFocusBoundsChange}
-              />
-            </>
+            <NextTaskCardStack
+              tasks={pendingTasks}
+              currentIndex={currentIndex}
+              onIndexChange={handleIndexChange}
+              onStart={handleStartSession}
+              onDetails={handleDetails}
+              focusTaskId={focusState && !focusLanded ? focusState.task.id : undefined}
+              onFocusBoundsChange={handleFocusBoundsChange}
+            />
           ) : null}
+          </Animated.View>
         </ScrollView>
       </View>
       {focusState && focusedTask ? (

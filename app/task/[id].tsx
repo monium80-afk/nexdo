@@ -29,7 +29,7 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
-import { formatDeadline, type DeadlineInput } from "@/lib/deadline";
+import { deadlineToLocalDate, formatDeadline, type DeadlineInput } from "@/lib/deadline";
 import { formatDuration } from "@/lib/formatDuration";
 import { addDaysToKey, toLocalDateKey } from "@/lib/localDate";
 import { showPlanLimit } from "@/lib/paywall";
@@ -195,7 +195,6 @@ export default function TaskDetail() {
   const contextNotes = task.aiContext.notes;
   const reassessing = reassess?.status === "running";
   const orderedSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
-  const completedSubtaskCount = orderedSubtasks.filter((subtask) => subtask.status === "completed").length;
   const isOpen = task.status === "pending";
   const isSkipped = task.status === "skipped";
 
@@ -222,17 +221,20 @@ export default function TaskDetail() {
   const suggestedDays = new Map(
     plan && plan.pace === "scheduled" && (plan.daysLeft ?? 0) > 1 ? plan.suggestions.map((entry) => [entry.stepId, entry.date]) : [],
   );
+  // One short line: what's left of the plan. Each step shows its own day.
   const planCaption = plan && plan.openSteps > 0 && isOpen
-    ? [
-        t.taskDetail.planLeft(plan.openSteps, formatDuration(plan.remainingMinutes)),
-        plan.pace === "overdue"
-          ? t.taskDetail.planOverdue
-          : plan.pace === "scheduled" && task.deadline
-            ? t.taskDetail.planPerDay(formatDuration(plan.minutesPerDay ?? 0), formatDeadline({ date: task.deadline.date }, t.locale))
-            : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
+    ? t.taskDetail.planLeft(plan.openSteps, formatDuration(plan.remainingMinutes))
+    : null;
+
+  // The header's deadline: "Today" / "Tomorrow" / "Fri, Oct 9", led by
+  // "Overdue" once it's passed, and the time on its own when there is one.
+  const deadlineDay = !task.deadline
+    ? t.due.noDeadline
+    : isOverdue
+      ? `${t.due.overdue} · ${dayLabel(task.deadline.date, today, t)}`
+      : dayLabel(task.deadline.date, today, t);
+  const deadlineTime = task.deadline?.time
+    ? deadlineToLocalDate(task.deadline).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" })
     : null;
 
   const handlePostpone = (days: number) => {
@@ -440,14 +442,27 @@ export default function TaskDetail() {
           </>
         }
       >
+        {/* The deadline first and largest: its day, and its time when it has
+            one — this page is the one place that time is shown. */}
+        <View className="flex-row flex-wrap items-center gap-2">
+          <View
+            accessible
+            accessibilityLabel={due.pillLabel}
+            className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 ${isOverdue ? "bg-overdue-500" : "glass"}`}
+          >
+            <Feather name="calendar" size={15} color={isOverdue ? colors.onAccent : colors.ink.charcoal} />
+            <Text className={`font-grotesk-bold text-[15px] ${isOverdue ? "text-on-accent" : "text-ink-charcoal"}`}>
+              {deadlineDay}
+            </Text>
+          </View>
+          {deadlineTime ? (
+            <View className="flex-row items-center gap-1.5 rounded-full border border-orange-500/60 bg-orange-500/20 px-3 py-1.5">
+              <Feather name="clock" size={15} color={colors.orange[300]} />
+              <Text className="font-grotesk-bold text-[15px] text-orange-200">{deadlineTime}</Text>
+            </View>
+          ) : null}
+        </View>
         <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
-          <MetaPill
-            icon={<Feather name="calendar" size={14} color={isOverdue ? colors.overdue[300] : colors.ink.charcoalMuted} />}
-            label={due.pillLabel}
-            labelClassName={
-              isOverdue ? "font-grotesk-semibold text-sm text-overdue-300" : "font-grotesk-medium text-sm text-ink-charcoal-muted"
-            }
-          />
           <MetaPill
             icon={<Feather name="clock" size={14} color={colors.ink.charcoalMuted} />}
             label={formatDuration(task.estimatedMinutes)}
@@ -483,9 +498,6 @@ export default function TaskDetail() {
 
               <View className="card card--cream-soft gap-3 p-[16px]">
                 <SectionHeader icon="calendar" label={t.taskDetail.postponeTitle} />
-                <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                  {t.taskDetail.currentDeadline(due.label)}
-                </Text>
                 <View className="flex-row flex-wrap gap-2">
                   {POSTPONE_OPTIONS.map((option) => (
                     <Chip
@@ -537,31 +549,18 @@ export default function TaskDetail() {
                   }
                 />
 
+                {/* Not repeating, the card is just its heading and "Make it repeat". */}
                 {repeatDraft === undefined ? (
                   task.recurrence ? (
-                    <View className="gap-1">
-                      <Text className="font-grotesk-semibold text-base text-ink-cream" style={rtl}>
+                    <View className="flex-row flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                      <Text className="shrink font-grotesk-semibold text-base text-ink-cream" style={rtl}>
                         {describeRule(task.recurrence.rule, t)}
                       </Text>
                       {task.status === "pending" ? (
-                        <>
-                          <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                            {t.taskDetail.occurrenceNote}
-                          </Text>
-                          <TextButton
-                            label={t.taskDetail.stopRepeating}
-                            onPress={handleStopRepeating}
-                            tone="destructive"
-                            className="mt-2 self-start"
-                          />
-                        </>
+                        <TextButton label={t.taskDetail.stopRepeating} onPress={handleStopRepeating} tone="destructive" />
                       ) : null}
                     </View>
-                  ) : (
-                    <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                      {t.taskDetail.notRepeating}
-                    </Text>
-                  )
+                  ) : null
                 ) : (
                   <View className="gap-3">
                     <RecurrencePicker value={repeatDraft} onChange={setRepeatDraft} deadline={task.deadline} nested />
@@ -580,10 +579,7 @@ export default function TaskDetail() {
               {/* A list rather than a panel, so it's laid out like the task list:
                   a label, then one card per step. */}
               <View className="gap-3 pt-2">
-                <SectionHeader
-                  icon="check-square"
-                  label={t.taskDetail.subtasks(completedSubtaskCount, orderedSubtasks.length)}
-                />
+                <SectionHeader icon="check-square" label={t.taskDetail.subtasksTitle} />
                 {planCaption ? (
                   <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
                     {planCaption}
@@ -625,9 +621,7 @@ export default function TaskDetail() {
                             disabled={task.status !== "pending"}
                             onToggle={() => completeStep(task.id, subtask.id)}
                             caption={
-                              suggestedDays.has(subtask.id)
-                                ? t.taskDetail.suggestedDay(dayLabel(suggestedDays.get(subtask.id)!, today, t))
-                                : undefined
+                              suggestedDays.has(subtask.id) ? dayLabel(suggestedDays.get(subtask.id)!, today, t) : undefined
                             }
                           >
                             <IconButton
@@ -696,9 +690,6 @@ export default function TaskDetail() {
                   icon={<Ionicons name="sparkles" size={14} color={colors.orange[500]} />}
                   label={t.taskDetail.contextTitle}
                 />
-                <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                  {t.taskDetail.contextBody}
-                </Text>
                 {contextNotes.map((entry, index) => (
                   <ContextNoteCard
                     key={`${index}-${entry}`}

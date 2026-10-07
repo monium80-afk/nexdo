@@ -302,7 +302,9 @@ export default function OnboardingDump() {
         : "idle";
 
   // The free run is spent: the tasks it found are kept for the account (see
-  // useOnboardingStore), so the way on is to create one.
+  // useOnboardingStore). The way on still runs through the steps that need no
+  // AI — notifications, the trial and the plans — and then the account, the
+  // same road a first run takes; going straight to sign-up skipped the plans.
   if (trialUsed) {
     return (
       <OnboardingLayout
@@ -320,8 +322,8 @@ export default function OnboardingDump() {
         body={t.onboardingDump.trialUsedBody}
         nextLabel={t.onboardingDump.trialUsedCta}
         onNext={() => {
-          posthog.capture("onboarding_trial_used_signup_tapped");
-          router.push("/(auth)/sign-up");
+          posthog.capture("onboarding_trial_used_continue_tapped");
+          router.push("/onboarding-notifications");
         }}
       >
         {null}

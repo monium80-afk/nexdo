@@ -2,11 +2,19 @@ import { useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useIsFocused, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { UsageResponseBody } from "@/app/api/usage+api";
@@ -21,6 +29,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useTabBarHeight } from "@/components/TabBar";
 import { SUPPORT_LINKS } from "@/constants/support";
 import { MOTION, gradients } from "@/constants/theme";
+import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
@@ -183,6 +192,96 @@ function ToggleRow({
   );
 }
 
+// One lap of the glows round the card.
+const AURA_ORBIT_MS = 5600;
+const AURA_GLOW_WIDTH = 150;
+const AURA_GLOW_HEIGHT = 100;
+/** How far inside the card's edge the glows' centres travel, so each shows as a halo at the rim. */
+const AURA_INSET_X = 14;
+const AURA_INSET_Y = 6;
+
+/**
+ * Magic mic, in a card of its own with an aura that goes round it — two
+ * soft glows, orange and gold, travelling the card's edge half a lap apart
+ * over a faint steady halo. Brighter while it's on. Only a transform moves,
+ * so it costs Android nothing (no blurred shadows).
+ */
+function MagicMicRow({
+  label,
+  body,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  body: string;
+  value: boolean;
+  onValueChange: (next: boolean) => unknown;
+}) {
+  const reduceMotion = useReducedMotion();
+  // A tab stays mounted once it's been opened, so the orbit would otherwise
+  // run on every frame behind the other tabs for as long as the app is open.
+  const focused = useIsFocused();
+  const angle = useSharedValue(Math.PI * 1.25);
+  // Half the card's size, less the inset: the ellipse the glows travel.
+  const reachX = useSharedValue(0);
+  const reachY = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) {
+      angle.set(Math.PI * 1.25);
+      return;
+    }
+    if (!focused) return;
+    // Carries on from where it stopped, so coming back doesn't jump.
+    const from = angle.get() % (2 * Math.PI);
+    angle.set(from);
+    angle.set(withRepeat(withTiming(from + 2 * Math.PI, { duration: AURA_ORBIT_MS, easing: Easing.linear }), -1, false));
+    return () => cancelAnimation(angle);
+  }, [angle, focused, reduceMotion]);
+
+  const leadStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: Math.cos(angle.value) * reachX.value }, { translateY: Math.sin(angle.value) * reachY.value }],
+  }));
+  const trailStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: Math.cos(angle.value + Math.PI) * reachX.value },
+      { translateY: Math.sin(angle.value + Math.PI) * reachY.value },
+    ],
+  }));
+  const glowBox = {
+    left: -AURA_GLOW_WIDTH / 2,
+    top: -AURA_GLOW_HEIGHT / 2,
+    width: AURA_GLOW_WIDTH,
+    height: AURA_GLOW_HEIGHT,
+  };
+
+  return (
+    <View className="my-2">
+      <View
+        pointerEvents="none"
+        className="absolute -inset-x-[16px] -inset-y-[20px]"
+        style={[gradients.magicAura, { opacity: value ? 0.5 : 0.28 }]}
+      />
+      {/* The centre the glows travel round. */}
+      <View pointerEvents="none" className="absolute left-1/2 top-1/2" style={{ opacity: value ? 1 : 0.55 }}>
+        <Animated.View className="absolute" style={[glowBox, gradients.auraOrange, leadStyle]} />
+        <Animated.View className="absolute" style={[glowBox, gradients.auraGold, trailStyle]} />
+      </View>
+      <View
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          reachX.set(Math.max(0, width / 2 - AURA_INSET_X));
+          reachY.set(Math.max(0, height / 2 - AURA_INSET_Y));
+        }}
+        className="card card--cream-soft p-[16px]"
+        style={gradients.card}
+      >
+        <ToggleRow label={label} body={body} value={value} onValueChange={onValueChange} />
+      </View>
+    </View>
+  );
+}
+
 /**
  * A tappable row inside a card: label, optional explanation, chevron. Only
  * Help & Support's rows lead with a tile.
@@ -293,6 +392,8 @@ export default function Settings() {
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
+  const headerEnter = useFocusEnter(0);
+  const bodyEnter = useFocusEnter(1);
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -517,7 +618,7 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} />
+      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} contentStyle={headerEnter} />
 
       <View className="screen-body">
         <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
@@ -527,7 +628,7 @@ export default function Settings() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="gap-4 px-3 pt-3">
+          <Animated.View className="gap-4 px-3 pt-3" style={bodyEnter}>
             <Section title={t.settings.account}>
               <ProfileCard onPress={() => setAccountOpen(true)} />
 
@@ -584,16 +685,14 @@ export default function Settings() {
                   value={aiAutoMode}
                   onValueChange={setAiAutoMode}
                 />
-
-                <Divider />
-
-                <ToggleRow
-                  label={t.settings.voiceButton}
-                  body={t.settings.voiceButtonBody}
-                  value={voiceAddButton}
-                  onValueChange={handleVoiceAddButton}
-                />
               </Group>
+
+              <MagicMicRow
+                label={t.settings.voiceButton}
+                body={t.settings.voiceButtonBody}
+                value={voiceAddButton}
+                onValueChange={handleVoiceAddButton}
+              />
 
               <DangerRow label={t.settings.clearHistory} onPress={handleClearHistory} />
 
@@ -793,7 +892,7 @@ export default function Settings() {
                 {t.settings.version(APP_VERSION)}
               </Text>
             </Section>
-          </View>
+          </Animated.View>
         </ScrollView>
       </View>
 

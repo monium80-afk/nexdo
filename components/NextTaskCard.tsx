@@ -3,7 +3,9 @@ import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View, type ViewProps } from "react-native";
 import Animated, {
+  Easing,
   FadeIn,
+  FadeInUp,
   FadeOut,
   useAnimatedStyle,
   useReducedMotion,
@@ -57,6 +59,18 @@ const COMPLETE_GLOW = { boxShadow: "0 8px 16px -8px rgba(40, 153, 90, 0.4), inse
 const PLAY_SHADOW = { boxShadow: "0 3px 8px -2px rgba(150, 50, 10, 0.45)" };
 
 export type CardBounds = { x: number; y: number; width: number; height: number };
+
+// A session's parts rising into place once its backdrop has opened: each
+// fades up from a little below, a beat after the one before.
+const SESSION_ENTER_MS = 460;
+const SESSION_ENTER_STAGGER = 110;
+
+function sessionEnter(order: number, reduceMotion: boolean) {
+  if (reduceMotion) return FadeIn.duration(0);
+  return FadeInUp.duration(SESSION_ENTER_MS)
+    .delay(order * SESSION_ENTER_STAGGER)
+    .easing(Easing.out(Easing.cubic));
+}
 
 // A step's box filling in, and the progress bar sliding along after it.
 const STEP_TICK_MS = 160;
@@ -191,14 +205,17 @@ function SessionPanel({
   return (
     <View className="glass items-center gap-3 rounded-[22px] p-4">
       <TimerRing progress={countdown.progress} overtime={countdown.isOvertime}>
-        {/* Shrinks to fit the ring once a long session shows hours too.
+        {/* A size down once a long session shows hours too ("1:29:59"), set
+            rather than left to shrink-to-fit, which re-measured every tick.
             Tabular digits, so the clock doesn't shift sideways as it ticks. */}
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
-          className="text-center font-grotesk-bold text-[44px] leading-[52px] tracking-tight"
+          className="text-center font-grotesk-bold tracking-tight"
           style={{
             width: 144,
+            fontSize: countdown.clock.length > 5 ? 34 : 44,
+            lineHeight: countdown.clock.length > 5 ? 42 : 52,
             fontVariant: ["tabular-nums"],
             color: countdown.isOvertime ? colors.overdue[300] : colors.ink.charcoal,
           }}
@@ -292,6 +309,8 @@ export function NextTaskCard({
   const tabBarHeight = useTabBarHeight();
   const cardRef = useRef<View>(null);
   const completeButtonRef = useRef<View>(null);
+  // Measured on Start: the session opens out of the button itself.
+  const startButtonRef = useRef<View>(null);
   const t = useTranslation();
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();
@@ -486,7 +505,8 @@ export function NextTaskCard({
 
   const handleStart = () => {
     const begin = (bounds?: CardBounds) => onStart(plannedMinutes, bounds);
-    if (!cardRef.current) {
+    const target = startButtonRef.current ?? cardRef.current;
+    if (!target) {
       begin();
       return;
     }
@@ -496,7 +516,7 @@ export function NextTaskCard({
       measured = true;
       begin();
     }, 120);
-    cardRef.current.measureInWindow((x, y, width, height) => {
+    target.measureInWindow((x, y, width, height) => {
       if (measured) return;
       measured = true;
       clearTimeout(fallback);
@@ -539,7 +559,9 @@ export function NextTaskCard({
           className={focusMode ? "glass--soft gap-[18px] rounded-[24px] p-[11px]" : "gap-[18px]"}
           style={contentStyle}
         >
-        <View>
+        {/* In a session the parts rise in one after another — the task, its
+            steps, then the clock — the app's fade-up entrance. */}
+        <Animated.View entering={focusMode ? sessionEnter(0, reduceMotion) : undefined}>
           {/* Where the task sits in the queue, and its score — worth knowing,
               but set in small pills so the title wins. */}
           <View className="flex-row items-center justify-between gap-3">
@@ -624,11 +646,17 @@ export function NextTaskCard({
             </View>
           </View>
 
-        </View>
+        </Animated.View>
 
         {runningSession && hasSteps ? (
           <Animated.View
-            entering={reduceMotion ? FadeIn.duration(0) : FadeIn.duration(MOTION.duration.standard)}
+            entering={
+              focusMode
+                ? sessionEnter(1, reduceMotion)
+                : reduceMotion
+                  ? FadeIn.duration(0)
+                  : FadeIn.duration(MOTION.duration.standard)
+            }
             exiting={reduceMotion ? FadeOut.duration(0) : FadeOut.duration(MOTION.duration.short)}
           >
             <MicroStepsChecklist task={task} onToggleStep={handleToggleStep} />
@@ -637,7 +665,13 @@ export function NextTaskCard({
 
         <Animated.View
           key={runningSession ? "session-controls" : "start-controls"}
-          entering={reduceMotion ? FadeIn.duration(0) : FadeIn.duration(MOTION.duration.short)}
+          entering={
+            focusMode
+              ? sessionEnter(hasSteps ? 2 : 1, reduceMotion)
+              : reduceMotion
+                ? FadeIn.duration(0)
+                : FadeIn.duration(MOTION.duration.short)
+          }
           exiting={reduceMotion ? FadeOut.duration(0) : FadeOut.duration(MOTION.duration.short)}
           className="gap-[10px]"
         >
@@ -676,21 +710,23 @@ export function NextTaskCard({
             </>
           ) : (
             <>
-              <AnimatedPressable
-                onPress={handleStart}
-                accessibilityRole="button"
-                accessibilityLabel={t.next.startSessionFor(formatDuration(plannedMinutes))}
-                style={gradients.accent}
-                className="glow-accent min-h-[44px] flex-row items-center justify-center gap-3 rounded-[16px] bg-orange-500 px-4 py-1.5"
-              >
-                <View className="h-[28px] w-[28px] items-center justify-center rounded-full bg-white" style={PLAY_SHADOW}>
-                  {/* Nudged right: a triangle's visual centre sits left of its box. */}
-                  <Ionicons name="play" size={13} color={colors.orange[500]} style={{ marginLeft: 2 }} />
-                </View>
-                <Text style={rtl} className="font-grotesk-bold text-[15px] text-on-accent">
-                  {t.next.startSessionLabel}
-                </Text>
-              </AnimatedPressable>
+              <View ref={startButtonRef} collapsable={false}>
+                <AnimatedPressable
+                  onPress={handleStart}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.next.startSessionFor(formatDuration(plannedMinutes))}
+                  style={gradients.accent}
+                  className="glow-accent min-h-[44px] flex-row items-center justify-center gap-3 rounded-[16px] bg-orange-500 px-4 py-1.5"
+                >
+                  <View className="h-[28px] w-[28px] items-center justify-center rounded-full bg-white" style={PLAY_SHADOW}>
+                    {/* Nudged right: a triangle's visual centre sits left of its box. */}
+                    <Ionicons name="play" size={13} color={colors.orange[500]} style={{ marginLeft: 2 }} />
+                  </View>
+                  <Text style={rtl} className="font-grotesk-bold text-[15px] text-on-accent">
+                    {t.next.startSessionLabel}
+                  </Text>
+                </AnimatedPressable>
+              </View>
 
               {/* Already done, or done without the timer: finish it right here.
                   Tinted green, like the session's own Complete button, but

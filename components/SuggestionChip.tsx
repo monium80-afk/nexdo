@@ -5,12 +5,14 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { gradients } from "@/constants/theme";
 
 // Each tone tints the chip with its action's colour, so a row of quick
-// actions reads by colour before it's read by word. "accent" is the one
-// glowing orange chip — the action the row leads with. Class strings are
-// written out in full so Tailwind can see them.
+// actions reads by colour before it's read by word. "accent" is the glowing
+// filled chip, for a confirmation ("Yes, do it"). Class strings are written
+// out in full so Tailwind can see them.
 const TONES = {
   idle: "chip--idle",
   accent: "glow-accent border-orange-500 bg-orange-500",
+  /** Orange in the quick-action row's own tinted style (Add), not filled like `accent`. */
+  orange: "border-orange-500/35 bg-orange-100",
   green: "border-success-500/35 bg-success-100",
   red: "border-overdue-200 bg-overdue-50",
   amber: "border-amber-500/35 bg-amber-100",

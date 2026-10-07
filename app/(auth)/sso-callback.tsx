@@ -8,8 +8,8 @@ import { useColors } from "@/hooks/useTheme";
 const GIVE_UP_AFTER_MS = 8_000;
 
 /**
- * Where Google/Apple sign-in sends the browser back to. useSSO() asks for
- * `…/--/sso-callback` by default, and on Android that link reaches the app
+ * Where Google/Apple sign-in sends the browser back to (SSO_REDIRECT_URL in
+ * lib/clerk.ts, `nexdo://sso-callback`), and on Android that link reaches the app
  * twice: once to the browser session in sign-in/sign-up, which finishes
  * signing in, and once to Expo Router, which opens it as a screen. Without
  * this file that screen was "Unmatched Route", left on top of everything.

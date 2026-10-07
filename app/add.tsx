@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/expo";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
@@ -11,7 +11,6 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { IconButton, PrimaryButton, SecondaryButton } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { FormSection } from "@/components/FormSection";
-import { IconTile } from "@/components/IconTile";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import {
@@ -192,8 +191,6 @@ export default function Add() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScreenHeader
           title={t.form.title}
-          subtitle={t.form.subtitle}
-          accent
           actions={<IconButton icon="x" variant="header" onPress={handleClose} accessibilityLabel={t.common.close} />}
         />
 
@@ -304,7 +301,7 @@ export default function Add() {
               </View>
             </FormSection>
 
-            <FormSection icon="check-square" label={t.form.planSteps(steps.length)} hint={t.form.optionalPlan}>
+            <FormSection icon="check-square" label={t.form.planSteps} hint={t.form.optionalPlan}>
               <AddItemField
                 value={stepDraftLabel}
                 onChangeText={setStepDraftLabel}
@@ -345,8 +342,8 @@ export default function Add() {
           </View>
         </ScrollView>
 
-        {/* A raised tray at the foot: the way over to the AI, then the two
-            ways out — Cancel quiet, Add Task glowing. */}
+        {/* A raised tray at the foot: the way over to the AI — just a link —
+            then the two ways out, Cancel quiet, Add Task glowing. */}
         <View
           className="gap-3 rounded-t-[28px] border-t border-white/80 bg-cream-50 px-6 pt-3"
           style={[{ paddingBottom: insets.bottom + 21 }, FOOTER_SHADOW]}
@@ -354,14 +351,11 @@ export default function Add() {
           <AnimatedPressable
             onPress={handleOpenAiChat}
             accessibilityRole="button"
-            scaleTo={0.98}
-            className="card card--cream-inset flex-row items-center gap-2.5 py-[5px] pl-[6px] pr-3"
+            scaleTo={0.97}
+            hitSlop={8}
+            className="items-center py-1"
           >
-            <IconTile icon="message-circle" size="sm" />
-            <Text className="flex-1 font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
-              {t.form.openAiChat}
-            </Text>
-            <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
+            <Text className="font-grotesk-semibold text-sm text-orange-600">{t.form.openAiChat}</Text>
           </AnimatedPressable>
           <View className="flex-row items-center gap-3">
             <SecondaryButton size="lg" label={t.common.cancel} onPress={handleClose} className="flex-1" />

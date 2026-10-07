@@ -63,12 +63,17 @@ const STRIKE_THICKNESS_EM = 1 / 18;
 // strike). What says "done" afterwards — the ticked box, the muted, struck
 // title, the sunken card — is drawn from the task itself, never left behind by
 // an animation: see Checkbox.
-const BURST_DELAY_MS = 80;
-const BURST_MS = 560;
-const STRIKE_DELAY_MS = 140;
-const STRIKE_MS = 320;
-const CHECK_HOLD_MS = 720;
-const POP_SPRING = { damping: 9, stiffness: 300, mass: 0.6 };
+//
+// Two haptic beats make it land: a light click on the tap, a success buzz as
+// the strike finishes crossing the title. The card flashes warm for a moment
+// as it's ticked.
+const BURST_DELAY_MS = 60;
+const BURST_MS = 500;
+const STRIKE_DELAY_MS = 110;
+const STRIKE_MS = 260;
+const CHECK_HOLD_MS = 640;
+const FLASH_MS = 420;
+const POP_SPRING = { damping: 10, stiffness: 380, mass: 0.55 };
 
 type TitleLine = TextLayoutEvent["nativeEvent"]["lines"][number];
 
@@ -149,6 +154,8 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
   const pop = useSharedValue(1);
   const bump = useSharedValue(1);
   const burst = useSharedValue(0);
+  const flash = useSharedValue(0);
+  const successBeat = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Back to the start once a tick is over — its lines are gone by then — so
   // the next one draws from nothing.
@@ -158,6 +165,15 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
 
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
   const bumpStyle = useAnimatedStyle(() => ({ transform: [{ scale: bump.value }] }));
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
+
+  // Leaving mid-tick drops the second haptic beat with the card.
+  useEffect(
+    () => () => {
+      if (successBeat.current) clearTimeout(successBeat.current);
+    },
+    [],
+  );
 
   const finishCheck = () => {
     completeTimer.current = null;
@@ -169,7 +185,9 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
     // A second tap during the tick takes it back before it lands.
     if (celebrating) {
       if (completeTimer.current) clearTimeout(completeTimer.current);
+      if (successBeat.current) clearTimeout(successBeat.current);
       completeTimer.current = null;
+      successBeat.current = null;
       setChecking(false);
       return;
     }
@@ -178,26 +196,37 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
       return;
     }
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (reduceMotion) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onToggle();
       return;
     }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    successBeat.current = setTimeout(() => {
+      successBeat.current = null;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }, STRIKE_DELAY_MS + STRIKE_MS);
 
     setStrikeLines(titleLines.current);
     setChecking(true);
     // .set() rather than `.value =`: the React Compiler lint allows it in a handler.
     pop.set(
       withSequence(
-        withTiming(0.78, { duration: 90, easing: MOTION.easing.exit }),
-        withTiming(1.22, { duration: 130, easing: MOTION.easing.enter }),
+        withTiming(0.7, { duration: 80, easing: MOTION.easing.exit }),
+        withTiming(1.26, { duration: 120, easing: MOTION.easing.enter }),
         withSpring(1, POP_SPRING),
       ),
     );
     bump.set(
       withDelay(
         BURST_DELAY_MS,
-        withSequence(withTiming(1.018, { duration: 110, easing: MOTION.easing.enter }), withSpring(1, POP_SPRING)),
+        withSequence(withTiming(1.022, { duration: 100, easing: MOTION.easing.enter }), withSpring(1, POP_SPRING)),
+      ),
+    );
+    flash.set(
+      withSequence(
+        withTiming(1, { duration: FLASH_MS * 0.25, easing: MOTION.easing.enter }),
+        withTiming(0, { duration: FLASH_MS * 0.75, easing: MOTION.easing.exit }),
       ),
     );
     burst.set(
@@ -222,6 +251,8 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
         style={surface.fill}
         className={`card ${surface.className} flex-row items-baseline gap-3.5 px-[18px] py-[17px]`}
       >
+        {/* The warm flash as it's ticked — under the content, gone again at once. */}
+        <Animated.View pointerEvents="none" className="absolute inset-0 rounded-[19px] bg-orange-100" style={flashStyle} />
         <AnimatedPressable
           onPress={handleToggle}
           hitSlop={10}

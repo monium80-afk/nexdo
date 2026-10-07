@@ -28,6 +28,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import { SSO_REDIRECT_URL } from "@/lib/clerk";
 import { posthog } from "@/lib/posthog";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
 import { previewDueLabel } from "@/lib/taskMeta";
@@ -102,6 +103,7 @@ export default function SignUp() {
     try {
       const { createdSessionId } = await startSSOFlow({
         strategy: provider === "google" ? "oauth_google" : "oauth_apple",
+        redirectUrl: SSO_REDIRECT_URL,
       });
       if (createdSessionId) {
         posthog.capture('sign_up_completed', { method: 'social', provider })

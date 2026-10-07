@@ -22,6 +22,7 @@ import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { SSO_REDIRECT_URL } from "@/lib/clerk";
 import { posthog } from "@/lib/posthog";
 
 const REVEAL_LAYOUT = LinearTransition.duration(250);
@@ -55,6 +56,7 @@ export default function SignIn() {
     try {
       const { createdSessionId } = await startSSOFlow({
         strategy: provider === "google" ? "oauth_google" : "oauth_apple",
+        redirectUrl: SSO_REDIRECT_URL,
       });
       if (createdSessionId) {
         posthog.capture('sign_in_completed', { method: 'social', provider })

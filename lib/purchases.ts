@@ -78,10 +78,13 @@ function errorCode(error: unknown): PURCHASES_ERROR_CODE | undefined {
   return typeof error === "object" && error !== null && "code" in error ? (error as PurchasesError).code : undefined;
 }
 
-/** Starts RevenueCat — as this account, or, without one, as an anonymous user of its own. */
-function configure(apiKey: string, appUserID?: string) {
+/**
+ * Starts RevenueCat as the user it last ran as on this phone, or — the first
+ * time — as a new anonymous user of its own. identifyPurchaser logs in from there.
+ */
+function configure(apiKey: string) {
   void Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.INFO : LOG_LEVEL.WARN);
-  Purchases.configure(appUserID ? { apiKey, appUserID } : { apiKey });
+  Purchases.configure({ apiKey });
   // Renewals, cancellations and purchases made elsewhere all arrive here
   // on iOS and Android. Expo Go and web never call it, which is why every
   // action below also refreshes by hand.
@@ -99,11 +102,15 @@ export function identifyPurchaser(userId: string) {
   if (!API_KEY) return Promise.resolve();
   const apiKey = API_KEY;
   return enqueue(async () => {
-    if (!configured) {
-      configure(apiKey, userId);
-    } else if ((await Purchases.getAppUserID()) !== userId) {
-      // From onboarding's anonymous user too: logging in a new account carries
-      // a subscription bought before sign-up over to it.
+    // Started without naming anyone, RevenueCat picks up the user it last ran
+    // as on this phone: this account on an ordinary launch — or, when the app
+    // was closed between onboarding's paywall and sign-up, the anonymous user
+    // that bought Pro there. Starting it as this account straight away would
+    // leave that purchase behind.
+    if (!configured) configure(apiKey);
+    if ((await Purchases.getAppUserID()) !== userId) {
+      // From onboarding's anonymous user, logging in a new account carries a
+      // subscription bought before sign-up over to it.
       const { customerInfo } = await Purchases.logIn(userId);
       publish(customerInfo);
       return;

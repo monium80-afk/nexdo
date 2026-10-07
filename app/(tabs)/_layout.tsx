@@ -39,9 +39,11 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      // The page colour behind the screens, so the fade between tabs doesn't
-      // pass through React Navigation's own light grey.
-      screenOptions={{ headerShown: false, animation: "fade", sceneStyle: { backgroundColor: colors.cream[100] } }}
+      // No page transition: the new tab is simply there, and its own content
+      // fades up into place (hooks/useFocusEnter.ts) — the user's call
+      // (2026-10-07), a crossfade on top of that read as two animations.
+      // The page colour stays behind the screens so nothing grey flashes.
+      screenOptions={{ headerShown: false, animation: "none", sceneStyle: { backgroundColor: colors.cream[100] } }}
       tabBar={(props) => <TabBar {...props} />}
     >
       <Tabs.Screen name="index" options={{ title: t.tabs.next }} />

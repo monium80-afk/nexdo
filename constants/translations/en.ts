@@ -23,7 +23,7 @@ export const en = {
   },
 
   tabs: {
-    next: "Next",
+    next: "Today",
     tasks: "Tasks",
     inbox: "Assistant",
     settings: "Settings",
@@ -79,33 +79,23 @@ export const en = {
     allCaughtUp: "All caught up",
     allCaughtUpBody: "You've completed everything on your list. Add a new task to keep going.",
     addATask: "Add a task",
-    eyebrow: "NEXDO NOW",
-    heading: "What can you do right now?",
     /** Before the score number on the Next card, which is set in its own colour. */
     scoreLabel: "Score: ",
     timeFilter: (duration: string) => `Fits in ${duration}`,
     timeFilterEmpty: (duration: string) => `Nothing fits in ${duration}`,
     timeFilterClear: "Show all",
-    timeQuestion: "HOW MUCH TIME HAVE YOU GOT?",
-    minutesOption: (minutes: number) => `${minutes} min`,
     custom: "Custom...",
     minutesPlaceholder: "Minutes, e.g. 50",
     minutesUnit: "min",
-    energyLabel: "Energy & focus level:",
     energy: { ready: "Ready", low: "Low energy", procrastinating: "Stuck" },
     sessionPlan: "SESSION PLAN",
     total: (duration: string) => `${duration} total`,
     startSession: (duration: string) => `Start session (${duration})`,
-    swapTasks: "Swap or pick different tasks",
-    stepsCompleted: (done: number, total: number) => `${done}/${total} steps completed`,
     details: "Details",
-    rankOf: (rank: number, total: number) => `#${rank} of ${total} in priority`,
     priorityRank: (rank: number) => `#${rank} Priority`,
     startSessionFor: (duration: string) => `Start Session (${duration})`,
     previous: "Previous",
     nextCard: "Next",
-    /** Beside the "1 / 12" counter above the card stack. */
-    tasksPrioritized: "Tasks prioritized",
     /** The card's Start button — its length sits beside it, not inside the label. */
     startSessionLabel: "Start session",
     breakDown: "Break down",
@@ -113,12 +103,41 @@ export const en = {
     /** Under Start session on the Next card: finishes the task without a session. */
     markComplete: "Mark complete",
     taskComplete: "Task complete",
-    pickTasks: "PICK YOUR TASKS",
-    useRecommended: "Use recommended",
-    /** Under a task's title when it has a plan: the step to do next. */
-    nextStep: (label: string) => `Next step: ${label}`,
     /** In place of the rank when the user put this task first. */
     pinned: "Pinned first",
+    /** The button in the header that opens the Schedule. */
+    schedule: "Schedule",
+    /** Read out for today's progress bar. */
+    todayProgress: (done: number, total: number) => `${done} of ${total} of today's tasks done`,
+    /** When every task for today is done — the bar is full. */
+    doneForToday: "Done for today",
+    doneForTodayBody: "Everything due today is finished. What's coming up is in your schedule.",
+    /** Open tasks exist, but none of them is due today. */
+    nothingToday: "Nothing due today",
+    nothingTodayBody: "No task is due today. Your schedule shows the other days, and Tasks has everything — tasks without a deadline too.",
+    openSchedule: "Open schedule",
+    /** Beside Open schedule when nothing is due today: the way to every task. */
+    seeTasks: "See all tasks",
+    /** The page's title, under today's date. */
+    today: "Today",
+    /** Today's card: what's left, what's done, and roughly how long the rest takes. */
+    tasksLeft: (count: number) => `${count} ${plural(count, "task", "tasks")} left`,
+    doneOfTotal: (done: number, total: number) => `${done} of ${total} done`,
+    workLeft: (duration: string) => `About ${duration} of work left`,
+  },
+
+  /** The Schedule screen (app/schedule.tsx): the week, and the plan for each day. */
+  schedule: {
+    title: "Schedule",
+    /** Under the title: the week's open tasks and how long they take. */
+    summary: (count: number, duration: string) => `${count} due · ${duration}`,
+    previousWeek: "Previous week",
+    nextWeek: "Next week",
+    thisWeek: "Back to this week",
+    today: "TODAY",
+    stepOf: (step: number, total: number, label: string) => `Step ${step} of ${total}: ${label}`,
+    nothingDue: "Nothing due this day",
+    done: "DONE",
   },
 
   session: {
@@ -189,33 +208,25 @@ export const en = {
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
-    statusTitle: "STATUS",
-    sortTitle: "SORT BY",
     status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue", archived: "Archived" },
     sort: { recent: "Recently added", dueDate: "Due date", priority: "Priority score" },
     score: (score: number) => `Score: ${score}`,
-    overdueBadge: "OVERDUE",
   },
 
   taskDetail: {
     notFound: "Task not found",
     goBack: "Go back",
-    postponeTitle: "POSTPONE TASK",
-    currentDeadline: (label: string) => `Current deadline: "${label}". Push to a later date:`,
-    postpone: { oneDay: "+1 Day (Tomorrow)", threeDays: "+3 Days", oneWeek: "+1 Week" },
-    customDate: "Custom Date...",
+    postponeTitle: "POSTPONE",
+    postpone: { oneDay: "+1 day", threeDays: "+3 days", oneWeek: "+1 week" },
+    customDate: "Pick a date",
     setDate: "Set date",
     editTask: "Edit task",
-    rationaleTitle: "AI priority rationale",
-    generatingAdvice: "Generating advice...",
-    subtasks: (done: number, total: number) => `Subtasks (${done}/${total})`,
-    aiPlan: "AI plan",
+    subtasksTitle: "SUBTASKS",
     addSubtask: "Add subtask...",
     editSubtask: (label: string) => `Edit ${label}`,
     deleteSubtask: (label: string) => `Delete ${label}`,
     notes: "NOTES",
     contextTitle: "ADD CONTEXT FOR AI",
-    contextBody: "Tell Nexdo more about this task. It reassesses the time, steps, deadline and advice, and shows you what it changed.",
     contextPlaceholder: "e.g. I already finished the research.",
     deleteTask: "Delete Task",
     saveChanges: "Save Changes",
@@ -225,14 +236,12 @@ export const en = {
     editNote: "Edit note",
     deleteNote: "Delete note",
     repeatEyebrow: "REPEATS",
-    notRepeating: "This task doesn't repeat.",
     setRepeat: "Make it repeat",
     editRepeat: "Change",
     saveRepeat: "Save repeat",
     stopRepeating: "Stop repeating",
     stopRepeatingTitle: "Stop repeating?",
     stopRepeatingBody: "This task stays on your list as a one-off. No new occurrences will be created; past ones are kept.",
-    occurrenceNote: "Completing this occurrence schedules the next one.",
     editScopeTitle: "Change a repeating task",
     editScopeBody: "Apply these changes to…",
     scopeThis: "Only this occurrence",
@@ -283,25 +292,16 @@ export const en = {
     reminderOffInSettings: "Deadline reminders are off in Settings.",
     muteReminders: "Turn off",
     unmuteReminders: "Turn on",
-    organizeTitle: "ORGANIZE",
-    pin: "Put first on Next",
-    unpin: "Unpin from Next",
-    archive: "Archive",
     restore: "Restore",
-    archivedNote: "Archived — hidden from your list, reminders and Next until you restore it.",
     /** The plan summary above the subtasks. */
     planLeft: (steps: number, duration: string) => `${steps} ${plural(steps, "step", "steps")} left · ${duration}`,
-    planPerDay: (duration: string, day: string) => `About ${duration} a day to finish by ${day}.`,
-    planOverdue: "Past its deadline — the steps left are all due now.",
     /** A suggested day for a step — a suggestion, not a booking in a calendar. */
-    suggestedDay: (day: string) => `Suggested: ${day}`,
     today: "Today",
     tomorrow: "Tomorrow",
   },
 
   form: {
     title: "Add New Task",
-    subtitle: "Turn your thoughts into progress",
     taskTitle: "TASK TITLE",
     titlePlaceholder: "e.g. Complete Organic Chemistry lab writeup",
     titleRequired: "Task title is required.",
@@ -317,10 +317,9 @@ export const en = {
     changeDate: "Change",
     priority: "PRIORITY LEVEL",
     priorities: { high: "High Priority", medium: "Medium Priority", low: "Low Priority" },
-    planSteps: (count: number) => `Plan Steps (${count})`,
+    planSteps: "Plan Steps",
     optionalPlan: "Optional step plan",
     stepPlaceholder: "e.g. Step 1: Draft the introduction",
-    stepMinutes: (minutes: number) => `${minutes}m`,
     notesTitle: "NOTES & CONTEXT (OPTIONAL)",
     notesPlaceholder: "Add key requirements, instructions, or links...",
     openAiChat: "Open AI Chat instead",
@@ -359,7 +358,7 @@ export const en = {
     /** Above the cards for tasks the AI pulled out of a message — they aren't added yet. */
     foundTasks: (count: number) => `Found ${count} ${plural(count, "task", "tasks")}`,
     yesDoIt: "Yes, do it",
-    openNext: (minutes: number) => `Open Next (${minutes} min)`,
+    openNext: (minutes: number) => `Open Today (${minutes} min)`,
     starterSuggestions: {
       "capacity-20": "I only have 20 minutes right now",
       "whats-next": "What should I do next?",
@@ -455,8 +454,8 @@ export const en = {
     stepOf: (step: number, total: number) => `Step ${step} of ${total}`,
     steps: {
       next: {
-        title: "Your next move",
-        body: "Nexdo puts the task most worth doing right now on top. Swipe for the others, or tap Start session to focus.",
+        title: "Today",
+        body: "What's due today, with the task most worth doing on top. Swipe for the others, or tap Start session to focus.",
       },
       tasks: {
         title: "All your tasks",
@@ -482,12 +481,7 @@ export const en = {
   assistant: {
     foundOne: (title: string) => `I found 1 task: "${title}". Want me to add it?`,
     foundMany: (count: number, titles: string) => `I found ${count} tasks: ${titles}. Want me to add them?`,
-    confirmBulkDelete: (countLabel: string, includesCompleted: boolean) =>
-      `This will delete ${countLabel}${includesCompleted ? " (pending and completed)" : ""}. Go ahead?`,
     goAhead: "Want me to go ahead with that?",
-    noPendingToComplete: "You don't have any pending tasks to mark as done.",
-    noScopedToDelete: (scope: "completed" | "pending") => `You don't have any ${scope} tasks to delete.`,
-    noTasksToDelete: "You don't have any tasks to delete.",
     done: "Done.",
     wontChange: "No worries — I won't make that change.",
     nothingToUndo: "There's nothing to undo.",
@@ -496,15 +490,13 @@ export const en = {
     addedMany: (count: number, titles: string) => `Added ${count} tasks: ${titles}.`,
     updated: (title: string) => `Updated "${title}".`,
     markedDone: (title: string) => `Marked "${title}" as done.`,
-    markedAllDone: (countLabel: string) => `Marked ${countLabel} as done.`,
     deleted: (title: string) => `Deleted "${title}".`,
     deletedMany: (countLabel: string) => `Deleted ${countLabel}.`,
     loggedContext: (title: string) => `Got it — logged that on "${title}".`,
     rescheduled: (title: string) => `Rescheduled "${title}".`,
     skipped: (title: string) => `Got it — I'll hold off suggesting "${title}" for a bit.`,
     brokeDown: (title: string, count: number) => `Broke "${title}" into ${count} steps.`,
-    redirectNext: (minutes: number) => `Set up the Next page for ${minutes} minutes.`,
-    fallbackTask: "task",
+    redirectNext: (minutes: number) => `Set up the Today page for ${minutes} minutes.`,
     fallbackYourTask: "your task",
     fallbackThat: "that",
     whichOne: (titles: string) => `Which one do you mean: ${titles}?`,
@@ -707,7 +699,6 @@ export const en = {
 
     appearance: "APPEARANCE",
     theme: "Theme",
-    themes: { light: "Light", dark: "Dark", system: "System" },
     language: "Language",
 
     support: "HELP & SUPPORT",
@@ -767,7 +758,7 @@ export const en = {
     eachMonth: "Each month",
     free: "Free",
     pro: "Pro",
-    unlimitedNote: "Adding tasks by hand, the Next page and reminders are unlimited on both plans.",
+    unlimitedNote: "Adding tasks by hand, the Today page and reminders are unlimited on both plans.",
     startTrial: (count: number, unit: TrialUnit) => `Start ${count}-${unit} free trial`,
     subscribe: "Get Nexdo Pro",
     working: "One moment…",
@@ -910,6 +901,10 @@ export const en = {
     plan: "IN YOUR PLAN",
     priority: { high: "HIGH", medium: "MED", low: "LOW" },
     dragHandle: "Drag to sort your tasks",
+    /** The five loose thoughts, in the order of TASKS in app/onboarding-sort.tsx (the first two are the urgent ones). */
+    ideas: ["Pay rent", "Exam prep", "Call mom", "Gym", "Book dentist"],
+    dueToday: "Today",
+    dueLater: "This week",
   },
 
   /** Onboarding step 3 — what gets in the user's way. The options are
@@ -943,7 +938,7 @@ export const en = {
     // Shown instead of the dump once this install has had its free AI run.
     trialUsedHeadline: "You've already tried Nexdo's AI",
     trialUsedBody: "The free preview is **one run per device**. Create your account to keep your tasks and keep organizing with AI.",
-    trialUsedCta: "Create my account",
+    trialUsedCta: "Continue",
   },
 
   /** Onboarding step 5 — the wait while the AI reads the dump. */

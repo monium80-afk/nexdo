@@ -13,6 +13,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TaskCard } from "@/components/TaskCard";
 import { gradients, listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
+import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
@@ -60,6 +61,8 @@ export default function TasksListScreen() {
   const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
+  const headerEnter = useFocusEnter(0);
+  const bodyEnter = useFocusEnter(1);
 
   const [searchOpen, setSearchOpen] = useState(false);
   // Where the open menu hangs from — each drops out of its own chip.
@@ -130,6 +133,7 @@ export default function TasksListScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
       <ScreenHeader
         title={t.tasks.title}
+        contentStyle={headerEnter}
         actions={
           // Search and Add share one height, so they read as a pair.
           <>
@@ -184,6 +188,7 @@ export default function TasksListScreen() {
           contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
+          <Animated.View style={bodyEnter}>
           {/* Filter on the left, sort on the right, each as wide as its label and
               orange only once something other than the default is picked. The
               funnel is always orange: it's the way into the list. */}
@@ -235,6 +240,7 @@ export default function TasksListScreen() {
               ))
             )}
           </View>
+          </Animated.View>
         </ScrollView>
       </View>
 

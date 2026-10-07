@@ -30,13 +30,16 @@ import { posthog } from "@/lib/posthog";
 // sitting in the line everything has to pass through. None of it moves — only
 // what travels through it does.
 
-// One task, drawn the same way on both sides of the filter. It is wider once
-// sorted: a loose idea becoming something you could actually pick up.
-const TASK_HEIGHT = 18;
-const MESS_TASK_WIDTH = 0.3;
-const PLAN_TASK_WIDTH = 0.72;
+// A loose thought is a little note — words on a pill, tilted, still in your
+// head. Once through the filter it's a row of the plan, drawn like the task
+// list: a checkbox, the task, and when it's for.
+const TASK_HEIGHT = 30;
+const MESS_TASK_WIDTH = 0.42;
+const PLAN_ROW_HEIGHT = 26;
 /** Where a loose task lines up as it is drawn down — the middle. */
 const MESS_CENTER_LEFT = (1 - MESS_TASK_WIDTH) / 2;
+/** An open checkbox's edge — the Checkbox component's own. */
+const BOX_EDGE = "#5A4A3C";
 
 // Tasks cross the filter one after another rather than as a block, each
 // starting LEAD_STEP of the drag behind the one before it.
@@ -88,7 +91,7 @@ function MessGlow() {
     <Svg style={StyleSheet.absoluteFill}>
       <Defs>
         <RadialGradient id="messGlow" cx="72%" cy="30%" rx="58%" ry="46%">
-          <Stop offset="0" stopColor={colors.orange[500]} stopOpacity="0.32" />
+          <Stop offset="0" stopColor={colors.orange[500]} stopOpacity="0.16" />
           <Stop offset="1" stopColor={colors.orange[500]} stopOpacity="0" />
         </RadialGradient>
       </Defs>
@@ -104,10 +107,12 @@ function MessGlow() {
  */
 function MessTask({
   task,
+  label,
   progress,
   size,
 }: {
   task: (typeof TASKS)[number];
+  label: string;
   progress: SharedValue<number>;
   size: { width: number; height: number };
 }) {
@@ -136,9 +141,11 @@ function MessTask({
     };
   });
 
+  // Flat, no shadow: five of these move every frame of the drag, and Android
+  // redraws a blurred shadow on each one of them.
   return (
     <Animated.View
-      className={task.urgent ? "absolute rounded-full bg-orange-600" : "absolute rounded-full bg-charcoal-600"}
+      className="absolute flex-row items-center justify-center gap-1.5 rounded-full border border-cream-300 bg-cream-50 px-3"
       style={[
         {
           left: `${task.left * 100}%`,
@@ -148,12 +155,27 @@ function MessTask({
         },
         taskStyle,
       ]}
-    />
+    >
+      {task.urgent ? <View className="h-[6px] w-[6px] rounded-full bg-orange-500" /> : null}
+      <Text numberOfLines={1} className="shrink font-grotesk-semibold text-[12px] text-ink-cream">
+        {label}
+      </Text>
+    </Animated.View>
   );
 }
 
-/** The same task once it is through — every one the same size, in order. */
-function PlanTask({ task, progress }: { task: (typeof TASKS)[number]; progress: SharedValue<number> }) {
+/** The same task once it is through: a row of the plan, in order, with when it's for. */
+function PlanTask({
+  task,
+  label,
+  due,
+  progress,
+}: {
+  task: (typeof TASKS)[number];
+  label: string;
+  due: string;
+  progress: SharedValue<number>;
+}) {
   const taskStyle = useAnimatedStyle(() => {
     // Keyed to `slot`, not `lead`: rows arrive down the plan in order, however
     // scattered the order they left the pile in.
@@ -163,9 +185,20 @@ function PlanTask({ task, progress }: { task: (typeof TASKS)[number]; progress: 
 
   return (
     <Animated.View
-      className={task.urgent ? "rounded-full bg-orange-500" : "rounded-full bg-cream-300"}
-      style={[{ width: `${PLAN_TASK_WIDTH * 100}%`, height: TASK_HEIGHT }, task.urgent ? gradients.accent : null, taskStyle]}
-    />
+      className="flex-row items-center gap-2.5 rounded-[10px] border border-cream-200 bg-cream-50 px-2.5"
+      style={[{ height: PLAN_ROW_HEIGHT }, taskStyle]}
+    >
+      <View className="h-[13px] w-[13px] rounded-[4px] border-[1.5px]" style={{ borderColor: BOX_EDGE }} />
+      <Text numberOfLines={1} className="flex-1 font-grotesk-semibold text-[12.5px] text-ink-cream">
+        {label}
+      </Text>
+      <Text
+        numberOfLines={1}
+        className={task.urgent ? "font-grotesk-bold text-[11px] text-orange-600" : "font-grotesk-medium text-[11px] text-ink-cream-muted"}
+      >
+        {due}
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -239,25 +272,21 @@ export default function OnboardingSort() {
     >
       <View className="flex-1 flex-row gap-3">
         <View className="flex-1">
-          {/* Everything loose, above the filter — a charcoal card like the
-              Next card. The shadow is on a wrapper, outside the card's clip. */}
-          <View className="flex-1 rounded-[22px] bg-charcoal-900" style={CHARCOAL_SHADOW}>
-            <GestureDetector gesture={pushMess}>
-              <View
-                onLayout={handleMessLayout}
-                className="flex-1 overflow-hidden rounded-[22px] hairline-charcoal bg-charcoal-900"
-                style={[{ borderCurve: "continuous" }, gradients.charcoalCard]}
-              >
-                <MessGlow />
-                {TASKS.map((task) => (
-                  <MessTask key={task.slot} task={task} progress={progress} size={messSize} />
-                ))}
-                <Text className="eyebrow absolute left-4 top-4 text-ink-charcoal-muted">
-                  {t.onboardingSort.head}
-                </Text>
-              </View>
-            </GestureDetector>
-          </View>
+          {/* Everything loose, above the filter: sunk into the page, the way
+              a thought hasn't been put anywhere yet. */}
+          <GestureDetector gesture={pushMess}>
+            <View
+              onLayout={handleMessLayout}
+              className="card card--cream-inset flex-1 overflow-hidden rounded-[22px]"
+              style={{ borderCurve: "continuous" }}
+            >
+              <MessGlow />
+              {TASKS.map((task, index) => (
+                <MessTask key={task.slot} task={task} label={t.onboardingSort.ideas[index]} progress={progress} size={messSize} />
+              ))}
+              <Text className="eyebrow absolute left-4 top-3.5 text-ink-cream-muted">{t.onboardingSort.head}</Text>
+            </View>
+          </GestureDetector>
 
           {/* The filter — fixed, and the one thing between the two cards.
               The app sits in the line, because the app is what does the
@@ -275,16 +304,22 @@ export default function OnboardingSort() {
             <View className="h-[3px] flex-1 rounded-full bg-orange-500" style={FILTER_GLOW} />
           </View>
 
-          {/* What comes out the other side — a raised cream card. */}
+          {/* What comes out the other side — a raised cream card, the plan. */}
           <View className="flex-1 rounded-[22px] bg-cream-50" style={CREAM_SHADOW}>
             <View
-              className="flex-1 gap-1.5 overflow-hidden rounded-[22px] border border-cream-200 bg-cream-50 px-4 pb-2.5 pt-3"
+              className="flex-1 gap-1.5 overflow-hidden rounded-[22px] border border-cream-200 bg-cream-50 px-3 pb-2.5 pt-3"
               style={[{ borderCurve: "continuous" }, gradients.card]}
             >
-              <Text className="eyebrow text-ink-cream-muted">{t.onboardingSort.plan}</Text>
-              <View className="flex-1 items-center justify-center gap-1.5">
+              <Text className="eyebrow px-1 text-ink-cream-muted">{t.onboardingSort.plan}</Text>
+              <View className="flex-1 justify-center gap-[5px]">
                 {PLAN_ORDER.map((task) => (
-                  <PlanTask key={task.slot} task={task} progress={progress} />
+                  <PlanTask
+                    key={task.slot}
+                    task={task}
+                    label={t.onboardingSort.ideas[TASKS.indexOf(task)]}
+                    due={task.urgent ? t.onboardingSort.dueToday : t.onboardingSort.dueLater}
+                    progress={progress}
+                  />
                 ))}
               </View>
             </View>
@@ -323,9 +358,7 @@ export default function OnboardingSort() {
   );
 }
 
-// The app's own shadows (global.css): a charcoal card floating on the cream
-// page as the Next card does, and --shadow-card under the cream one.
-const CHARCOAL_SHADOW = { boxShadow: "0 24px 40px -18px rgba(30, 16, 6, 0.6)" };
+// The app's own --shadow-card (global.css), under the plan's cream card.
 const CREAM_SHADOW = { boxShadow: "0 10px 24px -8px rgba(92, 58, 26, 0.19)" };
 /** The filter line glowing on both sides — it is too thin for glow-accent's offset shadow. */
 const FILTER_GLOW = { boxShadow: "0 0 8px rgba(242, 101, 42, 0.55)" };
