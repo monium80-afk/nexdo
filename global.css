@@ -1,0 +1,485 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+/* =============================================================
+ * Nexdo — Design System ("Warm Signal")
+ * Source of truth: prompt_material/01-design-system.txt
+ * Mirrored in JS at constants/theme/ for the few RN components
+ * that can't take a className (SafeAreaView, Modal, etc.)
+ *
+ * Depth: surfaces are lit from above — a soft warm shadow under
+ * every raised card, a hairline of light along its top edge, and
+ * an orange glow under the one action a screen is for. Gradient
+ * fills live in constants/theme/gradients.ts (NativeWind can't hand
+ * `background-image` to a native view); everything else is here.
+ * ============================================================= */
+
+@theme {
+  /* ---- Color tokens ---------------------------------------- */
+
+  /* Cream surfaces — a warm, slightly peach paper. 50 is a raised card,
+     100 the page, 200 soft edges and dividers, 300 firmer edges. */
+  --color-cream-50: #fdf8ef;
+  --color-cream-100: #fbf3e5;
+  --color-cream-200: #f0e5d2;
+  --color-cream-300: #e2d4bd;
+
+  /* Charcoal surfaces — warm, brown-black */
+  --color-charcoal-900: #221c16;
+  --color-charcoal-800: #2d261f;
+  --color-charcoal-600: #4d4338;
+  --color-charcoal-400: #8f8474;
+
+  /* Orange — the single primary accent. Reserved for CTAs, the AI's
+     presence, and the single highest-priority signal on a screen.
+     Never used for medium/low urgency. 50–300 are its tints (a due-today
+     card, a picked chip, an icon tile, a glowing edge); 400 is the lit
+     top of the CTA gradient. */
+  --color-orange-50: #fff3e8;
+  --color-orange-100: #fde6d5;
+  --color-orange-200: #fbcfb3;
+  --color-orange-300: #f9b07f;
+  --color-orange-400: #fa8b4c;
+  --color-orange-500: #f2652a;
+  --color-orange-600: #d04816;
+
+  /* Urgency (medium / low) */
+  --color-amber-500: #ba7a0c;
+  --color-amber-100: #f8eacb;
+  --color-olive-500: #6f8245;
+  --color-olive-100: #e6edd5;
+
+  /* Overdue — distinct from orange so it never competes with the CTA accent.
+     Also the destructive tone (Sign out, Clear history). */
+  --color-overdue-50: #fff1eb;
+  --color-overdue-100: #fce3da;
+  --color-overdue-200: #f7bca9;
+  /* Overdue ink on charcoal — 500 is too dark to read there. */
+  --color-overdue-300: #f0957e;
+  --color-overdue-500: #cc3b1e;
+
+  /* Success — a finished step, a completed count, a far-off deadline */
+  --color-success-100: #e2f2e2;
+  --color-success-500: #1f8f54;
+  /* Success ink on charcoal */
+  --color-success-300: #7fd48f;
+
+  /* Text — named "ink" to avoid a "text-text-*" utility name.
+     ink-cream-* sits on cream surfaces, ink-charcoal-* on charcoal surfaces. */
+  --color-ink-cream: #1d1813;
+  --color-ink-cream-muted: #6a6157;
+  /* One step fainter than -muted, for secondary metadata that shouldn't
+     compete with a card's title (e.g. the AI task confirmation card). */
+  --color-ink-cream-subtle: #9c9184;
+  --color-ink-charcoal: #fbf5ea;
+  --color-ink-charcoal-muted: #b1a796;
+  /* Ink on a filled button — orange-500, charcoal-900 or Apple black.
+     Named for the surface it sits on, not the palette it comes from. */
+  --color-on-accent: #fff9f2;
+
+  /* ---- Fonts -------------------------------------------------
+   * Space Grotesk is the only typeface in the app. Variable fonts
+   * don't render reliably on React Native (NativeWind v5 docs
+   * confirm this), so the app loads the 5 static weight files —
+   * this is the doc's own documented fallback path, used here as
+   * the primary because RN is exactly the target it describes.
+   * Each weight is its own font-family utility; always pick a
+   * weight via `font-grotesk-*`, never via the `font-*` weight
+   * utilities (font-bold, font-semibold, ...) — RN does not
+   * synthesize bold/etc. from a single custom font file. */
+  --font-grotesk-light: "SpaceGrotesk-Light"; /* weight 300 — quoted/AI/chat content only */
+  --font-grotesk-regular: "SpaceGrotesk-Regular"; /* weight 400 — body copy, metadata */
+  --font-grotesk-medium: "SpaceGrotesk-Medium"; /* weight 500 — default UI chrome */
+  --font-grotesk-semibold: "SpaceGrotesk-SemiBold"; /* weight 600 — labels of consequence */
+  --font-grotesk-bold: "SpaceGrotesk-Bold"; /* weight 700 — the one or two things that must win first */
+  --font-sans: "SpaceGrotesk-Regular"; /* default fallback for plain text */
+
+  /* ---- Shadows -------------------------------------------------
+   * Warm brown, never grey, so they read as light on paper. One soft
+   * layer each: on Android every blurred layer is redrawn each frame, and
+   * the tight 1px contact layer these used to start with cost as much as
+   * the soft one while barely showing (the cards' edges draw that line). */
+  --shadow-soft: 0 4px 10px -3px rgba(92, 58, 26, 0.12);
+  --shadow-card: 0 10px 24px -8px rgba(92, 58, 26, 0.19);
+  --shadow-modal: 0 2px 6px rgba(92, 58, 26, 0.06), 0 18px 40px -12px rgba(92, 58, 26, 0.26);
+  /* Under the orange CTA — the button lights the page it sits on. */
+  --shadow-glow: 0 10px 20px -8px rgba(236, 86, 28, 0.6);
+  /* Under a charcoal card on the cream page. */
+  --shadow-float: 0 24px 40px -18px rgba(30, 16, 6, 0.6);
+}
+
+/* =============================================================
+ * Reusable component utilities (BEM: block, block--modifier)
+ * Add a new one here once a recipe (colors + border + shadow +
+ * shape) repeats across 2+ screens — not before.
+ * ============================================================= */
+
+/* Screen layout -------------------------------------------------- */
+
+/* The cream page under a screen's charcoal header (Next, Tasks, Task
+   Details, Settings, Live voice), wrapped around its ScrollView. The top
+   corners curve away from the charcoal — the SafeAreaView's charcoal shows
+   through them — and overflow hidden clips the scrolling content to the
+   curves too, not just the fill. */
+@utility screen-body {
+  flex: 1;
+  overflow: hidden;
+  border-top-left-radius: 30px;
+  border-top-right-radius: 30px;
+  background-color: var(--color-cream-100);
+}
+
+/* Surface cards -------------------------------------------------- */
+
+@utility card {
+  border-radius: 20px;
+  border-width: 1px;
+}
+
+/* A raised card on the cream page: lifted by a soft shadow, with a hairline
+   of light along its top edge. */
+@utility card--cream {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* The task list's resting card, and every grouped block that sits on the
+   cream page (Task Details sections, Settings rows, checklist rows). */
+@utility card--cream-soft {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* A block nested inside a raised card (a saved AI note, a planned step,
+   the repeat options inside Task Details' repeat card) — sunk one step into
+   the page colour instead of lifted, so it doesn't read as a card on a card. */
+@utility card--cream-inset {
+  background-color: var(--color-cream-100);
+  border-color: var(--color-cream-200);
+  box-shadow: inset 0 1px 2px rgba(92, 58, 26, 0.06);
+}
+
+@utility card--cream-elevated {
+  background-color: var(--color-cream-50);
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: var(--shadow-modal), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+@utility card--charcoal {
+  background-color: var(--color-charcoal-800);
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+/* A finished task: flat and sunk into the page, so open work stays lifted. */
+@utility card--cream-muted {
+  background-color: var(--color-cream-100);
+  border-color: var(--color-cream-200);
+}
+
+@utility card--overdue {
+  background-color: var(--color-overdue-50);
+  border-color: var(--color-overdue-200);
+  box-shadow: 0 1px 2px rgba(150, 40, 16, 0.06), 0 10px 24px -10px rgba(204, 59, 30, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* A row that destroys or ends something (Sign out, Clear chat history). */
+@utility card--danger {
+  background-color: var(--color-overdue-50);
+  border-color: var(--color-overdue-200);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* The one card on a charcoal screen that is currently "live" — the task
+   being worked on in a focus session. Thicker orange edge so it wins over
+   the hairline-bordered cards stacked around it. */
+@utility card--charcoal-active {
+  background-color: var(--color-charcoal-800);
+  border-color: var(--color-orange-500);
+  border-width: 2px;
+}
+
+/* A card nested inside a charcoal card (AI advice / breakdown in a session,
+   inline editors in Settings) — a faint white lift instead of a new fill. */
+@utility card--charcoal-inset {
+  background-color: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* A group of cards (Settings' Account, AI Inbox…): a pale, frosted tray
+   the cards sit in, with the section's eyebrow inside it. */
+/* No shadow of its own: the cards in it already cast one, and on Android
+   every blurred shadow is redrawn each frame — a tray's covers most of the
+   screen, and Settings scrolled noticeably slower with them. */
+@utility tray {
+  border-radius: 28px;
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.8);
+  background-color: rgb(253 248 239 / 0.72);
+}
+
+/* A form section's backdrop (Add Task) — lighter than the page, no shadow,
+   so the chips on it do the lifting. */
+@utility panel {
+  border-radius: 24px;
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.75);
+  background-color: rgb(255 255 255 / 0.32);
+}
+
+/* Glass on charcoal — a button or pill on the dark Next card and header. */
+@utility glass {
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.1);
+  background-color: rgb(255 255 255 / 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* A fainter pane of glass, for one that holds more glass inside it (the
+   focus session's card): each layer adds light, so the outer one stays dim. */
+@utility glass--soft {
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.07);
+  background-color: rgb(255 255 255 / 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Icon tiles ------------------------------------------------------
+ * The rounded square an icon sits in beside a label (Settings rows, Add
+ * Task sections). Sized by components/IconTile.tsx; pair each tint with
+ * its gradient from constants/theme/gradients.ts. */
+
+@utility tile {
+  align-items: center;
+  justify-content: center;
+  border-width: 1px;
+}
+
+@utility tile--orange {
+  background-color: var(--color-orange-100);
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: 0 4px 10px -4px rgba(242, 101, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility tile--red {
+  background-color: var(--color-overdue-100);
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: 0 4px 10px -4px rgba(204, 59, 30, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility tile--green {
+  background-color: var(--color-success-100);
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: 0 4px 10px -4px rgba(31, 143, 84, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility tile--neutral {
+  background-color: var(--color-cream-200);
+  border-color: rgb(255 255 255 / 0.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Hairline dividers/borders, standalone (outside a card) --------- */
+
+@utility hairline-cream {
+  border-width: 1px;
+  border-color: var(--color-cream-300);
+}
+
+@utility hairline-charcoal {
+  border-width: 1px;
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+/* Buttons ---------------------------------------------------------
+ * Use with a text child styled font-grotesk-bold + the matching
+ * ink color: text-on-accent on --primary, canvas ink color on --secondary. */
+
+@utility btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* Orange, glowing. Add gradients.accent for the lit top edge. */
+@utility btn--primary {
+  background-color: var(--color-orange-500);
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+@utility btn--secondary-cream {
+  background-color: var(--color-cream-50);
+  border-width: 1px;
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+@utility btn--secondary-charcoal {
+  background-color: transparent;
+  border-width: 1px;
+  border-color: var(--color-charcoal-600);
+}
+
+@utility btn--charcoal-solid {
+  background-color: var(--color-charcoal-900);
+  box-shadow: 0 10px 20px -10px rgba(30, 16, 6, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* The glow alone, for an orange shape that isn't a .btn (the tab bar's
+   middle button, the send button, a picked solid chip). */
+@utility glow-accent {
+  box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Badges/pills ------------------------------------------------------
+ * Pair with `text-ink-cream font-grotesk-semibold` (or font-grotesk-bold
+ * on the numeral, per the weight-pairing rule) — tint backgrounds always
+ * take dark ink text, never colored text, so the badge stays quiet. */
+
+@utility badge {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 12px;
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+@utility badge--high {
+  background-color: var(--color-orange-100);
+}
+
+@utility badge--medium {
+  background-color: var(--color-amber-100);
+}
+
+@utility badge--low {
+  background-color: var(--color-olive-100);
+}
+
+@utility badge--overdue {
+  background-color: var(--color-overdue-100);
+}
+
+/* The exception to the quiet rule above: a deadline that has passed. Solid
+   red with white (text-on-accent) text and icon, so "Overdue" is the one
+   thing on a card that can't be missed. */
+@utility badge--overdue-solid {
+  background-color: var(--color-overdue-500);
+  box-shadow: 0 4px 10px -4px rgba(204, 59, 30, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* Chips (selectable pill toggles) — the base shape. On cream, every set of
+ * options (the Tasks toolbar, durations, deadlines, repeat, language)
+ * goes through components/Chip.tsx: a lifted cream pill at rest, an
+ * orange-tinted one with an orange edge once picked. chip--idle is the
+ * resting recipe on its own, for the AI chat's suggestion chips. */
+
+@utility chip {
+  border-radius: 9999px;
+  border-width: 1px;
+}
+
+@utility chip--idle {
+  background-color: var(--color-cream-50);
+  border-color: var(--color-cream-200);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Same chip recipe on a charcoal surface — tints with white instead of
+   cream, since a cream fill would read as a filled/selected state there. */
+@utility chip--charcoal {
+  background-color: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* A toggled-on chip on a charcoal surface (e.g. "Hide AI Advice"). */
+@utility chip--charcoal-selected {
+  background-color: rgb(242 101 42 / 0.18);
+  border-color: rgb(242 101 42 / 0.55);
+}
+
+/* Scrim (modal overlay) -------------------------------------------- */
+
+@utility scrim {
+  background-color: rgb(34 28 22 / 0.5);
+}
+
+/* Form fields -------------------------------------------------------- */
+
+/* A text input on the cream page (TextField), pressed slightly into the
+   page; pair with border-cream-200, or border-overdue-500 when the value
+   needs fixing. */
+@utility input {
+  border-radius: 16px;
+  border-width: 1px;
+  background-color: var(--color-cream-50);
+  box-shadow: inset 0 1px 3px rgba(92, 58, 26, 0.07);
+}
+
+/* The sign-in / sign-up field (AuthTextField), label inside the box —
+   pressed into the page like .input. */
+@utility field {
+  border-radius: 16px;
+  border-width: 1px;
+  border-color: var(--color-cream-200);
+  background-color: var(--color-cream-50);
+  box-shadow: inset 0 1px 3px rgba(92, 58, 26, 0.07);
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Typography ---------------------------------------------------------
+ * Each utility bundles the exact size + line-height + tracking +
+ * weight recipe from the design doc so screens can't drift from it.
+ * Font family is hardcoded (not var()) per the "single font name,
+ * no indirection" constraint NativeWind places on font-family. */
+
+@utility text-title {
+  font-family: "SpaceGrotesk-Bold";
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+@utility text-card-title {
+  font-family: "SpaceGrotesk-Bold";
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+@utility text-body {
+  font-family: "SpaceGrotesk-Regular";
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+@utility text-quote {
+  font-family: "SpaceGrotesk-Light";
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@utility eyebrow {
+  font-family: "SpaceGrotesk-Bold";
+  font-size: 11px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
