@@ -51,9 +51,7 @@ export const de: Translations = {
   tabs: {
     next: "Heute",
     tasks: "Aufgaben",
-    inbox: "Assistent",
     settings: "Einstellungen",
-    addTask: "Aufgabe hinzufügen",
   },
 
   format: {
@@ -68,6 +66,7 @@ export const de: Translations = {
       if (hours === 0) return `${mins} Min.`;
       return mins === 0 ? `${hours} Std.` : `${hours} Std. ${mins} Min.`;
     },
+    noDuration: "Ohne Dauer",
     taskCount: (count: number) => `${count} ${plural(count, "Aufgabe", "Aufgaben")}`,
     scopedTaskCount: (count, scope) => {
       const noun = plural(count, "Aufgabe", "Aufgaben");
@@ -101,9 +100,6 @@ export const de: Translations = {
     allCaughtUpBody: "Du hast alles auf deiner Liste abgehakt. Füge eine neue Aufgabe hinzu, um weiterzumachen.",
     addATask: "Aufgabe hinzufügen",
     scoreLabel: "Score: ",
-    timeFilter: (duration: string) => `Passt in ${duration}`,
-    timeFilterEmpty: (duration: string) => `Nichts passt in ${duration}`,
-    timeFilterClear: "Alle anzeigen",
     custom: "Andere...",
     minutesPlaceholder: "Minuten, z. B. 50",
     minutesUnit: "Min.",
@@ -117,6 +113,7 @@ export const de: Translations = {
     previous: "Zurück",
     nextCard: "Weiter",
     startSessionLabel: "Session starten",
+    resumeSession: "Zurück zur Session",
     breakDown: "Aufteilen",
     getAdvice: "Tipp holen",
     markComplete: "Als erledigt markieren",
@@ -133,15 +130,20 @@ export const de: Translations = {
     today: "Heute",
     tasksLeft: (count: number) => `Noch ${count} ${plural(count, "Aufgabe", "Aufgaben")}`,
     doneOfTotal: (done: number, total: number) => `${done} von ${total} erledigt`,
-    workLeft: (duration: string) => `Noch etwa ${duration} Arbeit`,
   },
 
   schedule: {
     title: "Zeitplan",
     summary: (count: number, duration: string) => `${count} fällig · ${duration}`,
+    summaryCount: (count: number) => `${count} fällig`,
+    week: "Woche",
+    year: "Jahr",
     previousWeek: "Vorherige Woche",
     nextWeek: "Nächste Woche",
     thisWeek: "Zurück zu dieser Woche",
+    previousYear: "Vorheriges Jahr",
+    nextYear: "Nächstes Jahr",
+    thisYear: "Zurück zu diesem Jahr",
     today: "HEUTE",
     stepOf: (step: number, total: number, label: string) => `Schritt ${step} von ${total}: ${label}`,
     nothingDue: "An diesem Tag ist nichts fällig",
@@ -181,6 +183,9 @@ export const de: Translations = {
     hideAdvice: "KI-Tipp ausblenden",
     takeAdvice: "KI-Tipp holen",
     stuck: "Ich hänge fest",
+    noTimer: "Hierfür gibt es keinen Timer — tippe auf Erledigt, sobald es geschafft ist.",
+    addContext: "Kontext hinzufügen",
+    contextIntro: "Zeig Nexdo, woran du arbeitest — ein Foto der Aufgabenstellung, ein Dokument oder eine Notiz. Nexdo passt die Schritte und den Tipp dieser Aufgabe an.",
   },
 
   breakdown: {
@@ -195,16 +200,6 @@ export const de: Translations = {
     confirm: "Diese Schritte übernehmen",
   },
 
-  stuck: {
-    title: "WAS HÄLT DICH AUF?",
-    reasons: {
-      tooBig: "Sie ist zu groß, um anzufangen",
-      missing: "Mir fehlt etwas, das ich brauche",
-      noFocus: "Ich kann mich gerade nicht darauf konzentrieren",
-    },
-    parkNote: "Wir legen sie für ein paar Stunden beiseite und bringen dich zur nächsten Aufgabe.",
-    talkToAi: "Mit der KI durchsprechen",
-  },
 
   tasks: {
     title: "Aufgaben",
@@ -218,7 +213,7 @@ export const de: Translations = {
       ` von ${total} ${plural(total, "Aufgabe", "Aufgaben")} angezeigt`,
     emptyTitle: "Keine Aufgaben gefunden",
     emptyBody: "Probier einen anderen Filter oder Suchbegriff.",
-    status: { all: "Alle", pending: "Offen", completed: "Erledigt", overdue: "Überfällig", archived: "Archiviert" },
+    status: { all: "Alle", pending: "Offen", completed: "Erledigt", overdue: "Überfällig", noDeadline: "Ohne Frist", archived: "Archiviert" },
     sort: { recent: "Zuletzt hinzugefügt", dueDate: "Fälligkeit", priority: "Prioritäts-Score" },
     score: (score: number) => `Score: ${score}`,
   },
@@ -248,7 +243,6 @@ export const de: Translations = {
     repeatEyebrow: "WIEDERHOLUNG",
     setRepeat: "Wiederholen lassen",
     editRepeat: "Ändern",
-    saveRepeat: "Wiederholung speichern",
     stopRepeating: "Nicht mehr wiederholen",
     stopRepeatingTitle: "Nicht mehr wiederholen?",
     stopRepeatingBody:
@@ -305,6 +299,34 @@ export const de: Translations = {
     planLeft: (steps: number, duration: string) => `${steps} ${plural(steps, "Schritt offen", "Schritte offen")} · ${duration}`,
     today: "Heute",
     tomorrow: "Morgen",
+    switchSessionTitle: "Sitzung wechseln?",
+    switchSessionBody: "Bei einer anderen Aufgabe läuft gerade eine Sitzung. Startest du diese, endet sie, und ihr Timer wird nicht gespeichert.",
+    switchSession: "Diese starten",
+    stepsLeft: (steps: number) => `${steps} ${plural(steps, "Schritt offen", "Schritte offen")}`,
+    attach: {
+      addPhoto: "Foto hinzufügen",
+      takePhoto: "Foto aufnehmen",
+      addDocument: "Datei hinzufügen",
+      photo: "Dein Foto",
+      document: "Dein Dokument",
+      hint: "Nexdo liest es und aktualisiert die Aufgabe. Die Datei selbst wird nicht gespeichert.",
+      notePlaceholder: "Soll Nexdo etwas dazu wissen? (optional)",
+      remove: "Datei entfernen",
+      tooBig: "Diese Datei ist zu groß. Nexdo liest Dateien bis 6 MB.",
+      unsupported: "Nexdo kann Fotos, PDFs und Textdateien lesen.",
+      pickFailed: "Die Datei ließ sich nicht öffnen. Versuch es noch einmal.",
+      /** The camera was refused, now or before. */
+      cameraDenied: "Nexdo braucht die Kamera, um ein Foto aufzunehmen. Du kannst sie in den Einstellungen deines Telefons erlauben.",
+      readingPhoto: "Nexdo liest dein Foto…",
+      readingDocument: "Nexdo liest dein Dokument…",
+      readFailed: "Nexdo konnte die Datei nicht lesen. Nichts wurde geändert.",
+      emptyPhoto: "Nexdo hat auf dem Foto nichts Lesbares gefunden. Versuch es mit einem schärferen.",
+      emptyDocument: "Nexdo hat in der Datei nichts Lesbares gefunden.",
+      fromPhoto: "Aus einem Foto",
+      fromDocument: "Aus einem Dokument",
+      showMore: "Mehr anzeigen",
+      showLess: "Weniger anzeigen",
+    },
   },
 
   form: {
@@ -324,19 +346,16 @@ export const de: Translations = {
     changeDate: "Ändern",
     priority: "PRIORITÄT",
     priorities: { high: "Hohe Priorität", medium: "Mittlere Priorität", low: "Niedrige Priorität" },
+    optional: "Optional",
     planSteps: "Planschritte",
-    optionalPlan: "Optionaler Schrittplan",
     stepPlaceholder: "z. B. Schritt 1: Einleitung entwerfen",
-    notesTitle: "NOTIZEN & KONTEXT (OPTIONAL)",
+    notesTitle: "NOTIZEN & KONTEXT",
     notesPlaceholder: "Wichtige Anforderungen, Anweisungen oder Links hinzufügen...",
-    openAiChat: "Lieber den KI-Chat nutzen",
     addTask: "Aufgabe hinzufügen",
     deadlines: {
       today: "Heute",
       tomorrow: "Morgen",
       friday: "Diesen Freitag",
-      weekend: "Dieses Wochenende",
-      nextWeek: "Nächste Woche",
       none: "Keine Frist",
     },
     durationOptions: {
@@ -347,92 +366,32 @@ export const de: Translations = {
       90: "1,5 Std.",
       120: "2 Std.",
       180: "3 Std.+",
+      0: "Ohne Dauer",
     },
     editEyebrow: "AUFGABE BEARBEITEN",
     editTitlePlaceholder: "Titel der Aufgabe",
     editCurrentDeadline: (label: string) => `Aktuelle Frist: ${label}`,
     deadlineRemoved: "Die Frist wird entfernt.",
     newDeadline: (label: string) => `Neue Frist: ${label}`,
-    saveChanges: "Änderungen speichern",
     addTime: "Uhrzeit hinzufügen",
     removeTime: "Ohne Uhrzeit",
   },
 
   chat: {
-    welcome:
-      "Willkommen bei deinem Nexdo-Assistenten. Wirf hier deine Gedanken, Aufgaben, Sprachnotizen oder Fotos rein. Du kannst von hier aus auch dein ganzes System steuern — erzähl mir, wie es gerade aussieht („Ich habe nur 30 Minuten“, „Ich schaffe das Projekt dieses Wochenende nicht“ oder „Der Zahnarzttermin ist wichtiger“), und ich passe deinen Plan an.",
-    inboxTitle: "Nexdo-Assistent",
-    contextSubtitle: "Bitte mich, diese Aufgabe zu analysieren, anzupassen oder zu aktualisieren.",
-    activeTasksSuffix: " aktive Aufgaben in der Warteschlange",
-    typing: "Schreibt…",
-    addAll: (count: number) => `Alle ${count} Aufgaben hinzufügen`,
-    foundTasks: (count: number) => `${count} ${plural(count, "Aufgabe", "Aufgaben")} gefunden`,
-    yesDoIt: "Ja, mach das",
-    openNext: (minutes: number) => `Heute öffnen (${minutes} Min.)`,
-    starterSuggestions: {
-      "capacity-20": "Ich habe gerade nur 20 Minuten",
-      "whats-next": "Was soll ich als Nächstes tun?",
-      "reschedule-overdue": "Alles Überfällige neu planen",
-      "brain-dump": "Ich muss bis Freitag meinen Geschichtsaufsatz fertigschreiben und morgen den Zahnarzt anrufen",
-    },
-    quickActions: {
-      "whats-next": "Hinzufügen",
-      "breakdown-top": "Erledigen",
-      "quick-win": "Entfernen",
-      "overdue-catchup": "Ändern",
-      "break-down": "Aufteilen",
-      prioritize: "Priorisieren",
-    },
     attachmentReplies: {
-      photo: "Auf dem Foto konnte ich nichts Lesbares finden — versuch ein schärferes Foto oder tipp es einfach ein.",
       voice: "Die Aufnahme habe ich nicht richtig verstanden — versuch es an einem ruhigeren Ort noch einmal oder tipp es einfach ein.",
-      document: "Aus dieser Datei konnte ich keinen Text herausholen — versuch eine andere oder tipp es einfach ein.",
     },
-    attachmentReadFailed: "Beim Lesen der Datei ist etwas schiefgelaufen — schick sie gleich noch einmal.",
     couldntCatch: "Nicht verstanden",
     couldntTranscribe: "Transkription fehlgeschlagen",
-    uploadFailedTitle: "Anhang nicht möglich",
-    uploadFailedBody:
-      "Deine Dateien konnten nicht hochgeladen werden, daher wurde nichts gesendet. Sie sind noch im Eingabefeld — prüfe deine Verbindung und versuch es noch einmal.",
-    uploadPartialBody: (failed: number) =>
-      failed === 1
-        ? "Eine Datei konnte nicht hochgeladen werden und wurde deshalb nicht mitgeschickt."
-        : `${failed} Dateien konnten nicht hochgeladen werden und wurden deshalb nicht mitgeschickt.`,
-    complexity: { simple: "einfache", medium: "mittelschwere", complex: "komplexe" },
-    taskRead: (title: string, complexity: string, advice: string) =>
-      `Meine Einschätzung zu „${title}“: Das ist eine ${complexity} Aufgabe. ${advice}`,
-    titlePlaceholder: "Titel der Aufgabe",
-    minutesPlaceholder: "Minuten",
-    doneEditing: "Bearbeitung beenden",
-    editDetails: "Aufgabendetails bearbeiten",
-    dismiss: "Verwerfen",
-    addTask: "Hinzufügen",
-    recordVoice: "Sprachnotiz aufnehmen",
-    stopRecording: "Aufnahme beenden",
-    takePhoto: "Foto aufnehmen",
-    attachDocument: "Dokument anhängen",
-    recording: (duration: string) => `Aufnahme… ${duration}`,
-    transcribing: "Wird transkribiert…",
-    inputPlaceholder: "Aufgaben tippen, sprechen oder fotografieren...",
-    attachmentPlaceholder: "Anweisungen hinzufügen (optional)...",
-    removeAttachment: "Anhang entfernen",
-    documentLabel: "Dokument",
-    send: "Nachricht senden",
     micPermissionTitle: "Mikrofonzugriff erforderlich",
     micPermissionBody:
       "Nexdo braucht Zugriff auf das Mikrofon, um Sprachnotizen aufzunehmen. Du kannst ihn in den Einstellungen erlauben.",
-    cameraPermissionTitle: "Kamerazugriff erforderlich",
-    cameraPermissionBody:
-      "Nexdo braucht Zugriff auf die Kamera, um Fotos aufzunehmen. Du kannst ihn in den Einstellungen erlauben.",
     voiceNoteLabel: (duration: string) => `Sprachnotiz (${duration})`,
-    photoLabel: "Foto angehängt",
-    viewPhoto: "Foto im Vollbild anzeigen",
-    videoNotSupportedTitle: "Videos werden nicht unterstützt",
-    videoNotSupportedBody: "Nexdo liest Fotos, Sprachnotizen und Dokumente. Schick stattdessen ein Foto oder eine Datei.",
   },
 
   live: {
     open: "Sprechen, um Aufgaben hinzuzufügen oder zu ändern",
+    openLocked: "Magisches Mikro — Teil von Nexdo Pro",
     title: "Magisches Mikro",
     connecting: "Verbinde…",
     listening: (clock: string) => `Hört zu · ${clock}`,
@@ -466,19 +425,15 @@ export const de: Translations = {
       },
       tasks: {
         title: "Alle deine Aufgaben",
-        body: "Alles, was ansteht, in einer Liste. Tippe auf eine Aufgabe, um sie zu ändern, und hak sie ab, wenn sie erledigt ist.",
-      },
-      add: {
-        title: "Aufgabe hinzufügen",
-        body: "Tippe auf +, um eine hinzuzufügen. Nexdo findet ihren Platz in deinem Plan.",
+        body: "Alles, was ansteht, in einer Liste. Mit Hinzufügen legst du eine von Hand an; tippe auf eine Aufgabe, um sie zu ändern, und hak sie ab, wenn sie erledigt ist.",
       },
       voice: {
         title: "Magisches Mikro",
         body: "Tippe aufs Mikro und sprich einfach — Nexdo fügt Aufgaben hinzu und ändert sie, während du sprichst.",
       },
-      assistant: {
-        title: "Sag's einfach Nexdo",
-        body: "Schreib, sprich oder schick ein Foto. Der Assistent macht Aufgaben daraus und passt deinen Plan an, wenn sich etwas ändert.",
+      voiceLocked: {
+        title: "Magisches Mikro",
+        body: "Tippe aufs Mikro und sprich einfach — Nexdo fügt Aufgaben hinzu und ändert sie, während du sprichst. Teil von Nexdo Pro.",
       },
     },
   },
@@ -515,6 +470,8 @@ export const de: Translations = {
       "Darin konnte ich keine Aufgabe finden — sag mir einfach, was du erledigen musst, z. B. „morgen die Wohnung putzen“.",
     adviceDoNow: (label: string, duration: string) => `Mach das jetzt: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `Leg einfach los — „${title}“ dauert etwa ${duration}.`,
+    adviceKeepUp: (title: string) => `Bleib den ganzen Tag an „${title}“ dran und hak es ab, sobald es erledigt ist.`,
+    adviceStartWith: (label: string) => `Mach das jetzt: ${label}.`,
     urgencyHigh: "das ist eine deiner dringendsten Aufgaben",
     urgencyMedium: "die solltest du bald angehen",
     urgencyLow: "es eilt nicht, aber sie steht auf deiner Liste",
@@ -632,7 +589,6 @@ export const de: Translations = {
   settings: {
     title: "Einstellungen",
     subtitle: "Passe Nexdo an dich an",
-    preferences: "NEXDO-EINSTELLUNGEN",
 
     account: "KONTO",
     signOut: "Abmelden",
@@ -644,7 +600,7 @@ export const de: Translations = {
       `${count === 1 ? "1 Aufgabe ist" : `${count} Aufgaben sind`} noch nicht in deinem Konto angekommen — prüf deine Verbindung. Wenn du dich jetzt abmeldest, ${count === 1 ? "bleibt sie" : "bleiben sie"} sicher auf diesem Handy und ${count === 1 ? "wird" : "werden"} bei deiner nächsten Anmeldung hier gespeichert — bis dahin aber nicht auf deinen anderen Geräten angezeigt.`,
     signOutAnyway: "Trotzdem abmelden",
 
-    pro: "NEXDO PRO",
+    plan: "DEIN TARIF",
     upgrade: "Upgrade auf Nexdo Pro",
     upgradeBody: "Monatlich oder jährlich — jederzeit kündbar.",
     restorePurchases: "Käufe wiederherstellen",
@@ -658,20 +614,6 @@ export const de: Translations = {
     proActive: "Nexdo Pro ist aktiv.",
     proRenews: (date: string) => `Nexdo Pro · verlängert sich am ${date}`,
     proEnds: (date: string) => `Nexdo Pro · endet am ${date}`,
-
-    aiChat: "KI-POSTEINGANG",
-    autoMode: "Automatikmodus",
-    autoModeBody: "Aufgaben sofort hinzufügen und aktualisieren, ohne vorher nachzufragen.",
-    voiceButton: "Magisches Mikro",
-    voiceButtonBody:
-      "Aufgaben per Sprache hinzufügen und ändern: Die mittlere Taste der Tab-Leiste wird zum Mikrofon, statt das Formular zum Hinzufügen von Aufgaben zu öffnen. Teil von Nexdo Pro.",
-    clearHistory: "Chatverlauf löschen",
-    clearConfirmTitle: "Chatverlauf löschen?",
-    clearConfirmBody: "Damit werden alle Nachrichten im KI-Chat entfernt. Deine Aufgaben bleiben unverändert.",
-    clear: "Löschen",
-    historyCleared: "Chatverlauf gelöscht.",
-    historyClearFailed:
-      "Auf diesem Gerät gelöscht, aber die synchronisierte Kopie konnte nicht gelöscht werden. Versuch es noch einmal.",
 
     notifications: "BENACHRICHTIGUNGEN",
     dailyNudge: "Tagesplanung",
@@ -694,9 +636,7 @@ export const de: Translations = {
     importantReminderBody: "Am Vortag, zur Erinnerungszeit.",
     notificationsDenied: "Benachrichtigungen für Nexdo sind in den Handy-Einstellungen aus, daher kann keine Erinnerung ankommen.",
 
-    appearance: "DARSTELLUNG",
-    theme: "Design",
-    language: "Sprache",
+    language: "SPRACHE",
 
     support: "HILFE & SUPPORT",
     help: "FAQ / Hilfe",
@@ -712,7 +652,7 @@ export const de: Translations = {
 
   plan: {
     meters: {
-      chat: "KI-Chat-Nachrichten",
+      chat: "Kontextnotizen für die KI",
       media: "Fotos und Dokumente",
       voice: "Sprachnotizen",
       live: "Magisches Mikro",
@@ -720,7 +660,7 @@ export const de: Translations = {
     },
     minutes: (count: number) => `${count} Min.`,
     used: {
-      chat: "Du hast deine KI-Chat-Nachrichten für diesen Monat aufgebraucht.",
+      chat: "Du hast deine Kontextnotizen für die KI für diesen Monat aufgebraucht.",
       media: "Du hast deine Fotos und Dokumente für diesen Monat aufgebraucht.",
       voice: "Du hast deine Sprachnotiz-Minuten für diesen Monat aufgebraucht.",
       live: "Du hast deine Minuten für das Magische Mikro in diesem Monat aufgebraucht.",
@@ -859,7 +799,7 @@ export const de: Translations = {
     deleteAccount: "Konto löschen",
     deleteTitle: "Dein Konto löschen?",
     deleteBody:
-      "Damit werden dein Nexdo-Konto und alles darin endgültig gelöscht — alle Aufgaben, Chats und Einstellungen, auf allen Geräten. Das kann nicht rückgängig gemacht werden.",
+      "Damit werden dein Nexdo-Konto und alles darin endgültig gelöscht — alle Aufgaben und Einstellungen, auf allen Geräten. Das kann nicht rückgängig gemacht werden.",
     deleteProNote:
       "Wenn du dein Konto löschst, wird Nexdo Pro nicht gekündigt. Kündige es zuerst in deinen App-Store- oder Google-Play-Abos, sonst verlängert es sich weiter.",
     deleteConfirm: "Konto löschen",
@@ -887,9 +827,6 @@ export const de: Translations = {
     plan: "IN DEINEM PLAN",
     priority: { high: "HOCH", medium: "MITTEL", low: "NIEDRIG" },
     dragHandle: "Ziehen, um deine Aufgaben zu sortieren",
-    ideas: ["Miete zahlen", "Für Prüfung lernen", "Mama anrufen", "Fitnessstudio", "Zahnarzt buchen"],
-    dueToday: "Heute",
-    dueLater: "Diese Woche",
   },
 
   onboardingGoals: {
@@ -986,7 +923,7 @@ export const de: Translations = {
     body: "Kostenlos deckt das Wichtigste ab. Pro gibt Nexdos KI jeden Monat viel mehr Spielraum:",
     bestValue: (percent: number) => `BESTES ANGEBOT · ${percent} % SPAREN`,
     features: {
-      chat: (count: number) => `${count} KI-Chat-Nachrichten`,
+      chat: (count: number) => `${count} Kontextnotizen für die KI`,
       media: (count: number) => `${count} Fotos und Dokumente`,
       voice: (minutes: number) => `${minutes} Min. Sprachnotizen`,
       live: (minutes: number) => `${minutes} Min. Magisches Mikro`,
@@ -1000,8 +937,8 @@ export const de: Translations = {
     email: "E-MAIL",
     password: "PASSWORT",
     logIn: "Anmelden",
-    usePassword: "Lieber mit Passwort anmelden",
-    useCode: "Lieber einen Code per E-Mail erhalten",
+    continue: "Weiter",
+    useCode: "Stattdessen einen Code per E-Mail nutzen",
     continueWithEmail: "oder weiter mit E-Mail",
     noAccount: "Noch kein Konto?",
     signUp: "Registrieren",

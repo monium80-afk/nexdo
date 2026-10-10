@@ -18,24 +18,25 @@ import { MOTION, colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
+import { isPurchasesEnabled } from "@/lib/purchases";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { useIsPro } from "@/store/useSubscriptionStore";
 
 /** The tab bar slots the tour points at. */
-export type TourAnchor = "index" | "tasks" | "add" | "ai-chat";
-type TourTab = "index" | "tasks" | "ai-chat" | "settings";
+export type TourAnchor = "index" | "tasks" | "mic";
+type TourTab = "index" | "tasks" | "settings";
 
 // Left to right along the bar, one sentence or two each — Settings is left
-// out on purpose: it explains itself, and four stops is plenty.
+// out on purpose: it explains itself.
 const STEPS: { anchor: TourAnchor; tab: TourTab }[] = [
   { anchor: "index", tab: "index" },
   { anchor: "tasks", tab: "tasks" },
-  // The page behind stays on Tasks: + doesn't open anything during the tour.
-  { anchor: "add", tab: "tasks" },
-  { anchor: "ai-chat", tab: "ai-chat" },
+  // The page behind stays on Tasks: the mic doesn't open anything during the tour.
+  { anchor: "mic", tab: "tasks" },
 ];
 
-// Long enough for the page under it to finish its own entrance first.
+// A beat for the page under it to settle and be seen first.
 const START_DELAY_MS = 700;
 const RING = 46;
 const TAIL = 14;
@@ -75,7 +76,9 @@ export function AppTour({
   const reduceMotion = useReducedMotion();
   const tourSeen = useSettingsStore((state) => state.tourSeen);
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
-  const voice = useSettingsStore((state) => state.voiceAddButton);
+  // On Free the mic wears a padlock, and the tour says why.
+  const isPro = useIsPro();
+  const micLocked = !isPro && isPurchasesEnabled;
   const settingsHydrated = useSyncExternalStore(
     useSettingsStore.persist.onFinishHydration,
     useSettingsStore.persist.hasHydrated,
@@ -142,7 +145,7 @@ export function AppTour({
 
   const current = step === null ? null : STEPS[step];
   const anchorX = current ? anchors[current.anchor] : undefined;
-  const copy = current ? stepCopy(t, current.anchor, voice) : null;
+  const copy = current ? stepCopy(t, current.anchor, micLocked) : null;
   const last = step === STEPS.length - 1;
 
   return (
@@ -223,20 +226,17 @@ export function AppTour({
 }
 
 function isTourTab(tab: string | undefined): tab is TourTab {
-  return tab === "index" || tab === "tasks" || tab === "ai-chat" || tab === "settings";
+  return tab === "index" || tab === "tasks" || tab === "settings";
 }
 
-function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, voice: boolean) {
+function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micLocked: boolean) {
   switch (anchor) {
     case "index":
       return t.tour.steps.next;
     case "tasks":
       return t.tour.steps.tasks;
-    case "add":
-      // With Magic mic on, the middle button is a microphone.
-      return voice ? t.tour.steps.voice : t.tour.steps.add;
-    case "ai-chat":
-      return t.tour.steps.assistant;
+    case "mic":
+      return micLocked ? t.tour.steps.voiceLocked : t.tour.steps.voice;
   }
 }
 

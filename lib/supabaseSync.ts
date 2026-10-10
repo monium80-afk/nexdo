@@ -1,12 +1,10 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
-import { messageAttachments } from "@/lib/chatAttachments";
 import { normalizeRecurrence } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase";
 import type { Task } from "@/types/task";
-import type { ChatAttachment, ChatMessage } from "@/types/chat";
 
-// Background sync helpers used by useTaskStore/useChatStore. Every function
+// Background sync helpers used by useTaskStore. Every function
 // here is fire-and-forget from the caller's perspective — mutations stay
 // synchronous locally, these just mirror the change to Supabase.
 
@@ -270,77 +268,3 @@ export function subscribeToTasks(userId: string, onChange: (task: Task, event: "
     .subscribe();
 }
 
-type MessageRow = {
-  id: string;
-  user_id: string;
-  role: ChatMessage["role"];
-  text: string;
-  created_at: string;
-  // jsonb: an array since one message can carry several files. Rows written
-  // before that hold a single object, which fromMessageRow() still reads.
-  attachment: ChatAttachment[] | ChatAttachment | null;
-  related_task_id: string | null;
-};
-
-function toMessageRow(message: ChatMessage, userId: string): MessageRow {
-  const attachments = messageAttachments(message);
-  return {
-    id: message.id,
-    user_id: userId,
-    role: message.role,
-    text: message.text,
-    created_at: message.createdAt,
-    attachment: attachments.length > 0 ? attachments : null,
-    related_task_id: message.relatedTaskId ?? null,
-  };
-}
-
-function fromMessageRow(row: MessageRow): ChatMessage {
-  const attachments = Array.isArray(row.attachment) ? row.attachment : row.attachment ? [row.attachment] : [];
-  return {
-    id: row.id,
-    role: row.role,
-    text: row.text,
-    createdAt: row.created_at,
-    attachments: attachments.length > 0 ? attachments : undefined,
-    relatedTaskId: row.related_task_id ?? undefined,
-  };
-}
-
-/** The newest `limit` messages, oldest first — the end of the conversation, as the thread shows it. */
-export async function fetchMessages(userId: string, limit: number): Promise<ChatMessage[]> {
-  return retryOnJwtTiming(async () => {
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw error;
-    return (data as MessageRow[]).map(fromMessageRow).reverse();
-  });
-}
-
-export async function upsertMessageRow(message: ChatMessage, userId: string): Promise<void> {
-  const { error } = await supabase.from("chat_messages").upsert(toMessageRow(message, userId));
-  if (error) throw error;
-}
-
-export async function deleteAllMessages(userId: string): Promise<void> {
-  const { error } = await supabase.from("chat_messages").delete().eq("user_id", userId);
-  if (error) throw error;
-}
-
-export function subscribeToMessages(userId: string, onChange: (message: ChatMessage, event: "INSERT" | "UPDATE") => void): RealtimeChannel {
-  return supabase
-    .channel(`chat_messages:${userId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "chat_messages", filter: `user_id=eq.${userId}` },
-      (payload) => {
-        if (payload.eventType === "DELETE") return;
-        onChange(fromMessageRow(payload.new as MessageRow), payload.eventType as "INSERT" | "UPDATE");
-      },
-    )
-    .subscribe();
-}

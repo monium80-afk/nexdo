@@ -23,7 +23,7 @@ import { MetaPill } from "@/components/MetaPill";
 import { MOTION, colors, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatTaskLength } from "@/lib/formatDuration";
 import { describeRule } from "@/lib/recurrence";
 import { getDueInfo, type DueTone } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
@@ -328,7 +328,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
             />
             <MetaPill
               icon={<Feather name="clock" size={14} color={colors.ink.creamMuted} />}
-              label={formatDuration(task.estimatedMinutes)}
+              label={formatTaskLength(task.estimatedMinutes)}
               labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
             />
             {/* The rule in a few words, so a repeating task is recognisable in the list. */}

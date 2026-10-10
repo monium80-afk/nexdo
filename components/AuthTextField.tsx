@@ -13,6 +13,7 @@ type AuthTextFieldProps = {
   secureEntry?: boolean;
   keyboardType?: "email-address" | "default";
   autoComplete?: TextInputProps["autoComplete"];
+  autoFocus?: boolean;
 };
 
 export function AuthTextField({
@@ -22,6 +23,7 @@ export function AuthTextField({
   secureEntry = false,
   keyboardType = "default",
   autoComplete,
+  autoFocus,
 }: AuthTextFieldProps) {
   const colors = useColors();
   const t = useTranslation();
@@ -37,6 +39,7 @@ export function AuthTextField({
           secureTextEntry={hidden}
           keyboardType={keyboardType}
           autoComplete={autoComplete}
+          autoFocus={autoFocus}
           autoCapitalize="none"
           autoCorrect={false}
           className="flex-1 font-grotesk-medium text-base text-ink-cream"

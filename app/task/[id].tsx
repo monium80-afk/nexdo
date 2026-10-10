@@ -10,6 +10,7 @@ import { AddItemField } from "@/components/AddItemField";
 import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
 import { ChecklistRow } from "@/components/ChecklistRow";
 import { Chip } from "@/components/Chip";
+import { ContextComposer } from "@/components/ContextComposer";
 import { ContextNoteCard, type ContextNoteCardHandle } from "@/components/ContextNoteCard";
 import { EmptyState } from "@/components/EmptyState";
 import { GemLogo } from "@/components/GemLogo";
@@ -19,18 +20,18 @@ import { ReassessmentNotice } from "@/components/ReassessmentNotice";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SectionHeader } from "@/components/SectionHeader";
+import { StartSessionButton } from "@/components/StartSessionButton";
 import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@/components/TaskEditPanel";
 import { DeadlineDatePicker, deadlineToDraft, draftToDeadline, type DeadlineDraft } from "@/components/TaskFormFields";
 import { TextField } from "@/components/TextField";
 import { listItemEntering, listItemLayout } from "@/constants/theme";
-import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { deadlineToLocalDate, formatDeadline, type DeadlineInput } from "@/lib/deadline";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatDuration, formatTaskLength } from "@/lib/formatDuration";
 import { addDaysToKey, toLocalDateKey } from "@/lib/localDate";
 import { showPlanLimit } from "@/lib/paywall";
 import { summarizePlan } from "@/lib/planning";
@@ -38,7 +39,8 @@ import { describeRule, type RecurrenceScope, type RuleInput } from "@/lib/recurr
 import type { Translations } from "@/lib/i18n";
 import { nextReminderFor, type ReminderPreferences } from "@/lib/reminders";
 import { getDueInfo } from "@/lib/taskMeta";
-import { useReassessStore } from "@/store/useReassessStore";
+import { useReassessStore, type ContextAttachment } from "@/store/useReassessStore";
+import { useSessionStore } from "@/store/useSessionStore";
 import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { RecurrenceRule, Task } from "@/types/task";
@@ -133,26 +135,32 @@ export default function TaskDetail() {
   const submitContext = useReassessStore((state) => state.submit);
   const retryContext = useReassessStore((state) => state.retry);
   const dismissContext = useReassessStore((state) => state.dismiss);
-  const enterStyle = useScreenEnterAnimation();
+  // This task's own session, while one runs: Start session becomes Resume.
+  const sessionHere = useSessionStore((state) => (id && state.session?.taskIds.includes(id) ? state.session : undefined));
+  const requestSessionOpen = useSessionStore((state) => state.requestOpen);
 
   // A note that ran into the end of the month's AI messages: the notice under
   // it says so, and on Free the paywall opens too — once, as it happens, not
   // every time this page is opened with the note still waiting.
-  const noteHitLimit = reassess?.status === "error" && reassess.reason === "limit";
-  const noteHadHitLimit = useRef(noteHitLimit);
+  // A photo or document runs into the month's photos and documents instead.
+  const noteLimitMeter = reassess?.status === "error" && reassess.reason === "limit" ? (reassess.meter ?? "chat") : null;
+  const noteHadHitLimit = useRef(noteLimitMeter !== null);
   useEffect(() => {
-    if (noteHitLimit && !noteHadHitLimit.current) showPlanLimit("chat", true);
-    noteHadHitLimit.current = noteHitLimit;
-  }, [noteHitLimit]);
+    if (noteLimitMeter && !noteHadHitLimit.current) showPlanLimit(noteLimitMeter, true);
+    noteHadHitLimit.current = noteLimitMeter !== null;
+  }, [noteLimitMeter]);
 
   const [note, setNote] = useState("");
+  // A photo or document to send with the note (or on its own).
+  const [noteFile, setNoteFile] = useState<ContextAttachment | null>(null);
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [editing, setEditing] = useState(false);
   // The date picked on the "Custom Date..." calendar — null while that calendar is closed.
   const [customPostponeDate, setCustomPostponeDate] = useState<DeadlineDraft | null>(null);
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [editingSubtaskText, setEditingSubtaskText] = useState("");
-  // The repeat being edited — undefined while the picker is closed.
+  // The repeat being edited — undefined while the picker is closed. Saved by
+  // the page's Save Changes, with everything else.
   const [repeatDraft, setRepeatDraft] = useState<RuleInput | null | undefined>(undefined);
   const editPanelRef = useRef<TaskEditPanelHandle>(null);
   const noteCardRefs = useRef<(ContextNoteCardHandle | null)[]>([]);
@@ -197,6 +205,7 @@ export default function TaskDetail() {
   const orderedSubtasks = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
   const isOpen = task.status === "pending";
   const isSkipped = task.status === "skipped";
+  const canPostpone = !task.recurrence;
 
   // The reminder is its own thing, not the deadline: "Oct 15" with a 9:00
   // reminder is still due Oct 15, not at 9:00.
@@ -222,8 +231,11 @@ export default function TaskDetail() {
     plan && plan.pace === "scheduled" && (plan.daysLeft ?? 0) > 1 ? plan.suggestions.map((entry) => [entry.stepId, entry.date]) : [],
   );
   // One short line: what's left of the plan. Each step shows its own day.
+  // Steps with no time on them (a task with no duration) leave the time out.
   const planCaption = plan && plan.openSteps > 0 && isOpen
-    ? t.taskDetail.planLeft(plan.openSteps, formatDuration(plan.remainingMinutes))
+    ? plan.remainingMinutes > 0
+      ? t.taskDetail.planLeft(plan.openSteps, formatDuration(plan.remainingMinutes))
+      : t.taskDetail.stepsLeft(plan.openSteps)
     : null;
 
   // The header's deadline: "Today" / "Tomorrow" / "Fri, Oct 9", led by
@@ -292,9 +304,12 @@ export default function TaskDetail() {
     );
   };
 
-  const handleSaveRepeat = () => {
+  // The repeat picker's draft, if it says anything other than what's saved —
+  // opening "Change" and leaving it as it was changes nothing.
+  const saveRepeatDraft = () => {
     if (repeatDraft === undefined) return;
-    updateTask(task.id, { recurrence: repeatDraft });
+    const saved = task.recurrence ? ruleToInput(task.recurrence.rule) : null;
+    if (JSON.stringify(repeatDraft) !== JSON.stringify(saved)) updateTask(task.id, { recurrence: repeatDraft });
     setRepeatDraft(undefined);
   };
 
@@ -327,13 +342,15 @@ export default function TaskDetail() {
   // A note isn't just filed: Nexdo reassesses the whole task for it, saves
   // the note together with whatever that changes, and reports back in the
   // notice above the box. The box clears right away — the notice shows the
-  // note while it's being worked on, and keeps it if anything fails.
+  // note while it's being worked on, and keeps it if anything fails. A photo
+  // or document is read first, and what Nexdo read becomes the note.
   const handleSendNote = () => {
     const trimmed = note.trim();
-    if (!trimmed || reassessing) return;
+    if ((!trimmed && !noteFile) || reassessing) return;
     setNote("");
+    setNoteFile(null);
     Keyboard.dismiss();
-    submitContext(task.id, { text: trimmed });
+    submitContext(task.id, { text: trimmed, file: noteFile ?? undefined });
   };
 
   // An edited note is new context too — it replaces the old one once Nexdo has reassessed for it.
@@ -348,10 +365,12 @@ export default function TaskDetail() {
     );
   };
 
-  // Most edits on this page apply right away. This also saves anything still
-  // being typed — the edit panel, a subtask — then closes the page. A note
-  // still being typed is sent to Nexdo instead, and the page stays open so
-  // the user sees what it changed before leaving.
+  // The page's one save (the user's call, 2026-10-08: a second "Save repeat"
+  // button further down was easy to miss, and its changes were lost). Quick
+  // actions — postponing, ticking a step — apply right away; this saves
+  // everything still being edited — the edit panel, the repeat, a subtask —
+  // then closes the page. A note still being typed is sent to Nexdo instead,
+  // and the page stays open so the user sees what it changed before leaving.
   const handleSaveChanges = () => {
     // The edit panel goes first. A missing title or a bad duration keeps the
     // page open so the panel can show the error, and a repeating task waits
@@ -364,21 +383,43 @@ export default function TaskDetail() {
   };
 
   const saveRestAndClose = () => {
+    // After the edit panel's changes, so a repeat follows the deadline just set.
+    saveRepeatDraft();
     if (editingSubtaskId && editingSubtaskText.trim()) updateSubtask(task.id, editingSubtaskId, editingSubtaskText);
     if (subtaskDraft.trim()) addSubtask(task.id, subtaskDraft);
 
     const editedNote = contextNotes
       .map((entry, index) => ({ index, text: noteCardRefs.current[index]?.pendingNote() }))
       .find((edit) => edit.text && edit.text !== contextNotes[edit.index]);
-    if (note.trim() || editedNote) {
+    if (note.trim() || noteFile || editedNote) {
       setEditingSubtaskId(null);
       setSubtaskDraft("");
-      if (note.trim()) handleSendNote();
+      if (note.trim() || noteFile) handleSendNote();
       else if (editedNote?.text) handleUpdateNote(editedNote.index, editedNote.text);
       return;
     }
 
     router.back();
+  };
+
+  // The session runs on the Today page, full screen, like one started from a
+  // card there (it asks, see useSessionStore.openRequest). A session already
+  // running on another task is ended first — asked, since its clock is lost.
+  const handleStartSession = () => {
+    const open = () => {
+      requestSessionOpen(task.id, Math.max(0, task.estimatedMinutes || 0));
+      if (router.canGoBack()) router.dismissTo("/");
+      else router.replace("/");
+    };
+    const running = useSessionStore.getState().session;
+    if (running && !running.taskIds.includes(task.id)) {
+      showAlert(t.taskDetail.switchSessionTitle, t.taskDetail.switchSessionBody, [
+        { text: t.session.keepGoing, style: "cancel" },
+        { text: t.taskDetail.switchSession, style: "destructive", onPress: open },
+      ]);
+      return;
+    }
+    open();
   };
 
   const handleDelete = () => {
@@ -465,7 +506,7 @@ export default function TaskDetail() {
         <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
           <MetaPill
             icon={<Feather name="clock" size={14} color={colors.ink.charcoalMuted} />}
-            label={formatDuration(task.estimatedMinutes)}
+            label={formatTaskLength(task.estimatedMinutes)}
             labelClassName="font-grotesk-medium text-sm text-ink-charcoal-muted"
           />
           <MetaPill
@@ -475,6 +516,14 @@ export default function TaskDetail() {
             accessibilityLabel={t.tasks.score(task.priorityScore)}
           />
         </View>
+        {/* Any open task can be worked on now — one with no deadline, or due
+            another day, never shows on Today, so this is its way in. Hidden
+            while editing: leaving would drop the edits. */}
+        {isOpen && !editing ? (
+          <View className="mt-1">
+            <StartSessionButton minutes={task.estimatedMinutes} runningSession={sessionHere} onPress={handleStartSession} />
+          </View>
+        ) : null}
       </ScreenHeader>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -486,7 +535,7 @@ export default function TaskDetail() {
             keyboardShouldPersistTaps="handled"
           >
             {/* Stacked like the task list: the same cards, the same gap. */}
-            <Animated.View style={enterStyle} className="gap-[11px] px-6 pt-4">
+            <View className="gap-[11px] px-6 pt-4">
               {editing ? (
                 <TaskEditPanel
                   ref={editPanelRef}
@@ -496,44 +545,53 @@ export default function TaskDetail() {
                 />
               ) : null}
 
-              <View className="card card--cream-soft gap-3 p-[16px]">
-                <SectionHeader icon="calendar" label={t.taskDetail.postponeTitle} />
-                <View className="flex-row flex-wrap gap-2">
-                  {POSTPONE_OPTIONS.map((option) => (
-                    <Chip
-                      key={option.value}
-                      label={t.taskDetail.postpone[option.value]}
-                      onPress={() => handlePostpone(option.days)}
-                    />
-                  ))}
-                  <Chip
-                    label={t.taskDetail.customDate}
-                    selected={customPostponeDate !== null}
-                    onPress={handleToggleCustomPostpone}
-                  />
+              {/* Postponing, then the reminder under it. A repeating task has
+                  no postpone (the user's call, 2026-10-08) — its dates come
+                  from its repeat — so its card is the reminder line alone. */}
+              {canPostpone || isOpen ? (
+                <View className="card card--cream-soft gap-3 p-[16px]">
+                  {canPostpone ? (
+                    <>
+                      <SectionHeader icon="calendar" label={t.taskDetail.postponeTitle} />
+                      <View className="flex-row flex-wrap gap-2">
+                        {POSTPONE_OPTIONS.map((option) => (
+                          <Chip
+                            key={option.value}
+                            label={t.taskDetail.postpone[option.value]}
+                            onPress={() => handlePostpone(option.days)}
+                          />
+                        ))}
+                        <Chip
+                          label={t.taskDetail.customDate}
+                          selected={customPostponeDate !== null}
+                          onPress={handleToggleCustomPostpone}
+                        />
+                      </View>
+                      {customPostponeDate ? (
+                        <View className="gap-3">
+                          <DeadlineDatePicker value={customPostponeDate} onChange={setCustomPostponeDate} />
+                          <PrimaryButton icon="check" label={t.taskDetail.setDate} onPress={handleCustomPostpone} className="self-start" />
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {isOpen ? (
+                    <View className={`flex-row items-center gap-3 ${canPostpone ? "border-t border-cream-200 pt-3" : ""}`}>
+                      <Feather name="bell" size={14} color={colors.ink.creamMuted} />
+                      <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
+                        {reminderLine}
+                      </Text>
+                      {task.deadline ? (
+                        <TextButton
+                          label={task.reminders?.muted ? t.taskDetail.unmuteReminders : t.taskDetail.muteReminders}
+                          tone="accent"
+                          onPress={() => updateTask(task.id, { remindersMuted: !task.reminders?.muted }, task.recurrence ? "future" : undefined)}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
-                {customPostponeDate ? (
-                  <View className="gap-3">
-                    <DeadlineDatePicker value={customPostponeDate} onChange={setCustomPostponeDate} />
-                    <PrimaryButton icon="check" label={t.taskDetail.setDate} onPress={handleCustomPostpone} className="self-start" />
-                  </View>
-                ) : null}
-                {isOpen ? (
-                  <View className="flex-row items-center gap-3 border-t border-cream-200 pt-3">
-                    <Feather name="bell" size={14} color={colors.ink.creamMuted} />
-                    <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                      {reminderLine}
-                    </Text>
-                    {task.deadline ? (
-                      <TextButton
-                        label={task.reminders?.muted ? t.taskDetail.unmuteReminders : t.taskDetail.muteReminders}
-                        tone="accent"
-                        onPress={() => updateTask(task.id, { remindersMuted: !task.reminders?.muted }, task.recurrence ? "future" : undefined)}
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
+              ) : null}
 
               <View className="card card--cream-soft gap-3 p-[16px]">
                 <SectionHeader
@@ -564,9 +622,10 @@ export default function TaskDetail() {
                 ) : (
                   <View className="gap-3">
                     <RecurrencePicker value={repeatDraft} onChange={setRepeatDraft} deadline={task.deadline} nested />
-                    <View className="flex-row items-center justify-end gap-5">
+                    {/* No save of its own: Save Changes at the foot of the
+                        page keeps it. Cancel puts the repeat back as it was. */}
+                    <View className="flex-row items-center justify-end">
                       <TextButton label={t.common.cancel} onPress={() => setRepeatDraft(undefined)} />
-                      <PrimaryButton icon="check" label={t.taskDetail.saveRepeat} onPress={handleSaveRepeat} />
                     </View>
                   </View>
                 )}
@@ -710,20 +769,19 @@ export default function TaskDetail() {
                     onRetry={() => retryContext(task.id)}
                   />
                 ) : null}
-                <AddItemField
+                <ContextComposer
                   value={note}
                   onChangeText={setNote}
-                  onAdd={handleSendNote}
+                  file={noteFile}
+                  onChangeFile={setNoteFile}
+                  onSend={handleSendNote}
                   placeholder={
                     reassess?.status === "clarify" ? t.taskDetail.reassess.answerPlaceholder : t.taskDetail.contextPlaceholder
                   }
-                  addLabel={t.common.save}
-                  icon="send"
-                  multiline
                   disabled={reassessing}
                 />
               </View>
-            </Animated.View>
+            </View>
           </ScrollView>
         </View>
 

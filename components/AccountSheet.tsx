@@ -17,7 +17,6 @@ import { showAlert } from "@/lib/alert";
 import { apiPost } from "@/lib/api";
 import { posthog } from "@/lib/posthog";
 import { resetPurchaser } from "@/lib/purchases";
-import { useChatStore } from "@/store/useChatStore";
 import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -42,8 +41,6 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const rtl = useRtlText();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const handleChatSignOut = useChatStore((state) => state.handleSignOut);
-  const clearChatHistory = useChatStore((state) => state.clearHistory);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
   const isPro = useIsPro();
 
@@ -187,17 +184,6 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           if (!user) return;
           setDeleting(true);
           setError(null);
-          // As "Clear chat history" does: any message still uploading lands
-          // first (so none arrives after the server's delete), and an AI
-          // reply still on its way is dropped.
-          try {
-            await clearChatHistory();
-          } catch (clearError) {
-            console.warn("[AccountSheet] couldn't clear the chat before deleting", clearError);
-            setError(t.account.deleteError);
-            setDeleting(false);
-            return;
-          }
           try {
             await apiPost<DeleteAccountResponseBody>("/api/delete-account", {}, undefined, DELETE_ACCOUNT_TIMEOUT_MS);
             // Only once it's gone, so a failed deletion isn't counted as one.
@@ -205,7 +191,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
             posthog.reset();
           } catch (deleteError) {
             console.warn("[AccountSheet] account deletion failed", deleteError);
-            // The chat is already gone, and the server may have got further.
+            // The server deletes one table after another, so it may have got partway.
             setError(t.account.deletePartialError);
             setDeleting(false);
             return;
@@ -221,7 +207,6 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
             console.warn("[AccountSheet] sign-out after deletion failed", signOutError);
           }
           await Promise.allSettled([
-            Promise.resolve().then(() => handleChatSignOut()),
             Promise.resolve().then(() => handleTaskSignOut({ accountDeleted: true })),
             resetPurchaser(),
           ]);

@@ -19,7 +19,7 @@ export function openPaywall(reason?: Meter) {
  * What the app does when a month's allowance is used up. On Free the paywall
  * opens, saying which one ran out. Pro has nothing to upgrade to, so it's
  * told when the allowance starts again — unless the caller has `alreadySaid`
- * so itself (the AI chat answers in the thread).
+ * so itself (Task Details' context-note notice does).
  */
 export function showPlanLimit(meter: Meter, alreadySaid = false) {
   const isPro = useSubscriptionStore.getState().pro !== null;

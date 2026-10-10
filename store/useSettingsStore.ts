@@ -10,11 +10,6 @@ import type { AppLanguage, ThemePreference } from "@/types/settings";
 type SettingsStore = {
   theme: ThemePreference;
   language: AppLanguage;
-  // Auto mode: the AI chat adds and updates tasks straight away instead of
-  // showing a confirmation card first.
-  aiAutoMode: boolean;
-  /** The tab bar's middle button opens Live voice (a microphone) instead of the Add Task form (a plus). */
-  voiceAddButton: boolean;
   // Notification preferences — lib/reminders.ts turns them (and the task
   // list) into what the phone schedules; hooks/useNotifications.ts applies it.
   /** The daily planning note — separate from any deadline. */
@@ -37,8 +32,6 @@ type SettingsStore = {
   tourSeen: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;
-  setAiAutoMode: (aiAutoMode: boolean) => void;
-  setVoiceAddButton: (voiceAddButton: boolean) => void;
   setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
   setDailyNudgeTime: (dailyNudgeTime: string) => void;
   setOverdueAlertsEnabled: (overdueAlertsEnabled: boolean) => void;
@@ -68,8 +61,6 @@ export const useSettingsStore = create<SettingsStore>()(
     (set) => ({
       theme: "system",
       language: "en",
-      aiAutoMode: false,
-      voiceAddButton: false,
       dailyNudgeEnabled: false,
       dailyNudgeTime: "09:00",
       overdueAlertsEnabled: false,
@@ -81,8 +72,6 @@ export const useSettingsStore = create<SettingsStore>()(
       tourSeen: false,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
-      setAiAutoMode: (aiAutoMode) => set({ aiAutoMode }),
-      setVoiceAddButton: (voiceAddButton) => set({ voiceAddButton }),
       setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
       setDailyNudgeTime: (dailyNudgeTime) => set({ dailyNudgeTime }),
       setOverdueAlertsEnabled: (overdueAlertsEnabled) => set({ overdueAlertsEnabled }),
@@ -101,13 +90,12 @@ export const useSettingsStore = create<SettingsStore>()(
     {
       name: "nexdo-settings",
       storage: createJSONStorage(() => AsyncStorage),
-      // Listing the keys also drops the retired "planningStyle" value that
-      // older installs still have saved, the next time this store writes.
+      // Listing the keys also drops retired values older installs still have
+      // saved ("planningStyle", and "aiAutoMode" / "voiceAddButton" from
+      // before the AI chat was removed), the next time this store writes.
       partialize: (state) => ({
         theme: state.theme,
         language: state.language,
-        aiAutoMode: state.aiAutoMode,
-        voiceAddButton: state.voiceAddButton,
         dailyNudgeEnabled: state.dailyNudgeEnabled,
         dailyNudgeTime: state.dailyNudgeTime,
         overdueAlertsEnabled: state.overdueAlertsEnabled,

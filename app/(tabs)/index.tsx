@@ -1,5 +1,5 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
@@ -16,7 +16,6 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { GemLogo } from "@/components/GemLogo";
@@ -24,12 +23,10 @@ import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
 import { useTabBarHeight } from "@/components/TabBar";
 import { MOTION, gradients } from "@/constants/theme";
-import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { formatDuration } from "@/lib/formatDuration";
 import { keyToLocalDate, toLocalDateKey } from "@/lib/localDate";
 import { posthog } from "@/lib/posthog";
 import { recommendTasks } from "@/lib/priority";
@@ -193,9 +190,11 @@ const TRACK_INSET = { boxShadow: "inset 0 1px 3px rgba(92, 58, 26, 0.16)" };
 /**
  * Today at a glance, under the page's title: how many of today's tasks are
  * left, how many are done, and one thick bar that fills a step each time one
- * is finished. Full — and green — means nothing is left for today.
+ * is finished. Full — and green — means nothing is left for today. No hours
+ * of work left (the user's call, 2026-10-08): a guess at the day's length
+ * read as a promise, and tasks without a set time made it wrong anyway.
  */
-function TodayCard({ done, left, minutesLeft }: { done: number; left: number; minutesLeft: number }) {
+function TodayCard({ done, left }: { done: number; left: number }) {
   const t = useTranslation();
   const colors = useColors();
   const reduceMotion = useReducedMotion();
@@ -242,12 +241,6 @@ function TodayCard({ done, left, minutesLeft }: { done: number; left: number; mi
           style={[finished ? gradients.success : gradients.accent, fillStyle]}
         />
       </View>
-      {!finished && minutesLeft > 0 ? (
-        <View className="flex-row items-center gap-1.5">
-          <Feather name="clock" size={13} color={colors.ink.creamMuted} />
-          <Text className="font-grotesk-medium text-[13px] text-ink-cream-muted">{t.next.workLeft(formatDuration(minutesLeft))}</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -281,24 +274,11 @@ export default function Next() {
   const [focusLanded, setFocusLanded] = useState(false);
   const handleFocusLanded = useCallback(() => setFocusLanded(true), []);
 
-  // "I've only got 20 minutes" in the AI chat routes here carrying that budget
-  // (see REDIRECT_NEXT in lib/ai/classifyIntent.ts). Without reading it back
-  // out the redirect was just an ordinary tab switch.
-  const { minutes } = useLocalSearchParams<{ minutes?: string }>();
-  const parsedMinutes = minutes ? Number.parseInt(minutes, 10) : Number.NaN;
-  const activeBudget = Number.isFinite(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : undefined;
-
   // The task on top last time, so a point or two of score drift (the clock
   // moving on) doesn't swap it for another — see recommendTasks.
   const [stickyTopId, setStickyTopId] = useState<string | undefined>(undefined);
   // The task whose card is showing — the card follows its task, not its place.
   const [followedId, setFollowedId] = useState<string | undefined>(undefined);
-
-  // The page's entrance, each time the tab comes into view: the title, then
-  // today's card, then the cards.
-  const titleEnter = useFocusEnter(0);
-  const cardEnter = useFocusEnter(1);
-  const bodyEnter = useFocusEnter(2);
 
   // The day the page is for — checked again whenever the tab comes back into
   // view, so a phone left open overnight moves on to the new day.
@@ -310,9 +290,9 @@ export default function Next() {
   );
 
   // Today, as the Schedule shows it (lib/schedule.ts): the open tasks due
-  // today, the ones due today already done, and how long the rest takes.
-  // Late tasks stay on the day they were due, and tasks without a deadline
-  // aren't on any day — neither is on this page (the user's call, 2026-10-07).
+  // today and the ones due today already done. Late tasks stay on the day
+  // they were due, and tasks without a deadline aren't on any day — neither
+  // is on this page (the user's call, 2026-10-07).
   const today = useMemo(() => {
     const now = new Date();
     const key = toLocalDateKey(now);
@@ -320,47 +300,24 @@ export default function Next() {
     return {
       ids: new Set(plan.items.map((item) => item.task.id)),
       done: plan.done.length,
-      minutesLeft: plan.plannedMinutes,
     };
     // dayKey isn't read: it's there to work today out again on a new day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, dayKey]);
 
   // Every open task, best first: pinned ones ahead, then the priority
-  // engine's ranking — which counts how well each fits the time budget, when
-  // one was given.
+  // engine's ranking.
   const rankedTasks = useMemo(
-    () => recommendTasks(tasks, { now: new Date(), availableMinutes: activeBudget }, stickyTopId).map((entry) => entry.task),
-    [tasks, activeBudget, stickyTopId],
+    () => recommendTasks(tasks, { now: new Date() }, stickyTopId).map((entry) => entry.task),
+    [tasks, stickyTopId],
   );
   // Today's tasks, in that order. A task with a session running on it always
-  // stays — its card holds the clock, and the only way to stop it.
-  const todayTasks = useMemo(
+  // stays — its card is the way back into the session, and a session started
+  // from Task Details on a task due another day (or never) runs here too.
+  const pendingTasks = useMemo(
     () => rankedTasks.filter((task) => today.ids.has(task.id) || activeSession?.taskIds.includes(task.id)),
     [rankedTasks, today, activeSession],
   );
-  // "I've only got 20 minutes" asks for something that fits, whatever day
-  // it's due, so with a time budget every open task is in the running.
-  const pool = activeBudget === undefined ? todayTasks : rankedTasks;
-  // Narrowed to what actually fits the stated window — but never down to an
-  // empty screen: if nothing fits, today's tasks are better than nothing, and
-  // the banner says so.
-  const fittingTasks = useMemo(
-    () =>
-      activeBudget === undefined
-        ? pool
-        : pool.filter(
-            (task) =>
-              // A task with a session running on it is never filtered away:
-              // the clock, and the only way to stop it, live in that card.
-              activeSession?.taskIds.includes(task.id) ||
-              (task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget),
-          ),
-    [pool, activeBudget, activeSession],
-  );
-  const budgetHasMatches =
-    activeBudget === undefined || pool.some((task) => task.estimatedMinutes > 0 && task.estimatedMinutes <= activeBudget);
-  const pendingTasks = budgetHasMatches ? fittingTasks : todayTasks;
   const total = pendingTasks.length;
 
   // The card follows its task, not its position: if the ranking moves while
@@ -377,7 +334,7 @@ export default function Next() {
   // Kept in step during render (React's "adjusting state when a prop
   // changes"), not in an effect, so the stack never draws a frame out of step.
   // Each only changes when what it tracks does, so this settles in one pass.
-  const topId = pool[0]?.id;
+  const topId = pendingTasks[0]?.id;
   if (topId !== stickyTopId) setStickyTopId(topId);
   if (currentTask?.id !== followedId) setFollowedId(currentTask?.id);
   if (currentIndex !== activeIndex) setActiveIndex(currentIndex);
@@ -390,8 +347,7 @@ export default function Next() {
 
   // The session's card is gone once its task is finished or deleted — nothing
   // is left to show the clock, so the session ends with it. Checked against
-  // every open task, not the ones the time filter (or today) is showing: a
-  // running task that simply doesn't fit the stated window is still running.
+  // every open task, not just today's.
   useEffect(() => {
     if (!activeSession) return;
     const stillRunning = rankedTasks.some((task) => activeSession.taskIds.includes(task.id));
@@ -448,14 +404,22 @@ export default function Next() {
     startingSession.current = true;
 
     const begin = (origin: CardBounds) => {
-      posthog.capture("session_started", {
-        available_minutes: plannedMinutes,
-        task_count: 1,
-      });
-      startSession({ taskIds: [task.id], plannedMinutes, energy: "ready" });
+      // A card whose session is already running (say, after the app was
+      // closed mid-session) reopens it rather than starting the clock again.
+      const resuming = useSessionStore.getState().session?.taskIds.includes(task.id) ?? false;
+      if (!resuming) {
+        posthog.capture("session_started", {
+          available_minutes: plannedMinutes,
+          task_count: 1,
+        });
+        startSession({ taskIds: [task.id], plannedMinutes, energy: "ready" });
+      }
       setFocusClosing(false);
       setFocusLanded(false);
-      const taskIndex = pendingTasks.findIndex((entry) => entry.id === task.id);
+      // Its place among today's tasks — or, for one started from Task Details
+      // that isn't due today, among every open task.
+      const todayIndex = pendingTasks.findIndex((entry) => entry.id === task.id);
+      const taskIndex = todayIndex >= 0 ? todayIndex : rankedTasks.findIndex((entry) => entry.id === task.id);
       setFocusState({ task, rank: Math.max(1, taskIndex + 1), origin, returnBounds: origin });
       startingSession.current = false;
     };
@@ -465,7 +429,19 @@ export default function Next() {
     } else {
       begin({ x: 0, y: 0, width: rootSize.width, height: rootSize.height });
     }
-  }, [measureInRoot, pendingTasks, rootSize.height, rootSize.width, startSession]);
+  }, [measureInRoot, pendingTasks, rankedTasks, rootSize.height, rootSize.width, startSession]);
+
+  // Task Details' Start session (any task — no deadline, another day): it
+  // asks, and the session opens here, full screen, as if started from a card.
+  // The task's card joins the stack while its session runs.
+  const openRequest = useSessionStore((state) => state.openRequest);
+  const clearOpenRequest = useSessionStore((state) => state.clearOpenRequest);
+  useEffect(() => {
+    if (!openRequest) return;
+    clearOpenRequest();
+    const task = tasks.find((entry) => entry.id === openRequest.taskId && entry.status === "pending");
+    if (task) handleStartSession(task, openRequest.plannedMinutes);
+  }, [clearOpenRequest, handleStartSession, openRequest, tasks]);
 
   const handleDetails = useCallback((taskId: string) => {
     router.push({ pathname: "/task/[id]", params: { id: taskId } });
@@ -482,9 +458,10 @@ export default function Next() {
     router.push("/schedule");
   };
 
-  // Done against what's left of today's tasks. The card shows once there's a
-  // day to measure: anything due today, open or done.
-  const todayLeft = todayTasks.length;
+  // Done against what's left of today's tasks — not a session's task from
+  // another day. The card shows once there's a day to measure: anything due
+  // today, open or done.
+  const todayLeft = pendingTasks.filter((task) => today.ids.has(task.id)).length;
   const todayTotal = today.done + todayLeft;
   const dateLabel = keyToLocalDate(dayKey).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
 
@@ -500,7 +477,7 @@ export default function Next() {
       />
 
       <View className="px-6 pb-1 pt-2">
-        <Animated.View className="flex-row items-start gap-3" style={titleEnter}>
+        <View className="flex-row items-start gap-3">
           <View className="flex-1">
             <View className="flex-row items-center gap-1.5">
               <GemLogo size={16} />
@@ -517,11 +494,11 @@ export default function Next() {
             onPress={openSchedule}
             className="mt-1"
           />
-        </Animated.View>
+        </View>
         {todayTotal > 0 ? (
-          <Animated.View className="mt-4" style={cardEnter}>
-            <TodayCard done={today.done} left={todayLeft} minutesLeft={today.minutesLeft} />
-          </Animated.View>
+          <View className="mt-4">
+            <TodayCard done={today.done} left={todayLeft} />
+          </View>
         ) : null}
       </View>
     </>
@@ -537,7 +514,6 @@ export default function Next() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
         {header}
         {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
-        <Animated.View className="flex-1" style={bodyEnter}>
         <Animated.View
           entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
           className="flex-1 items-center justify-center gap-3 px-6"
@@ -572,7 +548,6 @@ export default function Next() {
             <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
           )}
         </Animated.View>
-        </Animated.View>
       </SafeAreaView>
     );
   }
@@ -591,31 +566,6 @@ export default function Next() {
           contentContainerStyle={{ paddingTop: 18, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={bodyEnter}>
-          {activeBudget !== undefined ? (
-            <View className="mx-6 mb-4 flex-row items-center gap-2 rounded-2xl border border-orange-500/40 bg-orange-100 px-4 py-2.5">
-              <Feather name="clock" size={14} color={colors.orange[600]} />
-              <Text className="flex-1 font-grotesk-semibold text-sm text-orange-600" style={rtl}>
-                {budgetHasMatches
-                  ? t.next.timeFilter(formatDuration(activeBudget))
-                  : t.next.timeFilterEmpty(formatDuration(activeBudget))}
-              </Text>
-              <AnimatedPressable
-                // Cleared on the route rather than in local state, so coming
-                // back later with the same budget still shows the banner.
-                onPress={() => {
-                  router.setParams({ minutes: "" });
-                  setFollowedId(undefined);
-                  setActiveIndex(0);
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-              >
-                <Text className="font-grotesk-bold text-sm text-orange-600">{t.next.timeFilterClear}</Text>
-              </AnimatedPressable>
-            </View>
-          ) : null}
-
           {currentTask ? (
             <NextTaskCardStack
               tasks={pendingTasks}
@@ -627,7 +577,6 @@ export default function Next() {
               onFocusBoundsChange={handleFocusBoundsChange}
             />
           ) : null}
-          </Animated.View>
         </ScrollView>
       </View>
       {focusState && focusedTask ? (

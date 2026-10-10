@@ -13,22 +13,32 @@ import { deadlineToLocalDate, makeDeadline, type DeadlineInput } from "@/lib/dea
 import { pad, toLocalDateKey } from "@/lib/localDate";
 import type { TaskDeadline, TaskPriorityLevel } from "@/types/task";
 
-export type DeadlineValue = "today" | "tomorrow" | "friday" | "weekend" | "nextWeek" | "none";
+export type DeadlineValue = "today" | "tomorrow" | "friday" | "none";
+
+/**
+ * "No duration": a task that isn't one sitting of work — a goal kept up
+ * through the day ("drink 2 L of water", "no sugar today"). Saved as 0
+ * minutes; its focus session counts up instead of down (useSessionCountdown).
+ */
+export const NO_DURATION = 0;
 
 // Chip labels live in the translations: form.durationOptions / form.deadlines.
-export const DURATION_OPTIONS: number[] = [15, 30, 45, 60, 90, 120, 180];
+// "No duration" last, like "No deadline" among the deadline chips.
+export const DURATION_OPTIONS: number[] = [15, 30, 45, 60, 90, 120, 180, NO_DURATION];
 
 /** The longest title the AI is sent in full (MAX_TITLE_LENGTH in lib/serverRequest.ts). */
 export const MAX_TASK_TITLE_LENGTH = 200;
 /** Digits a custom length may have: up to 9,999 minutes, under what the AI routes accept. */
 export const MAX_CUSTOM_MINUTES_DIGITS = 4;
 
-export const DEADLINE_OPTIONS: DeadlineValue[] = ["today", "tomorrow", "friday", "weekend", "nextWeek", "none"];
+// "This weekend" and "Next week" were removed (2026-10-08): neither said
+// which day the task would land on. Any other day is on the calendar.
+export const DEADLINE_OPTIONS: DeadlineValue[] = ["today", "tomorrow", "friday", "none"];
 
 /**
  * The day a deadline chip stands for — a date-only deadline: the chips name a
- * day, never a time, so none is invented. "This Friday"/"This Weekend" are
- * the nearest upcoming Friday/Saturday, today included. Undefined for "No deadline".
+ * day, never a time, so none is invented. "This Friday" is the nearest
+ * upcoming Friday, today included. Undefined for "No deadline".
  */
 export function computeDeadline(value: DeadlineValue, now: Date = new Date()): DeadlineInput | undefined {
   const date = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -40,12 +50,6 @@ export function computeDeadline(value: DeadlineValue, now: Date = new Date()): D
       break;
     case "friday":
       date.setDate(date.getDate() + ((5 - date.getDay() + 7) % 7));
-      break;
-    case "weekend":
-      date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7));
-      break;
-    case "nextWeek":
-      date.setDate(date.getDate() + 7);
       break;
     case "none":
     default:

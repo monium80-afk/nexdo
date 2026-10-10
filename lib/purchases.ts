@@ -35,6 +35,14 @@ const API_KEY = (__DEV__ ? process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY || ST
 /** False in a build without a RevenueCat key — Nexdo Pro is hidden then, rather than broken. */
 export const isPurchasesEnabled = API_KEY !== null;
 
+/**
+ * Development on RevenueCat's Test Store (Expo Go, the dev build): its own
+ * made-up products, in US dollars whatever the country, with subscriptions
+ * that renew every few minutes and lapse after a few renewals. Never true in
+ * a store build.
+ */
+export const isTestStore = __DEV__ && API_KEY !== null && API_KEY === process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
+
 let configured = false;
 
 // logIn / logOut can't overlap (the SDK refuses one while another is still

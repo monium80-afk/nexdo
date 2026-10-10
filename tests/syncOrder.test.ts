@@ -1,12 +1,10 @@
 /// <reference types="node" />
 // What happens to changes that haven't reached Supabase yet: a delete made
 // offline, a save and a delete of the same task racing each other, a delete
-// from another device, signing out or clearing the chat while a request is
-// still on its way, and chat messages whose upload failed.
+// from another device, and signing out while a request is still on its way.
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
-import { useChatStore } from "@/store/useChatStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 import { fakeDb } from "./stubs/supabase";
@@ -30,14 +28,9 @@ function dbRow(id: string) {
   return fakeDb.rows("tasks").find((row) => row.id === id);
 }
 
-function chatTexts() {
-  return useChatStore.getState().messages.map((message) => message.text);
-}
-
 beforeEach(async () => {
   fakeDb.reset();
   useTaskStore.setState({ tasks: [], unsynced: {}, pendingDeletes: {}, syncUserId: USER, ownerId: USER });
-  useChatStore.setState({ messages: [], unsynced: {}, pendingActions: [], lastUndo: null, syncUserId: USER });
   await flush();
 });
 
@@ -142,44 +135,5 @@ describe("signing out while a save is on its way", () => {
 
     assert.equal(result.ok, false);
     assert.equal(dbRow(id)?.title, "Essay (reassessed)");
-  });
-});
-
-describe("chat messages that haven't reached Supabase", () => {
-  it("a message whose upload failed survives the next sync, in its place, and goes up again", async () => {
-    useChatStore.getState().seedMessage("Saved earlier");
-    await flush();
-    fakeDb.nextError = OFFLINE;
-    useChatStore.getState().seedMessage("Sent offline");
-    await flush();
-    assert.equal(fakeDb.rows("chat_messages").length, 1);
-
-    await useChatStore.getState().hydrateFromSupabase(USER);
-    await flush();
-    assert.deepEqual(chatTexts(), ["Saved earlier", "Sent offline"]);
-    assert.equal(fakeDb.rows("chat_messages").length, 2);
-    assert.deepEqual(useChatStore.getState().unsynced, {});
-  });
-
-  it("never mixes another account's unsent messages into this one", async () => {
-    useChatStore.setState({
-      messages: [{ id: "m-other", role: "user", text: "Someone else's", createdAt: new Date().toISOString() }],
-      unsynced: { "m-other": "user_2" },
-    });
-    await useChatStore.getState().hydrateFromSupabase(USER);
-    await flush();
-    assert.ok(!chatTexts().includes("Someone else's"));
-    assert.deepEqual(fakeDb.rows("chat_messages"), []);
-  });
-
-  it("clearing the history waits for an upload still on its way, so the message can't come back", async () => {
-    const release = fakeDb.holdUpserts();
-    useChatStore.getState().seedMessage("About to be cleared");
-    const clearing = useChatStore.getState().clearHistory();
-    await flush();
-    release();
-    await clearing;
-    await flush();
-    assert.deepEqual(fakeDb.rows("chat_messages"), []);
   });
 });

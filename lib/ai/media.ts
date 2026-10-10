@@ -36,7 +36,12 @@ export function resolveMimeType(attachment: ChatAttachment): string {
  */
 export async function extractAttachmentText(
   attachment: ChatAttachment,
-  options: { language?: AppLanguage; userInstruction?: string } = {},
+  options: {
+    language?: AppLanguage;
+    userInstruction?: string;
+    /** Read as context for this task (Task Details, a session), not for to-dos to add. */
+    forTask?: { title: string };
+  } = {},
 ): Promise<string> {
   const base64 = await readFileAsBase64(attachment.uri);
   // A recorder that captured nothing still hands back a valid file, just a
@@ -52,6 +57,8 @@ export async function extractAttachmentText(
     durationSeconds: attachment.durationSeconds,
     language: options.language,
     userInstruction: options.userInstruction?.trim() || undefined,
+    purpose: options.forTask ? "context" : undefined,
+    taskTitle: options.forTask?.title,
   };
   const { text } = await apiPost<ExtractTextResponseBody>("/api/extract-text", request);
   return text.trim();

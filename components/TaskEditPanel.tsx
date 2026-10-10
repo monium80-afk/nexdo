@@ -1,7 +1,7 @@
 import { useImperativeHandle, useState, type Ref } from "react";
 import { Text, View } from "react-native";
 
-import { PrimaryButton, TextButton } from "@/components/Button";
+import { TextButton } from "@/components/Button";
 import { Chip } from "@/components/Chip";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
@@ -45,7 +45,8 @@ function initialCustomDeadline(task: Task): DeadlineDraft {
 
 /**
  * Everything the pen icon on Task Details can change. Edits stay local
- * drafts until "Save changes", so backing out never half-updates a task.
+ * drafts until the page's own "Save Changes" button — the one save on the
+ * page — so backing out never half-updates a task.
  */
 export function TaskEditPanel({
   task,
@@ -195,9 +196,9 @@ export function TaskEditPanel({
         <Text className="font-grotesk-medium text-sm text-ink-cream-muted">{deadlineCaption}</Text>
       </View>
 
-      <View className="flex-row items-center justify-end gap-5">
+      {/* Throws these edits away; keeping them is the page's Save Changes. */}
+      <View className="flex-row items-center justify-end">
         <TextButton label={t.common.cancel} onPress={onCancel} />
-        <PrimaryButton icon="check" label={t.form.saveChanges} onPress={() => handleSave()} />
       </View>
     </View>
   );

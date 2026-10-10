@@ -98,9 +98,14 @@ function generateAdviceHeuristic(task: Task): TaskAdvice {
   const currentSubtask = task.subtasks?.find((subtask) => subtask.status === "current");
 
   // **markers** highlight the key words on the AI advice card, like the AI's own advice.
+  // A task with no duration (a goal kept through the day) has no length to quote.
   const headline = currentSubtask
-    ? t.assistant.adviceDoNow(`**${escapeAdviceText(currentSubtask.label)}**`, `**${formatDuration(currentSubtask.estimatedMinutes)}**`)
-    : t.assistant.adviceJustDo(`**${escapeAdviceText(task.title)}**`, `**${formatDuration(task.estimatedMinutes)}**`);
+    ? currentSubtask.estimatedMinutes > 0
+      ? t.assistant.adviceDoNow(`**${escapeAdviceText(currentSubtask.label)}**`, `**${formatDuration(currentSubtask.estimatedMinutes)}**`)
+      : t.assistant.adviceStartWith(`**${escapeAdviceText(currentSubtask.label)}**`)
+    : task.estimatedMinutes > 0
+      ? t.assistant.adviceJustDo(`**${escapeAdviceText(task.title)}**`, `**${formatDuration(task.estimatedMinutes)}**`)
+      : t.assistant.adviceKeepUp(`**${escapeAdviceText(task.title)}**`);
 
   const urgencyPhrase =
     task.priorityScore >= 85

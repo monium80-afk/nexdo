@@ -12,7 +12,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatTaskLength } from "@/lib/formatDuration";
 import { computePriorityScore, PRIORITY_LEVEL_IMPORTANCE } from "@/lib/scoring";
 import { previewDueLabel } from "@/lib/taskMeta";
 import { posthog } from "@/lib/posthog";
@@ -65,7 +65,7 @@ function PlanCard({ draft, now }: { draft: ExtractedTaskDraft; now: Date }) {
         />
         <MetaPill
           icon={<Feather name="clock" size={13} color={colors.ink.creamMuted} />}
-          label={formatDuration(draft.estimatedMinutes)}
+          label={formatTaskLength(draft.estimatedMinutes)}
           labelClassName="font-grotesk-medium text-sm text-ink-cream-muted"
         />
       </View>

@@ -10,6 +10,7 @@ import {
   clampNumber,
   clampString,
   LANGUAGES,
+  MAX_TITLE_LENGTH,
   oneOf,
   readJsonBody,
 } from "@/lib/serverRequest";
@@ -25,6 +26,14 @@ export type ExtractTextRequestBody = {
   language?: AppLanguage;
   /** What the user typed alongside the file ("pull out the deadlines"), if anything. */
   userInstruction?: string;
+  /**
+   * "context": a photo or document given as context for one task (Task
+   * Details, a focus session) — read for what doing that task needs, rather
+   * than for to-dos to add. Photos and documents only.
+   */
+  purpose?: "context";
+  /** With "context": the task's title, so the reading knows what matters. */
+  taskTitle?: string;
 };
 
 export type ExtractTextResponseBody = {
@@ -58,6 +67,27 @@ const INSTRUCTIONS: Record<ExtractTextRequestBody["kind"], string> = {
     "Output plain text only, exactly as if the user had typed it themselves — no commentary, no markdown.",
   ].join("\n"),
 };
+
+// A file given as context for one task the user is working on: what's read
+// out is kept as a note on that task and fed to its reassessment, breakdowns
+// and advice — so it has to say what the task needs to know, including what
+// a diagram or a screenshot shows, not just pull out to-dos. Exported so a
+// live check can run it against the real model without a server.
+export function contextInstruction(kind: "photo" | "document", taskTitle: string | undefined): string {
+  const task = taskTitle ? ` ("${taskTitle}")` : "";
+  const what =
+    kind === "photo"
+      ? "Write out everything in this image that matters for doing that task: every line of text, verbatim, and for anything that isn't text — a diagram, a chart, a screenshot, handwritten working, an object — one or two plain sentences saying what it shows."
+      : "Write out what in this file matters for doing that task: its instructions, requirements, questions, figures and dates, verbatim where you can. For a long file, keep what the task needs and leave out boilerplate.";
+  return [
+    `The user attached this ${kind === "photo" ? "image" : "file"} to a task on their to-do list${task} so their assistant can help them do it.`,
+    what,
+    "- Keep numbers, dates, times, names and formulas exactly as they are written — never reformat them and never work out a calendar date.",
+    "- Invent nothing. Leave out anything blurred, cropped or unreadable instead of guessing.",
+    "- At most about 600 words.",
+    "Output plain text only — no commentary, no markdown, no headings.",
+  ].join("\n");
+}
 
 // Text that's already in the image/file stays in its own language; only what
 // the model writes in its own words (a description) follows the app language.
@@ -199,13 +229,17 @@ export async function POST(request: Request) {
   const language = oneOf(parsed.language, LANGUAGES);
   const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);
   const languageNote = kind === "voice" || !language ? "" : (DESCRIPTION_LANGUAGE[language] ?? "");
+  const forTask = parsed.purpose === "context" && kind !== "voice";
+  const instruction = forTask
+    ? contextInstruction(kind, clampString(parsed.taskTitle, MAX_TITLE_LENGTH))
+    : INSTRUCTIONS[kind];
 
   try {
     const text = await extractTextFromMedia({
-      label: `extract-text:${kind}`,
+      label: `extract-text:${forTask ? "context-" : ""}${kind}`,
       mimeType,
       base64,
-      instruction: `${INSTRUCTIONS[kind]}${languageNote}${focusNote(userInstruction)}`,
+      instruction: `${instruction}${languageNote}${focusNote(userInstruction)}`,
       deadline,
     });
     if (!text) console.warn(`[api/extract-text] ${kind} ${mimeType} ${bytes}B -> empty (model read nothing in it)`);

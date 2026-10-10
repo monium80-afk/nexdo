@@ -39,16 +39,14 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      // No page transition: the new tab is simply there, and its own content
-      // fades up into place (hooks/useFocusEnter.ts) — the user's call
-      // (2026-10-07), a crossfade on top of that read as two animations.
-      // The page colour stays behind the screens so nothing grey flashes.
+      // No page transition and no entrance: the new tab is simply there — the
+      // user's call (2026-10-08). The page colour stays behind the screens so
+      // nothing grey flashes.
       screenOptions={{ headerShown: false, animation: "none", sceneStyle: { backgroundColor: colors.cream[100] } }}
       tabBar={(props) => <TabBar {...props} />}
     >
       <Tabs.Screen name="index" options={{ title: t.tabs.next }} />
       <Tabs.Screen name="tasks" options={{ title: t.tabs.tasks }} />
-      <Tabs.Screen name="ai-chat" options={{ title: t.tabs.inbox }} />
       <Tabs.Screen name="settings" options={{ title: t.tabs.settings }} />
     </Tabs>
   );

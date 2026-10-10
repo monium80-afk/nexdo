@@ -44,6 +44,15 @@ export type TaskStep = {
   estimatedMinutes: number;
 };
 
+// A step as AI Breakdown's sheet edits it — nothing is saved until "Confirm
+// these steps" (store's setSteps). A new step has an id the task doesn't have yet.
+export type StepDraft = {
+  id: string;
+  label: string;
+  estimatedMinutes: number;
+  completed: boolean;
+};
+
 // Canonical stored plan step. Exactly one pending subtask per task should be "current".
 export type Subtask = {
   id: string;

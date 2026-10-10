@@ -24,6 +24,15 @@ export const posthog = {
 export async function extractAttachmentsText() {
   return { extracted: [], failedCount: 0 };
 }
-export async function extractAttachmentText() {
-  return "";
+type FileReader = (attachment: unknown, options: unknown) => string | Promise<string>;
+
+let readFile: FileReader = () => "";
+
+/** What the next files read as — a test sets it; "" (nothing readable) otherwise. */
+export function setFileReader(next: FileReader) {
+  readFile = next;
+}
+
+export async function extractAttachmentText(attachment: unknown, options: unknown) {
+  return readFile(attachment, options);
 }

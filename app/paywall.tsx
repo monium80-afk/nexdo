@@ -16,14 +16,15 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
-import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, type Meter, type Plan } from "@/lib/plan";
+import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, SHOWN_METERS, type Meter, type Plan } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
+import { productPrice } from "@/lib/price";
 import { billedYearly, loadProPlans, purchasePlan, restorePurchases } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
-// The order the comparison lists what a plan counts in.
-const COMPARED: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
+// What the comparison lists, in order — the allowances the app still offers.
+const COMPARED = SHOWN_METERS;
 
 // Same raised tray as Add Task's footer.
 const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
@@ -273,8 +274,8 @@ function Paywall() {
             style={rtl ? CENTERED_RTL : undefined}
           >
             {trial
-              ? t.paywall.trialTerms(trial.count, trial.unit, selected.package.product.priceString, selectedIsYearly)
-              : t.paywall.terms(selected.package.product.priceString, selectedIsYearly)}
+              ? t.paywall.trialTerms(trial.count, trial.unit, productPrice(selected.package.product, t.locale), selectedIsYearly)
+              : t.paywall.terms(productPrice(selected.package.product, t.locale), selectedIsYearly)}
           </Text>
         ) : null}
       </View>

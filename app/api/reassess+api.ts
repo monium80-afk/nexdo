@@ -1,5 +1,6 @@
 import { TASK_REASSESSMENT_SYSTEM_PROMPT } from "@/data/aiPrompts";
 import type { TaskContext } from "@/lib/ai/context";
+import { MAX_CONTEXT_NOTE_LENGTH } from "@/lib/contextFile";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { languageInstruction } from "@/lib/ai/language";
 import type { PlanStep } from "@/lib/ai/types";
@@ -262,7 +263,9 @@ export function normalizeReassessment(raw: unknown): ReassessResponseBody {
 }
 
 const MAX_BODY_BYTES = 64 * 1024;
-const MAX_CONTEXT_LENGTH = 2_000;
+// A note can carry what was read from an attached photo or document
+// (lib/contextFile.ts) as well as the user's own words.
+const MAX_CONTEXT_LENGTH = MAX_CONTEXT_NOTE_LENGTH;
 const MAX_IN_STEPS = 30;
 
 export function parseReassessBody(raw: unknown): ReassessRequestBody | null {

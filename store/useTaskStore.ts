@@ -24,7 +24,7 @@ import {
   type TaskOperation,
 } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
-import type { Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
+import type { StepDraft, Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
 // local state (UI/lib/ai never awaits anything), and additionally mirror
@@ -525,8 +525,14 @@ type TaskStore = {
   skipTask: (taskId: string, reason: string) => void;
   regeneratePlan: (taskId: string) => void;
   applyPlanSteps: (taskId: string, steps: PlanStep[]) => void;
-  /** AI Breakdown in a session: swaps the unfinished steps for new ones, keeping the ones already checked off. */
+  /** Swaps the unfinished steps for new ones, keeping the ones already checked off. */
   replaceRemainingSteps: (taskId: string, steps: PlanStep[]) => void;
+  /**
+   * AI Breakdown's "Confirm these steps": the task's steps become exactly
+   * these, in this order (an `id` the task already has keeps that step).
+   * Every step done finishes the task, as ticking the last one does.
+   */
+  setSteps: (taskId: string, steps: StepDraft[]) => void;
   applyStructuredAction: (action: StructuredAction) => {
     message: string;
     taskId?: string;
@@ -1171,6 +1177,53 @@ export const useTaskStore = create<TaskStore>()(
                     subtasks,
                     currentStepId: subtasks.find((subtask) => subtask.status === "current")?.id,
                     estimatedMinutes: remainingMinutes(subtasks),
+                    updatedAt: now.toISOString(),
+                  }
+                : t,
+            ),
+            now,
+          ),
+        }));
+        const updated = get().tasks.find((t) => t.id === taskId);
+        if (updated) syncUpsert(updated, get().syncUserId);
+      },
+
+      setSteps: (taskId, steps) => {
+        const now = new Date();
+        const task = get().tasks.find((t) => t.id === taskId);
+        if (!task || task.status !== "pending") return;
+
+        const firstOpen = steps.findIndex((step) => !step.completed);
+        const subtasks: Subtask[] = steps.map((step, index) => ({
+          id: step.id,
+          label: step.label,
+          estimatedMinutes: step.estimatedMinutes,
+          order: index,
+          status: step.completed ? "completed" : index === firstOpen ? "current" : "pending",
+        }));
+
+        // Every step done finishes the task — through the same path as any
+        // other completion, so a repeating task brings in its next one.
+        if (subtasks.length > 0 && firstOpen === -1) {
+          const delta = completeTaskDelta(task, now, get().tasks, {
+            subtasks,
+            currentStepId: undefined,
+            estimatedMinutes: 0,
+          });
+          get().applyPlan(delta, now);
+          return;
+        }
+
+        set((state) => ({
+          tasks: recalcAll(
+            state.tasks.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    subtasks,
+                    currentStepId: subtasks[firstOpen]?.id,
+                    // No steps left to time it by: the task keeps its own length.
+                    estimatedMinutes: firstOpen === -1 ? t.estimatedMinutes : remainingMinutes(subtasks),
                     updatedAt: now.toISOString(),
                   }
                 : t,

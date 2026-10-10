@@ -1,6 +1,7 @@
 // Server-only: the "is this body sane?" half of the API route boundary
-// (lib/serverAuth.ts is the "who is calling?" half). Type-only imports here,
-// so nothing in this file pulls client code onto the server or vice versa.
+// (lib/serverAuth.ts is the "who is calling?" half). Type-only imports here
+// (bar one dependency-free helper), so nothing in this file pulls client code
+// onto the server or vice versa.
 //
 // Every route used to do `(await request.json()) as SomeRequestBody`. A TS
 // `as` is erased at runtime, so that cast validated nothing — it only told
@@ -9,6 +10,9 @@
 
 import type { TaskContext } from "@/lib/ai/context";
 import type { PlanStep } from "@/lib/ai/types";
+// The one value import: pure string work with no imports of its own, shared
+// so the app and the server cap a task's notes the same way.
+import { capContextNotes } from "@/lib/contextFile";
 
 /** A body bigger than the route's cap, or not JSON at all. */
 export class BadRequestError extends Error {}
@@ -131,9 +135,12 @@ export function parseTaskContext(raw: unknown): TaskContext | null {
     priorityScore: clampNumber(task.priorityScore, 0, 1_000) ?? 0,
     complexity: oneOf(task.complexity, COMPLEXITIES) ?? "simple",
     notes: clampString(task.notes, MAX_NOTE_LENGTH),
-    contextNotes: clampArray(task.contextNotes, MAX_CONTEXT_NOTES)
-      .map((note) => clampString(note, MAX_NOTE_LENGTH))
-      .filter((note): note is string => !!note),
+    // A note can carry the text of a photo or file the user attached
+    // (lib/contextFile.ts), so it may be longer than a description — but all
+    // of them together stay within one bound, whatever the app sent.
+    contextNotes: capContextNotes(
+      clampArray(task.contextNotes, MAX_CONTEXT_NOTES).filter((note): note is string => typeof note === "string"),
+    ),
     priority: oneOf(task.priority, ["critical", "high", "medium", "low"] as const),
     overdue: task.overdue === true ? true : undefined,
     completedLabel: clampString(task.completedLabel, 100),

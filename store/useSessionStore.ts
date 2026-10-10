@@ -5,13 +5,17 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import type { EnergyLevel } from "@/lib/sessionPlan";
 
 /**
- * A focus session started from the Next screen. It snapshots the plan at
- * start time — which tasks, how long, what energy — so a task edit mid-run
- * can't silently re-shuffle what you're in the middle of working on.
+ * A focus session, run on the Today page — started there or from Task
+ * Details. It snapshots the plan at start time — which tasks, how long, what
+ * energy — so a task edit mid-run can't silently re-shuffle what you're in
+ * the middle of working on.
  */
 export type ActiveSession = {
   taskIds: string[];
-  /** The time budget the user picked; the countdown's full length. */
+  /**
+   * The countdown's full length. 0 for a task with no duration (a goal kept
+   * through the day): that session has no timer, and nothing to ring at.
+   */
   plannedMinutes: number;
   energy: EnergyLevel;
   /** Index into taskIds of the task the runner is focused on. */
@@ -33,6 +37,15 @@ export function sessionElapsedMs(session: ActiveSession, now: number = Date.now(
 
 type SessionStore = {
   session: ActiveSession | null;
+  /**
+   * A session asked for from outside the Today page (Task Details' Start
+   * session): the Today page starts it — or reopens it, if it's already
+   * running — full screen, then clears this. Never saved: a request the app
+   * was closed on is simply dropped.
+   */
+  openRequest: { taskId: string; plannedMinutes: number } | null;
+  requestOpen: (taskId: string, plannedMinutes: number) => void;
+  clearOpenRequest: () => void;
   start: (input: { taskIds: string[]; plannedMinutes: number; energy: EnergyLevel }) => void;
   pause: () => void;
   resume: () => void;
@@ -49,6 +62,10 @@ export const useSessionStore = create<SessionStore>()(
   persist(
     (set) => ({
       session: null,
+      openRequest: null,
+
+      requestOpen: (taskId, plannedMinutes) => set({ openRequest: { taskId, plannedMinutes } }),
+      clearOpenRequest: () => set({ openRequest: null }),
 
       start: ({ taskIds, plannedMinutes, energy }) =>
         set({
@@ -125,6 +142,7 @@ export const useSessionStore = create<SessionStore>()(
     {
       name: "nexdo-session",
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ session: state.session }),
     },
   ),
 );

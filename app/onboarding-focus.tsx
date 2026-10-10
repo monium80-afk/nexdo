@@ -12,7 +12,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { generateAdvice } from "@/lib/ai/generateAdvice";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatTaskLength } from "@/lib/formatDuration";
 import { posthog } from "@/lib/posthog";
 import { rankTasksForNext } from "@/lib/scoring";
 import { getDueInfo } from "@/lib/taskMeta";
@@ -163,7 +163,7 @@ export default function OnboardingFocus() {
               <View className="flex-row items-center gap-1.5">
                 <Ionicons name="time-outline" size={14} color={colors.ink.charcoal} />
                 <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">
-                  {formatDuration(top.estimatedMinutes)}
+                  {formatTaskLength(top.estimatedMinutes)}
                 </Text>
               </View>
             </View>

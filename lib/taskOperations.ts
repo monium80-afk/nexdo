@@ -366,7 +366,8 @@ export function reopenTaskDelta(task: Task, now: Date, allTasks: Task[]): TaskDe
     status: "pending",
     subtasks: reopenedSubtasks,
     currentStepId: reopenedSubtasks?.[0]?.id,
-    estimatedMinutes: reopenedSubtasks?.length ? remainingMinutes(reopenedSubtasks) : Math.max(task.estimatedMinutes, 1),
+    // Without steps it keeps its own length — 0 stays "No duration".
+    estimatedMinutes: reopenedSubtasks?.length ? remainingMinutes(reopenedSubtasks) : Math.max(task.estimatedMinutes || 0, 0),
     completedAt: undefined,
     updatedAt: nowIso,
   };
@@ -536,7 +537,9 @@ export function editTaskDelta(
 
   let templateMinutes: number | undefined;
   if (changes.estimatedMinutes !== undefined && Number.isFinite(changes.estimatedMinutes)) {
-    const minutes = clampMinutes(changes.estimatedMinutes);
+    // 0 on purpose is "No duration" (a goal kept through the day); a length
+    // worked out by adding and taking away below never lands there.
+    const minutes = changes.estimatedMinutes <= 0 ? 0 : clampMinutes(changes.estimatedMinutes);
     if (minutes !== task.estimatedMinutes) {
       next.estimatedMinutes = minutes;
       changed = true;

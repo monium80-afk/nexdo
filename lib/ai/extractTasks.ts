@@ -6,6 +6,10 @@ import type { AppLanguage } from "@/types/settings";
 
 const LONG_TASK_KEYWORDS = /\b(write|study|prepare|build|plan|research|essay|report|presentation|thesis|revise|design)\b/i;
 const QUICK_TASK_KEYWORDS = /\b(call|email|text|book|order|pay|send|reply|buy|pick up|drop off|check|confirm)\b/i;
+// Daily-routine chores that take a few minutes — the 30-minute default made
+// "brush my teeth" a half-hour job.
+const TINY_TASK_KEYWORDS =
+  /\b(brush (?:my |your |the kids'? )?teeth|floss|drink (?:some )?water|take (?:my |the )?(?:pills?|meds|medicine|medication|vitamins?)|feed the (?:cats?|dogs?|fish|pets?)|water the plants|make (?:my |the )?bed|take (?:out )?the (?:trash|bins?|garbage|rubbish))\b/i;
 
 // English, French, Spanish and German — the inbox route reads stated
 // importance straight off the user's own words, whichever language they typed in.
@@ -86,6 +90,7 @@ export function createCandidateId(): string {
 const DEFAULT_MINUTES = 30;
 const LONG_TASK_MINUTES = 60;
 const QUICK_TASK_MINUTES = 15;
+const TINY_TASK_MINUTES = 5;
 
 // Scaffolding people put in front of the actual task. Stripped so the title
 // is what they need to do, never the instruction that introduced it —
@@ -137,6 +142,7 @@ export function parseDurationMinutes(text: string): number | undefined {
 export function guessDuration(text: string): number {
   const stated = parseDurationMinutes(text);
   if (stated) return stated;
+  if (TINY_TASK_KEYWORDS.test(text)) return TINY_TASK_MINUTES;
   if (LONG_TASK_KEYWORDS.test(text)) return LONG_TASK_MINUTES;
   if (QUICK_TASK_KEYWORDS.test(text)) return QUICK_TASK_MINUTES;
   return DEFAULT_MINUTES;

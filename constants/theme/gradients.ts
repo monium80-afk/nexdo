@@ -79,24 +79,6 @@ export const gradients = {
    * one simple gradient.
    */
   session: fill("linear-gradient(180deg, #2C2926 0%, #201E1C 55%, #1C1A18 100%)"),
-  /**
-   * The aura around Magic mic in Settings: a warm orange core with a golden
-   * edge, fading out before the box ends so it never shows a border. A
-   * gradient rather than a blurred shadow, so breathing it costs Android
-   * nothing (see the shadow note in the task-page reference).
-   */
-  // Most of it sits under the card; the stops keep it strong out to the
-  // card's edges (about 70% of the way out) so the part that shows is a halo.
-  magicAura: fill(
-    "radial-gradient(ellipse closest-side at 50% 50%, rgba(242, 101, 42, 0.5) 0%, rgba(242, 101, 42, 0.42) 70%, rgba(251, 148, 89, 0.24) 86%, rgba(255, 196, 128, 0) 100%)",
-  ),
-  /** The two glows that travel round the Magic mic card: an orange one and a golden one. */
-  auraOrange: fill(
-    "radial-gradient(ellipse closest-side at 50% 50%, rgba(242, 101, 42, 0.78) 0%, rgba(242, 101, 42, 0.4) 45%, rgba(242, 101, 42, 0) 100%)",
-  ),
-  auraGold: fill(
-    "radial-gradient(ellipse closest-side at 50% 50%, rgba(255, 176, 84, 0.75) 0%, rgba(255, 176, 84, 0.36) 45%, rgba(255, 176, 84, 0) 100%)",
-  ),
   /** The Next card's "#1 Priority" pill. */
   rankPill: fill("linear-gradient(135deg, rgba(242, 101, 42, 0.38) 0%, rgba(242, 101, 42, 0.18) 100%)"),
 } satisfies Record<string, ViewStyle>;

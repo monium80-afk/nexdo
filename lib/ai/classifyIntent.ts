@@ -228,9 +228,11 @@ function operationFor(
   }
 }
 
-// Which actions need a yes/no first is settled on the device, whatever the
-// model set: a create always shows its preview, and useChatStore asks before
-// anything that reaches several tasks or a whole series.
+// Which actions would need a yes/no first is settled on the device, whatever
+// the model set: a create, and anything that reaches several tasks or a whole
+// series. (The AI chat asked on that tier until it was removed on 2026-10-08;
+// Magic mic acts at once instead, and everything it does can be undone —
+// lib/liveVoiceTools.ts.)
 function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction | null {
   const t = translate();
   if (action.type === "CREATE_TASK" && action.fields.title) {

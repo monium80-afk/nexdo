@@ -13,7 +13,6 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TaskCard } from "@/components/TaskCard";
 import { gradients, listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
-import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
@@ -61,8 +60,6 @@ export default function TasksListScreen() {
   const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
-  const headerEnter = useFocusEnter(0);
-  const bodyEnter = useFocusEnter(1);
 
   const [searchOpen, setSearchOpen] = useState(false);
   // Where the open menu hangs from — each drops out of its own chip.
@@ -81,6 +78,9 @@ export default function TasksListScreen() {
   const pendingCount = tasks.filter((task) => task.status === "pending").length;
   const completedCount = tasks.filter((task) => task.status === "completed").length;
   const overdueCount = tasks.filter((task) => getDueInfo(task, deadlineNow).tone === "overdue").length;
+  // No deadline puts a task on no day — not on Today, not in the Schedule —
+  // so this filter is the way to find them all.
+  const noDeadlineCount = tasks.filter((task) => !task.deadline).length;
 
   // Refresh at the next exact due time or local midnight so labels and colors
   // change while the list stays open, without polling throughout the day.
@@ -104,8 +104,9 @@ export default function TasksListScreen() {
       { label: t.tasks.status.pending, value: "pending" as TaskStatusFilter, count: pendingCount },
       { label: t.tasks.status.completed, value: "completed" as TaskStatusFilter, count: completedCount },
       { label: t.tasks.status.overdue, value: "overdue" as TaskStatusFilter, count: overdueCount },
+      { label: t.tasks.status.noDeadline, value: "noDeadline" as TaskStatusFilter, count: noDeadlineCount },
     ],
-    [tasks.length, pendingCount, completedCount, overdueCount, t],
+    [tasks.length, pendingCount, completedCount, overdueCount, noDeadlineCount, t],
   );
 
   const sortOptions = SORT_VALUES.map((value) => ({ label: t.tasks.sort[value], value }));
@@ -116,6 +117,7 @@ export default function TasksListScreen() {
       if (status === "pending" && task.status !== "pending") return false;
       if (status === "completed" && task.status !== "completed") return false;
       if (status === "overdue" && getDueInfo(task, deadlineNow).tone !== "overdue") return false;
+      if (status === "noDeadline" && task.deadline) return false;
       if (query && !task.title.toLowerCase().includes(query)) return false;
       return true;
     });
@@ -133,7 +135,6 @@ export default function TasksListScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
       <ScreenHeader
         title={t.tasks.title}
-        contentStyle={headerEnter}
         actions={
           // Search and Add share one height, so they read as a pair.
           <>
@@ -188,7 +189,6 @@ export default function TasksListScreen() {
           contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={bodyEnter}>
           {/* Filter on the left, sort on the right, each as wide as its label and
               orange only once something other than the default is picked. The
               funnel is always orange: it's the way into the list. */}
@@ -240,7 +240,6 @@ export default function TasksListScreen() {
               ))
             )}
           </View>
-          </Animated.View>
         </ScrollView>
       </View>
 

@@ -30,7 +30,7 @@ function withGym() {
 }
 
 beforeEach(() => {
-  useSettingsStore.setState({ language: "en", aiAutoMode: false });
+  useSettingsStore.setState({ language: "en" });
   useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: null, ownerId: null });
 });
 

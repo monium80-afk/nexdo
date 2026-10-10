@@ -8,7 +8,6 @@ import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { identifyPurchaser, isPurchasesEnabled } from "@/lib/purchases";
 import { setClerkTokenGetter } from "@/lib/supabase";
-import { useChatStore } from "@/store/useChatStore";
 import { useOnboardingStore, waitForOnboardingHydration } from "@/store/useOnboardingStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -19,8 +18,8 @@ import { useTaskStore } from "@/store/useTaskStore";
 const NEW_ACCOUNT_WINDOW_MS = 60_000;
 
 /**
- * Back in the app after at least this long, the account's tasks and chat are
- * read again: realtime only delivers changes while the app is open, so
+ * Back in the app after at least this long, the account's tasks are read
+ * again: realtime only delivers changes while the app is open, so
  * anything another device did meanwhile would otherwise wait for a restart.
  */
 const RESYNC_AFTER_MS = 30_000;
@@ -94,9 +93,6 @@ export function useAuthSync() {
   const hydrateTasks = useTaskStore((state) => state.hydrateFromSupabase);
   const subscribeTasks = useTaskStore((state) => state.subscribeToRealtime);
   const unsubscribeTasks = useTaskStore((state) => state.unsubscribeFromRealtime);
-  const hydrateChat = useChatStore((state) => state.hydrateFromSupabase);
-  const subscribeChat = useChatStore((state) => state.subscribeToRealtime);
-  const unsubscribeChat = useChatStore((state) => state.unsubscribeFromRealtime);
 
   useEffect(() => {
     if (!userId) return;
@@ -104,8 +100,8 @@ export function useAuthSync() {
     setClerkTokenGetter(() => getToken());
     setApiTokenGetter(() => getToken());
 
-    // When the account's tasks and chat were last read in full, and the
-    // retry waiting for a load that failed.
+    // When the account's tasks were last read in full, and the retry waiting
+    // for a load that failed.
     let syncedAt = 0;
     let retries = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -121,15 +117,15 @@ export function useAuthSync() {
       useTaskStore.getState().deleteExpiredCompleted();
     };
 
-    // Reads the account's tasks and chat and merges them with the phone's.
-    // One at a time; a failed read is tried again on a backoff.
+    // Reads the account's tasks and merges them with the phone's. One at a
+    // time; a failed read is tried again on a backoff.
     const sync = (): Promise<void> => {
       syncing ??= (async () => {
         clearTimeout(retryTimer);
-        const [tasksRead, chatRead] = await Promise.all([hydrateTasks(userId), hydrateChat(userId)]);
+        const tasksRead = await hydrateTasks(userId);
         if (!isActive) return;
-        if (tasksRead) tidyTasks();
-        if (tasksRead && chatRead) {
+        if (tasksRead) {
+          tidyTasks();
           syncedAt = Date.now();
           retries = 0;
         } else if (retries < RETRY_DELAYS_MS.length) {
@@ -147,7 +143,6 @@ export function useAuthSync() {
       // Realtime from here on, whether or not the first read worked: changes
       // made elsewhere arrive as they happen, and the retry fills in the rest.
       subscribeTasks(userId);
-      subscribeChat(userId);
       await waitForOnboardingHydration();
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
       // Read before the claim, which clears it.
@@ -183,9 +178,8 @@ export function useAuthSync() {
       clearTimeout(retryTimer);
       appState.remove();
       unsubscribeTasks();
-      unsubscribeChat();
     };
-  }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks, hydrateChat, subscribeChat, unsubscribeChat]);
+  }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks]);
 
   // Nexdo Pro belongs to the account, so RevenueCat knows the user by their
   // Clerk id. Sign-out resets it (resetPurchaser, from the sign-out buttons).

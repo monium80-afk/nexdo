@@ -2,17 +2,14 @@ import { Text, View } from "react-native";
 
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
-import { displayLimit, isTimeMeter, PLAN_LIMITS, type Meter, type Plan } from "@/lib/plan";
-
-// The same order the paywall compares the plans in.
-const ORDER: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
+import { displayLimit, isTimeMeter, PLAN_LIMITS, SHOWN_METERS, type Meter, type Plan } from "@/lib/plan";
 
 const MINUTE = 60;
 
 /**
- * What the account has used of its plan this month, one line per allowance —
- * Settings → Nexdo Pro. `used` is the server's own count (app/api/usage+api.ts):
- * messages and files as they are, voice notes and Magic mic in seconds.
+ * Which plan the account is on, and what it has used of it this month, one
+ * line per allowance — Settings → Your plan. `used` is the server's own count
+ * (app/api/usage+api.ts): notes and breakdowns as they are, Magic mic in seconds.
  */
 export function PlanUsage({ plan, used }: { plan: Plan; used: Record<Meter, number> }) {
   const t = useTranslation();
@@ -20,12 +17,13 @@ export function PlanUsage({ plan, used }: { plan: Plan; used: Record<Meter, numb
 
   return (
     <View className="gap-3.5">
+      {/* The plan's name leads, so the card says first what the user is on. */}
       <View className="flex-row items-center justify-between gap-3">
-        <Text className="font-grotesk-bold text-base text-ink-cream">{t.plan.thisMonth}</Text>
-        <Text className="font-grotesk-semibold text-sm text-ink-cream-muted">{t.plan.names[plan]}</Text>
+        <Text className="font-grotesk-bold text-base text-ink-cream">{t.plan.names[plan]}</Text>
+        <Text className="font-grotesk-semibold text-sm text-ink-cream-muted">{t.plan.thisMonth}</Text>
       </View>
 
-      {ORDER.map((meter) => {
+      {SHOWN_METERS.map((meter) => {
         const limit = PLAN_LIMITS[plan][meter];
         const amount = used[meter] ?? 0;
         const shownLimit = displayLimit(plan, meter);

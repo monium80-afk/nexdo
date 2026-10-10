@@ -1,6 +1,5 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Text, View } from "react-native";
-import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { gradients } from "@/constants/theme";
@@ -18,7 +17,6 @@ export function ScreenHeader({
   subtitle,
   accent = false,
   actions,
-  contentStyle,
   children,
 }: {
   title: string;
@@ -27,8 +25,6 @@ export function ScreenHeader({
   /** A short orange stroke under the title block — for a screen you fill in (Add Task). */
   accent?: boolean;
   actions?: ReactNode;
-  /** An entrance for what's on the strip (useFocusEnter); the strip itself holds still. */
-  contentStyle?: ComponentProps<typeof Animated.View>["style"];
   children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -43,7 +39,7 @@ export function ScreenHeader({
         style={[{ top: -insets.top, bottom: -32 }, gradients.headerGlow]}
       />
 
-      <Animated.View className="gap-2.5" style={contentStyle}>
+      <View className="gap-2.5">
       <View className="flex-row items-start justify-between gap-3">
         {/* 3.3 = (39dp button − 32.4dp title line) / 2: one line sits centred on the buttons. */}
         <Text className="mt-[3.3px] flex-1 text-title text-ink-charcoal" style={rtl}>
@@ -58,7 +54,7 @@ export function ScreenHeader({
       ) : null}
       {children}
       {accent ? <View className="h-[3px] w-[28px] rounded-full bg-orange-500" /> : null}
-      </Animated.View>
+      </View>
     </View>
   );
 }

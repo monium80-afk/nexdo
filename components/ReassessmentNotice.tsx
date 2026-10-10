@@ -9,11 +9,12 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { deadlineInstant } from "@/lib/deadline";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatTaskLength } from "@/lib/formatDuration";
 import type { Translations } from "@/lib/i18n";
 import type { ReassessmentReport, SubtaskChangeSummary } from "@/lib/reassessment";
 import { previewDueLabel } from "@/lib/taskMeta";
-import type { ReassessState } from "@/store/useReassessStore";
+import { parseContextNote } from "@/lib/contextFile";
+import type { PendingContext, ReassessState } from "@/store/useReassessStore";
 import type { TaskDeadline } from "@/types/task";
 
 type Copy = Translations["taskDetail"]["reassess"];
@@ -45,7 +46,7 @@ function changeLines(report: ReassessmentReport, t: Translations): string[] {
       case "deadline":
         return r.deadline(deadline(change.from), deadline(change.to));
       case "duration":
-        return r.duration(formatDuration(change.from), formatDuration(change.to));
+        return r.duration(formatTaskLength(change.from), formatTaskLength(change.to));
       case "priority":
         return r.priority(r.levels[change.from], r.levels[change.to]);
       case "score":
@@ -112,6 +113,20 @@ function QuotedNote({ text }: { text: string }) {
 }
 
 /**
+ * The note in a line, as the notice quotes it: the user's own words, or —
+ * for a photo or document sent on its own — what it is ("Your photo",
+ * "notes.pdf"), never the raw text read out of it.
+ */
+function noteLine(pending: PendingContext, t: Translations): string {
+  if (pending.file) {
+    return pending.noteText || (pending.file.kind === "photo" ? t.taskDetail.attach.photo : (pending.file.name ?? t.taskDetail.attach.document));
+  }
+  const parsed = parseContextNote(pending.noteText);
+  if (parsed.text || !parsed.file) return parsed.text;
+  return parsed.file.kind === "photo" ? t.taskDetail.attach.fromPhoto : t.taskDetail.attach.fromDocument;
+}
+
+/**
  * What Nexdo did with the latest note, in Task Details: working on it, what
  * it changed (or that nothing needed to), a question back, or a failure that
  * left the task untouched.
@@ -132,21 +147,24 @@ export function ReassessmentNotice({
 
   let content: ReactNode;
   switch (state.status) {
-    case "running":
+    case "running": {
+      // A file is read first, then the task reassessed: two steps, each said.
+      const reading = state.pending.file;
       content = (
         <View className="card card--cream-inset flex-row items-center gap-3 px-[14px] py-3" accessibilityLiveRegion="polite">
           <ActivityIndicator size="small" color={colors.orange[500]} />
           <View className="flex-1 gap-0.5">
             <Text className="font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
-              {r.running}
+              {reading ? (reading.kind === "photo" ? t.taskDetail.attach.readingPhoto : t.taskDetail.attach.readingDocument) : r.running}
             </Text>
             <Text numberOfLines={2} className="text-body text-ink-cream-muted" style={rtl}>
-              {state.pending.noteText}
+              {noteLine(state.pending, t)}
             </Text>
           </View>
         </View>
       );
       break;
+    }
 
     case "done": {
       const lines = changeLines(state.report, t);
@@ -199,18 +217,22 @@ export function ReassessmentNotice({
           <Text className="font-grotesk-medium text-[14px] leading-5 text-ink-cream" style={rtl}>
             {state.question}
           </Text>
-          <QuotedNote text={state.pending.noteText} />
+          <QuotedNote text={noteLine(state.pending, t)} />
         </NoticeCard>
       );
       break;
 
-    case "error":
+    case "error": {
+      const titles = {
+        limit: t.plan.used[state.meter ?? "chat"],
+        ai: r.aiFailed,
+        save: r.saveFailed,
+        file: t.taskDetail.attach.readFailed,
+        empty: state.pending.file?.kind === "photo" ? t.taskDetail.attach.emptyPhoto : t.taskDetail.attach.emptyDocument,
+      };
       content = (
-        <NoticeCard
-          icon={<Feather name="alert-circle" size={14} color={colors.overdue[500]} />}
-          title={state.reason === "limit" ? t.plan.used.chat : state.reason === "ai" ? r.aiFailed : r.saveFailed}
-        >
-          <QuotedNote text={state.pending.noteText} />
+        <NoticeCard icon={<Feather name="alert-circle" size={14} color={colors.overdue[500]} />} title={titles[state.reason]}>
+          <QuotedNote text={noteLine(state.pending, t)} />
           <View className="flex-row items-center gap-5 pt-1">
             <SecondaryButton icon="refresh-cw" label={t.common.tryAgain} onPress={onRetry} />
             <TextButton label={r.discard} onPress={onDismiss} />
@@ -218,6 +240,7 @@ export function ReassessmentNotice({
         </NoticeCard>
       );
       break;
+    }
   }
 
   // Keyed by status, so each new state rises in like a new list item.

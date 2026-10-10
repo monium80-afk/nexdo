@@ -1,3 +1,4 @@
+import { capContextNotes } from "@/lib/contextFile";
 import { describeRuleForAi } from "@/lib/recurrence";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { ImportanceLevel } from "@/lib/scoring";
@@ -77,7 +78,9 @@ export function taskToContext(task: Task, now: Date = new Date()): TaskContext {
     priorityScore: task.priorityScore,
     complexity: task.complexity,
     notes: task.notes,
-    contextNotes: task.aiContext.notes,
+    // Within what the server accepts (lib/contextFile.ts): a note can hold a
+    // photo's or document's text.
+    contextNotes: capContextNotes(task.aiContext.notes),
     priority: importanceLevelOf(task.importance),
     overdue: isOverdue(task, now) || undefined,
     completedLabel: completed && task.completedAt ? completedLabelFor(task.completedAt, now) : undefined,

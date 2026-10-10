@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/expo";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
@@ -21,6 +21,7 @@ import {
     draftToDeadline,
     DURATION_OPTIONS,
     MAX_CUSTOM_MINUTES_DIGITS,
+    NO_DURATION,
     MAX_TASK_TITLE_LENGTH,
     PriorityCard,
     type DeadlineDraft,
@@ -81,6 +82,11 @@ export default function Add() {
 
   const [notes, setNotes] = useState("");
 
+  // Plan steps and notes sit behind one "Optional" button, so the form is
+  // just the essentials until someone wants more. What's typed stays if it's
+  // folded away again.
+  const [extrasOpen, setExtrasOpen] = useState(false);
+
   // Doesn't repeat by default.
   const [recurrence, setRecurrence] = useState<RuleInput | null>(null);
 
@@ -90,7 +96,8 @@ export default function Add() {
   const handleCustomDurationChange = (text: string) => {
     setCustomDurationText(text);
     const parsed = /^\d+$/.test(text.trim()) ? Number.parseInt(text, 10) : undefined;
-    setDurationMinutes(parsed && parsed > 0 ? parsed : 0);
+    // Not a length: NaN rather than 0, which is the "No duration" chip.
+    setDurationMinutes(parsed && parsed > 0 ? parsed : Number.NaN);
     setCustomDurationError(false);
   };
 
@@ -124,14 +131,6 @@ export default function Add() {
     }
   };
 
-  const handleOpenAiChat = () => {
-    if (router.canGoBack()) {
-      router.dismissTo("/(tabs)/ai-chat");
-    } else {
-      router.replace("/(tabs)/ai-chat");
-    }
-  };
-
   const handleSubmit = () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -142,17 +141,20 @@ export default function Add() {
     const estimatedMinutes = customDurationOpen && /^\d+$/.test(customDurationText.trim())
       ? Number.parseInt(customDurationText, 10)
       : durationMinutes;
+    // 0 only from the "No duration" chip — a typed 0 is a mistake.
+    const noDuration = !customDurationOpen && estimatedMinutes === NO_DURATION;
     if (
       !Number.isInteger(estimatedMinutes) ||
-      estimatedMinutes <= 0 ||
-      (steps.length > 0 && estimatedMinutes < steps.length)
+      (estimatedMinutes <= 0 && !noDuration) ||
+      (steps.length > 0 && !noDuration && estimatedMinutes < steps.length)
     ) {
       setCustomDurationError(true);
       return;
     }
 
     // Subtasks still need minutes behind the scenes (the remaining-time math
-    // runs on them), so the task's duration is shared out evenly.
+    // runs on them), so the task's duration is shared out evenly — none each
+    // for a task with no duration, which then keeps none.
     const minutesPerStep = steps.length > 0 ? Math.floor(estimatedMinutes / steps.length) : 0;
     const remainderMinutes = steps.length > 0 ? estimatedMinutes % steps.length : 0;
 
@@ -301,62 +303,69 @@ export default function Add() {
               </View>
             </FormSection>
 
-            <FormSection icon="check-square" label={t.form.planSteps} hint={t.form.optionalPlan}>
-              <AddItemField
-                value={stepDraftLabel}
-                onChangeText={setStepDraftLabel}
-                onAdd={handleAddStep}
-                placeholder={t.form.stepPlaceholder}
-                addLabel={t.breakdown.addStep}
-              />
-              {steps.length > 0 ? (
-                <View className="gap-2">
-                  {steps.map((step, index) => (
-                    <Animated.View key={step.id} entering={listItemEntering(index)} layout={listItemLayout()}>
-                      {/* A step-to-be: the checklist row's card, numbered instead of ticked. */}
-                      <View
-                        className="card card--cream-soft min-h-[46px] flex-row items-center gap-3 pl-[16px] pr-1.5"
-                        style={gradients.card}
-                      >
-                        <Text className="w-[22px] font-grotesk-bold text-sm text-orange-600">{index + 1}.</Text>
-                        <Text className="flex-1 font-grotesk-semibold text-base text-ink-cream" numberOfLines={1} style={rtl}>
-                          {step.label}
-                        </Text>
-                        <IconButton icon="x" onPress={() => handleRemoveStep(step.id)} accessibilityLabel={t.common.delete} />
-                      </View>
-                    </Animated.View>
-                  ))}
-                </View>
-              ) : null}
-            </FormSection>
+            {/* One quiet button for both extras, rather than a "(optional)"
+                on each: tapping it opens Plan steps and Notes underneath. */}
+            <AnimatedPressable
+              onPress={() => setExtrasOpen((open) => !open)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: extrasOpen }}
+              scaleTo={0.98}
+              className="my-1.5 flex-row items-center gap-2 self-center rounded-full border border-cream-300 bg-cream-50 py-2.5 pl-5 pr-4"
+            >
+              <Text className="font-grotesk-semibold text-sm text-ink-cream">{t.form.optional}</Text>
+              <Feather name={extrasOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.ink.creamMuted} />
+            </AnimatedPressable>
 
-            <FormSection icon="align-left" label={t.form.notesTitle}>
-              <TextField
-                value={notes}
-                onChangeText={setNotes}
-                placeholder={t.form.notesPlaceholder}
-                multiline
-                inputStyle={{ minHeight: 90 }}
-              />
-            </FormSection>
+            {extrasOpen ? (
+              <>
+                <FormSection icon="check-square" label={t.form.planSteps}>
+                  <AddItemField
+                    value={stepDraftLabel}
+                    onChangeText={setStepDraftLabel}
+                    onAdd={handleAddStep}
+                    placeholder={t.form.stepPlaceholder}
+                    addLabel={t.breakdown.addStep}
+                  />
+                  {steps.length > 0 ? (
+                    <View className="gap-2">
+                      {steps.map((step, index) => (
+                        <Animated.View key={step.id} entering={listItemEntering(index)} layout={listItemLayout()}>
+                          {/* A step-to-be: the checklist row's card, numbered instead of ticked. */}
+                          <View
+                            className="card card--cream-soft min-h-[46px] flex-row items-center gap-3 pl-[16px] pr-1.5"
+                            style={gradients.card}
+                          >
+                            <Text className="w-[22px] font-grotesk-bold text-sm text-orange-600">{index + 1}.</Text>
+                            <Text className="flex-1 font-grotesk-semibold text-base text-ink-cream" numberOfLines={1} style={rtl}>
+                              {step.label}
+                            </Text>
+                            <IconButton icon="x" onPress={() => handleRemoveStep(step.id)} accessibilityLabel={t.common.delete} />
+                          </View>
+                        </Animated.View>
+                      ))}
+                    </View>
+                  ) : null}
+                </FormSection>
+
+                <FormSection icon="align-left" label={t.form.notesTitle}>
+                  <TextField
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder={t.form.notesPlaceholder}
+                    multiline
+                    inputStyle={{ minHeight: 90 }}
+                  />
+                </FormSection>
+              </>
+            ) : null}
           </View>
         </ScrollView>
 
-        {/* A raised tray at the foot: the way over to the AI — just a link —
-            then the two ways out, Cancel quiet, Add Task glowing. */}
+        {/* A raised tray at the foot: the two ways out, Cancel quiet, Add Task glowing. */}
         <View
           className="gap-3 rounded-t-[28px] border-t border-white/80 bg-cream-50 px-6 pt-3"
           style={[{ paddingBottom: insets.bottom + 21 }, FOOTER_SHADOW]}
         >
-          <AnimatedPressable
-            onPress={handleOpenAiChat}
-            accessibilityRole="button"
-            scaleTo={0.97}
-            hitSlop={8}
-            className="items-center py-1"
-          >
-            <Text className="font-grotesk-semibold text-sm text-orange-600">{t.form.openAiChat}</Text>
-          </AnimatedPressable>
           <View className="flex-row items-center gap-3">
             <SecondaryButton size="lg" label={t.common.cancel} onPress={handleClose} className="flex-1" />
             <PrimaryButton icon="plus" size="lg" label={t.form.addTask} onPress={handleSubmit} className="flex-[1.5]" />

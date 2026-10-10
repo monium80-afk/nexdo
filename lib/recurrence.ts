@@ -269,7 +269,11 @@ export function buildRule(input: RuleInput, due: TaskDeadline | string | undefin
   return rule;
 }
 
-/** Everything a new occurrence copies. The duration is the full job, not what was left of it. */
+/**
+ * Everything a new occurrence copies. The duration is the full job, not what
+ * was left of it — or 0 for a task with no duration ("drink 2 L of water
+ * every day"), which every occurrence keeps.
+ */
 export function templateFromTask(task: Task): SeriesTemplate {
   const steps = task.subtasks?.length
     ? task.subtasks
@@ -280,7 +284,7 @@ export function templateFromTask(task: Task): SeriesTemplate {
   const fullMinutes = steps ? steps.reduce((sum, step) => sum + step.estimatedMinutes, 0) : task.estimatedMinutes;
   return {
     title: task.title,
-    estimatedMinutes: Math.max(1, fullMinutes || task.estimatedMinutes || 30),
+    estimatedMinutes: fullMinutes > 0 ? fullMinutes : Math.max(0, task.estimatedMinutes || 0),
     importance: task.importance,
     notes: task.notes,
     steps,

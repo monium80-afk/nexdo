@@ -25,9 +25,7 @@ export const en = {
   tabs: {
     next: "Today",
     tasks: "Tasks",
-    inbox: "Assistant",
     settings: "Settings",
-    addTask: "Add task",
   },
 
   format: {
@@ -44,6 +42,8 @@ export const en = {
       if (hours === 0) return `${mins}m`;
       return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
     },
+    /** A task's length when it has none — a goal kept up through the day. */
+    noDuration: "No duration",
     taskCount: (count: number) => `${count} ${plural(count, "task", "tasks")}`,
     /** "12 tasks", "1 completed task", "3 pending tasks". */
     scopedTaskCount: (count: number, scope: TaskScope) => {
@@ -81,9 +81,6 @@ export const en = {
     addATask: "Add a task",
     /** Before the score number on the Next card, which is set in its own colour. */
     scoreLabel: "Score: ",
-    timeFilter: (duration: string) => `Fits in ${duration}`,
-    timeFilterEmpty: (duration: string) => `Nothing fits in ${duration}`,
-    timeFilterClear: "Show all",
     custom: "Custom...",
     minutesPlaceholder: "Minutes, e.g. 50",
     minutesUnit: "min",
@@ -98,6 +95,8 @@ export const en = {
     nextCard: "Next",
     /** The card's Start button — its length sits beside it, not inside the label. */
     startSessionLabel: "Start session",
+    /** The same button while that task's session is running: back into it, full screen. */
+    resumeSession: "Resume session",
     breakDown: "Break down",
     getAdvice: "Get advice",
     /** Under Start session on the Next card: finishes the task without a session. */
@@ -120,20 +119,27 @@ export const en = {
     seeTasks: "See all tasks",
     /** The page's title, under today's date. */
     today: "Today",
-    /** Today's card: what's left, what's done, and roughly how long the rest takes. */
+    /** Today's card: what's left and what's done. */
     tasksLeft: (count: number) => `${count} ${plural(count, "task", "tasks")} left`,
     doneOfTotal: (done: number, total: number) => `${done} of ${total} done`,
-    workLeft: (duration: string) => `About ${duration} of work left`,
   },
 
-  /** The Schedule screen (app/schedule.tsx): the week, and the plan for each day. */
+  /** The Schedule screen (app/schedule.tsx): the week — or the whole year — and the plan for each day. */
   schedule: {
     title: "Schedule",
-    /** Under the title: the week's open tasks and how long they take. */
+    /** Under the title: the week's (or year's) open tasks and how long they take. */
     summary: (count: number, duration: string) => `${count} due · ${duration}`,
+    /** The same when none of them has a length (tasks with no duration). */
+    summaryCount: (count: number) => `${count} due`,
+    /** The switch between the two views. */
+    week: "Week",
+    year: "Year",
     previousWeek: "Previous week",
     nextWeek: "Next week",
     thisWeek: "Back to this week",
+    previousYear: "Previous year",
+    nextYear: "Next year",
+    thisYear: "Back to this year",
     today: "TODAY",
     stepOf: (step: number, total: number, label: string) => `Step ${step} of ${total}: ${label}`,
     nothingDue: "Nothing due this day",
@@ -172,6 +178,11 @@ export const en = {
     hideAdvice: "Hide AI Advice",
     takeAdvice: "Take AI Advice",
     stuck: "I'm stuck",
+    /** A session on a task with no duration, which has no timer. */
+    noTimer: "No timer for this one — tap Complete once it's done.",
+    /** The session's button for a photo, document or note about the task. */
+    addContext: "Add context",
+    contextIntro: "Show Nexdo what you're working on — a photo of the instructions, a document or a note. It updates this task's steps and advice.",
   },
 
   breakdown: {
@@ -186,17 +197,6 @@ export const en = {
     confirm: "Confirm these steps",
   },
 
-  stuck: {
-    title: "WHAT'S IN THE WAY?",
-    reasons: {
-      tooBig: "It's too big to start",
-      missing: "I'm missing something I need",
-      noFocus: "I can't focus on it right now",
-    },
-    parkNote: "We'll park it for a few hours and move you to the next task.",
-    talkToAi: "Talk it through with AI",
-  },
-
   tasks: {
     title: "Tasks",
     addTask: "Add Task",
@@ -208,7 +208,7 @@ export const en = {
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
-    status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue", archived: "Archived" },
+    status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue", noDeadline: "No deadline", archived: "Archived" },
     sort: { recent: "Recently added", dueDate: "Due date", priority: "Priority score" },
     score: (score: number) => `Score: ${score}`,
   },
@@ -238,7 +238,6 @@ export const en = {
     repeatEyebrow: "REPEATS",
     setRepeat: "Make it repeat",
     editRepeat: "Change",
-    saveRepeat: "Save repeat",
     stopRepeating: "Stop repeating",
     stopRepeatingTitle: "Stop repeating?",
     stopRepeatingBody: "This task stays on your list as a one-off. No new occurrences will be created; past ones are kept.",
@@ -298,6 +297,37 @@ export const en = {
     /** A suggested day for a step — a suggestion, not a booking in a calendar. */
     today: "Today",
     tomorrow: "Tomorrow",
+    /** Start session on a task while another task's session is running. */
+    switchSessionTitle: "Switch sessions?",
+    switchSessionBody: "A session is running on another task. Starting this one ends it, and its timer won't be kept.",
+    switchSession: "Start this one",
+    /** planLeft for steps with no time on them. */
+    stepsLeft: (steps: number) => `${steps} ${plural(steps, "step", "steps")} left`,
+    /** A photo or document given as context for the task (Add context for AI). */
+    attach: {
+      addPhoto: "Add a photo",
+      takePhoto: "Take a photo",
+      addDocument: "Add a file",
+      photo: "Your photo",
+      document: "Your document",
+      hint: "Nexdo reads it and updates the task. The file itself isn't kept.",
+      notePlaceholder: "Anything Nexdo should know about it? (optional)",
+      remove: "Remove the file",
+      tooBig: "That file is too big. Nexdo can read files up to 6 MB.",
+      unsupported: "Nexdo can read photos, PDFs and text files.",
+      pickFailed: "Couldn't open that file. Try again.",
+      /** The camera was refused, now or before. */
+      cameraDenied: "Nexdo needs the camera to take a photo. You can allow it in your phone's Settings.",
+      readingPhoto: "Nexdo is reading your photo…",
+      readingDocument: "Nexdo is reading your document…",
+      readFailed: "Nexdo couldn't read that file. Nothing was changed.",
+      emptyPhoto: "Nexdo couldn't find anything to read in that photo. Try a sharper one.",
+      emptyDocument: "Nexdo couldn't find anything to read in that file.",
+      fromPhoto: "From a photo",
+      fromDocument: "From a document",
+      showMore: "Show more",
+      showLess: "Show less",
+    },
   },
 
   form: {
@@ -317,22 +347,20 @@ export const en = {
     changeDate: "Change",
     priority: "PRIORITY LEVEL",
     priorities: { high: "High Priority", medium: "Medium Priority", low: "Low Priority" },
+    /** The button that opens Plan steps and Notes & context, both optional. */
+    optional: "Optional",
     planSteps: "Plan Steps",
-    optionalPlan: "Optional step plan",
     stepPlaceholder: "e.g. Step 1: Draft the introduction",
-    notesTitle: "NOTES & CONTEXT (OPTIONAL)",
+    notesTitle: "NOTES & CONTEXT",
     notesPlaceholder: "Add key requirements, instructions, or links...",
-    openAiChat: "Open AI Chat instead",
     addTask: "Add Task",
     deadlines: {
       today: "Today",
       tomorrow: "Tomorrow",
       friday: "This Friday",
-      weekend: "This Weekend",
-      nextWeek: "Next Week",
       none: "No deadline",
     },
-    durationOptions: { 15: "15m", 30: "30m", 45: "45m", 60: "1h", 90: "1.5h", 120: "2h", 180: "3h+" } as Record<
+    durationOptions: { 15: "15m", 30: "30m", 45: "45m", 60: "1h", 90: "1.5h", 120: "2h", 180: "3h+", 0: "No duration" } as Record<
       number,
       string
     >,
@@ -341,89 +369,31 @@ export const en = {
     editCurrentDeadline: (label: string) => `Current deadline: ${label}`,
     deadlineRemoved: "The deadline will be removed.",
     newDeadline: (label: string) => `New deadline: ${label}`,
-    saveChanges: "Save changes",
     /** A deadline is a day; a time is only added when the user wants one. */
     addTime: "Add a time",
     removeTime: "No set time",
   },
 
+  /**
+   * What's left of the AI chat's copy (the chat itself was removed on
+   * 2026-10-08): onboarding's brain dump records a voice note with it.
+   */
   chat: {
-    welcome:
-      "Welcome to your Nexdo Assistant. Dump your thoughts, tasks, voice notes, or photos. You can also command your entire system here — tell me your situation ('I only have 30 minutes', 'I can't finish the project this weekend', or 'The dentist appointment is more important') and I will adapt your plan.",
-    inboxTitle: "Nexdo Assistant",
-    contextSubtitle: "Ask me to analyze, adjust, or update this task.",
-    activeTasksSuffix: " active tasks in queue",
-    typing: "Typing…",
-    addAll: (count: number) => `Add all ${count} tasks`,
-    /** Above the cards for tasks the AI pulled out of a message — they aren't added yet. */
-    foundTasks: (count: number) => `Found ${count} ${plural(count, "task", "tasks")}`,
-    yesDoIt: "Yes, do it",
-    openNext: (minutes: number) => `Open Today (${minutes} min)`,
-    starterSuggestions: {
-      "capacity-20": "I only have 20 minutes right now",
-      "whats-next": "What should I do next?",
-      "reschedule-overdue": "Reschedule everything overdue",
-      "brain-dump": "I need to finish my history essay by Friday and call the dentist tomorrow",
-    } as Record<string, string>,
-    quickActions: {
-      "whats-next": "Add",
-      "breakdown-top": "Mark complete",
-      "quick-win": "Remove",
-      "overdue-catchup": "Change",
-      "break-down": "Break down",
-      prioritize: "Prioritize",
-    } as Record<string, string>,
     attachmentReplies: {
-      photo: "I couldn't find anything readable in that photo — try a clearer shot, or type it instead.",
       voice: "I couldn't quite catch that recording — try again somewhere quieter, or type it instead.",
-      document: "I couldn't pull any text out of that file — try a different one, or type it instead.",
     },
-    attachmentReadFailed: "Something went wrong while reading that file — please try sending it again in a moment.",
     couldntCatch: "Couldn't catch that",
     couldntTranscribe: "Couldn't transcribe",
-    uploadFailedTitle: "Couldn't attach that",
-    uploadFailedBody:
-      "Your files couldn't be uploaded, so nothing was sent. They're still in the box — check your connection and try again.",
-    uploadPartialBody: (failed: number) =>
-      failed === 1
-        ? "One file couldn't be uploaded, so it was left out of this message."
-        : `${failed} files couldn't be uploaded, so they were left out of this message.`,
-    complexity: { simple: "simple", medium: "medium", complex: "complex" },
-    taskRead: (title: string, complexity: string, advice: string) =>
-      `Here's my read on "${title}" — it's a ${complexity} task. ${advice}`,
-    // Draft preview card
-    titlePlaceholder: "Task title",
-    minutesPlaceholder: "Minutes",
-    doneEditing: "Done editing",
-    editDetails: "Edit task details",
-    dismiss: "Dismiss",
-    addTask: "Add Task",
-    // Input bar
-    recordVoice: "Record voice note",
-    stopRecording: "Stop recording",
-    takePhoto: "Take a photo",
-    attachDocument: "Attach a document",
-    recording: (duration: string) => `Recording… ${duration}`,
-    transcribing: "Transcribing…",
-    inputPlaceholder: "Type, speak, or take a picture of tasks...",
-    attachmentPlaceholder: "Add instructions (optional)...",
-    removeAttachment: "Remove attachment",
-    documentLabel: "Document",
-    send: "Send message",
     micPermissionTitle: "Microphone access needed",
     micPermissionBody: "Nexdo needs microphone access to record voice notes. You can enable it in Settings.",
-    cameraPermissionTitle: "Camera access needed",
-    cameraPermissionBody: "Nexdo needs camera access to capture photos. You can enable it in Settings.",
     voiceNoteLabel: (duration: string) => `Voice note (${duration})`,
-    photoLabel: "Photo attached",
-    viewPhoto: "View photo full screen",
-    videoNotSupportedTitle: "Videos aren't supported",
-    videoNotSupportedBody: "Nexdo reads photos, voice notes and documents. Send a photo or a file instead.",
   },
 
   /** Magic mic — live voice (app/live-voice.tsx) — and the tab bar's mic button that opens it. */
   live: {
     open: "Talk to add or change tasks",
+    /** The tab bar's mic on Free, where it wears a padlock and opens the plans. */
+    openLocked: "Magic mic — part of Nexdo Pro",
     title: "Magic mic",
     connecting: "Connecting…",
     listening: (clock: string) => `Listening · ${clock}`,
@@ -459,20 +429,16 @@ export const en = {
       },
       tasks: {
         title: "All your tasks",
-        body: "Everything on your plate, in one list. Tap a task to change it, and tick it off when it's done.",
+        body: "Everything on your plate, in one list. Add Task adds one by hand; tap a task to change it, and tick it off when it's done.",
       },
-      add: {
-        title: "Add a task",
-        body: "Tap + to add one. Nexdo works out where it fits in your plan.",
-      },
-      /** The same stop when Magic mic has turned the + into a microphone. */
       voice: {
         title: "Magic mic",
         body: "Tap the mic and just talk — Nexdo adds and changes tasks as you speak.",
       },
-      assistant: {
-        title: "Just tell Nexdo",
-        body: "Type, talk or send a photo. The Assistant turns it into tasks and reworks your plan when things change.",
+      /** The same stop on Free, where the mic wears a padlock. */
+      voiceLocked: {
+        title: "Magic mic",
+        body: "Tap the mic and just talk — Nexdo adds and changes tasks as you speak. It comes with Nexdo Pro.",
       },
     },
   },
@@ -507,6 +473,9 @@ export const en = {
     noTaskFound: 'I couldn\'t find a task in that — try naming what you need to do, like "clean the house tomorrow".',
     adviceDoNow: (label: string, duration: string) => `Do this now: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `Just do it — ${title} should take about ${duration}.`,
+    /** The offline advice for a task (or step) with no duration to quote. */
+    adviceKeepUp: (title: string) => `Keep ${title} going through the day, and tick it off once it's done.`,
+    adviceStartWith: (label: string) => `Do this now: ${label}.`,
     urgencyHigh: "this is one of your most urgent tasks",
     urgencyMedium: "this is worth tackling soon",
     urgencyLow: "there's no rush, but it's on your list",
@@ -638,7 +607,6 @@ export const en = {
   settings: {
     title: "Settings",
     subtitle: "Customize your experience",
-    preferences: "NEXDO PREFERENCES",
 
     account: "ACCOUNT",
     signOut: "Sign out",
@@ -650,7 +618,8 @@ export const en = {
       `${count === 1 ? "1 task hasn't" : `${count} tasks haven't`} reached your account yet — check your connection. If you sign out now, ${count === 1 ? "it stays" : "they stay"} safe on this phone and ${count === 1 ? "is" : "are"} saved the next time you sign in here, but won't show on other devices until then.`,
     signOutAnyway: "Sign out anyway",
 
-    pro: "NEXDO PRO",
+    /** The plan section's title, on Free and on Pro alike — which plan it is, is the card's first line. */
+    plan: "YOUR PLAN",
     upgrade: "Upgrade to Nexdo Pro",
     upgradeBody: "Monthly or yearly — cancel anytime.",
     restorePurchases: "Restore purchases",
@@ -664,18 +633,6 @@ export const en = {
     proActive: "Nexdo Pro is active.",
     proRenews: (date: string) => `Nexdo Pro · renews ${date}`,
     proEnds: (date: string) => `Nexdo Pro · ends ${date}`,
-
-    aiChat: "AI INBOX",
-    autoMode: "Auto mode",
-    autoModeBody: "Add and update tasks right away, without asking you to confirm first.",
-    voiceButton: "Magic mic",
-    voiceButtonBody: "Talk to add and change tasks: the middle button of the tab bar becomes a microphone, instead of opening the Add Task form. Part of Nexdo Pro.",
-    clearHistory: "Clear chat history",
-    clearConfirmTitle: "Clear chat history?",
-    clearConfirmBody: "This removes every message in the AI chat. Your tasks won't be affected.",
-    clear: "Clear",
-    historyCleared: "Chat history cleared.",
-    historyClearFailed: "Cleared on this device, but couldn't clear the synced copy. Try again.",
 
     notifications: "NOTIFICATIONS",
     dailyNudge: "Daily planning",
@@ -697,9 +654,7 @@ export const en = {
     importantReminderBody: "The day before, at the reminder time.",
     notificationsDenied: "Notifications are off for Nexdo in your phone's settings, so no reminder can arrive.",
 
-    appearance: "APPEARANCE",
-    theme: "Theme",
-    language: "Language",
+    language: "LANGUAGE",
 
     support: "HELP & SUPPORT",
     help: "FAQ / Help",
@@ -716,7 +671,8 @@ export const en = {
   /** Free vs Pro: what a plan counts each month (lib/plan.ts), and what's said when one runs out. */
   plan: {
     meters: {
-      chat: "AI chat messages",
+      /** Notes under "Add context for AI" on Task Details — the meter is still called "chat". */
+      chat: "Context notes for AI",
       media: "Photos and documents",
       voice: "Voice notes",
       live: "Magic mic",
@@ -724,7 +680,7 @@ export const en = {
     },
     minutes: (count: number) => `${count} min`,
     used: {
-      chat: "You've used this month's AI chat messages.",
+      chat: "You've used this month's context notes for AI.",
       media: "You've used this month's photos and documents.",
       voice: "You've used this month's voice note minutes.",
       live: "You've used this month's Magic mic minutes.",
@@ -735,7 +691,7 @@ export const en = {
     resets: "Your allowance starts again on the 1st.",
     upgradeHint: "Nexdo Pro gives you far more each month — and adding tasks by hand is always free.",
     limitTitle: "Monthly limit reached",
-    /** Settings → Nexdo Pro: what the month has used so far. */
+    /** Settings → Your plan: what the month has used so far. */
     thisMonth: "This month",
     names: { free: "Free plan", pro: "Nexdo Pro" },
     usedOf: (used: number, limit: string) => `${used} of ${limit}`,
@@ -871,7 +827,7 @@ export const en = {
     deleteAccount: "Delete account",
     deleteTitle: "Delete your account?",
     deleteBody:
-      "This permanently deletes your Nexdo account and everything on it — every task, chat and setting, on every device. It can't be undone.",
+      "This permanently deletes your Nexdo account and everything on it — every task and setting, on every device. It can't be undone.",
     deleteProNote:
       "Deleting your account doesn't cancel Nexdo Pro. Cancel it in your App Store or Google Play subscriptions first, or it keeps renewing.",
     deleteConfirm: "Delete account",
@@ -901,10 +857,6 @@ export const en = {
     plan: "IN YOUR PLAN",
     priority: { high: "HIGH", medium: "MED", low: "LOW" },
     dragHandle: "Drag to sort your tasks",
-    /** The five loose thoughts, in the order of TASKS in app/onboarding-sort.tsx (the first two are the urgent ones). */
-    ideas: ["Pay rent", "Exam prep", "Call mom", "Gym", "Book dentist"],
-    dueToday: "Today",
-    dueLater: "This week",
   },
 
   /** Onboarding step 3 — what gets in the user's way. The options are
@@ -1012,7 +964,7 @@ export const en = {
     bestValue: (percent: number) => `BEST VALUE · SAVE ${percent}%`,
     /** What a Pro month includes, from lib/plan.ts. */
     features: {
-      chat: (count: number) => `${count} AI chat messages`,
+      chat: (count: number) => `${count} context notes for AI`,
       media: (count: number) => `${count} photos and documents`,
       voice: (minutes: number) => `${minutes} min of voice notes`,
       live: (minutes: number) => `${minutes} min of Magic mic`,
@@ -1026,8 +978,8 @@ export const en = {
     email: "EMAIL",
     password: "PASSWORD",
     logIn: "Log in",
-    usePassword: "Log in with a password instead",
-    useCode: "Email me a code instead",
+    continue: "Continue",
+    useCode: "Use email code instead",
     continueWithEmail: "or continue with email",
     noAccount: "Don't have an account?",
     signUp: "Sign up",

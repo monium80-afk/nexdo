@@ -23,9 +23,16 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Subtask, Task } from "@/types/task";
 
+import { composeFileNote } from "@/lib/contextFile";
+import type { ContextAttachment } from "@/store/useReassessStore";
+
 import { makeTask } from "./helpers";
 import { apiCalls, setApiHandler } from "./stubs/api";
+// The same module the store gets for "@/lib/ai/media" (tests/alias-loader.mjs).
+import { setFileReader } from "./stubs/noop";
 import { fakeDb } from "./stubs/supabase";
+
+const PHOTO: ContextAttachment = { kind: "photo", label: "photo", uri: "file:///photo.jpg", mimeType: "image/jpeg" };
 
 const USER = "user_1";
 
@@ -98,6 +105,92 @@ beforeEach(() => {
   useSettingsStore.setState({ language: "en" });
   useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: USER, ownerId: USER });
   useReassessStore.setState({ byTask: {} });
+  setFileReader(() => "");
+});
+
+describe("a photo or document as context", () => {
+  const SHEET = "Part A: 3 short questions\nPart B: a 500-word essay on the causes of WWI";
+
+  it("is read first, saved as the note under the user's words, and the task reassessed for it", async () => {
+    seed({ id: "hist", title: "History assignment", dueDate: at(4), estimatedMinutes: 60 });
+    const reads: unknown[] = [];
+    setFileReader((_, options) => {
+      reads.push(options);
+      return SHEET;
+    });
+    const note = composeFileNote("photo", SHEET, "This is the assignment sheet");
+    modelAnswers(
+      {
+        outcome: "update",
+        steps: [
+          { id: null, title: "Answer the 3 short questions", estimatedMinutes: 30 },
+          { id: null, title: "Write the WWI essay", estimatedMinutes: 90 },
+        ],
+        estimatedMinutes: 120,
+        summary: "The sheet has two parts, so the task is longer.",
+      },
+      (body) => assert.equal(body.newContext, note, "the AI gets the user's words and what was read, as saved"),
+    );
+
+    await useReassessStore.getState().submit("hist", { text: "This is the assignment sheet", file: PHOTO });
+
+    assert.equal(reads.length, 1);
+    assert.deepEqual(reads[0], {
+      language: "en",
+      userInstruction: "This is the assignment sheet",
+      forTask: { title: "History assignment" },
+    });
+    assert.deepEqual(task("hist").aiContext.notes, [note]);
+    assert.equal(task("hist").estimatedMinutes, 120);
+    assert.equal(task("hist").subtasks?.length, 2);
+    assert.ok(fields(report("hist").changes).includes("subtasks"));
+  });
+
+  it("a file sent on its own is a note too", async () => {
+    seed({ id: "lab", title: "Lab report" });
+    setFileReader(() => "Due: section 4 results table");
+    modelAnswers({ outcome: "no_change", summary: "Already covered." });
+
+    await useReassessStore.getState().submit("lab", { text: "", file: { ...PHOTO, kind: "document", mimeType: "application/pdf" } });
+
+    assert.deepEqual(task("lab").aiContext.notes, ["[From a document]\nDue: section 4 results table"]);
+  });
+
+  it("nothing readable in it: nothing changes, nothing is asked of the AI, and the file waits for a retry", async () => {
+    const before = seed({ id: "blur", title: "Fill in the form" });
+
+    await useReassessStore.getState().submit("blur", { text: "", file: PHOTO });
+
+    const state = stateOf("blur");
+    assert.equal(state?.status, "error");
+    assert.equal(state?.status === "error" && state.reason, "empty");
+    assert.equal(state?.status === "error" && state.pending.file?.uri, PHOTO.uri);
+    assert.deepEqual(task("blur"), before);
+    assert.equal(apiCalls.length, 0);
+  });
+
+  it("a reassessment that fails after the read is retried without reading the file again", async () => {
+    seed({ id: "essay", title: "Essay" });
+    let reads = 0;
+    setFileReader(() => {
+      reads += 1;
+      return SHEET;
+    });
+    setApiHandler(() => {
+      throw new Error("offline");
+    });
+
+    await useReassessStore.getState().submit("essay", { text: "", file: PHOTO });
+    const failed = stateOf("essay");
+    assert.equal(failed?.status === "error" && failed.reason, "ai");
+    assert.equal(failed?.status === "error" && failed.pending.file, undefined, "the file's text is in the note now");
+
+    modelAnswers({ outcome: "no_change", summary: "" });
+    await useReassessStore.getState().retry("essay");
+
+    assert.equal(reads, 1);
+    assert.deepEqual(task("essay").aiContext.notes, [composeFileNote("photo", SHEET)]);
+  });
 });
 
 describe("reassessing a task for new context", () => {

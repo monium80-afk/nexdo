@@ -5,6 +5,15 @@ export function formatDuration(minutes: number): string {
   return translate().format.duration(Math.floor(minutes / 60), minutes % 60);
 }
 
+/**
+ * A task's length as it's shown on the task: its duration, or "No duration"
+ * for one that has none — a goal kept through the day ("drink 2 L of water")
+ * rather than a sitting of work. Stored as 0 minutes (see Task.estimatedMinutes).
+ */
+export function formatTaskLength(minutes: number): string {
+  return minutes > 0 ? formatDuration(minutes) : translate().format.noDuration;
+}
+
 /** Live countdown readout — `MM:SS`, widening to `H:MM:SS` past an hour. */
 export function formatClock(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));

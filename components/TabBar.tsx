@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
-import { useCallback, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useState, type ComponentProps } from "react";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,23 +12,20 @@ import { useTranslation } from "@/hooks/useTranslation";
 import type { Translations } from "@/lib/i18n";
 import { openPaywall } from "@/lib/paywall";
 import { isPurchasesEnabled } from "@/lib/purchases";
-import { useSettingsStore } from "@/store/useSettingsStore";
 import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 // Derived from Tabs itself so this always matches whatever prop shape expo-router expects.
 type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
-// "add" isn't a tab route — it's a top-level modal (see app/add.tsx) so it
-// can slide up like a card instead of being limited to bottom-tabs' own
-// fade/shift/none transitions. The Add button below is rendered as a fixed
-// extra slot between the real tab routes, not one of them.
-type TabRouteName = "index" | "tasks" | "ai-chat" | "settings";
+// Magic mic isn't a tab route — it's a top-level modal (see
+// app/live-voice.tsx). Its button is a fixed extra slot between Tasks and
+// Settings, not one of the tab routes.
+type TabRouteName = "index" | "tasks" | "settings";
 
 const TAB_LABEL_KEYS: Record<TabRouteName, keyof Translations["tabs"]> = {
   index: "next",
   tasks: "tasks",
-  "ai-chat": "inbox",
   settings: "settings",
 };
 
@@ -46,16 +43,15 @@ function TabIcon({
       return <Feather name="zap" size={size} color={color} />;
     case "tasks":
       return <Feather name="clipboard" size={size} color={color} />;
-    case "ai-chat":
-      return <Feather name="message-circle" size={size} color={color} />;
     case "settings":
       return <Feather name="settings" size={size} color={color} />;
   }
 }
 
-// A plus that opens the Add Task form, or — with "Magic mic" on in
-// Settings — a microphone that opens Live voice. Same button either way.
-function AddTabButton({
+// Magic mic, the third of the bar's four slots. It's part of Nexdo Pro: on
+// Free it wears a padlock and opens the paywall instead. Adding a task by hand
+// is the Tasks page's own Add Task button.
+function MagicMicButton({
   onShowTasks,
   onAnchor,
 }: {
@@ -66,21 +62,17 @@ function AddTabButton({
   const colors = useColors();
   const router = useRouter();
   const t = useTranslation();
-  const voice = useSettingsStore((state) => state.voiceAddButton);
   const isPro = useIsPro();
+  // A build without store keys has no Pro to sell, so nothing is locked there.
+  const locked = !isPro && isPurchasesEnabled;
 
   const handlePress = () => {
-    if (!voice) {
-      router.push("/add");
-      return;
-    }
-    // Live voice is part of Pro: on Free the mic opens the paywall instead.
-    if (!isPro && isPurchasesEnabled) {
+    if (locked) {
       openPaywall("live");
       return;
     }
     // The Tasks page goes underneath first, so when Live voice is closed it
-    // slides down onto the list it has just been changing.
+    // shows the list it has just been changing.
     onShowTasks();
     router.push("/live-voice");
   };
@@ -91,19 +83,30 @@ function AddTabButton({
       scaleTo={0.92}
       hitSlop={6}
       accessibilityRole="button"
-      accessibilityLabel={voice ? t.live.open : t.tabs.addTask}
+      accessibilityLabel={locked ? t.live.openLocked : t.live.open}
       onLayout={(event) => {
         const { x, width } = event.nativeEvent.layout;
         onAnchor(x + width / 2);
       }}
-      className="items-center"
+      // A slot as wide as each tab's, the whole of it the touch target, the
+      // coin in its middle.
+      className="flex-1 items-center justify-center self-stretch"
     >
-      {/* A glowing orange coin: lit at the top, casting its light on the bar. */}
-      <View
-        style={gradients.accent}
-        className="glow-accent h-[36px] w-[36px] items-center justify-center rounded-full bg-orange-500"
-      >
-        <Feather name={voice ? "mic" : "plus"} size={18} color={colors.onAccent} />
+      <View>
+        {/* A glowing orange coin: lit at the top, casting its light on the bar. */}
+        <View
+          style={gradients.accent}
+          className="glow-accent h-[36px] w-[36px] items-center justify-center rounded-full bg-orange-500"
+        >
+          <Feather name="mic" size={18} color={colors.onAccent} />
+        </View>
+        {/* The padlock: ringed in the bar's colour, like the Tasks badge, so it
+            reads as sitting on the coin rather than cut into it. */}
+        {locked ? (
+          <View className="absolute -right-[5px] -top-[4px] h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-charcoal-900 bg-charcoal-600">
+            <Feather name="lock" size={9} color={colors.ink.charcoal} />
+          </View>
+        ) : null}
       </View>
     </AnimatedPressable>
   );
@@ -133,29 +136,18 @@ function StandardTabButton({
   focused,
   onPress,
   onAnchor,
-  edgeClassName,
 }: {
   routeName: TabRouteName;
   focused: boolean;
   onPress: () => void;
   /** The icon's centre along the bar, for the first-run tour to point at. */
   onAnchor: (x: number) => void;
-  /** Extra padding nudging the icon away from the centered Add button. */
-  edgeClassName?: string;
 }) {
   const colors = useColors();
   const t = useTranslation();
-  // Orange is kept for the Add button and the small dot under the active tab,
-  // so the selected icon doesn't compete with Add for attention.
+  // Orange is kept for the mic and the small dot under the active tab, so the
+  // selected icon doesn't compete with the mic for attention.
   const tintColor = focused ? colors.ink.charcoal : IDLE_ICON;
-  // The icon's centre is the column's place on the bar plus the icon's place
-  // in the column (its edge padding moves it off-centre), each reported by
-  // its own layout — passed on once both are in.
-  const columnX = useRef<number | null>(null);
-  const iconCenter = useRef<number | null>(null);
-  const reportAnchor = () => {
-    if (columnX.current !== null && iconCenter.current !== null) onAnchor(columnX.current + iconCenter.current);
-  };
 
   return (
     <AnimatedPressable
@@ -164,23 +156,18 @@ function StandardTabButton({
       accessibilityRole="tab"
       accessibilityLabel={t.tabs[TAB_LABEL_KEYS[routeName]]}
       accessibilityState={{ selected: focused }}
+      // The icon sits in the middle of its slot, so the slot's centre is the icon's.
       onLayout={(event) => {
-        columnX.current = event.nativeEvent.layout.x;
-        reportAnchor();
+        const { x, width } = event.nativeEvent.layout;
+        onAnchor(x + width / 2);
       }}
       // Full bar height, so the whole column is the touch target, not just the icon.
-      className={`flex-1 items-center justify-center self-stretch ${edgeClassName ?? ""}`}
+      className="flex-1 items-center justify-center self-stretch"
     >
-      <View
-        onLayout={(event) => {
-          const { x, width } = event.nativeEvent.layout;
-          iconCenter.current = x + width / 2;
-          reportAnchor();
-        }}
-      >
+      <View>
         <TabIcon routeName={routeName} color={tintColor} size={22} />
         {routeName === "tasks" && <PendingTaskBadge />}
-        {/* Out of flow so every icon sits on the same line as the Add button. */}
+        {/* Out of flow so every icon sits on the same line as the mic. */}
         {focused && (
           <View className="absolute left-0 right-0 top-[28px] items-center">
             <View className="h-[4px] w-[4px] rounded-full bg-orange-500" style={DOT_GLOW} />
@@ -191,8 +178,8 @@ function StandardTabButton({
   );
 }
 
-// Everything, the Add button included, sits inside the bar on one centre line
-// — nothing pokes above it.
+// Everything, the mic included, sits inside the bar on one centre line —
+// nothing pokes above it.
 const BAR_HEIGHT = 58;
 
 /**
@@ -216,13 +203,14 @@ const BAR_SHADOW = { boxShadow: "0 -10px 24px -12px rgba(30, 16, 6, 0.35)" };
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   // Where each slot's icon sits along the bar, for the first-run tour.
-  const [anchors, setAnchors] = useState<Partial<Record<TourAnchor | TabRouteName, number>>>({});
-  const setAnchor = useCallback((slot: TourAnchor | TabRouteName, x: number) => {
+  // (Settings isn't a stop on the tour.)
+  const [anchors, setAnchors] = useState<Partial<Record<TourAnchor, number>>>({});
+  const setAnchor = useCallback((slot: TourAnchor, x: number) => {
     setAnchors((current) => (current[slot] === x ? current : { ...current, [slot]: x }));
   }, []);
   const showTab = useCallback((name: TabRouteName) => navigation.navigate(name), [navigation]);
 
-  const renderRoute = (route: TabBarProps["state"]["routes"][number], index: number, edgeClassName?: string) => {
+  const renderRoute = (route: TabBarProps["state"]["routes"][number], index: number) => {
     const focused = state.index === index;
     const routeName = route.name as TabRouteName;
 
@@ -244,17 +232,18 @@ export function TabBar({ state, navigation }: TabBarProps) {
         routeName={routeName}
         focused={focused}
         onPress={onPress}
-        onAnchor={(x) => setAnchor(routeName, x)}
-        edgeClassName={edgeClassName}
+        onAnchor={(x) => {
+          if (routeName !== "settings") setAnchor(routeName, x);
+        }}
       />
     );
   };
 
-  // The two routes flanking the centered Add button (tasks, ai-chat) sit
-  // right up against it — nudge each away from center so the spacing
-  // across all five slots feels even instead of tasks/ai-chat reading as
-  // crowded against the middle.
-  const [first, second, third, fourth] = state.routes;
+  // Four slots of equal width — Today, Tasks, the mic, Settings — evenly
+  // spaced rather than the mic held in the middle of the screen (the user's
+  // call, 2026-10-09). A fourth tab coming later will put the mic back in the
+  // middle by itself.
+  const [first, second, third] = state.routes;
 
   // One charcoal slab with rounded top corners, floating over the foot of the
   // page: flush with both sides and the bottom of the screen, and running down
@@ -276,15 +265,14 @@ export function TabBar({ state, navigation }: TabBarProps) {
       >
         <View className="flex-1 flex-row items-center px-4">
           {renderRoute(first, 0)}
-          {renderRoute(second, 1, "pr-3")}
-          <AddTabButton
+          {renderRoute(second, 1)}
+          <MagicMicButton
             onShowTasks={() => {
               if (state.routes[state.index]?.name !== "tasks") navigation.navigate("tasks");
             }}
-            onAnchor={(x) => setAnchor("add", x)}
+            onAnchor={(x) => setAnchor("mic", x)}
           />
-          {renderRoute(third, 2, "pl-3")}
-          {renderRoute(fourth, 3)}
+          {renderRoute(third, 2)}
         </View>
       </View>
     </AppTour>

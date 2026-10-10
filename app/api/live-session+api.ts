@@ -89,7 +89,6 @@ const DETAILS = {
     type: "STRING",
     description: 'The deadline as the user said it, translated to English ("tomorrow at 6 pm", "next friday"). Never a computed date.',
   },
-  estimatedMinutes: { type: "NUMBER", description: "Only if the user said how long it takes." },
   priority: {
     type: "STRING",
     enum: ["critical", "high", "medium", "low"],
@@ -121,9 +120,16 @@ const FUNCTIONS = [
           type: "OBJECT",
           properties: {
             title: { type: "STRING", description: "Short task name in the user's language, without the date or time words." },
+            // Required: left out, the app could only guess from keywords, and
+            // "brush my teeth" came out at 30 minutes.
+            estimatedMinutes: {
+              type: "NUMBER",
+              description:
+                "How long the task takes, in minutes: what the user said, or else your realistic estimate (brushing teeth 3, a quick call 10, an essay 120). 0 for a goal kept up through the day rather than one sitting of work (drink 2 L of water, 10,000 steps, no sugar today).",
+            },
             ...DETAILS,
           },
-          required: ["title"],
+          required: ["title", "estimatedMinutes"],
         },
       },
       {
@@ -134,6 +140,7 @@ const FUNCTIONS = [
           properties: {
             taskId: TASK_ID,
             title: { type: "STRING", description: "The new name, only when renaming." },
+            estimatedMinutes: { type: "NUMBER", description: "The new length in minutes, only when the user changes it." },
             ...DETAILS,
             dueDateShift: {
               type: "OBJECT",
@@ -187,7 +194,7 @@ function taskLine(task: TaskContext): string {
   const details = [
     task.status === "completed" ? (task.completedLabel ?? "completed") : task.overdue ? "open, OVERDUE" : "open",
     task.status === "completed" ? undefined : task.dueLabel || undefined,
-    `${task.estimatedMinutes} min`,
+    task.estimatedMinutes > 0 ? `${task.estimatedMinutes} min` : "no duration",
     task.priority ? `${task.priority} priority` : undefined,
     task.repeats ? `repeats ${task.repeats}` : undefined,
   ].filter(Boolean);

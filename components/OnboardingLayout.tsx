@@ -2,7 +2,6 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { KeyboardAvoidingView, Platform, Text, View } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -14,24 +13,15 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 
-// One step sinks out of the way before the next rises into it, so the two are
-// never on screen together. Easing *in* on the way down and *out* on the way
-// up makes the pair read as a single continuous movement rather than two
-// separate animations.
-const EXIT_DURATION = 220;
-const ENTER_DURATION = 320;
-/** How far below its resting place the content sits when it is off screen. */
-const TRAVEL = 24;
-
 /**
  * The frame every onboarding step shares: the setup bar up top, the headline
  * and its line of body copy, the step's own illustration in the middle, and
  * the continue button at the bottom. A step supplies only its copy and its
  * visual, so the chrome can never drift between screens.
  *
- * It also owns the step-to-step transition. The bar holds still while
- * everything below it fades down and out, and the next step fades up into
- * place — so `onNext` runs only once this step is out of sight.
+ * It also owns leaving the step: one path for a button press and for a step
+ * that finishes on its own. There's no transition between steps — the next
+ * one is simply there (the user's call, 2026-10-08).
  */
 export function OnboardingLayout({
   percent,
@@ -106,9 +96,6 @@ export function OnboardingLayout({
   const rtl = useRtlText();
   const insets = useSafeAreaInsets();
 
-  // 1 = settled in place, 0 = TRAVEL below it and fully transparent. Entering
-  // and leaving are the same journey, run in opposite directions.
-  const settled = useSharedValue(0);
   // Set once next has been pressed. Also the double-tap guard: a second tap is
   // a no-op set.
   const [pressed, setPressed] = useState(false);
@@ -133,39 +120,24 @@ export function OnboardingLayout({
 
   // Held in a ref so that it is not a dependency of the effect below: a step
   // re-rendering for its own reasons (onboarding-sort measures its
-  // illustration on layout) would otherwise restart the animation mid-flight.
+  // illustration on layout) would otherwise leave it again.
   const onNextRef = useRef(onNext);
   useEffect(() => {
     onNextRef.current = onNext;
   }, [onNext]);
 
-  // Both directions live here, which is also the only place the compiler's
-  // immutability rule lets a shared value be written — it is a dependency of
-  // this effect rather than something captured by a returned callback.
   useEffect(() => {
-    if (phase === "entering") {
-      settled.value = withTiming(1, { duration: ENTER_DURATION, easing: Easing.out(Easing.cubic) });
-      return;
-    }
-    settled.value = withTiming(0, { duration: EXIT_DURATION, easing: Easing.in(Easing.cubic) });
-    // Hand over only once this step is out of sight.
-    const handoff = setTimeout(() => onNextRef.current(), EXIT_DURATION);
-    return () => clearTimeout(handoff);
-  }, [phase, settled]);
+    if (phase === "leaving") onNextRef.current();
+  }, [phase]);
 
   // On focus rather than on mount: this screen stays in the stack underneath
-  // the next one, so coming back to it (Android back, iOS swipe) has to undo
-  // the exit or it would sit there invisible.
+  // the next one, so coming back to it (Android back, iOS swipe) has to make
+  // its button work again.
   useFocusEffect(
     useCallback(() => {
       setPressed(false);
     }, []),
   );
-
-  const contentStyle = useAnimatedStyle(() => ({
-    opacity: settled.value,
-    transform: [{ translateY: (1 - settled.value) * TRAVEL }],
-  }));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }}>
@@ -184,12 +156,9 @@ export function OnboardingLayout({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
       <View className="flex-1 px-6 pb-6">
-        {/* Deliberately outside the animated wrapper: the bar is the one thing
-            that holds still as steps come and go, so filling it reads as a
-            single run through setup. */}
         <SetupProgressBar percent={percent} />
 
-        <Animated.View className="flex-1" style={contentStyle}>
+        <View className="flex-1">
           {mark ? <View className="mt-8 items-center">{mark}</View> : null}
 
           <View className={centered ? "mt-7 gap-3" : "mt-7 gap-2.5"}>
@@ -261,7 +230,7 @@ export function OnboardingLayout({
               <Text className="font-grotesk-medium text-sm text-ink-cream-muted">{secondaryAction.label}</Text>
             </AnimatedPressable>
           ) : null}
-        </Animated.View>
+        </View>
       </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

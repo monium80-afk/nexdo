@@ -5,7 +5,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
-import { useChatStore } from "@/store/useChatStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 import { fakeDb } from "./stubs/supabase";
@@ -46,7 +45,6 @@ function seedTable(name: string, rows: { id: string }[]) {
 beforeEach(async () => {
   fakeDb.reset();
   useTaskStore.setState({ tasks: [], unsynced: {}, pendingDeletes: {}, syncUserId: USER, ownerId: USER });
-  useChatStore.setState({ messages: [], unsynced: {}, pendingActions: [], lastUndo: null, syncUserId: USER });
   await flush();
 });
 
@@ -62,26 +60,6 @@ describe("more rows than one request returns", () => {
     assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
     assert.equal(useTaskStore.getState().tasks.length, 1205);
     assert.ok(useTaskStore.getState().tasks.some((task) => task.id === "t-01204"));
-  });
-
-  it("the chat loads its newest messages, oldest of them first", async () => {
-    const start = Date.parse("2026-01-01T00:00:00Z");
-    const rows = Array.from({ length: 350 }, (_, index) => ({
-      id: `m-${index}`,
-      user_id: USER,
-      role: "user",
-      text: `Message ${index}`,
-      created_at: new Date(start + index * 60_000).toISOString(),
-      attachment: null,
-      related_task_id: null,
-    }));
-    seedTable("chat_messages", rows);
-
-    assert.equal(await useChatStore.getState().hydrateFromSupabase(USER), true);
-    const texts = useChatStore.getState().messages.map((message) => message.text);
-    assert.equal(texts.length, 300);
-    assert.equal(texts[0], "Message 50");
-    assert.equal(texts.at(-1), "Message 349", "the latest message is there, at the end");
   });
 });
 

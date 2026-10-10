@@ -109,9 +109,14 @@ export function ScheduleItemRow({
       style={gradients.card}
       className="card card--cream-soft flex-row items-center gap-3 py-3 pl-3 pr-4"
     >
+      {/* A task with no duration has no length to show: a dash, unless it has a time. */}
       <View className="min-w-[60px] items-center rounded-[13px] bg-cream-200 px-2 py-1.5">
-        <Text className="font-grotesk-bold text-[14px] leading-[18px] text-ink-cream">{time ?? budget(item.minutes)}</Text>
-        {time ? <Text className="font-grotesk-medium text-[11px] text-ink-cream-muted">{budget(item.minutes)}</Text> : null}
+        <Text className="font-grotesk-bold text-[14px] leading-[18px] text-ink-cream">
+          {time ?? (item.minutes > 0 ? budget(item.minutes) : "–")}
+        </Text>
+        {time && item.minutes > 0 ? (
+          <Text className="font-grotesk-medium text-[11px] text-ink-cream-muted">{budget(item.minutes)}</Text>
+        ) : null}
       </View>
 
       <View className="flex-1 gap-1">

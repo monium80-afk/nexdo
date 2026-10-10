@@ -14,8 +14,9 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
-import { displayLimit, METERS } from "@/lib/plan";
+import { displayLimit, SHOWN_METERS } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
+import { productPrice } from "@/lib/price";
 import { billedYearly, loadOnboardingPlans, purchasePlan, restorePurchases, trialPlanOf } from "@/lib/purchases";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
@@ -149,8 +150,8 @@ export default function OnboardingPaywall() {
               style={rtl ? CENTERED_RTL : undefined}
             >
               {trial
-                ? t.paywall.trialTerms(trial.count, trial.unit, selected.package.product.priceString, selectedIsYearly)
-                : t.paywall.terms(selected.package.product.priceString, selectedIsYearly)}
+                ? t.paywall.trialTerms(trial.count, trial.unit, productPrice(selected.package.product, t.locale), selectedIsYearly)
+                : t.paywall.terms(productPrice(selected.package.product, t.locale), selectedIsYearly)}
             </Text>
           ) : null}
           <AnimatedPressable
@@ -192,7 +193,7 @@ export default function OnboardingPaywall() {
 
         {/* What a Pro month includes — the numbers lib/plan.ts enforces. */}
         <View className="mt-5 gap-3">
-          {METERS.map((meter) => (
+          {SHOWN_METERS.map((meter) => (
             <View key={meter} className="flex-row items-center gap-3">
               <View className="tile tile--orange h-[22px] w-[22px] rounded-full" style={gradients.tileOrange}>
                 <Feather name="check" size={12} color={colors.orange[600]} />

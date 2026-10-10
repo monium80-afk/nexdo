@@ -2,19 +2,11 @@ import { useClerk } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
-import { useFocusEffect, useIsFocused, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { UsageResponseBody } from "@/app/api/usage+api";
@@ -29,7 +21,6 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { useTabBarHeight } from "@/components/TabBar";
 import { SUPPORT_LINKS } from "@/constants/support";
 import { MOTION, gradients } from "@/constants/theme";
-import { useFocusEnter } from "@/hooks/useFocusEnter";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
@@ -41,7 +32,6 @@ import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { isPurchasesEnabled, presentCustomerCenter, resetPurchaser, restorePurchases } from "@/lib/purchases";
 import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
-import { useChatStore } from "@/store/useChatStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -192,96 +182,6 @@ function ToggleRow({
   );
 }
 
-// One lap of the glows round the card.
-const AURA_ORBIT_MS = 5600;
-const AURA_GLOW_WIDTH = 150;
-const AURA_GLOW_HEIGHT = 100;
-/** How far inside the card's edge the glows' centres travel, so each shows as a halo at the rim. */
-const AURA_INSET_X = 14;
-const AURA_INSET_Y = 6;
-
-/**
- * Magic mic, in a card of its own with an aura that goes round it — two
- * soft glows, orange and gold, travelling the card's edge half a lap apart
- * over a faint steady halo. Brighter while it's on. Only a transform moves,
- * so it costs Android nothing (no blurred shadows).
- */
-function MagicMicRow({
-  label,
-  body,
-  value,
-  onValueChange,
-}: {
-  label: string;
-  body: string;
-  value: boolean;
-  onValueChange: (next: boolean) => unknown;
-}) {
-  const reduceMotion = useReducedMotion();
-  // A tab stays mounted once it's been opened, so the orbit would otherwise
-  // run on every frame behind the other tabs for as long as the app is open.
-  const focused = useIsFocused();
-  const angle = useSharedValue(Math.PI * 1.25);
-  // Half the card's size, less the inset: the ellipse the glows travel.
-  const reachX = useSharedValue(0);
-  const reachY = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      angle.set(Math.PI * 1.25);
-      return;
-    }
-    if (!focused) return;
-    // Carries on from where it stopped, so coming back doesn't jump.
-    const from = angle.get() % (2 * Math.PI);
-    angle.set(from);
-    angle.set(withRepeat(withTiming(from + 2 * Math.PI, { duration: AURA_ORBIT_MS, easing: Easing.linear }), -1, false));
-    return () => cancelAnimation(angle);
-  }, [angle, focused, reduceMotion]);
-
-  const leadStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: Math.cos(angle.value) * reachX.value }, { translateY: Math.sin(angle.value) * reachY.value }],
-  }));
-  const trailStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: Math.cos(angle.value + Math.PI) * reachX.value },
-      { translateY: Math.sin(angle.value + Math.PI) * reachY.value },
-    ],
-  }));
-  const glowBox = {
-    left: -AURA_GLOW_WIDTH / 2,
-    top: -AURA_GLOW_HEIGHT / 2,
-    width: AURA_GLOW_WIDTH,
-    height: AURA_GLOW_HEIGHT,
-  };
-
-  return (
-    <View className="my-2">
-      <View
-        pointerEvents="none"
-        className="absolute -inset-x-[16px] -inset-y-[20px]"
-        style={[gradients.magicAura, { opacity: value ? 0.5 : 0.28 }]}
-      />
-      {/* The centre the glows travel round. */}
-      <View pointerEvents="none" className="absolute left-1/2 top-1/2" style={{ opacity: value ? 1 : 0.55 }}>
-        <Animated.View className="absolute" style={[glowBox, gradients.auraOrange, leadStyle]} />
-        <Animated.View className="absolute" style={[glowBox, gradients.auraGold, trailStyle]} />
-      </View>
-      <View
-        onLayout={(event) => {
-          const { width, height } = event.nativeEvent.layout;
-          reachX.set(Math.max(0, width / 2 - AURA_INSET_X));
-          reachY.set(Math.max(0, height / 2 - AURA_INSET_Y));
-        }}
-        className="card card--cream-soft p-[16px]"
-        style={gradients.card}
-      >
-        <ToggleRow label={label} body={body} value={value} onValueChange={onValueChange} />
-      </View>
-    </View>
-  );
-}
-
 /**
  * A tappable row inside a card: label, optional explanation, chevron. Only
  * Help & Support's rows lead with a tile.
@@ -325,8 +225,8 @@ function ActionRow({
 }
 
 /**
- * A row that ends or destroys something (Sign out, Clear chat history): its
- * own red-tinted card, so it can't be mistaken for a setting.
+ * A row that ends or destroys something (Sign out): its own red-tinted card,
+ * so it can't be mistaken for a setting.
  */
 function DangerRow({
   label,
@@ -363,15 +263,10 @@ export default function Settings() {
   const t = useTranslation();
   const rtl = useRtlText();
   const { signOut } = useClerk();
-  const handleChatSignOut = useChatStore((state) => state.handleSignOut);
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
   const saveUnsyncedTasks = useTaskStore((state) => state.saveUnsyncedTasks);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
-  const aiAutoMode = useSettingsStore((state) => state.aiAutoMode);
-  const setAiAutoMode = useSettingsStore((state) => state.setAiAutoMode);
-  const voiceAddButton = useSettingsStore((state) => state.voiceAddButton);
-  const setVoiceAddButton = useSettingsStore((state) => state.setVoiceAddButton);
   const dailyNudgeEnabled = useSettingsStore((state) => state.dailyNudgeEnabled);
   const setDailyNudgeEnabled = useSettingsStore((state) => state.setDailyNudgeEnabled);
   const dailyNudgeTime = useSettingsStore((state) => state.dailyNudgeTime);
@@ -388,18 +283,14 @@ export default function Settings() {
   const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
-  const clearChatHistory = useChatStore((state) => state.clearHistory);
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
-  const headerEnter = useFocusEnter(0);
-  const bodyEnter = useFocusEnter(1);
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [historyStatus, setHistoryStatus] = useState<string | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>("undetermined");
@@ -440,16 +331,6 @@ export default function Settings() {
       };
     }, []),
   );
-
-  // Magic mic is part of Pro: on Free, switching it on opens the paywall
-  // instead. Switching it off is always allowed.
-  const handleVoiceAddButton = (next: boolean) => {
-    if (next && !pro && isPurchasesEnabled) {
-      openPaywall("live");
-      return false;
-    }
-    setVoiceAddButton(next);
-  };
 
   const nudgeTimeLabel = timeToDate(dailyNudgeTime).toLocaleTimeString(t.locale, {
     hour: "2-digit",
@@ -521,24 +402,6 @@ export default function Settings() {
     setDayReminderTime(dateToTime(selected));
   };
 
-  const handleClearHistory = () => {
-    showAlert(t.settings.clearConfirmTitle, t.settings.clearConfirmBody, [
-      { text: t.common.cancel, style: "cancel" },
-      {
-        text: t.settings.clear,
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await clearChatHistory();
-            setHistoryStatus(t.settings.historyCleared);
-          } catch {
-            setHistoryStatus(t.settings.historyClearFailed);
-          }
-        },
-      },
-    ]);
-  };
-
   const handleOpenLink = async (url: string) => {
     try {
       await WebBrowser.openBrowserAsync(url);
@@ -582,7 +445,6 @@ export default function Settings() {
       posthog.capture('user_signed_out')
       posthog.reset()
       const cleanupResults = await Promise.allSettled([
-        Promise.resolve().then(() => handleChatSignOut()),
         Promise.resolve().then(() => handleTaskSignOut()),
         resetPurchaser(),
       ]);
@@ -618,7 +480,7 @@ export default function Settings() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} contentStyle={headerEnter} />
+      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} />
 
       <View className="screen-body">
         <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
@@ -628,7 +490,7 @@ export default function Settings() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View className="gap-4 px-3 pt-3" style={bodyEnter}>
+          <View className="gap-4 px-3 pt-3">
             <Section title={t.settings.account}>
               <ProfileCard onPress={() => setAccountOpen(true)} />
 
@@ -645,8 +507,10 @@ export default function Settings() {
               ) : null}
             </Section>
 
+            {/* "Your plan" on both plans: what it is (Free or Pro) is the
+                first line of the card under it. */}
             {isPurchasesEnabled ? (
-              <Section title={t.settings.pro}>
+              <Section title={t.settings.plan}>
                 {usage ? (
                   <Group>
                     <PlanUsage plan={usage.plan} used={usage.used} />
@@ -676,32 +540,6 @@ export default function Settings() {
                 </Group>
               </Section>
             ) : null}
-
-            <Section title={t.settings.aiChat}>
-              <Group>
-                <ToggleRow
-                  label={t.settings.autoMode}
-                  body={t.settings.autoModeBody}
-                  value={aiAutoMode}
-                  onValueChange={setAiAutoMode}
-                />
-              </Group>
-
-              <MagicMicRow
-                label={t.settings.voiceButton}
-                body={t.settings.voiceButtonBody}
-                value={voiceAddButton}
-                onValueChange={handleVoiceAddButton}
-              />
-
-              <DangerRow label={t.settings.clearHistory} onPress={handleClearHistory} />
-
-              {historyStatus ? (
-                <Text className="px-3.5 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                  {historyStatus}
-                </Text>
-              ) : null}
-            </Section>
 
             <Section title={t.settings.notifications}>
               <Group>
@@ -824,23 +662,20 @@ export default function Settings() {
               </Group>
             </Section>
 
-            <Section title={t.settings.appearance}>
+            {/* Language is the one thing here, so it's the section's own
+                name — not tucked under "Appearance". */}
+            <Section title={t.settings.language}>
               <Group>
-                <View className="gap-3">
-                  <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
-                    {t.settings.language}
-                  </Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {LANGUAGE_OPTIONS.map((option) => (
-                      <Chip
-                        key={option.value}
-                        label={option.label}
-                        selected={language === option.value}
-                        onPress={() => handleSelectLanguage(option.value)}
-                        accessibilityRole="radio"
-                      />
-                    ))}
-                  </View>
+                <View className="flex-row flex-wrap gap-2">
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <Chip
+                      key={option.value}
+                      label={option.label}
+                      selected={language === option.value}
+                      onPress={() => handleSelectLanguage(option.value)}
+                      accessibilityRole="radio"
+                    />
+                  ))}
                 </View>
               </Group>
             </Section>
@@ -892,7 +727,7 @@ export default function Settings() {
                 {t.settings.version(APP_VERSION)}
               </Text>
             </Section>
-          </Animated.View>
+          </View>
         </ScrollView>
       </View>
 

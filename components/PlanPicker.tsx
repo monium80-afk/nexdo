@@ -6,7 +6,8 @@ import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import type { ProPlan, ProPlans } from "@/lib/purchases";
+import { formatPrice, monthlyEquivalent, productPrice } from "@/lib/price";
+import { isTestStore, type ProPlan, type ProPlans } from "@/lib/purchases";
 
 export type PlanChoice = "annual" | "monthly";
 
@@ -15,15 +16,6 @@ export type PlansState = { status: "loading" } | { status: "error" } | { status:
 /** The plan a choice stands for — the other one if the offering lacks it. */
 export function chosenPlan(plans: ProPlans, choice: PlanChoice): ProPlan | null {
   return choice === "annual" ? (plans.annual ?? plans.monthly) : (plans.monthly ?? plans.annual);
-}
-
-/** A price worked out here (a year at the monthly rate) rather than given by the store. */
-function formatPrice(amount: number, currencyCode: string, locale: string): string {
-  try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currencyCode}`;
-  }
 }
 
 /** One selectable plan: charcoal with an orange edge once picked, sunk into the page otherwise. */
@@ -79,7 +71,16 @@ function PlanCard({
       <View
         className={`flex-wrap items-baseline gap-x-1.5 ${centered ? "justify-center" : ""} ${rtl ? "flex-row-reverse" : "flex-row"}`}
       >
-        <Text className={`font-grotesk-bold text-[22px] ${selected ? "text-ink-charcoal" : "text-ink-cream"}`}>{price}</Text>
+        {/* One line, shrunk to fit: a long price ("USD 58.99") on a narrow
+            card with large text broke in the middle of the number. */}
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          className={`shrink font-grotesk-bold text-[22px] ${selected ? "text-ink-charcoal" : "text-ink-cream"}`}
+        >
+          {price}
+        </Text>
         {crossedOutPrice ? (
           <Text
             className={`font-grotesk-medium text-[12px] line-through ${selected ? "text-ink-charcoal-muted" : "text-ink-cream-subtle"}`}
@@ -153,9 +154,11 @@ export function PlanPicker({
   const monthlyProduct = plans.monthly?.package.product ?? null;
   const annualProduct = plans.annual?.package.product ?? null;
 
-  // A year paid monthly, to set the yearly price against.
+  // A year paid monthly, to set the yearly price against. Every price is
+  // written from the store's amount and currency (lib/price.ts), so the
+  // currency always shows — the store's own strings leave it to "$".
   const yearAtMonthlyRate = monthlyProduct
-    ? (monthlyProduct.pricePerYearString ?? formatPrice(monthlyProduct.price * 12, monthlyProduct.currencyCode, t.locale))
+    ? formatPrice(monthlyProduct.price * 12, monthlyProduct.currencyCode, t.locale)
     : null;
   const savedPercent =
     monthlyProduct && annualProduct && monthlyProduct.price > 0
@@ -163,32 +166,39 @@ export function PlanPicker({
       : 0;
 
   return (
-    <View className="flex-row gap-[10px]" accessibilityRole="radiogroup">
-      {annualProduct ? (
-        <PlanCard
-          label={t.paywall.yearly}
-          price={annualProduct.priceString}
-          crossedOutPrice={!centered && savedPercent > 0 ? yearAtMonthlyRate : null}
-          detail={
-            annualProduct.pricePerMonthString
-              ? t.paywall.aMonth(annualProduct.pricePerMonthString)
-              : t.paywall.aMonth(formatPrice(annualProduct.price / 12, annualProduct.currencyCode, t.locale))
-          }
-          badge={savedPercent > 0 ? badge(savedPercent) : null}
-          selected={selected === plans.annual}
-          centered={centered}
-          onPress={() => onChoose("annual")}
-        />
-      ) : null}
-      {monthlyProduct ? (
-        <PlanCard
-          label={t.paywall.monthly}
-          price={monthlyProduct.priceString}
-          detail={t.paywall.perMonth}
-          selected={selected === plans.monthly}
-          centered={centered}
-          onPress={() => onChoose("monthly")}
-        />
+    <View className="gap-2">
+      <View className="flex-row gap-[10px]" accessibilityRole="radiogroup">
+        {annualProduct ? (
+          <PlanCard
+            label={t.paywall.yearly}
+            price={productPrice(annualProduct, t.locale)}
+            crossedOutPrice={!centered && savedPercent > 0 ? yearAtMonthlyRate : null}
+            detail={t.paywall.aMonth(monthlyEquivalent(annualProduct, t.locale))}
+            badge={savedPercent > 0 ? badge(savedPercent) : null}
+            selected={selected === plans.annual}
+            centered={centered}
+            onPress={() => onChoose("annual")}
+          />
+        ) : null}
+        {monthlyProduct ? (
+          <PlanCard
+            label={t.paywall.monthly}
+            price={productPrice(monthlyProduct, t.locale)}
+            detail={t.paywall.perMonth}
+            selected={selected === plans.monthly}
+            centered={centered}
+            onPress={() => onChoose("monthly")}
+          />
+        ) : null}
+      </View>
+      {/* Development only, never in a store build, so not translated: Expo Go
+          and the dev build sell RevenueCat's Test Store products, which are
+          not the store's real prices or currency (2026-10-09: read as a bug). */}
+      {isTestStore ? (
+        <Text className="text-center font-grotesk-medium text-[11.5px] leading-4 text-ink-cream-subtle">
+          Development build: RevenueCat Test Store prices, always in USD. The Play Store / App Store build shows the
+          store&apos;s real prices in your account&apos;s currency.
+        </Text>
       ) : null}
     </View>
   );

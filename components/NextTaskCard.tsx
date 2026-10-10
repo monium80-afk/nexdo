@@ -17,8 +17,10 @@ import Animated, {
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { CompletedOverlay, type OverlayOrigin } from "@/components/CompletedOverlay";
+import { ContextSheet } from "@/components/ContextSheet";
 import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
+import { StartSessionButton } from "@/components/StartSessionButton";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TimerRing } from "@/components/TimerRing";
 import { MOTION, gradients } from "@/constants/theme";
@@ -28,14 +30,11 @@ import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
-import { formatDuration } from "@/lib/formatDuration";
+import { formatTaskLength } from "@/lib/formatDuration";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
-import type { Subtask, Task } from "@/types/task";
-
-// A task with no estimate still needs a timer length.
-const FALLBACK_SESSION_MINUTES = 25;
+import type { StepDraft, Subtask, Task } from "@/types/task";
 
 // The hairline the card draws above and below its content — the stack sizes
 // cards from the height their content reports, and this is what the card's own
@@ -54,9 +53,8 @@ const CHECK_LANDS_MS = 330;
 // stays on the card until it has flown out of sight.
 const SEND_OFF_CLEAR_MS = CELEBRATION_MS + 700;
 
-// The green Complete button's own glow, and the lift under the white play disc.
+// The green Complete button's own glow.
 const COMPLETE_GLOW = { boxShadow: "0 8px 16px -8px rgba(40, 153, 90, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18)" };
-const PLAY_SHADOW = { boxShadow: "0 3px 8px -2px rgba(150, 50, 10, 0.45)" };
 
 export type CardBounds = { x: number; y: number; width: number; height: number };
 
@@ -186,8 +184,64 @@ function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep:
   );
 }
 
-/** The running clock, in place of the "Start Session" button. */
+/**
+ * In place of the "Start Session" button while a session runs: its clock —
+ * or, for a task with no duration, no clock at all (the user's call,
+ * 2026-10-09): a goal kept up through the day isn't something to time.
+ */
 function SessionPanel({
+  session,
+  onComplete,
+  onCancel,
+  onEnd,
+}: {
+  session: ActiveSession;
+  onComplete: () => void;
+  /** Ends a timed session — asked first, as its time spent is lost. */
+  onCancel: () => void;
+  /** Ends an untimed one: nothing is lost, so nothing is asked. */
+  onEnd: () => void;
+}) {
+  return session.plannedMinutes > 0 ? (
+    <TimedSessionPanel session={session} onComplete={onComplete} onCancel={onCancel} />
+  ) : (
+    <UntimedSessionPanel onComplete={onComplete} onEnd={onEnd} />
+  );
+}
+
+/** A session on a task with no duration: no timer, just finishing it — or leaving. */
+function UntimedSessionPanel({ onComplete, onEnd }: { onComplete: () => void; onEnd: () => void }) {
+  const colors = useColors();
+  const t = useTranslation();
+  const rtl = useRtlText();
+  return (
+    <View className="glass items-center gap-3 rounded-[22px] p-4">
+      <Text className="self-stretch text-center font-grotesk-medium text-[13px] leading-5 text-ink-charcoal-muted" style={rtl}>
+        {t.session.noTimer}
+      </Text>
+      <AnimatedPressable
+        onPress={onComplete}
+        accessibilityRole="button"
+        className="flex-row items-center justify-center gap-2 self-stretch rounded-[16px] px-2.5 py-3.5"
+        style={[{ backgroundColor: colors.success[500] }, gradients.success, COMPLETE_GLOW]}
+      >
+        <Feather name="check" size={16} color={colors.onAccent} />
+        <Text className="shrink font-grotesk-bold text-sm text-on-accent">{t.session.complete}</Text>
+      </AnimatedPressable>
+      <AnimatedPressable
+        onPress={onEnd}
+        accessibilityRole="button"
+        className="flex-row items-center justify-center gap-2 self-stretch rounded-full border border-white/15 px-2.5 py-2.5"
+      >
+        <Feather name="x" size={14} color={colors.ink.charcoalMuted} />
+        <Text className="shrink font-grotesk-semibold text-sm text-ink-charcoal-muted">{t.session.endSession}</Text>
+      </AnimatedPressable>
+    </View>
+  );
+}
+
+/** The running clock of a session with a length. */
+function TimedSessionPanel({
   session,
   onComplete,
   onCancel,
@@ -316,9 +370,12 @@ export function NextTaskCard({
   const reduceMotion = useReducedMotion();
   const due = getDueInfo(task);
   const isOverdue = due.tone === "overdue";
-  const plannedMinutes = task.estimatedMinutes > 0 ? task.estimatedMinutes : FALLBACK_SESSION_MINUTES;
+  // The session's length: the task's own. A task with no duration gets a
+  // session with no timer (SessionPanel).
+  const plannedMinutes = Math.max(0, task.estimatedMinutes || 0);
   const completeStep = useTaskStore((state) => state.completeStep);
   const completeTask = useTaskStore((state) => state.completeTask);
+  const setSteps = useTaskStore((state) => state.setSteps);
   const leaveSession = useSessionStore((state) => state.leave);
 
   // A session runs inside the card of the task it is for, so the timer stays
@@ -333,8 +390,16 @@ export function NextTaskCard({
 
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [breakdownMounted, setBreakdownMounted] = useState(false);
+  // Bumped each time the sheet opens, so it always starts a fresh draft from
+  // the task — even when reopened while the last one is still sliding away.
+  const [breakdownKey, setBreakdownKey] = useState(0);
+  const [breakdownAutoGenerate, setBreakdownAutoGenerate] = useState(false);
   const [breakdownClosingTask, setBreakdownClosingTask] = useState<Task | null>(null);
   const breakdownCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The session's Add context sheet — mounted while open and as it slides away.
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextMounted, setContextMounted] = useState(false);
+  const contextCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Which task is being celebrated, rather than a plain flag: the stack keeps
   // a fixed set of cards mounted and rotates the tasks through them, so a card
   // can be handed a different task mid-celebration. The overlay belongs to the
@@ -350,11 +415,33 @@ export function NextTaskCard({
   // celebration was wasted work, right when the phone had the least to spare.
   const [heldSession, setHeldSession] = useState(liveSession);
   if (liveSession && liveSession !== heldSession) setHeldSession(liveSession);
-  const runningSession = liveSession ?? (focusMode && celebrating ? heldSession : undefined);
+  // The session itself — clock, steps, AI helpers — only ever shows in focus
+  // mode, full screen. In the stack, a running session is just a way back
+  // into it (Resume session): drawing the whole session in the card made it
+  // grow very long, e.g. after the app was closed mid-session and reopened
+  // (the session is saved, the full-screen view isn't).
+  const runningSession = focusMode ? (liveSession ?? (celebrating ? heldSession : undefined)) : undefined;
 
   useEffect(() => () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
+    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
   }, []);
+
+  const handleOpenContext = () => {
+    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
+    contextCloseTimer.current = null;
+    setContextMounted(true);
+    setContextOpen(true);
+  };
+
+  const handleCloseContext = () => {
+    setContextOpen(false);
+    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
+    contextCloseTimer.current = setTimeout(() => {
+      setContextMounted(false);
+      contextCloseTimer.current = null;
+    }, MOTION.duration.screen + 30);
+  };
 
   const closeBreakdown = () => {
     if (!breakdownMounted) {
@@ -449,8 +536,7 @@ export function NextTaskCard({
   };
 
   // Ticking the last open step finishes the whole task (see completeStep), so
-  // that tap gets the same send-off as the Complete button. Ticked from inside the
-  // AI Breakdown sheet, the sheet gets out of the way so the card can show it.
+  // that tap gets the same send-off as the Complete button.
   const handleToggleStep = (stepId: string) => {
     if (pendingCelebrationTaskIds.current.has(task.id)) return;
     // Read fresh: the checklist hands its ticks over a moment after the tap,
@@ -463,7 +549,6 @@ export function NextTaskCard({
       completeStep(task.id, stepId);
       return;
     }
-    closeBreakdown();
     celebrate(() => completeStep(task.id, stepId));
   };
 
@@ -476,9 +561,9 @@ export function NextTaskCard({
     ]);
   };
 
-  const { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown } = useTaskAiAssist(
+  const { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown, cancelBreakdown } = useTaskAiAssist(
     task,
-    plannedMinutes,
+    plannedMinutes > 0 ? plannedMinutes : undefined,
   );
   const adviceShown = advice.status !== "idle";
 
@@ -495,12 +580,27 @@ export function NextTaskCard({
   const handleOpenBreakdown = () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
     breakdownCloseTimer.current = null;
+    // No steps left to do — the sheet has the AI draft some right away.
+    setBreakdownAutoGenerate(!(task.subtasks ?? []).some((subtask) => subtask.status !== "completed"));
+    setBreakdownKey((key) => key + 1);
     setBreakdownMounted(true);
     setBreakdownClosingTask(null);
     setBreakdownOpen(true);
-    // No steps yet — have the AI draft them right away.
-    const hasUnfinishedSteps = (task.subtasks ?? []).some((subtask) => subtask.status !== "completed");
-    if (!hasUnfinishedSteps && breakdownStatus !== "loading") regenerateBreakdown();
+  };
+
+  // ✕, the scrim or Back: the draft is dropped, and so is a request still on its way.
+  const handleDiscardBreakdown = () => {
+    cancelBreakdown();
+    closeBreakdown();
+  };
+
+  // "Confirm these steps": only now does anything reach the task. With every
+  // step ticked that finishes it, so it gets the same send-off as Complete.
+  const handleConfirmBreakdown = (steps: StepDraft[]) => {
+    const finishes = steps.length > 0 && steps.every((step) => step.completed);
+    closeBreakdown();
+    if (finishes) celebrate(() => setSteps(task.id, steps));
+    else setSteps(task.id, steps);
   };
 
   const handleStart = () => {
@@ -642,7 +742,7 @@ export function NextTaskCard({
               }
             >
               <Ionicons name="time-outline" size={14} color={focusMode ? colors.ink.charcoalMuted : colors.ink.charcoal} />
-              <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">{formatDuration(plannedMinutes)}</Text>
+              <Text className="font-grotesk-semibold text-[13px] text-ink-charcoal">{formatTaskLength(plannedMinutes)}</Text>
             </View>
           </View>
 
@@ -677,7 +777,12 @@ export function NextTaskCard({
         >
           {runningSession ? (
             <>
-              <SessionPanel session={runningSession} onComplete={handleComplete} onCancel={handleCancelSession} />
+              <SessionPanel
+                session={runningSession}
+                onComplete={handleComplete}
+                onCancel={handleCancelSession}
+                onEnd={leaveSession}
+              />
 
               {/* The AI helpers belong to the session: breaking the task down
                   and asking how to go about it are for when you're doing it.
@@ -707,25 +812,22 @@ export function NextTaskCard({
                   <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.getAdvice}</Text>
                 </AnimatedPressable>
               </View>
+              {/* Show Nexdo what you're working on — a photo of the
+                  instructions, a document, a note — and it updates the
+                  steps above and its advice. */}
+              <AnimatedPressable
+                onPress={handleOpenContext}
+                accessibilityRole="button"
+                className="glass min-h-[40px] flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
+              >
+                <Ionicons name="attach" size={17} color={colors.ink.charcoal} />
+                <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.session.addContext}</Text>
+              </AnimatedPressable>
             </>
           ) : (
             <>
               <View ref={startButtonRef} collapsable={false}>
-                <AnimatedPressable
-                  onPress={handleStart}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.next.startSessionFor(formatDuration(plannedMinutes))}
-                  style={gradients.accent}
-                  className="glow-accent min-h-[44px] flex-row items-center justify-center gap-3 rounded-[16px] bg-orange-500 px-4 py-1.5"
-                >
-                  <View className="h-[28px] w-[28px] items-center justify-center rounded-full bg-white" style={PLAY_SHADOW}>
-                    {/* Nudged right: a triangle's visual centre sits left of its box. */}
-                    <Ionicons name="play" size={13} color={colors.orange[500]} style={{ marginLeft: 2 }} />
-                  </View>
-                  <Text style={rtl} className="font-grotesk-bold text-[15px] text-on-accent">
-                    {t.next.startSessionLabel}
-                  </Text>
-                </AnimatedPressable>
+                <StartSessionButton minutes={plannedMinutes} runningSession={liveSession} onPress={handleStart} />
               </View>
 
               {/* Already done, or done without the timer: finish it right here.
@@ -788,16 +890,20 @@ export function NextTaskCard({
 
       {celebrating ? <CompletedOverlay title={task.title} origin={celebrationOrigin} /> : null}
 
+      {contextMounted && focusMode ? <ContextSheet visible={contextOpen} task={task} onClose={handleCloseContext} /> : null}
+
       {/* Mounted only while open — a Modal per card is expensive, and these
           cards are re-rendered on every swipe. */}
       {breakdownMounted && !preview ? (
         <BreakdownSheet
+          key={breakdownKey}
           visible={breakdownOpen}
           task={breakdownOpen ? task : breakdownClosingTask ?? task}
           status={breakdownStatus}
-          onRegenerate={regenerateBreakdown}
-          onToggleStep={handleToggleStep}
-          onClose={closeBreakdown}
+          autoGenerate={breakdownAutoGenerate}
+          onGenerate={regenerateBreakdown}
+          onConfirm={handleConfirmBreakdown}
+          onClose={handleDiscardBreakdown}
         />
       ) : null}
     </Animated.View>

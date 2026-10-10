@@ -72,9 +72,7 @@ export const ar: Translations = {
   tabs: {
     next: "اليوم",
     tasks: "المهام",
-    inbox: "المساعد",
     settings: "الإعدادات",
-    addTask: "إضافة مهمة",
   },
 
   format: {
@@ -89,6 +87,7 @@ export const ar: Translations = {
       if (hours === 0) return `${mins} د`;
       return mins === 0 ? `${hours} س` : `${hours} س ${mins} د`;
     },
+    noDuration: "بلا مدة",
     taskCount: (count: number) => counted(count, "مهمة", "مهام", "مهمتان"),
     scopedTaskCount: (count, scope) => {
       const label = counted(count, "مهمة", "مهام", "مهمتان");
@@ -125,9 +124,6 @@ export const ar: Translations = {
     allCaughtUpBody: "أنجزت كل ما في قائمتك. أضف مهمة جديدة للمتابعة.",
     addATask: "أضف مهمة",
     scoreLabel: "الدرجة: ",
-    timeFilter: (duration: string) => `يناسب ${duration}`,
-    timeFilterEmpty: (duration: string) => `لا شيء يناسب ${duration}`,
-    timeFilterClear: "عرض الكل",
     custom: "مدة أخرى...",
     minutesPlaceholder: "الدقائق، مثلاً 50",
     minutesUnit: "دقيقة",
@@ -141,6 +137,7 @@ export const ar: Translations = {
     previous: "السابقة",
     nextCard: "التالية",
     startSessionLabel: "ابدأ الجلسة",
+    resumeSession: "العودة إلى الجلسة",
     breakDown: "تقسيم",
     getAdvice: "اطلب نصيحة",
     markComplete: "تحديد كمكتملة",
@@ -157,15 +154,20 @@ export const ar: Translations = {
     today: "اليوم",
     tasksLeft: (count: number) => `المتبقي: ${tasksSubject(count)}`,
     doneOfTotal: (done: number, total: number) => `أُنجز ${done} من ${total}`,
-    workLeft: (duration: string) => `نحو ${duration} من العمل المتبقي`,
   },
 
   schedule: {
     title: "الجدول",
     summary: (count: number, duration: string) => `المستحق: ${tasksSubject(count)} · ${duration}`,
+    summaryCount: (count: number) => `المستحق: ${tasksSubject(count)}`,
+    week: "أسبوع",
+    year: "سنة",
     previousWeek: "الأسبوع السابق",
     nextWeek: "الأسبوع التالي",
     thisWeek: "العودة إلى هذا الأسبوع",
+    previousYear: "السنة السابقة",
+    nextYear: "السنة التالية",
+    thisYear: "العودة إلى هذه السنة",
     today: "اليوم",
     stepOf: (step: number, total: number, label: string) => `الخطوة ${step} من ${total}: ${label}`,
     nothingDue: "لا شيء مستحق في هذا اليوم",
@@ -204,6 +206,9 @@ export const ar: Translations = {
     hideAdvice: "إخفاء النصيحة",
     takeAdvice: "اطلب نصيحة الذكاء الاصطناعي",
     stuck: "أنا متعثر",
+    noTimer: "لا مؤقّت لهذه المهمة — اضغط إكمال عند إنجازها.",
+    addContext: "إضافة سياق",
+    contextIntro: "أرِ Nexdo ما تعمل عليه — صورة للتعليمات أو مستندًا أو ملاحظة. سيحدّث خطوات هذه المهمة ونصيحتها.",
   },
 
   breakdown: {
@@ -218,17 +223,6 @@ export const ar: Translations = {
     confirm: "تأكيد هذه الخطوات",
   },
 
-  stuck: {
-    title: "ما الذي يعيقك؟",
-    reasons: {
-      tooBig: "أكبر من أن أبدأ بها",
-      missing: "ينقصني شيء أحتاجه",
-      noFocus: "لا أستطيع التركيز عليها الآن",
-    },
-    parkNote: "سنؤجلها بضع ساعات وننقلك إلى المهمة التالية.",
-    talkToAi: "تحدّث عنها مع الذكاء الاصطناعي",
-  },
-
   tasks: {
     title: "المهام",
     addTask: "أضف مهمة",
@@ -240,7 +234,7 @@ export const ar: Translations = {
     showingSuffix: (shown: number, total: number) => ` من أصل ${total} مهمة`,
     emptyTitle: "لا توجد مهام",
     emptyBody: "جرّب عامل تصفية آخر أو كلمة بحث مختلفة.",
-    status: { all: "الكل", pending: "قيد الانتظار", completed: "مكتملة", overdue: "متأخرة", archived: "مؤرشفة" },
+    status: { all: "الكل", pending: "قيد الانتظار", completed: "مكتملة", overdue: "متأخرة", noDeadline: "بلا موعد", archived: "مؤرشفة" },
     sort: { recent: "الأحدث إضافة", dueDate: "موعد الاستحقاق", priority: "درجة الأولوية" },
     score: (score: number) => `الدرجة: ${score}`,
   },
@@ -270,7 +264,6 @@ export const ar: Translations = {
     repeatEyebrow: "التكرار",
     setRepeat: "اجعلها تتكرر",
     editRepeat: "تغيير",
-    saveRepeat: "حفظ التكرار",
     stopRepeating: "إيقاف التكرار",
     stopRepeatingTitle: "إيقاف التكرار؟",
     stopRepeatingBody: "تبقى المهمة في قائمتك كمهمة لمرة واحدة. لن تُنشأ تكرارات جديدة، وتبقى السابقة محفوظة.",
@@ -326,6 +319,34 @@ export const ar: Translations = {
     planLeft: (steps: number, duration: string) => `${counted(steps, "خطوة", "خطوات", "خطوتان")} متبقية · ${duration}`,
     today: "اليوم",
     tomorrow: "غدًا",
+    switchSessionTitle: "تبديل الجلسة؟",
+    switchSessionBody: "هناك جلسة جارية على مهمة أخرى. بدء هذه الجلسة ينهيها، ولن يُحفظ مؤقّتها.",
+    switchSession: "ابدأ هذه",
+    stepsLeft: (steps: number) => `${counted(steps, "خطوة", "خطوات", "خطوتان")} متبقية`,
+    attach: {
+      addPhoto: "إضافة صورة",
+      takePhoto: "التقاط صورة",
+      addDocument: "إضافة ملف",
+      photo: "صورتك",
+      document: "مستندك",
+      hint: "يقرؤه Nexdo ويحدّث المهمة. لا يُحتفظ بالملف نفسه.",
+      notePlaceholder: "هل هناك ما يجب أن يعرفه Nexdo عنه؟ (اختياري)",
+      remove: "إزالة الملف",
+      tooBig: "هذا الملف كبير جدًا. يقرأ Nexdo ملفات حتى 6 ميغابايت.",
+      unsupported: "يستطيع Nexdo قراءة الصور وملفات PDF والملفات النصية.",
+      pickFailed: "تعذّر فتح هذا الملف. أعد المحاولة.",
+      /** The camera was refused, now or before. */
+      cameraDenied: "يحتاج نكسدو إلى الكاميرا لالتقاط صورة. يمكنك السماح بذلك من إعدادات هاتفك.",
+      readingPhoto: "يقرأ Nexdo صورتك…",
+      readingDocument: "يقرأ Nexdo مستندك…",
+      readFailed: "تعذّر على Nexdo قراءة هذا الملف. لم يتغير شيء.",
+      emptyPhoto: "لم يجد Nexdo ما يمكن قراءته في هذه الصورة. جرّب صورة أوضح.",
+      emptyDocument: "لم يجد Nexdo ما يمكن قراءته في هذا الملف.",
+      fromPhoto: "من صورة",
+      fromDocument: "من مستند",
+      showMore: "عرض المزيد",
+      showLess: "عرض أقل",
+    },
   },
 
   form: {
@@ -345,19 +366,16 @@ export const ar: Translations = {
     changeDate: "تغيير",
     priority: "مستوى الأولوية",
     priorities: { high: "أولوية عالية", medium: "أولوية متوسطة", low: "أولوية منخفضة" },
+    optional: "اختياري",
     planSteps: "خطوات الخطة",
-    optionalPlan: "خطة خطوات اختيارية",
     stepPlaceholder: "مثلاً: الخطوة 1: كتابة المقدمة",
-    notesTitle: "ملاحظات وسياق (اختياري)",
+    notesTitle: "ملاحظات وسياق",
     notesPlaceholder: "أضف المتطلبات الأساسية أو التعليمات أو الروابط...",
-    openAiChat: "افتح محادثة الذكاء الاصطناعي بدلاً من ذلك",
     addTask: "أضف المهمة",
     deadlines: {
       today: "اليوم",
       tomorrow: "غدًا",
       friday: "الجمعة القادمة",
-      weekend: "عطلة نهاية الأسبوع",
-      nextWeek: "الأسبوع القادم",
       none: "بلا موعد",
     },
     durationOptions: {
@@ -368,88 +386,31 @@ export const ar: Translations = {
       90: "ساعة ونصف",
       120: "ساعتان",
       180: "3 ساعات+",
+      0: "بلا مدة",
     },
     editEyebrow: "تعديل المهمة",
     editTitlePlaceholder: "عنوان المهمة",
     editCurrentDeadline: (label: string) => `الموعد الحالي: ${label}`,
     deadlineRemoved: "سيُحذف الموعد النهائي.",
     newDeadline: (label: string) => `الموعد الجديد: ${label}`,
-    saveChanges: "حفظ التغييرات",
     addTime: "إضافة وقت",
     removeTime: "بلا وقت محدد",
   },
 
   chat: {
-    welcome:
-      "أهلاً بك في مساعد نكسدو. أفرغ هنا أفكارك ومهامك وملاحظاتك الصوتية وصورك. يمكنك أيضًا إدارة نظامك بالكامل من هنا — أخبرني بوضعك («لدي 30 دقيقة فقط» أو «لن أتمكن من إنهاء المشروع في عطلة نهاية الأسبوع» أو «موعد طبيب الأسنان أهم») وسأعدّل خطتك.",
-    inboxTitle: "مساعد نكسدو",
-    contextSubtitle: "اطلب مني تحليل هذه المهمة أو تعديلها أو تحديثها.",
-    activeTasksSuffix: " مهمة نشطة في قائمتك",
-    typing: "يكتب…",
-    addAll: (count: number) => `أضف ${counted(count, "المهمة", "المهام", "المهمتين")} كلها`,
-    foundTasks: (count: number) => `تم العثور على ${tasksObject(count)}`,
-    yesDoIt: "نعم، تفضّل",
-    openNext: (minutes: number) => `افتح «اليوم» (${minutes} دقيقة)`,
-    starterSuggestions: {
-      "capacity-20": "لدي 20 دقيقة فقط الآن",
-      "whats-next": "ما الذي يجب أن أفعله تاليًا؟",
-      "reschedule-overdue": "أعد جدولة كل ما هو متأخر",
-      "brain-dump": "يجب أن أنهي مقال التاريخ قبل الجمعة وأتصل بطبيب الأسنان غدًا",
-    },
-    quickActions: {
-      "whats-next": "إضافة",
-      "breakdown-top": "إتمام",
-      "quick-win": "حذف",
-      "overdue-catchup": "تعديل",
-      "break-down": "تقسيم",
-      prioritize: "ترتيب الأولويات",
-    },
     attachmentReplies: {
-      photo: "لم أجد شيئًا مقروءًا في هذه الصورة — جرّب صورة أوضح، أو اكتبها بدلاً من ذلك.",
       voice: "لم ألتقط هذا التسجيل جيدًا — أعد المحاولة في مكان أهدأ، أو اكتبها بدلاً من ذلك.",
-      document: "لم أتمكن من استخراج أي نص من هذا الملف — جرّب ملفًا آخر، أو اكتبها بدلاً من ذلك.",
     },
-    attachmentReadFailed: "حدث خطأ أثناء قراءة هذا الملف — أعد إرساله بعد قليل.",
     couldntCatch: "لم أفهم ذلك",
     couldntTranscribe: "تعذّر التفريغ النصي",
-    uploadFailedTitle: "تعذّر إرفاق ذلك",
-    uploadFailedBody:
-      "تعذّر رفع ملفاتك، لذلك لم يُرسَل شيء. ما زالت في صندوق الكتابة — تحقّق من اتصالك وأعد المحاولة.",
-    uploadPartialBody: (failed: number) =>
-      `تعذّر رفع ${counted(failed, "ملف", "ملفات", "ملفين")}، لذلك استُبعدت من هذه الرسالة.`,
-    complexity: { simple: "بسيطة", medium: "متوسطة", complex: "معقدة" },
-    taskRead: (title: string, complexity: string, advice: string) =>
-      `إليك قراءتي لـ «${title}» — إنها مهمة ${complexity}. ${advice}`,
-    titlePlaceholder: "عنوان المهمة",
-    minutesPlaceholder: "الدقائق",
-    doneEditing: "انتهيت من التعديل",
-    editDetails: "تعديل تفاصيل المهمة",
-    dismiss: "تجاهل",
-    addTask: "أضف المهمة",
-    recordVoice: "تسجيل ملاحظة صوتية",
-    stopRecording: "إيقاف التسجيل",
-    takePhoto: "التقاط صورة",
-    attachDocument: "إرفاق مستند",
-    recording: (duration: string) => `جارٍ التسجيل… ${duration}`,
-    transcribing: "جارٍ التفريغ النصي…",
-    inputPlaceholder: "اكتب مهامك أو أملِها أو صوّرها...",
-    attachmentPlaceholder: "أضف تعليمات (اختياري)...",
-    removeAttachment: "إزالة المرفق",
-    documentLabel: "مستند",
-    send: "إرسال الرسالة",
     micPermissionTitle: "مطلوب الوصول إلى الميكروفون",
     micPermissionBody: "يحتاج نكسدو إلى الميكروفون لتسجيل الملاحظات الصوتية. يمكنك السماح بذلك من الإعدادات.",
-    cameraPermissionTitle: "مطلوب الوصول إلى الكاميرا",
-    cameraPermissionBody: "يحتاج نكسدو إلى الكاميرا لالتقاط الصور. يمكنك السماح بذلك من الإعدادات.",
     voiceNoteLabel: (duration: string) => `ملاحظة صوتية (${duration})`,
-    photoLabel: "صورة مرفقة",
-    viewPhoto: "عرض الصورة بملء الشاشة",
-    videoNotSupportedTitle: "الفيديو غير مدعوم",
-    videoNotSupportedBody: "يقرأ نكسدو الصور والملاحظات الصوتية والمستندات. أرسل صورة أو ملفاً بدلاً من ذلك.",
   },
 
   live: {
     open: "تحدّث لإضافة المهام أو تعديلها",
+    openLocked: "الميكروفون السحري — ضمن نكسدو برو",
     title: "الميكروفون السحري",
     connecting: "جارٍ الاتصال…",
     listening: (clock: string) => `أستمع · ${clock}`,
@@ -483,19 +444,15 @@ export const ar: Translations = {
       },
       tasks: {
         title: "كل مهامك",
-        body: "كل ما عليك في قائمة واحدة. اضغط على مهمة لتعديلها، وعلّمها عند إنجازها.",
-      },
-      add: {
-        title: "أضف مهمة",
-        body: "اضغط + لإضافة مهمة، وسيجد لها نكسدو مكانها في خطتك.",
+        body: "كل ما عليك في قائمة واحدة. زر «أضف مهمة» يضيف مهمة يدويًا؛ اضغط على مهمة لتعديلها، وعلّمها عند إنجازها.",
       },
       voice: {
         title: "الميكروفون السحري",
         body: "اضغط على الميكروفون وتحدّث فقط — يضيف نكسدو المهام ويعدّلها أثناء كلامك.",
       },
-      assistant: {
-        title: "فقط أخبر نكسدو",
-        body: "اكتب أو تحدّث أو أرسل صورة. يحوّلها المساعد إلى مهام ويعدّل خطتك عندما تتغيّر الأمور.",
+      voiceLocked: {
+        title: "الميكروفون السحري",
+        body: "اضغط على الميكروفون وتحدّث فقط — يضيف نكسدو المهام ويعدّلها أثناء كلامك. ضمن نكسدو برو.",
       },
     },
   },
@@ -530,6 +487,8 @@ export const ar: Translations = {
     noTaskFound: "لم أجد مهمة في ذلك — جرّب أن تسمّي ما تريد فعله، مثل «تنظيف المنزل غدًا».",
     adviceDoNow: (label: string, duration: string) => `افعل هذا الآن: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `ابدأ فحسب — «${title}» تستغرق حوالي ${duration}.`,
+    adviceKeepUp: (title: string) => `واصل «${title}» طوال اليوم، وضع علامة عليها عند إنجازها.`,
+    adviceStartWith: (label: string) => `افعل هذا الآن: ${label}.`,
     urgencyHigh: "هذه من أكثر مهامك إلحاحًا",
     urgencyMedium: "من الجدير الشروع فيها قريبًا",
     urgencyLow: "لا داعي للعجلة، لكنها على قائمتك",
@@ -644,7 +603,6 @@ export const ar: Translations = {
   settings: {
     title: "الإعدادات",
     subtitle: "خصّص تجربتك",
-    preferences: "تفضيلات نكسدو",
 
     account: "الحساب",
     signOut: "تسجيل الخروج",
@@ -656,7 +614,7 @@ export const ar: Translations = {
       `${count === 1 ? "مهمة واحدة لم تصل" : `${count} مهام لم تصل`} إلى حسابك بعد — تحقّق من اتصالك. إذا سجّلت الخروج الآن فستبقى آمنة على هذا الهاتف وتُحفظ عند تسجيل دخولك التالي هنا، لكنها لن تظهر على أجهزتك الأخرى حتى ذلك الحين.`,
     signOutAnyway: "تسجيل الخروج على أي حال",
 
-    pro: "نكسدو برو",
+    plan: "خطتك",
     upgrade: "الترقية إلى نكسدو برو",
     upgradeBody: "شهريًا أو سنويًا — يمكنك الإلغاء في أي وقت.",
     restorePurchases: "استعادة المشتريات",
@@ -670,18 +628,6 @@ export const ar: Translations = {
     proActive: "نكسدو برو مفعّل.",
     proRenews: (date: string) => `نكسدو برو · يتجدّد في ${date}`,
     proEnds: (date: string) => `نكسدو برو · ينتهي في ${date}`,
-
-    aiChat: "صندوق الذكاء الاصطناعي",
-    autoMode: "الوضع التلقائي",
-    autoModeBody: "إضافة المهام وتحديثها فورًا، دون أن أطلب منك التأكيد أولاً.",
-    voiceButton: "الميكروفون السحري",
-    voiceButtonBody: "تحدّث لإضافة المهام وتعديلها: يصبح الزر الأوسط في شريط التنقل ميكروفونًا، بدلًا من فتح نموذج إضافة مهمة. ضمن نكسدو برو.",
-    clearHistory: "مسح سجل المحادثة",
-    clearConfirmTitle: "مسح سجل المحادثة؟",
-    clearConfirmBody: "سيؤدي هذا إلى حذف كل رسائل محادثة الذكاء الاصطناعي. لن تتأثر مهامك.",
-    clear: "مسح",
-    historyCleared: "تم مسح سجل المحادثة.",
-    historyClearFailed: "تم المسح على هذا الجهاز، لكن تعذّر مسح النسخة المتزامنة. أعد المحاولة.",
 
     notifications: "الإشعارات",
     dailyNudge: "تخطيط اليوم",
@@ -703,8 +649,6 @@ export const ar: Translations = {
     importantReminderBody: "في اليوم السابق، في وقت التذكير.",
     notificationsDenied: "إشعارات Nexdo متوقفة في إعدادات الهاتف، لذلك لا يمكن أن يصل أي تذكير.",
 
-    appearance: "المظهر",
-    theme: "السمة",
     language: "اللغة",
 
     support: "المساعدة والدعم",
@@ -721,7 +665,7 @@ export const ar: Translations = {
 
   plan: {
     meters: {
-      chat: "رسائل محادثة الذكاء الاصطناعي",
+      chat: "ملاحظات السياق للذكاء الاصطناعي",
       media: "الصور والمستندات",
       voice: "الملاحظات الصوتية",
       live: "الميكروفون السحري",
@@ -729,7 +673,7 @@ export const ar: Translations = {
     },
     minutes: (count: number) => `${count} د`,
     used: {
-      chat: "استخدمت رسائل محادثة الذكاء الاصطناعي لهذا الشهر.",
+      chat: "استخدمت ملاحظات السياق للذكاء الاصطناعي لهذا الشهر.",
       media: "استخدمت الصور والمستندات المتاحة لهذا الشهر.",
       voice: "استخدمت دقائق الملاحظات الصوتية لهذا الشهر.",
       live: "استخدمت دقائق الميكروفون السحري لهذا الشهر.",
@@ -867,7 +811,7 @@ export const ar: Translations = {
     deleteAccount: "حذف الحساب",
     deleteTitle: "حذف حسابك؟",
     deleteBody:
-      "سيحذف هذا نهائيًا حساب نكسدو وكل ما فيه — كل مهمة ومحادثة وإعداد، على كل أجهزتك. لا يمكن التراجع عن ذلك.",
+      "سيحذف هذا نهائيًا حساب نكسدو وكل ما فيه — كل مهمة وإعداد، على كل أجهزتك. لا يمكن التراجع عن ذلك.",
     deleteProNote:
       "حذف حسابك لا يلغي اشتراك نكسدو برو. ألغِه أولًا من اشتراكاتك في App Store أو Google Play، وإلا فسيستمر في التجدّد.",
     deleteConfirm: "حذف الحساب",
@@ -895,9 +839,6 @@ export const ar: Translations = {
     plan: "في خطتك",
     priority: { high: "عالية", medium: "متوسطة", low: "منخفضة" },
     dragHandle: "اسحب لترتيب مهامك",
-    ideas: ["دفع الإيجار", "مراجعة الامتحان", "الاتصال بأمي", "النادي الرياضي", "موعد طبيب الأسنان"],
-    dueToday: "اليوم",
-    dueLater: "هذا الأسبوع",
   },
 
   onboardingGoals: {
@@ -992,7 +933,7 @@ export const ar: Translations = {
     body: "الخطة المجانية تغطّي الأساسيات، أما برو فيمنح ذكاء نكسدو مساحة أكبر بكثير، كل شهر:",
     bestValue: (percent: number) => `القيمة الأفضل · وفّر ${percent}%`,
     features: {
-      chat: (count: number) => `${count} من رسائل محادثة الذكاء الاصطناعي`,
+      chat: (count: number) => `${count} من ملاحظات السياق للذكاء الاصطناعي`,
       media: (count: number) => `${count} من الصور والمستندات`,
       voice: (minutes: number) => `${minutes} دقيقة من الملاحظات الصوتية`,
       live: (minutes: number) => `${minutes} دقيقة من الميكروفون السحري`,
@@ -1006,8 +947,8 @@ export const ar: Translations = {
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
     logIn: "تسجيل الدخول",
-    usePassword: "تسجيل الدخول بكلمة المرور بدلاً من ذلك",
-    useCode: "أرسل لي رمزًا بالبريد الإلكتروني بدلاً من ذلك",
+    continue: "متابعة",
+    useCode: "استخدم رمز البريد الإلكتروني بدلاً من ذلك",
     continueWithEmail: "أو تابع بالبريد الإلكتروني",
     noAccount: "ليس لديك حساب؟",
     signUp: "إنشاء حساب",

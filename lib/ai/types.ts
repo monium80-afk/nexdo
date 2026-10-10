@@ -47,9 +47,9 @@ export type StructuredAction =
   // Every change to tasks that already exist — one task or many, edit,
   // complete, reopen or delete — as one validated operation (see
   // lib/taskOperations.ts). Which tasks it reaches is resolved on-device
-  // against the whole list, and the chat decides whether to ask first from
-  // how many that is (see useChatStore): a wrong model output can never skip
-  // a confirmation a bulk change needs.
+  // against the whole list, and the confirmation tier comes from how many
+  // that is, never from the model. (Only the AI chat, removed 2026-10-08,
+  // asked on it; Magic mic acts at once and offers undo.)
   | { type: "OPERATE"; operation: TaskOperation; confirmationTier: ConfirmationTier }
   // "Show me what I finished this week" — listed by the app from the full
   // list, so it isn't limited to the tasks the model was shown.

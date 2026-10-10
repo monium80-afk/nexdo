@@ -23,7 +23,6 @@ import { SetupProgressBar } from "@/components/SetupProgressBar";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
 import { gradients } from "@/constants/theme";
-import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -75,7 +74,6 @@ export default function SignUp() {
   const rtl = useRtlText();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const enterStyle = useScreenEnterAnimation();
   // Fixed for the life of the screen, like the Plan step: the order and the
   // due labels both read "now".
   const [now] = useState(() => new Date());
@@ -121,9 +119,9 @@ export default function SignUp() {
   };
 
   const handleSignUp = async () => {
-    if (!email || !password) return;
+    if (!email.trim() || !password) return;
     setSendCodeError(null);
-    const { error } = await signUp.password({ emailAddress: email, password });
+    const { error } = await signUp.password({ emailAddress: email.trim(), password });
     if (error) {
       // A problem with the address or password shows under that field
       // (below); anything else — the bot check, no connection, too many
@@ -185,7 +183,7 @@ export default function SignUp() {
               through the flow. */}
           <SetupProgressBar percent={97} />
 
-          <Animated.View style={enterStyle}>
+          <Animated.View>
             <View className="mt-8 gap-3">
               <Text className="text-title text-ink-cream" style={rtl}>
                 {hasPlan ? t.auth.signUpTitle : t.auth.signUpTitleNoPlan}

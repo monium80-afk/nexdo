@@ -66,18 +66,32 @@ export function BottomSheet({
   }));
 
   return (
-    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+    // Drawn under the phone's own bars on Android too, as the app is: the
+    // sheet's foot pads itself clear of the navigation bar (insets.bottom
+    // below), which only adds up if the modal really runs to the screen's edge.
+    <Modal
+      visible={mounted}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       {/* Lets a sheet with a text field rise above the keyboard on iOS. */}
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }, scrimStyle]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable className="flex-1 justify-end" onPress={onClose}>
             <Animated.View style={[{ maxHeight: "88%" }, panelStyle]}>
               {/* The sheet runs under the phone's own navigation bar (edge to
-                  edge), so its foot is kept at least that bar's height clear. */}
+                  edge), so its foot is kept at least that bar's height clear.
+                  It shrinks to the 88% above it, so a long list inside (one
+                  with flexShrink, like AI Breakdown's steps) scrolls instead
+                  of pushing the sheet's last button off the bottom of the
+                  screen, behind the navigation bar. */}
               <Pressable
                 onPress={() => {}}
                 className={`card--cream-elevated rounded-t-[30px] p-6 pt-[8px] ${panelClassName}`}
-                style={{ paddingBottom: Math.max(35, insets.bottom + 21) }}
+                style={{ flexShrink: 1, paddingBottom: Math.max(35, insets.bottom + 21) }}
               >
                 {/* The grab handle: says "this slid up, and slides back down".
                     8 + 5 + 8 = the sheet's old 21dp of top padding. */}

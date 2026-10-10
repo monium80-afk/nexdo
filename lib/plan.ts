@@ -19,8 +19,10 @@ export const PLAN_HEADER = "X-Nexdo-Plan";
 
 /**
  * What a plan counts:
- * - chat: messages to the AI — in the AI chat, and notes under "Add context for AI"
- * - media: photos and documents read
+ * - chat: notes under "Add context for AI" (it also counted AI chat messages,
+ *   until the AI chat was removed on 2026-10-08 — hence the name)
+ * - media: photos and documents read — given as context for a task, which
+ *   then also counts as one note
  * - voice: voice notes transcribed, in seconds
  * - live: Live voice ("Magic mic") listening time, in seconds
  * - assist: task breakdowns and advice, together
@@ -28,6 +30,15 @@ export const PLAN_HEADER = "X-Nexdo-Plan";
 export type Meter = "chat" | "media" | "voice" | "live" | "assist";
 
 export const METERS: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
+
+/**
+ * The allowances the app shows (paywall, onboarding plans, Settings), in that
+ * order. Photos and documents came back on 2026-10-08 as context for a task
+ * (Task Details, a focus session). Voice notes were only ever sent from the
+ * AI chat, so with it gone they aren't offered — the server still counts
+ * them, should a request for them ever arrive.
+ */
+export const SHOWN_METERS: readonly Meter[] = ["live", "assist", "chat", "media"];
 
 const MINUTE = 60;
 

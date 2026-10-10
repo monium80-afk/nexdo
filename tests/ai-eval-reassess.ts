@@ -227,7 +227,7 @@ async function run() {
   let passed = 0;
   for (const testCase of CASES) {
     fakeDb.reset();
-    useSettingsStore.setState({ language: testCase.language ?? "en", aiAutoMode: false });
+    useSettingsStore.setState({ language: testCase.language ?? "en" });
     useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: "eval", ownerId: "eval" });
     useReassessStore.setState({ byTask: {} });
     const before = seed(testCase.task);

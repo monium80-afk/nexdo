@@ -69,7 +69,10 @@ export function useLiveVoice() {
         // and an id the model makes up can't match a real task by accident.
         runner = createLiveToolRunner(new Map(tasks.map((task, index) => [`t${index + 1}`, task.id])));
         return apiPost<LiveSessionResponseBody>("/api/live-session", {
-          tasks: tasks.map((task, index) => ({ ...taskToContext(task, now), id: `t${index + 1}` })),
+          // Without their context notes: the live prompt names each task in
+          // one line and never reads them, and a note can hold a whole
+          // photo's or document's text — 80 of those would outgrow the request.
+          tasks: tasks.map((task, index) => ({ ...taskToContext(task, now), contextNotes: [], id: `t${index + 1}` })),
           today: describeNow(now),
           language: getLanguage(),
         } satisfies LiveSessionRequestBody);

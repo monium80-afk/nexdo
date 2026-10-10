@@ -1,5 +1,8 @@
-export type ChatRole = "ai" | "user";
-
+/**
+ * A file the AI reads — onboarding's spoken brain dump, and a photo or
+ * document given as context for a task (lib/contextFile.ts). Named after the
+ * AI chat it was first built for, which has since been removed.
+ */
 export type ChatAttachment = {
   kind: "photo" | "voice" | "document";
   /**
@@ -14,17 +17,4 @@ export type ChatAttachment = {
   width?: number;
   height?: number;
   durationSeconds?: number;
-};
-
-export type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  /** Only what the user typed — never a file name standing in for an attachment. */
-  text: string;
-  createdAt: string; // ISO 8601
-  /** One message can carry several files (e.g. two photos of the same board). */
-  attachments?: ChatAttachment[];
-  /** Messages saved before multi-attachment support — read via messageAttachments(). */
-  attachment?: ChatAttachment;
-  relatedTaskId?: string; // links a bubble to the task it acted on
 };

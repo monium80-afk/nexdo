@@ -12,6 +12,7 @@ import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { getNotificationPermission } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
+import { productPrice } from "@/lib/price";
 import { billedYearly, loadOnboardingPlans, trialPlanOf, type ProPlans } from "@/lib/purchases";
 import { trialLengthInDays, trialReminderDay } from "@/lib/trialReminder";
 
@@ -133,7 +134,7 @@ export default function OnboardingTrial() {
         icon: "credit-card",
         label: t.onboardingTrial.day(trialDays),
         title: t.onboardingTrial.endTitle,
-        body: t.onboardingTrial.endBody(plan.package.product.priceString, billedYearly(plan, plans)),
+        body: t.onboardingTrial.endBody(productPrice(plan.package.product, t.locale), billedYearly(plan, plans)),
       },
       {
         key: "cancel",

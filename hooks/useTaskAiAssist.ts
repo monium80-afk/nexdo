@@ -2,10 +2,10 @@ import { useRef, useState } from "react";
 
 import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
+import type { PlanStep } from "@/lib/ai/types";
 import { showPlanLimit } from "@/lib/paywall";
 import { PlanLimitError } from "@/lib/plan";
-import { useTaskStore } from "@/store/useTaskStore";
-import type { Task } from "@/types/task";
+import type { StepDraft, Subtask, Task } from "@/types/task";
 
 export type AiRequest<T> =
   | { status: "idle" }
@@ -20,12 +20,11 @@ type BreakdownStatus = "idle" | "loading" | "error";
 /**
  * On-demand AI help for one task in a running session:
  * - advice: temporary UI state, shown under the task title;
- * - breakdown: the AI's steps replace the task's unfinished ones (finished
- *   steps stay checked off), and "Regenerate" asks for a different split.
+ * - breakdown: the AI's steps for the work left, handed back to AI
+ *   Breakdown's sheet as a draft — nothing is saved until the user confirms
+ *   them there. "Regenerate" asks for a different split.
  */
 export function useTaskAiAssist(task: Task, availableMinutes?: number) {
-  const replaceRemainingSteps = useTaskStore((state) => state.replaceRemainingSteps);
-
   // Both pieces of state remember which task they describe, and the hook hands
   // back nothing when that isn't the task on screen. The Next page's stack
   // reuses its mounted cards as you swipe, so a card is handed a different task
@@ -78,31 +77,43 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
     setAdviceState({ taskId: task.id, request: IDLE_ADVICE });
   };
 
-  const regenerateBreakdown = async () => {
+  /**
+   * New steps for the work left, given the sheet's draft — or null when there
+   * are none (failed, out of this month's breakdowns, or replaced by a newer
+   * request). The draft's unfinished steps go along with the request, so the
+   * AI proposes a different split rather than the same one again.
+   */
+  const regenerateBreakdown = async (draft: StepDraft[]): Promise<PlanStep[] | null> => {
     const requestId = ++breakdownRequestId.current;
     const taskId = task.id;
     setBreakdownState({ taskId, status: "loading" });
+    const subtasks: Subtask[] = draft.map((step, order) => ({
+      id: step.id,
+      label: step.label,
+      estimatedMinutes: step.estimatedMinutes,
+      order,
+      status: step.completed ? "completed" : "pending",
+    }));
     try {
-      // The task's current unfinished steps go along with the request, so the
-      // AI proposes a different split rather than the same one again.
-      const steps = await suggestBreakdown(task, { availableMinutes });
-      if (requestId !== breakdownRequestId.current) return;
+      const steps = await suggestBreakdown({ ...task, subtasks }, { availableMinutes });
+      if (requestId !== breakdownRequestId.current) return null;
       if (steps.length === 0) {
         setBreakdownState({ taskId, status: "error" });
-        return;
+        return null;
       }
-      replaceRemainingSteps(taskId, steps);
       setBreakdownState({ taskId, status: "idle" });
+      return steps;
     } catch (error) {
-      if (requestId !== breakdownRequestId.current) return;
+      if (requestId !== breakdownRequestId.current) return null;
       // Out of this month's breakdowns: not a failure to retry.
       if (error instanceof PlanLimitError) {
         setBreakdownState({ taskId, status: "idle" });
         showPlanLimit(error.meter);
-        return;
+        return null;
       }
       console.warn("[useTaskAiAssist] breakdown failed", error);
       setBreakdownState({ taskId, status: "error" });
+      return null;
     }
   };
 

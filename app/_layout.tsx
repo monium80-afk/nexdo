@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/expo";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
 import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -18,6 +19,9 @@ import "../global.css";
 SystemUI.setBackgroundColorAsync(colors.cream[100]);
 SplashScreen.preventAutoHideAsync();
 configureNotifications();
+// The AI chat was removed (2026-10-08). Its conversation was cached on the
+// phone under this key; nothing reads it any more, so it isn't left behind.
+AsyncStorage.removeItem("nexdo-chat").catch(() => {});
 
 // Mobile-first app: on web, RN Web's flex containers stretch full-bleed to
 // fill the browser window, which reads as a desktop site rather than the
@@ -96,13 +100,9 @@ export default function RootLayout() {
               initialRouteName="(tabs)"
               screenOptions={{
                 headerShown: false,
-                // Left as "none": these screens drive their own fade+rise
-                // entrance for exact cross-platform timing — a native push
-                // transition on top of that would double-animate. sign-in,
-                // sign-up and task detail use useScreenEnterAnimation(); the
-                // onboarding steps run a longer down-then-up handoff from
-                // OnboardingLayout, which also needs the push held back until
-                // the outgoing step has faded away.
+                // No transition between pages, anywhere — the user's call
+                // (2026-10-08): a page is simply there. The modals below
+                // inherit it too.
                 animation: "none",
                 contentStyle: { backgroundColor: colors.cream[100] },
               }}
@@ -111,18 +111,16 @@ export default function RootLayout() {
                 name="add"
                 options={{
                   presentation: "modal",
-                  animation: "slide_from_bottom",
                   // Cream, not transparent: a transparent container let the
-                  // dark canvas behind show through during the slide-up.
+                  // dark canvas behind show through.
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
-              {/* Live voice slides up over the Tasks page the same way. */}
+              {/* Live voice opens over the Tasks page the same way. */}
               <Stack.Screen
                 name="live-voice"
                 options={{
                   presentation: "modal",
-                  animation: "slide_from_bottom",
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
@@ -131,7 +129,6 @@ export default function RootLayout() {
                 name="feedback"
                 options={{
                   presentation: "modal",
-                  animation: "slide_from_bottom",
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
@@ -140,7 +137,6 @@ export default function RootLayout() {
                 name="paywall"
                 options={{
                   presentation: "modal",
-                  animation: "slide_from_bottom",
                   contentStyle: { backgroundColor: colors.cream[100] },
                 }}
               />

@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#EFEBDA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -62,8 +62,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Nexdo to access your photos so you can attach them to tasks.",
-          "cameraPermission": "Allow Nexdo to use your camera so you can capture photos for tasks."
+          "photosPermission": "Allow Nexdo to access your photos so you can show Nexdo a photo for a task, set a profile picture or add a screenshot to feedback.",
+          "cameraPermission": "Allow Nexdo to use your camera so you can take a photo of something for a task, like an assignment sheet or a whiteboard."
         }
       ],
       [

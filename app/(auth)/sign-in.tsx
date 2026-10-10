@@ -18,7 +18,6 @@ import { AuthTextField } from "@/components/AuthTextField";
 import { SocialAuthButton } from "@/components/SocialAuthButton";
 import { VerificationModal } from "@/components/VerificationModal";
 import { gradients } from "@/constants/theme";
-import { useScreenEnterAnimation } from "@/hooks/useScreenEnterAnimation";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -33,14 +32,14 @@ export default function SignIn() {
   const rtl = useRtlText();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const enterStyle = useScreenEnterAnimation();
   const { signIn, errors, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
   const [showEmailForm, setShowEmailForm] = useState(false);
-  // An emailed code by default. A password is there for accounts that set one
-  // at sign-up — and for app store reviewers, who can't read a code sent to
-  // the demo account's inbox.
-  const [withPassword, setWithPassword] = useState(false);
+  // Email first. An account with a password is then asked for it — which is
+  // also how app store reviewers get in, since they can't read a code sent to
+  // the demo account's inbox. Any other account is emailed a code, and "Use
+  // email code instead" is there for anyone who forgot their password.
+  const [step, setStep] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -83,8 +82,9 @@ export default function SignIn() {
     return error ? (error.longMessage ?? t.auth.somethingWrong) : undefined;
   };
 
+  // Both callers come after handleContinue, whose sign-in already holds the address.
   const handleSendCode = async () => {
-    const { error } = await signIn.emailCode.sendCode({ emailAddress: email });
+    const { error } = await signIn.emailCode.sendCode();
     if (error) {
       setFormError(error.longMessage ?? t.auth.sendCodeError);
       return;
@@ -93,9 +93,23 @@ export default function SignIn() {
     setModalVisible(true);
   };
 
+  const handleContinue = async () => {
+    const { error } = await signIn.create({ identifier: email.trim() });
+    if (error) {
+      setFormError(error.longMessage ?? t.auth.somethingWrong);
+      return;
+    }
+    // Clerk offers "password" as a way in only to accounts that have one.
+    if (signIn.supportedFirstFactors.some((factor) => factor.strategy === "password")) {
+      setStep("password");
+      return;
+    }
+    await handleSendCode();
+  };
+
   const handlePasswordLogIn = async () => {
     if (!password) return;
-    const { error } = await signIn.password({ emailAddress: email, password });
+    const { error } = await signIn.password({ password });
     if (error) {
       setFormError(error.longMessage ?? t.auth.somethingWrong);
       return;
@@ -121,21 +135,31 @@ export default function SignIn() {
     setFormError(t.auth.somethingWrong);
   };
 
-  const handleLogIn = async () => {
-    if (!email) return;
+  const handleSubmit = async () => {
+    if (!email.trim()) return;
     setFormError(null);
-    if (withPassword) await handlePasswordLogIn();
-    else await handleSendCode();
+    if (step === "password") await handlePasswordLogIn();
+    else await handleContinue();
   };
 
-  const toggleWithPassword = () => {
-    setWithPassword((current) => !current);
+  const handleUseCode = async () => {
     setFormError(null);
+    await handleSendCode();
+  };
+
+  // Another address may or may not have a password: back to the first step.
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (step === "password") {
+      setStep("email");
+      setPassword("");
+      setFormError(null);
+    }
   };
 
   // A problem with the address or password shows as that; anything else (no
   // connection, too many tries) as what the request ran into.
-  const fieldError = errors.fields.identifier?.message ?? (withPassword ? errors.fields.password?.message : undefined);
+  const fieldError = errors.fields.identifier?.message ?? (step === "password" ? errors.fields.password?.message : undefined);
   const logInError = fieldError ?? formError;
 
   const handleVerifyCode = async (code: string) => {
@@ -165,7 +189,7 @@ export default function SignIn() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View style={enterStyle}>
+          <Animated.View>
             <View className="mt-16 gap-3">
               <Text className="text-title text-ink-cream" style={rtl}>
                 {t.auth.welcomeBack}
@@ -201,17 +225,18 @@ export default function SignIn() {
                   <AuthTextField
                     label={t.auth.email}
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={handleEmailChange}
                     keyboardType="email-address"
                     autoComplete="email"
                   />
-                  {withPassword ? (
+                  {step === "password" ? (
                     <AuthTextField
                       label={t.auth.password}
                       value={password}
                       onChangeText={setPassword}
                       secureEntry
                       autoComplete="current-password"
+                      autoFocus
                     />
                   ) : null}
                   {logInError ? (
@@ -220,21 +245,27 @@ export default function SignIn() {
                     </Text>
                   ) : null}
                   <AnimatedPressable
-                    onPress={handleLogIn}
+                    onPress={handleSubmit}
                     disabled={fetchStatus === "fetching"}
                     scaleTo={0.98}
                     className="btn btn--primary mt-1"
                     style={[gradients.accent, fetchStatus === "fetching" ? { opacity: 0.6 } : null]}
                   >
                     <Text className="font-grotesk-bold text-lg text-on-accent">
-                      {t.auth.logIn}
+                      {step === "password" ? t.auth.logIn : t.auth.continue}
                     </Text>
                   </AnimatedPressable>
-                  <AnimatedPressable onPress={toggleWithPassword} className="items-center">
-                    <Text className="font-grotesk-semibold text-sm text-ink-cream-muted underline">
-                      {withPassword ? t.auth.useCode : t.auth.usePassword}
-                    </Text>
-                  </AnimatedPressable>
+                  {step === "password" ? (
+                    <AnimatedPressable
+                      onPress={handleUseCode}
+                      disabled={fetchStatus === "fetching"}
+                      className="items-center"
+                    >
+                      <Text className="font-grotesk-semibold text-sm text-ink-cream-muted underline">
+                        {t.auth.useCode}
+                      </Text>
+                    </AnimatedPressable>
+                  ) : null}
                 </Animated.View>
               ) : (
                 <Animated.View
