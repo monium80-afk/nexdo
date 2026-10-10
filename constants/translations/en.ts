@@ -269,6 +269,7 @@ export const en = {
       deadline: (from: string, to: string) => `Deadline: ${from} → ${to}`,
       deadlineUnchanged: "Deadline: Unchanged",
       duration: (from: string, to: string) => `Estimated duration: ${from} → ${to}`,
+      completed: "Task: Completed",
       priority: (from: string, to: string) => `Priority: ${from} → ${to}`,
       levels: { critical: "Critical", high: "High", medium: "Medium", low: "Low" },
       score: (from: number, to: number) => `Task score: ${from} → ${to}`,

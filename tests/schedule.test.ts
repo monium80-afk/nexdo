@@ -112,11 +112,16 @@ describe("the days", () => {
     assert.equal(Object.values(days).flat().length, 1);
   });
 
-  it("add up the open work on a day, counting a task with no length as half an hour", () => {
+  it('add up the open work on a day — "No duration" adds nothing, an unreadable length half an hour', () => {
     const [today] = buildSchedule(
-      [due("a", "2026-10-06", { estimatedMinutes: 45 }), due("b", "2026-10-06", { estimatedMinutes: 0 })],
+      [
+        due("a", "2026-10-06", { estimatedMinutes: 45 }),
+        due("b", "2026-10-06", { estimatedMinutes: 0 }),
+        due("c", "2026-10-06", { estimatedMinutes: Number.NaN }),
+      ],
       { now: NOW, from: "2026-10-06", until: "2026-10-06" },
     );
+    assert.equal(today.items.find((item) => item.task.id === "b")?.minutes, 0);
     assert.equal(today.plannedMinutes, 75);
   });
 

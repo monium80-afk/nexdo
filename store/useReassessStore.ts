@@ -138,7 +138,7 @@ export const useReassessStore = create<ReassessStore>()((set, get) => {
           allTasks: useTaskStore.getState().tasks,
         });
         report = applied.report;
-        return applied.task;
+        return [applied.task, ...applied.others];
       });
       // Deleted while Nexdo worked: there's no task left to report on.
       if (!saved.ok && saved.reason === "missing") return setState(taskId, null);

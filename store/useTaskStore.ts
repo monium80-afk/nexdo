@@ -519,9 +519,11 @@ type TaskStore = {
    * `build` gets the task as it is now and returns the version to save. If
    * the task changes while the request is in flight (a step ticked, another
    * device), `build` runs again on the newer version, so neither change
-   * overwrites the other.
+   * overwrites the other. It can also return a list: the task first, then
+   * other tasks saved with it in the same request (a repeating task's next
+   * occurrence, when the change finishes this one).
    */
-  saveTaskNow: (taskId: string, build: (current: Task) => Task) => Promise<SaveTaskResult>;
+  saveTaskNow: (taskId: string, build: (current: Task) => Task | Task[]) => Promise<SaveTaskResult>;
   skipTask: (taskId: string, reason: string) => void;
   regeneratePlan: (taskId: string) => void;
   applyPlanSteps: (taskId: string, steps: PlanStep[]) => void;
@@ -1023,12 +1025,14 @@ export const useTaskStore = create<TaskStore>()(
         for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
           const current = get().tasks.find((task) => task.id === taskId);
           if (!current) return { ok: false, reason: "missing" };
-          const next = build(current);
+          const built = build(current);
+          const [next, ...others] = Array.isArray(built) ? built : [built];
+          const ids = [taskId, ...others.map((task) => task.id)];
           const userId = get().syncUserId;
           if (userId) {
             try {
-              // One row, one statement: the whole new version lands or none of it does.
-              await inOrder([taskId], () => upsertTaskRows([next], userId));
+              // One statement: the whole new version lands or none of it does.
+              await inOrder(ids, () => upsertTaskRows([next, ...others], userId));
             } catch (error) {
               console.warn("[useTaskStore] save failed", error);
               return { ok: false, reason: "save-failed" };
@@ -1041,8 +1045,13 @@ export const useTaskStore = create<TaskStore>()(
 
           const latest = get().tasks.find((task) => task.id === taskId);
           if (!latest) {
-            // Deleted while the request was out — the row just written would bring it back.
-            if (userId) syncDelete(taskId, userId);
+            // Deleted while the request was out — the row just written would
+            // bring it back, and a new task saved with it would be left behind.
+            if (userId) {
+              syncDelete(taskId, userId);
+              const local = new Set(get().tasks.map((task) => task.id));
+              others.filter((task) => !local.has(task.id)).forEach((task) => syncDelete(task.id, userId));
+            }
             return { ok: false, reason: "missing" };
           }
           // Changed meanwhile — by anything other than this save's own
@@ -1057,15 +1066,20 @@ export const useTaskStore = create<TaskStore>()(
           }
 
           const now = new Date();
-          set((state) => ({
-            tasks: recalcAll(
-              state.tasks.map((task) => (task.id === taskId ? next : task)),
-              now,
-            ),
-            // Signed out, the phone's copy is the save — kept as unsynced
-            // until an account uploads it, like any other change.
-            unsynced: userId ? withoutKeys(state.unsynced, [taskId]) : { ...state.unsynced, [taskId]: next.updatedAt },
-          }));
+          const changed = new Map([next, ...others].map((task) => [task.id, task]));
+          set((state) => {
+            const kept = state.tasks.map((task) => changed.get(task.id) ?? task);
+            const present = new Set(kept.map((task) => task.id));
+            const created = others.filter((task) => !present.has(task.id));
+            return {
+              tasks: recalcAll([...created, ...kept], now),
+              // Signed out, the phone's copy is the save — kept as unsynced
+              // until an account uploads it, like any other change.
+              unsynced: userId
+                ? withoutKeys(state.unsynced, ids)
+                : { ...state.unsynced, ...Object.fromEntries([...changed.values()].map((task) => [task.id, task.updatedAt])) },
+            };
+          });
           return { ok: true, task: get().tasks.find((task) => task.id === taskId) ?? next };
         }
         return { ok: false, reason: "conflict" };

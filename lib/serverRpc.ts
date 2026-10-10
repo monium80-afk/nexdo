@@ -11,6 +11,14 @@
 /** SUPABASE_SECRET_KEY (or the URL) isn't set, so the function can't be called. */
 export class RpcConfigError extends Error {}
 
+// Every call here sits in front of an AI request the app gives up on after 30 s,
+// so a slow Supabase answer is a failure, not something to wait out.
+const SERVER_REQUEST_TIMEOUT_MS = 5_000;
+
+function timeout(): AbortSignal {
+  return AbortSignal.timeout(SERVER_REQUEST_TIMEOUT_MS);
+}
+
 function serviceRoleRequest(): { url: string; headers: Record<string, string> } {
   const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -29,6 +37,7 @@ export async function callServerRpc<T>(name: string, args: Record<string, unknow
     method: "POST",
     headers,
     body: JSON.stringify(args),
+    signal: timeout(),
   });
   if (!response.ok) throw new Error(`${name} failed: ${response.status} ${await response.text()}`);
   return (await response.json()) as T;
@@ -41,7 +50,7 @@ export async function callServerRpc<T>(name: string, args: Record<string, unknow
 export async function selectServerRows<T>(table: string, columns: string, filters: Record<string, string>): Promise<T[]> {
   const { url, headers } = serviceRoleRequest();
   const query = new URLSearchParams({ select: columns, ...filters });
-  const response = await fetch(`${url}/rest/v1/${table}?${query}`, { headers });
+  const response = await fetch(`${url}/rest/v1/${table}?${query}`, { headers, signal: timeout() });
   if (!response.ok) throw new Error(`reading ${table} failed: ${response.status} ${await response.text()}`);
   return (await response.json()) as T[];
 }
@@ -51,7 +60,7 @@ export async function deleteServerRows(table: string, filters: Record<string, st
   if (Object.keys(filters).length === 0) throw new Error(`refusing to delete every row of ${table}`);
   const { url, headers } = serviceRoleRequest();
   const query = new URLSearchParams(filters);
-  const response = await fetch(`${url}/rest/v1/${table}?${query}`, { method: "DELETE", headers });
+  const response = await fetch(`${url}/rest/v1/${table}?${query}`, { method: "DELETE", headers, signal: timeout() });
   if (!response.ok) throw new Error(`deleting from ${table} failed: ${response.status} ${await response.text()}`);
 }
 
@@ -69,6 +78,7 @@ export async function emptyServerFolder(bucket: string, folder: string): Promise
       method: "POST",
       headers,
       body: JSON.stringify({ prefix: folder, limit: STORAGE_PAGE_SIZE, offset: 0 }),
+      signal: timeout(),
     });
     if (!listed.ok) throw new Error(`listing ${bucket}/${folder} failed: ${listed.status} ${await listed.text()}`);
     const files = ((await listed.json()) as { name: string }[]).map((file) => `${folder}/${file.name}`);
@@ -78,6 +88,7 @@ export async function emptyServerFolder(bucket: string, folder: string): Promise
       method: "DELETE",
       headers,
       body: JSON.stringify({ prefixes: files }),
+      signal: timeout(),
     });
     if (!removed.ok) throw new Error(`emptying ${bucket}/${folder} failed: ${removed.status} ${await removed.text()}`);
     if (((await removed.json()) as unknown[]).length === 0) throw new Error(`emptying ${bucket}/${folder} made no progress`);

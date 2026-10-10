@@ -22,11 +22,12 @@ $env:TMP = $env:TEMP
 $env:NODE_ENV = "development"
 New-Item -ItemType Directory -Force $env:GRADLE_USER_HOME, $env:TEMP | Out-Null
 
+# The native project is generated from app.json and not kept in git. Every
+# run, like the release build: a changed plugin or permission has to reach
+# android/ before Gradle builds it.
 Set-Location $project
-if (-not (Test-Path "android\gradlew.bat")) {
-  # The native project is generated from app.json; it is not kept in git.
-  npx expo prebuild --platform android --no-install
-}
+npx expo prebuild --platform android --no-install
+if ($LASTEXITCODE -ne 0) { throw "expo prebuild failed" }
 
 Set-Location (Join-Path $project "android")
 # Phones only (32- and 64-bit ARM): leaving out the emulator builds roughly halves the time.

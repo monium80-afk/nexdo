@@ -159,7 +159,8 @@ const RESPONSE_SCHEMA: GeminiJsonSchema = {
 // title is short prose; leaked reasoning is littered with the schema's names.
 const LEAKED_REASONING_PATTERN = /\b(estimatedMinutes|dueDate\w*|stepsDone|outcome|priority|schema)\s*[:=]|\blet me reconsider\b/i;
 
-const MAX_OUT_STEPS = 12;
+/** As many unfinished steps as a request can send — the answer replaces the whole list. */
+const MAX_STEPS = 30;
 const MAX_STEP_TITLE_LENGTH = 90;
 const MAX_STEP_MINUTES = 24 * 60;
 const MAX_TASK_MINUTES = 10_000;
@@ -187,8 +188,11 @@ function normalizeShift(raw: unknown): DateShift | null {
 
 function normalizeSteps(raw: unknown): ReassessResponseBody["steps"] {
   if (!Array.isArray(raw)) return null;
+  // The list replaces every unfinished step, so cutting it short would drop
+  // real subtasks: an oversized answer is unusable rather than partial.
+  if (raw.length > MAX_STEPS) throw new UnusableAnswerError("too many steps");
   const seen = new Set<string>();
-  return clampArray(raw, MAX_OUT_STEPS)
+  return raw
     .map((entry) => {
       const step = asObject(entry);
       const title = cleanText(step.title, MAX_STEP_TITLE_LENGTH);
@@ -251,7 +255,7 @@ export function normalizeReassessment(raw: unknown): ReassessResponseBody {
     dueDatePhrase: cleanText(result.dueDatePhrase, MAX_PHRASE_LENGTH),
     dueDateShift: normalizeShift(result.dueDateShift),
     removeDeadline: result.removeDeadline === true,
-    stepsDone: clampArray(result.stepsDone, 30)
+    stepsDone: clampArray(result.stepsDone, MAX_STEPS)
       .map((id) => clampString(id, MAX_ID_LENGTH))
       .filter((id): id is string => !!id),
     steps: normalizeSteps(result.steps),
@@ -266,7 +270,6 @@ const MAX_BODY_BYTES = 64 * 1024;
 // A note can carry what was read from an attached photo or document
 // (lib/contextFile.ts) as well as the user's own words.
 const MAX_CONTEXT_LENGTH = MAX_CONTEXT_NOTE_LENGTH;
-const MAX_IN_STEPS = 30;
 
 export function parseReassessBody(raw: unknown): ReassessRequestBody | null {
   const body = asObject(raw);
@@ -280,8 +283,8 @@ export function parseReassessBody(raw: unknown): ReassessRequestBody | null {
 
   return {
     task,
-    doneSteps: parsePlanSteps(body.doneSteps, MAX_IN_STEPS),
-    steps: clampArray(body.steps, MAX_IN_STEPS)
+    doneSteps: parsePlanSteps(body.doneSteps, MAX_STEPS),
+    steps: clampArray(body.steps, MAX_STEPS)
       .map((entry) => {
         const step = asObject(entry);
         const id = clampString(step.id, MAX_ID_LENGTH);

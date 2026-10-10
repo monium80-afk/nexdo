@@ -35,8 +35,12 @@ function draftOf(task: Task): StepDraft[] {
     }));
 }
 
-/** The AI's steps in place of the unfinished ones; the ones already done stay, first. */
-function withNewSteps(draft: StepDraft[], steps: PlanStep[]): StepDraft[] {
+/**
+ * The AI's steps in place of the unfinished ones it was shown; the ones
+ * already done stay, first. A step added while it worked (not in `sentIds`)
+ * is the user's own and stays too, after the AI's.
+ */
+function withNewSteps(draft: StepDraft[], steps: PlanStep[], sentIds: Set<string>): StepDraft[] {
   return [
     ...draft.filter((step) => step.completed),
     ...steps.map((step, index) => ({
@@ -45,6 +49,7 @@ function withNewSteps(draft: StepDraft[], steps: PlanStep[]): StepDraft[] {
       estimatedMinutes: step.estimatedMinutes,
       completed: false,
     })),
+    ...draft.filter((step) => !step.completed && !sentIds.has(step.id)),
   ];
 }
 
@@ -88,8 +93,9 @@ export function BreakdownSheet({
   const isLoading = status === "loading";
 
   const generate = async () => {
+    const sentIds = new Set(steps.map((step) => step.id));
     const next = await onGenerate(steps);
-    if (next) setSteps((current) => withNewSteps(current, next));
+    if (next) setSteps((current) => withNewSteps(current, next, sentIds));
   };
 
   // Once, as the sheet opens.

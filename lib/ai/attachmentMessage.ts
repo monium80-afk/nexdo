@@ -28,7 +28,7 @@ export function composeAttachmentMessage(extracted: ExtractedAttachment[], userT
 }
 
 const BLOCK_MARKER_PATTERN = /^\[Attached (?:image|voice note|document)(?: \d+)?\]$/gm;
-const USER_INSTRUCTION_BLOCK_PATTERN = /^\[User's instruction\][\s\S]*?(?=^\[Attached (?:image|voice note|document)(?: \d+)?\]$|$)/gm;
+const USER_INSTRUCTION_BLOCK_PATTERN = /^\[User's instruction\][\s\S]*?(?=^\[Attached (?:image|voice note|document)(?: \d+)?\]$|(?![\s\S]))/gm;
 
 /** The offline heuristic classifier reads raw words, so the markers come back out first. */
 export function stripAttachmentBlocks(text: string): string {

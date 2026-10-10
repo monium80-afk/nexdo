@@ -55,6 +55,8 @@ function changeLines(report: ReassessmentReport, t: Translations): string[] {
         return r.subtasks(subtaskParts(change.summary, r));
       case "advice":
         return r.advice[change.kind];
+      case "completed":
+        return r.completed;
     }
   });
 }

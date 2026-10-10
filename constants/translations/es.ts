@@ -275,6 +275,7 @@ export const es: Translations = {
       deadline: (from: string, to: string) => `Fecha límite: ${from} → ${to}`,
       deadlineUnchanged: "Fecha límite: sin cambios",
       duration: (from: string, to: string) => `Duración estimada: ${from} → ${to}`,
+      completed: "Tarea: Completada",
       priority: (from: string, to: string) => `Prioridad: ${from} → ${to}`,
       levels: { critical: "Crítica", high: "Alta", medium: "Media", low: "Baja" },
       score: (from: number, to: number) => `Puntuación de la tarea: ${from} → ${to}`,

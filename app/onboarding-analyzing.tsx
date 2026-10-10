@@ -206,6 +206,9 @@ export default function OnboardingAnalyzing() {
   // The same route the AI chat uses on a typed message: whatever the model
   // decides to create out of the dump is what this flow shows.
   useEffect(() => {
+    // Only for someone signed out: a signed-in visit is redirected below, and
+    // the redirect doesn't stop this effect on its own.
+    if (!isLoaded || isSignedIn) return;
     let cancelled = false;
     // This read is the free AI run a signed-out install gets. From here on,
     // onboarding asks for an account instead of offering it again — the server
@@ -229,7 +232,7 @@ export default function OnboardingAnalyzing() {
     return () => {
       cancelled = true;
     };
-  }, [dump]);
+  }, [dump, isLoaded, isSignedIn]);
 
   useEffect(() => {
     const ticker = setInterval(() => {

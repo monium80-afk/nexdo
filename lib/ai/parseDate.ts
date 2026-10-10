@@ -522,7 +522,8 @@ function extractTimeOfDay(lower: string): TimeOfDay | undefined {
     };
   }
 
-  const clock = lower.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\b/);
+  // A bare "17:30" counts too — hasExplicitTime already treats it as a time.
+  const clock = lower.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\b/) ?? lower.match(/\b(\d{1,2}):(\d{2})\b/);
   if (clock) {
     const hour = Number.parseInt(clock[1], 10);
     const minute = clock[2] ? Number.parseInt(clock[2], 10) : 0;

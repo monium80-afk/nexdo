@@ -64,9 +64,8 @@ describe("more rows than one request returns", () => {
 });
 
 describe("re-reading the list while tasks change", () => {
-  it("a task saved after the read was sent stays; one deleted elsewhere long ago goes", async () => {
+  it("tasks added and edited while the read is out stay as they are now; one deleted elsewhere long ago goes", async () => {
     const longAgo = new Date(Date.now() - 3_600_000).toISOString();
-    const justNow = new Date(Date.now() + 1_000).toISOString();
     const local = (id: string, updatedAt: string) => ({
       id,
       title: id,
@@ -80,17 +79,33 @@ describe("re-reading the list while tasks change", () => {
       complexity: "simple" as const,
       aiContext: { notes: [] },
     });
-    // Neither is waiting to be saved and neither is in the account's rows:
-    // one was edited while the read was on its way (its save landed too late
-    // for it), the other was deleted on another device.
-    useTaskStore.setState({ tasks: [local("saved-during-read", justNow), local("deleted-elsewhere", longAgo)], unsynced: {} });
+    // "kept" is saved to the account; "deleted-elsewhere" was saved once but
+    // its row is gone — another device deleted it. Neither waits to be saved.
+    seedTable("tasks", [taskRow("kept", longAgo)]);
+    useTaskStore.setState({ tasks: [local("kept", longAgo), local("deleted-elsewhere", longAgo)], unsynced: {} });
 
-    assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
+    // The read goes out, and its answer is held back while the user adds a
+    // task and renames another — both saved before the stale answer arrives.
+    const release = fakeDb.holdReads();
+    const reading = useTaskStore.getState().hydrateFromSupabase(USER);
+    let answered = false;
+    void reading.then(() => (answered = true));
     await flush();
-    const ids = useTaskStore.getState().tasks.map((task) => task.id);
-    assert.ok(ids.includes("saved-during-read"));
-    assert.ok(!ids.includes("deleted-elsewhere"));
-    assert.ok(fakeDb.rows("tasks").some((row) => row.id === "saved-during-read"), "and it goes up again");
+    const added = useTaskStore.getState().addTask({ title: "Added during the read", estimatedMinutes: 20, priorityLevel: "medium" });
+    useTaskStore.getState().updateTask("kept", { title: "Renamed during the read" });
+    await flush();
+    assert.ok(fakeDb.rows("tasks").some((row) => row.id === added), "the new task's save landed during the read");
+    assert.deepEqual(useTaskStore.getState().unsynced, {}, "both saves are confirmed — nothing marks them as pending");
+
+    assert.equal(answered, false, "the read is still out");
+    release();
+    assert.equal(await reading, true);
+    await flush();
+    const tasks = useTaskStore.getState().tasks;
+    assert.ok(tasks.some((task) => task.id === added), "the task added during the read stays");
+    assert.equal(tasks.find((task) => task.id === "kept")?.title, "Renamed during the read", "the stale answer doesn't undo the rename");
+    assert.ok(!tasks.some((task) => task.id === "deleted-elsewhere"));
+    assert.equal(fakeDb.rows("tasks").find((row) => row.id === "kept")?.title, "Renamed during the read");
   });
 
   it("a failed read says so, so it can be tried again", async () => {

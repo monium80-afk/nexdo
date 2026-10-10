@@ -303,6 +303,11 @@ function StackSlot({
         return;
       }
       if (depth <= 0.02) {
+        // Landed on top without passing through the way up — Reduce Motion
+        // moves it there in one frame: its content shows now.
+        if (!arriving.get() && reveal.get() < 1) {
+          reveal.set(withTiming(1, { duration: reduceMotion ? 0 : REVEAL_MS, easing: Easing.out(Easing.quad) }));
+        }
         // Landed on top: from here, leaving is the depth fade's job.
         arriving.set(false);
         return;

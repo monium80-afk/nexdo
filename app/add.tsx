@@ -138,8 +138,12 @@ export default function Add() {
       return;
     }
 
-    const estimatedMinutes = customDurationOpen && /^\d+$/.test(customDurationText.trim())
-      ? Number.parseInt(customDurationText, 10)
+    // An open custom field is the answer, even left empty — not the chip
+    // that was picked before it.
+    const estimatedMinutes = customDurationOpen
+      ? /^\d+$/.test(customDurationText.trim())
+        ? Number.parseInt(customDurationText, 10)
+        : Number.NaN
       : durationMinutes;
     // 0 only from the "No duration" chip — a typed 0 is a mistake.
     const noDuration = !customDurationOpen && estimatedMinutes === NO_DURATION;

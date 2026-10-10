@@ -1,7 +1,7 @@
 import type { ProposedStep, ReassessmentUpdate } from "@/lib/ai/reassessTask";
 import { deadlineOf, sameDeadline } from "@/lib/deadline";
 import type { ImportanceLevel } from "@/lib/scoring";
-import { editTaskDelta, effectiveChanges, importanceLevelOf, type TaskChanges } from "@/lib/taskOperations";
+import { completeTaskDelta, editTaskDelta, effectiveChanges, importanceLevelOf, type TaskChanges } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
 import type { Subtask, Task, TaskDeadline } from "@/types/task";
 
@@ -39,7 +39,8 @@ export type ReassessmentChange =
   | { field: "priority"; from: ImportanceLevel; to: ImportanceLevel }
   | { field: "score"; from: number; to: number }
   | { field: "subtasks"; summary: SubtaskChangeSummary }
-  | { field: "advice"; kind: "added" | "revised" };
+  | { field: "advice"; kind: "added" | "revised" }
+  | { field: "completed" };
 
 export type ReassessmentReport = {
   /** Only real changes, in the order they're shown. Empty: the task is as it was. */
@@ -238,7 +239,10 @@ export function describeReassessment(before: Task, after: Task): ReassessmentCha
   }
   const deadlineChanged = !sameDeadline(deadlineOf(before), deadlineOf(after));
   if (deadlineChanged) changes.push({ field: "deadline", from: deadlineOf(before), to: deadlineOf(after) });
-  const durationChanged = before.estimatedMinutes !== after.estimatedMinutes;
+  // Finished: no time left and no score to speak of — "done" says it all.
+  const completed = before.status !== "completed" && after.status === "completed";
+  if (completed) changes.push({ field: "completed" });
+  const durationChanged = !completed && before.estimatedMinutes !== after.estimatedMinutes;
   if (durationChanged) changes.push({ field: "duration", from: before.estimatedMinutes, to: after.estimatedMinutes });
   const importanceChanged = before.importance !== after.importance;
   if (importanceChanged) {
@@ -248,7 +252,7 @@ export function describeReassessment(before: Task, after: Task): ReassessmentCha
   // values. Reported only when an input to it changed here: saving also
   // refreshes a score that has drifted with the clock, and that isn't
   // something this note did.
-  if ((deadlineChanged || durationChanged || importanceChanged) && before.priorityScore !== after.priorityScore) {
+  if (!completed && (deadlineChanged || durationChanged || importanceChanged) && before.priorityScore !== after.priorityScore) {
     changes.push({ field: "score", from: before.priorityScore, to: after.priorityScore });
   }
   const subtasks = describeSubtaskChanges(before.subtasks ?? [], after.subtasks ?? []);
@@ -270,7 +274,9 @@ function withNote(notes: string[], note: NoteEdit): string[] {
 /**
  * The task after a reassessment, and what changed. `base` is the task the AI
  * was shown; `current` is the task now, which may have moved on since.
- * Saving the result is the caller's job (useTaskStore.saveTaskNow).
+ * `others` are further tasks to save with it — a repeating task's next
+ * occurrence, when the reassessment finished this one. Saving them all is the
+ * caller's job (useTaskStore.saveTaskNow).
  */
 export function applyReassessment(params: {
   base: Task;
@@ -279,11 +285,12 @@ export function applyReassessment(params: {
   note: NoteEdit;
   now: Date;
   allTasks: Task[];
-}): { task: Task; report: ReassessmentReport } {
+}): { task: Task; others: Task[]; report: ReassessmentReport } {
   const { base, current, proposal, note, now, allTasks } = params;
   let next: Task = current;
   let keptUserEdits = false;
   let summary = proposal.summary;
+  let finishesTask = false;
 
   if (proposal.outcome === "update") {
     // Deadline, title, description and priority go through the same editor
@@ -320,12 +327,23 @@ export function applyReassessment(params: {
       }
     }
 
+    // The note says the last open steps are done: the task is finished.
+    finishesTask =
+      !finishedTask &&
+      current.status === "pending" &&
+      subtasks.length > 0 &&
+      open.length === 0 &&
+      (current.subtasks ?? []).some((subtask) => subtask.status !== "completed");
+
     const advice = proposal.advice?.trim() || current.aiContext.advice;
     next = {
       ...next,
       subtasks: subtasks.length > 0 ? subtasks : undefined,
       currentStepId: subtasks.find((subtask) => subtask.status === "current")?.id,
-      estimatedMinutes: Math.max(1, Math.round(estimatedMinutes)),
+      // A length nobody changed stays as it is — 0 is "No duration", or no
+      // work left — rather than gaining a minute.
+      estimatedMinutes:
+        estimatedMinutes === current.estimatedMinutes ? current.estimatedMinutes : Math.max(1, Math.round(estimatedMinutes)),
       aiContext: { ...current.aiContext, advice },
     };
     if (!next.aiContext.advice) delete next.aiContext.advice;
@@ -334,20 +352,33 @@ export function applyReassessment(params: {
   // Always strictly newer than what's there, so every device's
   // last-write-wins takes this version.
   const updatedAt = new Date(Math.max(now.getTime(), Date.parse(current.updatedAt) + 1)).toISOString();
+  let saved: Task = { ...next, aiContext: { ...next.aiContext, notes: withNote(current.aiContext.notes, note) }, updatedAt };
+  let others: Task[] = [];
+  if (finishesTask) {
+    // Through the same path as ticking the last step by hand (completeStep in
+    // the store): it leaves the lists and reminders, and a repeating task
+    // brings in its next occurrence.
+    const [completed, ...rest] = completeTaskDelta(saved, now, allTasks, {
+      currentStepId: undefined,
+      estimatedMinutes: 0,
+    }).upserts;
+    if (completed) {
+      saved = { ...completed, updatedAt };
+      others = rest;
+    }
+  }
   // Scored by the app's own formula, through the same step as every other
   // change to a task (lib/taskPipeline.ts) — the AI never sets a score.
-  const [task] = recalcAll(
-    [{ ...next, aiContext: { ...next.aiContext, notes: withNote(current.aiContext.notes, note) }, updatedAt }],
-    now,
-  );
+  const [task, ...scoredOthers] = recalcAll([saved, ...others], now);
 
   const changes = describeReassessment(current, task);
   if (keptUserEdits) summary = "";
   return {
     task,
+    others: scoredOthers,
     report: {
       changes,
-      deadlineUnchanged: changes.length > 0 && !!deadlineOf(task) && sameDeadline(deadlineOf(task), deadlineOf(current)),
+      deadlineUnchanged: changes.length > 0 && !finishesTask && !!deadlineOf(task) && sameDeadline(deadlineOf(task), deadlineOf(current)),
       summary,
       keptUserEdits,
     },

@@ -194,14 +194,18 @@ export function clearAllNotifications(): Promise<void> {
  */
 const TRIAL_REMINDER_ID = "trial-end";
 
-/** Schedules the trial reminder for `fireAt`, replacing any earlier one — or just cancels it, given null. */
-export async function setTrialReminder(reminder: { fireAt: number; title: string; body: string } | null): Promise<void> {
-  if (!isSupported) return;
+/**
+ * Schedules the trial reminder for `fireAt`, replacing any earlier one — or
+ * just cancels it, given null. Resolves false when the phone isn't left as
+ * asked (no permission to notify, or it failed), so the caller can try again.
+ */
+export async function setTrialReminder(reminder: { fireAt: number; title: string; body: string } | null): Promise<boolean> {
+  if (!isSupported) return true;
   try {
     await Notifications.cancelScheduledNotificationAsync(TRIAL_REMINDER_ID);
-    if (!reminder) return;
+    if (!reminder) return true;
     const { granted } = await Notifications.getPermissionsAsync();
-    if (!granted) return;
+    if (!granted) return false;
     await ensureChannelsAndActions();
     await Notifications.scheduleNotificationAsync({
       identifier: TRIAL_REMINDER_ID,
@@ -218,8 +222,10 @@ export async function setTrialReminder(reminder: { fireAt: number; title: string
         channelId: CHANNEL_IDS.reminders,
       },
     });
+    return true;
   } catch (error) {
     console.warn("[notifications] couldn't update the trial reminder", error);
+    return false;
   }
 }
 

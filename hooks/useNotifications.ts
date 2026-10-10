@@ -10,6 +10,7 @@ import {
   requestNotificationPermission,
   type NotificationTap,
 } from "@/lib/notifications";
+import { resyncTrialReminder } from "@/lib/purchases";
 import { planNotifications } from "@/lib/reminders";
 import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -108,7 +109,10 @@ export function useNotifications() {
   useEffect(() => {
     if (!userId) return;
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void reconcileNow();
+      if (state !== "active") return;
+      void reconcileNow();
+      // Notifications may have been allowed in the phone's settings meanwhile.
+      resyncTrialReminder();
     });
     let midnight: ReturnType<typeof setTimeout>;
     // Each run sets up the next, so an app left open for days keeps moving on.
@@ -137,7 +141,10 @@ export function useNotifications() {
     (async () => {
       if ((await getNotificationPermission()) !== "undetermined" || cancelled) return;
       useSettingsStore.getState().setNotificationPromptShown(true);
-      if (await requestNotificationPermission()) void reconcileNow();
+      if (await requestNotificationPermission()) {
+        void reconcileNow();
+        resyncTrialReminder();
+      }
     })();
     return () => {
       cancelled = true;

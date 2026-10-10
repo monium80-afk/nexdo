@@ -191,6 +191,23 @@ export async function claimPlanUsage(request: Request, userId: string, meter: Me
 }
 
 /**
+ * Whether this account has anything left of `meter` this month, without
+ * spending any of it — for a request that has to do work before it knows its
+ * amount (a voice note's measured length). Null when it may go on to
+ * claimPlanUsage, which still has the final say; otherwise the response to
+ * send instead, so a request sure to be refused costs nothing first.
+ */
+export async function checkPlanAllowance(request: Request, userId: string, meter: Meter): Promise<Response | null> {
+  const check = await checkPlan(request, userId);
+  const limit = PLAN_LIMITS[check.plan][meter];
+  if (limit <= 0) return refusal(meter, check);
+
+  const used = await readPlanUsage(userId);
+  if (used === null) return usageUnavailable();
+  return used[meter] >= limit ? refusal(meter, check) : null;
+}
+
+/**
  * Opens a Live voice session, paid for up front: up to `maxSeconds` of the
  * month's Live voice time — what's left, if that is less — is taken now, and
  * settleLiveSession gives back whatever the app then reports it didn't use.

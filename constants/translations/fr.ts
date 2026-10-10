@@ -272,6 +272,7 @@ export const fr: Translations = {
       deadline: (from: string, to: string) => `Échéance : ${from} → ${to}`,
       deadlineUnchanged: "Échéance : inchangée",
       duration: (from: string, to: string) => `Durée estimée : ${from} → ${to}`,
+      completed: "Tâche : Terminée",
       priority: (from: string, to: string) => `Priorité : ${from} → ${to}`,
       levels: { critical: "Critique", high: "Haute", medium: "Moyenne", low: "Basse" },
       score: (from: number, to: number) => `Score de la tâche : ${from} → ${to}`,

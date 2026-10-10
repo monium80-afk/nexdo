@@ -171,8 +171,13 @@ export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; 
   const addTime = () => {
     // Starts on the next full hour of that day, as a reasonable place for the wheel.
     const date = new Date(value.date);
-    const next = new Date();
-    date.setHours(Math.min(23, next.getHours() + 1), 0, 0, 0);
+    const now = new Date();
+    date.setHours(Math.min(23, now.getHours() + 1), 0, 0, 0);
+    // Today after 23:00 there's no next hour: the next five minutes instead
+    // (at most 23:59), so the time still left today can be picked.
+    if (date.getTime() <= now.getTime()) {
+      date.setHours(now.getHours(), Math.min(59, Math.ceil((now.getMinutes() + 1) / 5) * 5), 0, 0);
+    }
     if (Platform.OS === "android") {
       onChange({ date, hasTime: value.hasTime });
       setAndroidPicker("time");

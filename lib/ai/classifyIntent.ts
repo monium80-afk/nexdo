@@ -281,6 +281,10 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
     if (!result) return { type: "CLARIFY", question: t.ops.whichDates, candidates: [], confirmationTier: "safe" };
     if ("notFound" in result) return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
     if ("unclear" in result) return { type: "CLARIFY", question: t.ops.whichTasks, candidates: [], confirmationTier: "safe" };
+    if (bulkKind === "update" && !action.fields.dueDateShift) {
+      const { unclear } = resolveDeadline(action.fields, ctx);
+      if (unclear !== undefined) return askAboutDate(unclear);
+    }
     return { type: "OPERATE", operation: operationFor(bulkKind, result.target, action, ctx, true), confirmationTier: "confirm-required" };
   }
 

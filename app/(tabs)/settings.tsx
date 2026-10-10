@@ -30,7 +30,7 @@ import { apiPost } from "@/lib/api";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
-import { isPurchasesEnabled, presentCustomerCenter, resetPurchaser, restorePurchases } from "@/lib/purchases";
+import { isPurchasesEnabled, presentCustomerCenter, resetPurchaser, restorePurchases, resyncTrialReminder } from "@/lib/purchases";
 import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
@@ -119,14 +119,10 @@ function ToggleControl({
     transform: [{ translateX: progress.value * 16 }],
   }));
 
+  // The switch only moves once `value` does (the effect above): a change
+  // waiting on the phone's permission, then refused, leaves it where it was.
   const toggle = () => {
-    const next = !value;
-    if (onValueChange(next) === false) return;
-    // eslint-disable-next-line react-hooks/immutability
-    progress.value = withTiming(next ? 1 : 0, {
-      duration: reduceMotion ? 0 : MOTION.duration.standard,
-      easing: MOTION.easing.standard,
-    });
+    void onValueChange(!value);
   };
 
   return (
@@ -361,6 +357,7 @@ export default function Settings() {
     setPermission(current);
     if (granted) {
       enable();
+      resyncTrialReminder();
       return;
     }
     // Not something the phone's settings can change (the web build, Expo Go

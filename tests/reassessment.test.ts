@@ -16,6 +16,7 @@ import {
   type ReassessResponseBody,
 } from "@/app/api/reassess+api";
 import type { ReassessmentChange } from "@/lib/reassessment";
+import { buildRule, startSeries } from "@/lib/recurrence";
 import { computePriorityScore } from "@/lib/scoring";
 import { recalcAll } from "@/lib/taskPipeline";
 import { useReassessStore, type ReassessState } from "@/store/useReassessStore";
@@ -728,5 +729,42 @@ describe("the route's boundary", () => {
   it("refuses a request without a task or a note", () => {
     assert.equal(parseReassessBody({ task: { id: "x", title: "X" }, newContext: "   " }), null);
     assert.equal(parseReassessBody({ newContext: "hello" }), null);
+  });
+});
+
+describe("a note that finishes the work", () => {
+  it("ticking off the last open steps completes the task, and a repeating one brings in its next", async () => {
+    const rule = buildRule({ frequency: "daily" }, undefined, new Date());
+    assert.ok(rule);
+    const occurrence = startSeries(makeTask({ id: "gym", title: "Gym" }), rule, "series-gym");
+    seed({
+      ...occurrence,
+      estimatedMinutes: 50,
+      subtasks: [step("a", "Warm up", 10, "current", 0), step("b", "Weights", 40, "pending", 1)],
+      currentStepId: "a",
+    });
+    modelAnswers({ outcome: "update", stepsDone: ["s1", "s2"], summary: "All done." });
+    await submit(occurrence.id, "Did the whole session");
+
+    const done = task(occurrence.id);
+    assert.equal(done.status, "completed");
+    assert.equal(done.estimatedMinutes, 0);
+    assert.equal(done.currentStepId, undefined);
+    assert.equal(dbRow(occurrence.id)?.status, "completed");
+    const next = useTaskStore.getState().tasks.find((entry) => entry.id === done.recurrence?.nextOccurrenceId);
+    assert.ok(next, "the series' next occurrence is on the list");
+    assert.equal(next.status, "pending");
+    assert.ok(dbRow(next.id), "and saved with it");
+    const shown = fields(report(occurrence.id).changes);
+    assert.ok(shown.includes("completed"));
+    assert.ok(!shown.includes("duration"));
+  });
+
+  it('a change that leaves the length alone keeps "No duration" at 0', async () => {
+    seed({ id: "call", title: "Call mum", estimatedMinutes: 0 });
+    modelAnswers({ outcome: "update", title: "Call mum back", summary: "Renamed." });
+    await submit("call", "It's a call back");
+    assert.equal(task("call").title, "Call mum back");
+    assert.equal(task("call").estimatedMinutes, 0);
   });
 });

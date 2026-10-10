@@ -54,9 +54,11 @@ function enqueue(task: () => Promise<void>) {
   return queue;
 }
 
-// When the trial reminder was last set for, so an unchanged trial isn't
-// rescheduled on every refresh. Undefined until the first customer info.
+// What the phone's trial reminder is set for, so an unchanged trial isn't
+// rescheduled on every refresh. Undefined until it has been set once.
 let trialReminderAt: number | null | undefined;
+// The latest sync, so an older one finishing late doesn't record its time.
+let trialReminderSync = 0;
 
 /**
  * Keeps the "your trial ends in 2 days" notification in step with the
@@ -66,14 +68,24 @@ let trialReminderAt: number | null | undefined;
 function syncTrialReminder(pro: PurchasesEntitlementInfo | null) {
   const fireAt = trialReminderTime(pro, Date.now());
   if (fireAt === trialReminderAt) return;
-  trialReminderAt = fireAt;
-  if (fireAt === null || !pro?.expirationDate) {
-    void setTrialReminder(null);
-    return;
+  const sync = ++trialReminderSync;
+  let reminder: Parameters<typeof setTrialReminder>[0] = null;
+  if (fireAt !== null && pro?.expirationDate) {
+    const t = translate();
+    const endDate = new Date(pro.expirationDate).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
+    reminder = { fireAt, title: t.notifications.trialEndingTitle, body: t.notifications.trialEndingBody(endDate) };
   }
-  const t = translate();
-  const endDate = new Date(pro.expirationDate).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
-  void setTrialReminder({ fireAt, title: t.notifications.trialEndingTitle, body: t.notifications.trialEndingBody(endDate) });
+  // Remembered only once the phone has it: without permission to notify,
+  // nothing was scheduled, and the next refresh — or resyncTrialReminder,
+  // once permission is given — tries again.
+  void setTrialReminder(reminder).then((done) => {
+    if (done && sync === trialReminderSync) trialReminderAt = fireAt;
+  });
+}
+
+/** Tries the trial reminder again — for when notifications may just have been allowed. */
+export function resyncTrialReminder() {
+  syncTrialReminder(useSubscriptionStore.getState().pro);
 }
 
 function publish(customerInfo: CustomerInfo | null) {

@@ -2,7 +2,7 @@ import { extractTextFromMedia, measureAudioSeconds } from "@/lib/ai/gemini";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
-import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
+import { checkPlanAllowance, claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
   badRequest,
@@ -211,8 +211,19 @@ export async function POST(request: Request) {
 
   // What this file uses of the account's month — given back below if the
   // model then can't read it.
+  // Measuring a voice note sends it to Google, so whether this caller may use
+  // anything at all is settled first: a signed-out trial counts calls, so it
+  // is claimed outright; an account is only checked for voice time left, and
+  // then charged the measured length.
   const { userId } = auth;
   let usage: { meter: "voice" | "media"; amount: number } = { meter: "media", amount: 1 };
+  const earlyLimitResponse = !userId
+    ? await claimTrialCall(request, "extract-text")
+    : kind === "voice"
+      ? await checkPlanAllowance(request, userId, "voice")
+      : null;
+  if (earlyLimitResponse) return earlyLimitResponse;
+
   if (kind === "voice") {
     const declared = clampNumber(parsed.durationSeconds, 0, MAX_VOICE_SECONDS);
     const seconds = await voiceSeconds({ declared, bytes, mimeType, base64 });
@@ -221,9 +232,7 @@ export async function POST(request: Request) {
   }
 
   const claimedAt = new Date();
-  const limitResponse = userId
-    ? await claimPlanUsage(request, userId, usage.meter, usage.amount)
-    : await claimTrialCall(request, "extract-text");
+  const limitResponse = userId ? await claimPlanUsage(request, userId, usage.meter, usage.amount) : null;
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);

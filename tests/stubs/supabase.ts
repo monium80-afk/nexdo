@@ -19,6 +19,8 @@ export const fakeDb = {
   missingColumns: new Set<string>(),
   /** While set, upserts wait for it before landing — a slow request (see holdUpserts). */
   upsertGate: null as Promise<void> | null,
+  /** While set, reads answer only once it resolves — with the rows as they were when sent (see holdReads). */
+  readGate: null as Promise<void> | null,
   /** Realtime subscriptions still open. */
   listeners: [] as Listener[],
   reset() {
@@ -27,6 +29,7 @@ export const fakeDb = {
     this.nextError = null;
     this.missingColumns.clear();
     this.upsertGate = null;
+    this.readGate = null;
   },
   rows(table: string): Row[] {
     return [...(this.tables.get(table)?.values() ?? [])];
@@ -39,6 +42,21 @@ export const fakeDb = {
     });
     return () => {
       this.upsertGate = null;
+      release();
+    };
+  },
+  /**
+   * Every read from now on is answered late: with the rows as they stood when
+   * it was sent, once the returned function is called — a slow request that
+   * other changes overtake.
+   */
+  holdReads(): () => void {
+    let release: () => void = () => {};
+    this.readGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      this.readGate = null;
       release();
     };
   },
@@ -127,7 +145,8 @@ function query(name: string) {
       }
       // Like a real Supabase project, never more than 1,000 rows a request.
       const from = window?.from ?? 0;
-      data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS));
+      data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS)).map((row) => ({ ...row }));
+      if (fakeDb.readGate) return void fakeDb.readGate.then(() => resolve({ data, error: null }));
       return resolve({ data, error: null });
     },
   };

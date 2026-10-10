@@ -76,7 +76,8 @@ export default function OnboardingFocus() {
   const [adviceText, setAdviceText] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!top) return;
+    // Signed in, this screen only redirects — no AI request on the way out.
+    if (!top || !isLoaded || isSignedIn) return;
     let cancelled = false;
     generateAdvice(top)
       .then((advice) => {
@@ -90,7 +91,7 @@ export default function OnboardingFocus() {
     return () => {
       cancelled = true;
     };
-  }, [top]);
+  }, [top, isLoaded, isSignedIn]);
 
   if (!isLoaded) return null;
   if (isSignedIn) return <Redirect href="/" />;

@@ -82,6 +82,12 @@ begin
       raise exception 'screenshot_path must be in the sender''s own folder';
     end if;
 
+    -- One submission per account at a time, like the website's lock below,
+    -- so parallel inserts can't all count fewer than ten.
+    if new.user_id is not null then
+      perform pg_advisory_xact_lock(hashtext('feedback_mobile_insert:' || new.user_id));
+    end if;
+
     if new.user_id is not null and (
       select count(*) from feedback
       where user_id = new.user_id and created_at > now() - interval '1 hour'

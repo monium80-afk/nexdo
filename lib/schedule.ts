@@ -14,7 +14,7 @@ import type { Task } from "@/types/task";
 // There's no amount of work a day is filled up to. That may come back later
 // as a feature of its own.
 
-/** A task with no length yet counts as about half an hour's work. */
+/** A task whose length can't be read counts as about half an hour's work. 0 is "No duration" and stays 0. */
 const UNKNOWN_MINUTES = 30;
 
 export type ScheduleItem = {
@@ -44,7 +44,7 @@ export type ScheduleOptions = {
 };
 
 function minutesOf(minutes: number): number {
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : UNKNOWN_MINUTES;
+  return Number.isFinite(minutes) && minutes >= 0 ? minutes : UNKNOWN_MINUTES;
 }
 
 function isOverdue(task: Task, now: Date): boolean {

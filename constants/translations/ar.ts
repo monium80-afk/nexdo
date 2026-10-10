@@ -294,6 +294,7 @@ export const ar: Translations = {
       deadline: (from: string, to: string) => `الموعد النهائي: ${from} ← ${to}`,
       deadlineUnchanged: "الموعد النهائي: دون تغيير",
       duration: (from: string, to: string) => `المدة المقدّرة: ${from} ← ${to}`,
+      completed: "المهمة: مكتملة",
       priority: (from: string, to: string) => `الأولوية: ${from} ← ${to}`,
       levels: { critical: "حرجة", high: "عالية", medium: "متوسطة", low: "منخفضة" },
       score: (from: number, to: number) => `نقاط المهمة: ${from} ← ${to}`,
