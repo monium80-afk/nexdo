@@ -491,6 +491,10 @@ function normalizeDatePhrase(lower: string, language?: AppLanguage): string {
 // "7pm", "7 pm", "7 p.m.", "7:30am" — voice transcription writes the dotted form.
 const MERIDIEM_PATTERN = /\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])/;
 const EXPLICIT_TIME_PATTERN = /\b(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|at\s+\d{1,2}(?::\d{2})?\b|\d{1,2}:\d{2}\b|noon\b|midday\b|midnight\b)/;
+// The same, for a phrase that names no day: a bare clock has to be written as
+// one ("17:30", "09:30") — a single-digit "3:16" on its own is more often a
+// verse or a page than a time.
+const TIME_WITHOUT_DAY_PATTERN = /\b(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|at\s+\d{1,2}(?::\d{2})?\b|\d{2}:\d{2}\b|noon\b|midday\b|midnight\b)/;
 
 // Whether the user gave an actual clock time ("7 p.m.", "at 9", "noon") —
 // used so a deadline only shows a time when one was really said, rather
@@ -825,8 +829,10 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
 
   // A bare clock time with no day ("gym at 6pm") means today, or tomorrow
   // if that hour has already passed. Only explicit clock times qualify —
-  // "morning"/"evening" alone are too weak to invent a deadline from.
-  if (time && EXPLICIT_TIME_PATTERN.test(lower)) {
+  // "morning"/"evening" alone are too weak to invent a deadline from — and,
+  // with no day beside it, a lone "3:16" isn't one either: in "Read John
+  // 3:16" or "page 4:12" it's a reference, not a time.
+  if (time && TIME_WITHOUT_DAY_PATTERN.test(lower)) {
     const today = resolve(new Date(now));
     if (today && new Date(today).getTime() >= now.getTime()) return today;
     return resolve(byDays(1));

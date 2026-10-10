@@ -63,6 +63,19 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
     assert.deepEqual(parseDeadlinePhrase("tomorrow", local(2026, 9, 29, 23, 30)), { date: "2026-09-30", time: undefined });
   });
 
+  it("a clock time keeps its minutes, with or without a day beside it", () => {
+    assert.deepEqual(parseDeadlinePhrase("dentist tomorrow 9:30", NOW), { date: "2026-09-30", time: "09:30" });
+    assert.deepEqual(parseDeadlinePhrase("meeting 17:30", NOW), { date: "2026-09-29", time: "17:30" });
+    // Already past at 10:00: tomorrow.
+    assert.deepEqual(parseDeadlinePhrase("standup 09:15", NOW), { date: "2026-09-30", time: "09:15" });
+    assert.deepEqual(parseDeadlinePhrase("call mom at 7", NOW), { date: "2026-09-29", time: "19:00" });
+  });
+
+  it('a lone "3:16" with no day is a reference, not a deadline', () => {
+    assert.equal(parseDeadlinePhrase("Read John 3:16", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("revise page 4:12", NOW), undefined);
+  });
+
   it("a relative amount of hours is an exact moment", () => {
     assert.deepEqual(parseDeadlinePhrase("in 2 hours", NOW), { date: "2026-09-29", time: "12:00" });
   });
