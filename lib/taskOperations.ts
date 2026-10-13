@@ -19,13 +19,12 @@ import {
   seriesOccurrences,
   slotDeadline,
   startSeries,
-  templateFromTask,
   toLocalDateKey,
   type RecurrenceScope,
   type RuleInput,
 } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, type ImportanceLevel } from "@/lib/scoring";
-import type { Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
+import type { SeriesTemplate, Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
 
 // The structured task-operation system. Every change the AI asks for — and the
 // store's own complete / reopen / edit / delete — is planned here as pure data
@@ -576,7 +575,11 @@ export function editTaskDelta(
         const started = startSeries({ ...next, recurrence: undefined }, rule, seriesId);
         // An existing series keeps its template, apart from what this edit changed.
         if (task.recurrence && started.recurrence) {
-          started.recurrence.template = { ...task.recurrence.template, ...pickTemplateChanges(next, task) };
+          started.recurrence.template = {
+            ...task.recurrence.template,
+            ...pickTemplateChanges(next, task),
+            ...requestedTemplateFields(changes, next),
+          };
         }
         next = started;
         changed = dueChanged = true;
@@ -584,10 +587,20 @@ export function editTaskDelta(
         return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "invalid-change" }) };
       }
     }
-  } else if (task.recurrence && next.recurrence && (scope === "future" || scope === "series")) {
+  }
+
+  // What later occurrences take from this edit: whatever it changed, and also
+  // what it named that only differs from the template — an occurrence renamed
+  // on its own ("this") and then given the same title for "future" still has
+  // to reach the template.
+  const templatePatch: TemplatePatch =
+    scope === "future" || scope === "series" ? { ...pickTemplateChanges(next, task), ...requestedTemplateFields(changes, next) } : {};
+  if (templateMinutes !== undefined && (scope === "future" || scope === "series")) templatePatch.estimatedMinutes = templateMinutes;
+
+  if (changes.recurrence === undefined && task.recurrence && next.recurrence && (scope === "future" || scope === "series")) {
     // The template follows so later occurrences look like this one.
-    const template = { ...task.recurrence.template, ...pickTemplateChanges(next, task) };
-    if (templateMinutes !== undefined) template.estimatedMinutes = templateMinutes;
+    const template = { ...task.recurrence.template, ...templatePatch };
+    if (!sameTemplate(template, task.recurrence.template)) changed = true;
     let recurrence = { ...next.recurrence, template };
     if (dueChanged && next.deadline) {
       const rule = retimeRule(recurrence.rule, recurrence.occurrenceDate, next.deadline);
@@ -597,7 +610,27 @@ export function editTaskDelta(
     next.recurrence = recurrence;
   }
 
-  if (!changed) {
+  // The other occurrences this edit reaches. "series": the completed history
+  // takes the new title / importance / notes too. And the series' open
+  // occurrence is the one that brings in every later one, so an edit made
+  // through a finished occurrence ("future" or "series") has to reach it,
+  // template included — or the next occurrence comes back as it was.
+  const others: Task[] = [];
+  if (task.recurrence && Object.keys(templatePatch).length > 0) {
+    const reached =
+      scope === "series"
+        ? seriesOccurrences(allTasks, task.recurrence.seriesId)
+        : scope === "future" && task.status !== "pending"
+          ? [openOccurrence(allTasks, task.recurrence.seriesId)].filter((open): open is Task => !!open)
+          : [];
+    for (const other of reached) {
+      if (other.id === task.id) continue;
+      const patched = other.status === "pending" ? patchOpenOccurrence(other, templatePatch) : patchHistory(other, templatePatch);
+      if (patched) others.push({ ...patched, updatedAt: nowIso });
+    }
+  }
+
+  if (!changed && others.length === 0) {
     return {
       upserts: [],
       deletes: [],
@@ -609,22 +642,7 @@ export function editTaskDelta(
   }
 
   next.updatedAt = nowIso;
-  const upserts = [next];
-
-  // "series": the completed history takes the new title / length / importance / notes too.
-  if (scope === "series" && task.recurrence) {
-    const historyPatch = pickTemplateChanges(next, task);
-    if (Object.keys(historyPatch).length > 0) {
-      for (const other of seriesOccurrences(allTasks, task.recurrence.seriesId)) {
-        if (other.id === task.id) continue;
-        const patched: Task = { ...other, updatedAt: nowIso };
-        if (historyPatch.title) patched.title = historyPatch.title;
-        if (historyPatch.notes !== undefined) patched.notes = historyPatch.notes;
-        if (historyPatch.importance !== undefined) patched.importance = historyPatch.importance;
-        upserts.push(patched);
-      }
-    }
-  }
+  const upserts = changed ? [next, ...others] : others;
 
   return {
     upserts,
@@ -648,15 +666,65 @@ function exactOrKeptTime(current: TaskDeadline | undefined, iso: string, keepTim
   return resolveDeadlineInput(current, { date: exact.date }, true);
 }
 
+type TemplatePatch = Partial<SeriesTemplate>;
+
 /** The template fields this edit changed, compared with the task before it. */
-function pickTemplateChanges(next: Task, before: Task): Partial<ReturnType<typeof templateFromTask>> {
-  const patch: Partial<ReturnType<typeof templateFromTask>> = {};
+function pickTemplateChanges(next: Task, before: Task): TemplatePatch {
+  const patch: TemplatePatch = {};
   if (next.title !== before.title) patch.title = next.title;
   if (next.notes !== before.notes) patch.notes = next.notes;
   if (next.importance !== before.importance) patch.importance = next.importance;
   if (next.estimatedMinutes !== before.estimatedMinutes) patch.estimatedMinutes = next.estimatedMinutes;
   if (!!next.reminders?.muted !== !!before.reminders?.muted) patch.reminders = next.reminders?.muted ? { muted: true } : undefined;
   return patch;
+}
+
+/**
+ * The template fields an edit names, at the value the occurrence now has —
+ * whether or not the occurrence itself changed. (A length is handled by the
+ * caller: a relative change applies to the template's own length.)
+ */
+function requestedTemplateFields(changes: TaskChanges, next: Task): TemplatePatch {
+  const patch: TemplatePatch = {};
+  if (changes.title !== undefined && validTitle(changes.title)) patch.title = next.title;
+  if (changes.notes !== undefined) patch.notes = next.notes;
+  if (changes.priority && PRIORITY_LEVEL_IMPORTANCE[changes.priority] !== undefined) patch.importance = next.importance;
+  if (changes.remindersMuted !== undefined) patch.reminders = next.reminders?.muted ? { muted: true } : undefined;
+  return patch;
+}
+
+function sameTemplate(a: SeriesTemplate, b: SeriesTemplate): boolean {
+  return (
+    a.title === b.title &&
+    a.notes === b.notes &&
+    a.importance === b.importance &&
+    a.estimatedMinutes === b.estimatedMinutes &&
+    !!a.reminders?.muted === !!b.reminders?.muted
+  );
+}
+
+/** A finished (or skipped) occurrence renamed / re-rated with the series. Undefined when it already reads that way. */
+function patchHistory(task: Task, patch: TemplatePatch): Task | undefined {
+  const patched: Task = { ...task };
+  if (patch.title) patched.title = patch.title;
+  if ("notes" in patch) patched.notes = patch.notes;
+  if (patch.importance !== undefined) patched.importance = patch.importance;
+  return Object.keys(pickTemplateChanges(patched, task)).length > 0 ? patched : undefined;
+}
+
+/** The open occurrence takes the change and keeps it in its template, which every later occurrence is built from. */
+function patchOpenOccurrence(task: Task, patch: TemplatePatch): Task | undefined {
+  if (!task.recurrence) return patchHistory(task, patch);
+  const patched: Task = { ...patchHistory(task, patch) ?? task };
+  if (patch.estimatedMinutes !== undefined) patched.estimatedMinutes = patch.estimatedMinutes;
+  if ("reminders" in patch && !!patch.reminders?.muted !== !!task.reminders?.muted) {
+    if (patch.reminders?.muted) patched.reminders = { ...task.reminders, muted: true };
+    else delete patched.reminders;
+  }
+  const template = { ...task.recurrence.template, ...patch };
+  patched.recurrence = { ...task.recurrence, template };
+  const changed = Object.keys(pickTemplateChanges(patched, task)).length > 0 || !sameTemplate(template, task.recurrence.template);
+  return changed ? patched : undefined;
 }
 
 /**

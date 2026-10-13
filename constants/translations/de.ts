@@ -48,6 +48,33 @@ export const de: Translations = {
     aiUnreachable: "Die KI ist nicht erreichbar. Prüfe deine Verbindung und versuch es noch einmal.",
   },
 
+  aiConsent: {
+    title: "KI mit Nexdo nutzen?",
+    body: "Um deine Aufgaben zu ordnen, sendet Nexdo, was du für eine KI-Funktion schreibst, sagst oder fotografierst, an Gemini, die KI von Google, die es verarbeitet und das Ergebnis zurückschickt. Du kannst das jederzeit unter Einstellungen → KI ändern.",
+    allow: "Erlauben",
+    notNow: "Nicht jetzt",
+    privacy: "Datenschutzerklärung",
+  },
+
+  undoToast: {
+    undo: "Rückgängig",
+    done: (title: string) => `Erledigt: ${title}`,
+    deleted: (title: string) => `Gelöscht: ${title}`,
+    reset: (count: number) => `${count} ${plural(count, "Aufgabe neu geplant", "Aufgaben neu geplant")}`,
+  },
+
+  resetWeek: {
+    title: "WOCHE NEU PLANEN",
+    intro:
+      "Diese Aufgaben stehen noch an dem Tag, an dem sie fällig waren. Nexdo schlägt für jede einen neuen Tag in der kommenden Woche vor – tippe eine an, um ihn zu ändern. Nichts ändert sich, bevor du bestätigst.",
+    done: "Schon erledigt",
+    noDate: "Ohne Frist",
+    confirm: "Woche neu planen",
+    cardTitle: (count: number) => `${count} ${plural(count, "Aufgabe überfällig", "Aufgaben überfällig")}`,
+    cardBody: "Gib allen auf einmal einen neuen Tag.",
+    cardAction: "Neu planen",
+  },
+
   tabs: {
     next: "Heute",
     tasks: "Aufgaben",
@@ -125,6 +152,7 @@ export const de: Translations = {
     doneForTodayBody: "Alles, was heute fällig war, ist erledigt. Wie es weitergeht, steht in deinem Zeitplan.",
     nothingToday: "Heute ist nichts fällig",
     nothingTodayBody: "Keine Aufgabe ist heute fällig. Dein Zeitplan zeigt die anderen Tage, und unter Aufgaben findest du alle – auch die ohne Frist.",
+    upNextBody: "Das ist das Beste, was du als Nächstes tun kannst – wenn du Zeit hast.",
     openSchedule: "Zeitplan öffnen",
     seeTasks: "Alle Aufgaben ansehen",
     today: "Heute",
@@ -265,6 +293,7 @@ export const de: Translations = {
       answerPlaceholder: "Antworte Nexdo…",
       deadlineUnclear: "Bis wann ist diese Aufgabe jetzt fällig? Nexdo konnte aus deiner Notiz kein genaues Datum ablesen.",
       aiFailed: "Nexdo konnte diese Aufgabe gerade nicht neu bewerten. Es wurde nichts geändert.",
+      consentNeeded: "Nexdo braucht dein Okay, um hier die KI zu nutzen. Es wurde nichts geändert.",
       saveFailed: "Nexdo konnte die Änderungen nicht speichern. Es wurde nichts geändert.",
       keptUserEdits: "Einige Vorschläge wurden übersprungen, weil du dieselben Details geändert hast, während Nexdo gearbeitet hat.",
       discard: "Notiz verwerfen",
@@ -611,7 +640,7 @@ export const de: Translations = {
     restoreOffline: "Du bist offline. Stell eine Verbindung her und versuch es noch einmal.",
     restoreError: "Käufe konnten nicht wiederhergestellt werden. Versuch es noch einmal.",
     manageSubscription: "Abo verwalten",
-    manageError: "Dein Abo konnte nicht geöffnet werden. Versuch es noch einmal.",
+    manageError: "Dein Abo konnte nicht geöffnet werden. Du kannst es in deinem App-Store- oder Google-Play-Konto verwalten.",
     proActive: "Nexdo Pro ist aktiv.",
     proRenews: (date: string) => `Nexdo Pro · verlängert sich am ${date}`,
     proEnds: (date: string) => `Nexdo Pro · endet am ${date}`,
@@ -638,6 +667,11 @@ export const de: Translations = {
     notificationsDenied: "Benachrichtigungen für Nexdo sind in den Handy-Einstellungen aus, daher kann keine Erinnerung ankommen.",
 
     language: "SPRACHE",
+
+    ai: "KI",
+    aiToggle: "KI-Funktionen",
+    aiToggleBody:
+      "Sendet, was du einer KI-Funktion gibst (Text, Sprache, Fotos, Dateien), zur Verarbeitung an Gemini, die KI von Google. Aus: Nichts geht an die KI, und Aufgaben von Hand hinzufügen klappt weiterhin.",
 
     support: "HILFE & SUPPORT",
     help: "FAQ / Hilfe",
@@ -669,6 +703,14 @@ export const de: Translations = {
     },
     liveProOnly: "Das Magische Mikro gehört zu Nexdo Pro.",
     resets: "Dein Kontingent beginnt am 1. neu.",
+    left: {
+      chat: (count: number) => `Noch ${count} ${plural(count, "Kontextnotiz", "Kontextnotizen")} für die KI diesen Monat`,
+      media: (count: number) => `Noch ${count} ${plural(count, "Foto oder Dokument", "Fotos und Dokumente")} diesen Monat`,
+      voice: (minutes: number) => `Noch ${minutes} Min. Sprachnotizen diesen Monat`,
+      live: (minutes: number) => `Noch ${minutes} Min. Magisches Mikro diesen Monat`,
+      assist: (count: number) => `Noch ${count} ${plural(count, "Aufteilung oder Tipp", "Aufteilungen und Tipps")} diesen Monat`,
+    },
+    getMore: "Mehr mit Pro",
     upgradeHint: "Nexdo Pro gibt dir jeden Monat deutlich mehr — und Aufgaben von Hand hinzuzufügen bleibt immer kostenlos.",
     limitTitle: "Monatslimit erreicht",
     thisMonth: "Diesen Monat",
@@ -730,6 +772,11 @@ export const de: Translations = {
     screenshotInvalid: "Dieses Bild kann nicht angehängt werden. Wähle einen Screenshot oder ein Foto unter 5 MB.",
     screenshotError: "Der Screenshot konnte nicht hochgeladen werden. Versuch es noch einmal oder entferne ihn und sende ohne.",
     privacyNote: "Wird mit deinem Nexdo-Konto, der App-Version und dem Gerätetyp gesendet – du musst deine E-Mail nicht angeben.",
+    reportLabel: "Melden",
+    reportA11y: "Diesen KI-Inhalt melden",
+    reportTitle: "KI-Inhalt melden",
+    reportSubtitle: "Sag uns, was an dem, was die KI von Nexdo geschrieben hat, nicht stimmt.",
+    reportPrefill: (text: string) => `Was die KI von Nexdo geschrieben hat:\n„${text}“\n\nWas daran nicht stimmt: `,
     submit: "Feedback senden",
     sending: "Wird gesendet…",
     success: "Danke für dein Feedback.",
@@ -764,9 +811,14 @@ export const de: Translations = {
       `${count} ${plural(count, "Aufgabe ist", "Aufgaben sind")} heute fällig.${top ? ` Fang mit „${top}“ an.` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "offene Aufgabe", "offene Aufgaben")}.${top ? ` Fang mit „${top}“ an.` : ""}`,
+    dailySlippedNote: (count: number) =>
+      `${count} ${plural(count, "Aufgabe ist", "Aufgaben sind")} überfällig – plane deine Woche in Nexdo neu.`,
     trialEndingTitle: "Dein kostenloser Test endet in 2 Tagen",
     trialEndingBody: (date: string) =>
-      `Nexdo Pro startet am ${date}. Du willst es nicht? Kündige vorher in den Einstellungen.`,
+      `Nexdo Pro startet am ${date}. Du willst es nicht? Tippe hier und dann auf „Abo verwalten“, um vorher zu kündigen.`,
+    sessionEndTitle: "Zeit ist um",
+    sessionEndBody: (title: string) =>
+      title ? `Deine Session zu „${title}“ ist vorbei. Schließ die Aufgabe ab oder mach weiter.` : "Deine Fokus-Session ist vorbei.",
   },
 
   profile: {
@@ -845,12 +897,12 @@ export const de: Translations = {
   },
 
   onboardingDump: {
-    eyebrow: "PROBIER ES MIT DEINEN ECHTEN AUFGABEN",
-    headline: "Was musst du diese Woche erledigen?",
-    body: "**Schreib jede Aufgabe auf**, die ansteht — gern durcheinander. Tipp sie ein oder drück aufs Mikro und sprich sie laut aus.",
+    eyebrow: "PROBIER DAS MAGISCHE MIKRO",
+    headline: "Sag einfach, was ansteht.",
+    body: "**Tipp aufs Mikro und erzähl von deiner Woche** — gern durcheinander. Nexdo macht Aufgaben daraus. Lieber tippen? Nutz das Textfeld.",
     placeholder: "Mathe-Hausaufgaben bis Freitag fertig machen\nProf. Weber mailen\nHeute Abend einkaufen…",
-    startRecording: "Sprechen",
-    stopRecording: "Stopp und aufschreiben",
+    startRecording: "Magisches Mikro starten",
+    stopRecording: "Stopp und ordnen",
     transcribing: "Wird aufgeschrieben…",
     organize: "Mit Nexdo ordnen",
     trialUsedHeadline: "Du hast die KI von Nexdo schon ausprobiert",
@@ -894,7 +946,8 @@ export const de: Translations = {
 
   onboardingNotify: {
     headline: "Ein Stups, genau im richtigen Moment.",
-    body: "Keine fünfzig Benachrichtigungen. Nur die eine, die dich auf Kurs hält.",
+    body: "Jeden Morgen das eine, womit du anfängst. Dazu ein Hinweis, wenn etwas fällig ist.",
+    morningPlan: "Morgenplan",
     sampleTime: "jetzt",
     sampleBody: "Deine Chemie-Hausaufgabe ist morgen fällig. Willst du jetzt anfangen?",
     allow: "Benachrichtigungen erlauben",
@@ -915,7 +968,7 @@ export const de: Translations = {
     endBody: (price: string, yearly: boolean) =>
       `${price}/${yearly ? "Jahr" : "Monat"} werden abgebucht — oder kündige vorher und zahle nichts.`,
     cancelTitle: "Jederzeit kündbar",
-    cancelBody: "Direkt in den Einstellungen. Keine Anrufe, keine Formulare.",
+    cancelBody: "Unter Einstellungen → Abo verwalten oder in deinen App-Store- bzw. Google-Play-Abos. Keine Anrufe, keine Formulare.",
     next: "Weiter",
   },
 

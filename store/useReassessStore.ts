@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { extractAttachmentText } from "@/lib/ai/media";
 import { requestReassessment, type ContextSubmission } from "@/lib/ai/reassessTask";
+import { AiConsentError } from "@/lib/aiConsent";
 import { composeFileNote, parseContextNote, withNoteText, type ContextFileKind } from "@/lib/contextFile";
 import { getLanguage } from "@/lib/i18n";
 import { PlanLimitError, type Meter } from "@/lib/plan";
@@ -38,7 +39,8 @@ export type ReassessState =
   // "limit": a month's allowance is used up (lib/plan.ts) — context notes, or
   // photos and documents for a file — and the note waits, as with any other
   // failure. "file": the file couldn't be read; "empty": nothing in it could.
-  | { status: "error"; pending: PendingContext; reason: "ai" | "save" | "limit" | "file" | "empty"; meter?: Meter };
+  // "consent": the user didn't allow AI (lib/aiConsent.ts) — Try again asks again.
+  | { status: "error"; pending: PendingContext; reason: "ai" | "save" | "limit" | "file" | "empty" | "consent"; meter?: Meter };
 
 type ReassessStore = {
   byTask: Record<string, ReassessState>;
@@ -90,6 +92,7 @@ export const useReassessStore = create<ReassessStore>()((set, get) => {
         if (error instanceof PlanLimitError) {
           return setState(taskId, { status: "error", pending, reason: "limit", meter: error.meter });
         }
+        if (error instanceof AiConsentError) return setState(taskId, { status: "error", pending, reason: "consent" });
         console.warn("[useReassessStore] reading the file failed", error);
         return setState(taskId, { status: "error", pending, reason: "file" });
       }
@@ -110,6 +113,7 @@ export const useReassessStore = create<ReassessStore>()((set, get) => {
       if (error instanceof PlanLimitError) {
         return setState(taskId, { status: "error", pending, reason: "limit", meter: error.meter });
       }
+      if (error instanceof AiConsentError) return setState(taskId, { status: "error", pending, reason: "consent" });
       console.warn("[useReassessStore] reassessment failed", error);
       return setState(taskId, { status: "error", pending, reason: "ai" });
     }

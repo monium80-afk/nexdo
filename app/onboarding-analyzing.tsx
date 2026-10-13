@@ -24,6 +24,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
 import { extractTasks } from "@/lib/ai/extractTasks";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
+import { hasAiConsent } from "@/lib/aiConsent";
 import { markTrialUsed } from "@/lib/aiTrial";
 import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
@@ -210,18 +211,25 @@ export default function OnboardingAnalyzing() {
     // the redirect doesn't stop this effect on its own.
     if (!isLoaded || isSignedIn) return;
     let cancelled = false;
+    // The user didn't allow AI (the dump step asked): the tasks are found on
+    // the phone, and the free AI run isn't spent.
+    const allowed = hasAiConsent();
     // This read is the free AI run a signed-out install gets. From here on,
     // onboarding asks for an account instead of offering it again — the server
     // counts it too, so this is what the user sees, not what enforces it.
-    markTrialUsed();
-    classifyIntent({ text: dump, now: new Date(), recentTaskIds: [], tasks: [] })
-      .then((turn) => {
-        if (cancelled) return;
-        // Every CREATE_TASK, not the first one: /api/inbox resolves a compound
-        // message by looping one instruction at a time, so a dump listing four
-        // things comes back as four separate actions carrying one draft each.
-        // Finding a single action here is what dropped the other three.
-        setResult(turn.actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : [])));
+    if (allowed) markTrialUsed();
+    const reading: Promise<ExtractedTaskDraft[]> = allowed
+      ? classifyIntent({ text: dump, now: new Date(), recentTaskIds: [], tasks: [] }).then((turn) =>
+          // Every CREATE_TASK, not the first one: /api/inbox resolves a compound
+          // message by looping one instruction at a time, so a dump listing four
+          // things comes back as four separate actions carrying one draft each.
+          // Finding a single action here is what dropped the other three.
+          turn.actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : [])),
+        )
+      : Promise.resolve(extractTasks(dump, new Date(), getLanguage()));
+    reading
+      .then((drafts) => {
+        if (!cancelled) setResult(drafts);
       })
       .catch((error) => {
         // The heuristic splitter is what classifyIntent itself falls back to,

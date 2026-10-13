@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useImperativeHandle, useState, type Ref } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Text, View } from "react-native";
 
 import { IconButton, PrimaryButton, TextButton } from "@/components/Button";
@@ -28,6 +28,7 @@ export function ContextNoteCard({
   note,
   onSave,
   onDelete,
+  onEditingChange,
   disabled = false,
   ref,
 }: {
@@ -35,7 +36,9 @@ export function ContextNoteCard({
   /** Saving an edit sends it for reassessment, like a new note. */
   onSave: (note: string) => void;
   onDelete: () => void;
-  /** While Nexdo is reassessing the task: the notes stay as they are until it's done. */
+  /** The card opened or closed for editing — Task Details keeps it to one card at a time. */
+  onEditingChange?: (editing: boolean) => void;
+  /** While Nexdo is reassessing the task (or another note is open): the notes stay as they are. */
   disabled?: boolean;
   ref?: Ref<ContextNoteCardHandle>;
 }) {
@@ -43,9 +46,25 @@ export function ContextNoteCard({
   const colors = useColors();
   const rtl = useRtlText();
   const parsed = parseContextNote(note);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditingState] = useState(false);
   const [draft, setDraft] = useState(parsed.text);
   const [expanded, setExpanded] = useState(false);
+
+  const onEditingChangeRef = useRef(onEditingChange);
+  onEditingChangeRef.current = onEditingChange;
+  const editingRef = useRef(false);
+  const setEditing = (open: boolean) => {
+    editingRef.current = open;
+    setEditingState(open);
+    onEditingChangeRef.current?.(open);
+  };
+  // Gone while open (its note was replaced): no longer the card being edited.
+  useEffect(
+    () => () => {
+      if (editingRef.current) onEditingChangeRef.current?.(false);
+    },
+    [],
+  );
 
   // A note from a file can lose its words and still be a note: the file's text.
   const canSave = Boolean(draft.trim()) || Boolean(parsed.file);

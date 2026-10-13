@@ -35,6 +35,12 @@ export type ReassessRequestBody = {
   doneSteps: PlanStep[];
   /** Unfinished subtasks, in order. */
   steps: ReassessStep[];
+  /**
+   * Set by the route when it couldn't pass on every unfinished subtask (too
+   * many, or one without an id or title). The model's list would then replace
+   * steps it never saw, so the answer keeps the steps as they are.
+   */
+  stepsCut?: true;
   /** Nexdo's current advice for the task, if it has any. */
   advice: string | null;
   /** What the user just told Nexdo about the task. */
@@ -189,22 +195,21 @@ function normalizeShift(raw: unknown): DateShift | null {
 function normalizeSteps(raw: unknown): ReassessResponseBody["steps"] {
   if (!Array.isArray(raw)) return null;
   // The list replaces every unfinished step, so cutting it short would drop
-  // real subtasks: an oversized answer is unusable rather than partial.
+  // real subtasks: an oversized answer, or one with a step that has no usable
+  // title, is unusable rather than partial.
   if (raw.length > MAX_STEPS) throw new UnusableAnswerError("too many steps");
   const seen = new Set<string>();
-  return raw
-    .map((entry) => {
-      const step = asObject(entry);
-      const title = cleanText(step.title, MAX_STEP_TITLE_LENGTH);
-      if (!title) return null;
-      // A second use of one id would put the same subtask in two places.
-      let id = clampString(step.id, MAX_ID_LENGTH) ?? null;
-      if (id && seen.has(id)) id = null;
-      if (id) seen.add(id);
-      const minutes = clampNumber(step.estimatedMinutes, 5, MAX_STEP_MINUTES) ?? 15;
-      return { id, title, estimatedMinutes: Math.round(minutes) };
-    })
-    .filter((step): step is NonNullable<typeof step> => step !== null);
+  return raw.map((entry) => {
+    const step = asObject(entry);
+    const title = cleanText(step.title, MAX_STEP_TITLE_LENGTH);
+    if (!title) throw new UnusableAnswerError("a step without a usable title");
+    // A second use of one id would put the same subtask in two places.
+    let id = clampString(step.id, MAX_ID_LENGTH) ?? null;
+    if (id && seen.has(id)) id = null;
+    if (id) seen.add(id);
+    const minutes = clampNumber(step.estimatedMinutes, 5, MAX_STEP_MINUTES) ?? 15;
+    return { id, title, estimatedMinutes: Math.round(minutes) };
+  });
 }
 
 const EMPTY_CHANGES = {
@@ -281,17 +286,22 @@ export function parseReassessBody(raw: unknown): ReassessRequestBody | null {
   const clarifiedNote = clampString(clarification.note, MAX_CONTEXT_LENGTH);
   const clarifyingQuestion = clampString(clarification.question, MAX_SENTENCE_LENGTH);
 
+  if (!Array.isArray(body.steps)) return null;
+  const sentSteps = body.steps;
+  const steps = clampArray(sentSteps, MAX_STEPS)
+    .map((entry) => {
+      const step = asObject(entry);
+      const id = clampString(step.id, MAX_ID_LENGTH);
+      const title = clampString(step.title, MAX_TITLE_LENGTH);
+      return id && title ? { id, title, estimatedMinutes: clampNumber(step.estimatedMinutes, 0, MAX_TASK_MINUTES) ?? 15 } : null;
+    })
+    .filter((step): step is ReassessStep => step !== null);
+
   return {
     task,
     doneSteps: parsePlanSteps(body.doneSteps, MAX_STEPS),
-    steps: clampArray(body.steps, MAX_STEPS)
-      .map((entry) => {
-        const step = asObject(entry);
-        const id = clampString(step.id, MAX_ID_LENGTH);
-        const title = clampString(step.title, MAX_TITLE_LENGTH);
-        return id && title ? { id, title, estimatedMinutes: clampNumber(step.estimatedMinutes, 0, MAX_TASK_MINUTES) ?? 15 } : null;
-      })
-      .filter((step): step is ReassessStep => step !== null),
+    steps,
+    stepsCut: steps.length < sentSteps.length || undefined,
     advice: clampString(body.advice, MAX_ADVICE_LENGTH) ?? null,
     newContext,
     replacesNote: clampString(body.replacesNote, MAX_CONTEXT_LENGTH),
@@ -313,14 +323,14 @@ Exception: "dueDatePhrase" is always written in English — translate only the u
  * Exported so the live eval can run it against the real model without a server.
  */
 export async function reassessTask(body: ReassessRequestBody): Promise<ReassessResponseBody> {
-  const { language, ...userContent } = body;
+  const { language, stepsCut, ...userContent } = body;
   const result = await generateStructuredJson({
     label: "reassess",
     systemPrompt: `${TASK_REASSESSMENT_SYSTEM_PROMPT}${languageInstruction(language)}${deadlineLanguageNote(language)}`,
     userContent: JSON.stringify(userContent),
     responseSchema: RESPONSE_SCHEMA,
   });
-  return normalizeReassessment(result);
+  return normalizeReassessment(stepsCut ? { ...asObject(result), steps: null } : result);
 }
 
 // Signed-in only, like the breakdown route: it changes a saved task, and there

@@ -13,7 +13,7 @@ import {
 import { resyncTrialReminder } from "@/lib/purchases";
 import { planNotifications } from "@/lib/reminders";
 import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
-import { useTaskStore } from "@/store/useTaskStore";
+import { useTaskStore, whenAccountRead } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
 // Edits tend to arrive in bursts (the AI adding several tasks at once, the
@@ -68,13 +68,18 @@ async function handleTap(tap: NotificationTap) {
     if (tap.url) router.push(tap.url as Href);
     return;
   }
+  // "Mark as done" is checked against the account's latest list, not just
+  // the phone's saved copy: on a cold start the read from Supabase may still
+  // be on its way, with another device's change to the task in it. If that
+  // read doesn't work, the task is opened instead.
+  const upToDate = tap.action === "complete" ? await whenAccountRead() : false;
   const task = useTaskStore.getState().tasks.find((candidate) => candidate.id === tap.taskId);
   if (!task) {
     router.push("/(tabs)/tasks");
     return;
   }
   const deadline = task.deadline ? `${task.deadline.date}|${task.deadline.time ?? ""}` : undefined;
-  if (tap.action === "complete" && task.status === "pending" && (!tap.deadline || tap.deadline === deadline)) {
+  if (upToDate && task.status === "pending" && (!tap.deadline || tap.deadline === deadline)) {
     useTaskStore.getState().completeTask(task.id);
     return;
   }
@@ -85,9 +90,10 @@ async function handleTap(tap: NotificationTap) {
  * Keeps the phone's scheduled reminders in step with the task list and the
  * reminder settings, and handles what the user does with them.
  *
- * Mounted in the signed-in tabs layout, next to useAuthSync: the reminders
- * are about this account's tasks. Signing out clears them (see
- * useTaskStore.handleSignOut), along with the task list itself.
+ * Mounted in the root layout next to useAuthSync, and only acts once an
+ * account's tasks are being synced: the reminders are about this account's
+ * tasks. Signing out clears them (see useTaskStore.handleSignOut), along
+ * with the task list itself.
  */
 export function useNotifications() {
   const userId = useTaskStore((state) => state.syncUserId);

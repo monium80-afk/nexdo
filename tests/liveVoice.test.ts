@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 
 import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
-import { createLiveVoice, MAX_LIVE_SECONDS, SILENCE_STOP_SECONDS, type LiveVoiceDeps } from "@/lib/liveVoice";
+import { CONNECT_TIMEOUT_MS, createLiveVoice, MAX_LIVE_SECONDS, SILENCE_STOP_SECONDS, type LiveVoiceDeps } from "@/lib/liveVoice";
 import type { LiveToolCall } from "@/lib/liveVoiceTools";
 import { PlanLimitError } from "@/lib/plan";
 
@@ -215,6 +215,30 @@ describe("live voice session", () => {
     assert.equal(socket.closed, true);
   });
 
+  it("gives up on a connection that stalls before listening, and can start again", async () => {
+    const listened: [number, string | undefined][] = [];
+    const { voice, sockets, microphone } = setup({ onListened: (seconds, sessionId) => listened.push([seconds, sessionId]) });
+    await voice.start();
+    sockets[0].onopen?.(); // open, but setupComplete never arrives
+    mock.timers.tick(CONNECT_TIMEOUT_MS - 1);
+    assert.equal(voice.getState().status, "connecting");
+    mock.timers.tick(1);
+    assert.equal(voice.getState().status, "error");
+    assert.equal(voice.getState().problem, "connection");
+    assert.equal(sockets[0].closed, true);
+    assert.equal(microphone.running, false);
+    assert.deepEqual(listened, [[0, SESSION.sessionId]], "none of the session's time was used");
+
+    await voice.start();
+    assert.equal(sockets.length, 2, "a retry opens a new connection");
+    sockets[1].onopen?.();
+    sockets[1].receive({ setupComplete: {} });
+    await flush();
+    sockets[1].receive(speechStart); // someone talking, so the silence stop stays out of it
+    mock.timers.tick(CONNECT_TIMEOUT_MS);
+    assert.equal(voice.getState().status, "listening", "the timeout is over once listening begins");
+  });
+
   it("doesn't wait forever for a last turn that never comes", async () => {
     const { voice, socket } = await listening();
     socket.receive(speechStart);
@@ -319,6 +343,48 @@ describe("live voice session", () => {
     await voice.start();
     assert.equal(voice.getState().problem, "unavailable");
     assert.equal(sockets.length, 0);
+  });
+
+  it("cleans up a stale microphone startup before starting a newer session", async () => {
+    const releases: (() => void)[] = [];
+    let running = false;
+    let stops = 0;
+    const { voice, sockets } = setup({
+      startMicrophone: () =>
+        new Promise<void>((resolve) =>
+          releases.push(() => {
+            running = true;
+            resolve();
+          }),
+        ),
+      stopMicrophone: () => {
+        running = false;
+        stops += 1;
+      },
+    });
+
+    await voice.start();
+    sockets[0].onopen?.();
+    sockets[0].receive({ setupComplete: {} });
+    await flush();
+    assert.equal(releases.length, 1);
+
+    mock.timers.tick(CONNECT_TIMEOUT_MS);
+    await voice.start();
+    sockets[1].onopen?.();
+    sockets[1].receive({ setupComplete: {} });
+    await flush();
+    assert.equal(releases.length, 1, "the new startup waits for the stale startup");
+
+    releases[0]();
+    await flush();
+    assert.equal(stops, 1, "the ended session's startup is cleaned up");
+    assert.equal(releases.length, 2);
+
+    releases[1]();
+    await flush();
+    assert.equal(voice.getState().status, "listening");
+    assert.equal(running, true, "stale cleanup did not stop the active session");
   });
 
   it("says so when Live voice isn't in the plan, or the month's minutes are used up", async () => {

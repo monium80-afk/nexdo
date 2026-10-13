@@ -207,6 +207,47 @@ describe("recurring tasks", () => {
     assert.equal(future.plan.upserts[0].recurrence?.template.title, "Gym session");
   });
 
+  it("a future rule change applies an explicitly requested title even when it is unchanged", () => {
+    const { plan } = apply(
+      [weeklyGym()],
+      {
+        kind: "update",
+        target: { taskIds: ["gym"] },
+        changes: { recurrence: { frequency: "daily" }, title: "Gym" },
+        scope: "future",
+      },
+    );
+    assert.equal(plan.upserts[0].recurrence?.template.title, "Gym");
+    assert.equal(plan.upserts[0].recurrence?.rule.frequency, "daily");
+  });
+
+  it("'future' with the title an occurrence already has on its own still reaches the template", () => {
+    const renamed = apply([weeklyGym()], { kind: "update", target: { taskIds: ["gym"] }, changes: { title: "Gym (legs)" }, scope: "this" }).tasks;
+    const { plan, tasks } = apply(renamed, { kind: "update", target: { taskIds: ["gym"] }, changes: { title: "Gym (legs)" }, scope: "future" });
+    assert.equal(plan.outcomes[0].outcome, "updated");
+    assert.equal(tasks[0].recurrence?.template.title, "Gym (legs)");
+    const next = apply(tasks, { kind: "complete", target: { taskIds: ["gym"] } }, local(2026, 10, 5, 8)).tasks;
+    assert.equal(next.find((task) => task.id === "series-gym@2026-10-12")?.title, "Gym (legs)");
+  });
+
+  it("an edit made through a completed occurrence reaches the open one and its template", () => {
+    const afterDone = apply([weeklyGym()], { kind: "complete", target: { taskIds: ["gym"] } }, local(2026, 10, 5, 8)).tasks;
+    const openId = "series-gym@2026-10-12";
+    for (const scope of ["series", "future"] as const) {
+      const { tasks } = apply(afterDone, { kind: "update", target: { taskIds: ["gym"] }, changes: { title: "Workout" }, scope });
+      const open = tasks.find((task) => task.id === openId)!;
+      assert.equal(open.title, "Workout", scope);
+      assert.equal(open.recurrence?.template.title, "Workout", `${scope}: the template too`);
+      assert.equal(tasks.find((task) => task.id === "gym")?.title, "Workout", scope);
+      // Completing the open one brings in the next with the new title.
+      const later = apply(tasks, { kind: "complete", target: { taskIds: [openId] } }, local(2026, 10, 12, 8)).tasks;
+      assert.equal(later.find((task) => task.id === "series-gym@2026-10-19")?.title, "Workout", scope);
+    }
+    // "this" stays on the finished occurrence.
+    const only = apply(afterDone, { kind: "update", target: { taskIds: ["gym"] }, changes: { title: "Workout" }, scope: "this" }).tasks;
+    assert.equal(only.find((task) => task.id === openId)?.title, "Gym");
+  });
+
   it("moving an occurrence to Tuesday 'from now on' re-times the rule", () => {
     const gym = weeklyGym();
     const { plan } = apply(gym ? [gym] : [], {

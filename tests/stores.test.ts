@@ -12,7 +12,7 @@ import { beforeEach, describe, it } from "node:test";
 import { resolveInboxMessage, type InboxRequestBody } from "@/app/api/inbox+api";
 import { GeminiTimeoutError } from "@/lib/ai/gemini";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { useTaskStore } from "@/store/useTaskStore";
+import { useTaskStore, whenAccountRead } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
 import { apiCalls } from "./stubs/api";
@@ -51,6 +51,54 @@ beforeEach(async () => {
   useSettingsStore.setState({ language: "en" });
   useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: USER, ownerId: USER });
   await flush();
+});
+
+describe("waiting for the account's tasks", () => {
+  it("resolves once the read in flight is done, and only true for the signed-in account", async () => {
+    useTaskStore.setState({ syncUserId: null });
+    assert.equal(await whenAccountRead(), false, "signed out: there's no account list to wait for");
+
+    const release = fakeDb.holdReads();
+    const reading = useTaskStore.getState().hydrateFromSupabase(USER);
+    let settled: boolean | undefined;
+    void whenAccountRead().then((worked) => {
+      settled = worked;
+    });
+    await flush();
+    assert.equal(settled, undefined, "still waiting on the read");
+    release();
+    await reading;
+    await flush();
+    assert.equal(settled, true);
+
+    assert.equal(await whenAccountRead(1), true, "a read already done answers at once");
+  });
+
+  it("gives up after its time limit", async () => {
+    fakeDb.holdReads();
+    void useTaskStore.getState().hydrateFromSupabase(USER);
+    assert.equal(await whenAccountRead(20), false);
+  });
+
+  it("waits for a newer account read that starts before the earlier one settles", async () => {
+    const releaseFirst = fakeDb.holdReads();
+    const firstRead = useTaskStore.getState().hydrateFromSupabase(USER);
+    await flush();
+    let settled: boolean | undefined;
+    const waiting = whenAccountRead().then((worked) => (settled = worked));
+
+    const releaseSecond = fakeDb.holdReads();
+    const secondRead = useTaskStore.getState().hydrateFromSupabase(USER);
+    await flush();
+    releaseFirst();
+    await firstRead;
+    await flush();
+    assert.equal(settled, undefined);
+
+    releaseSecond();
+    await secondRead;
+    assert.equal(await waiting, true);
+  });
 });
 
 describe("repeating tasks in the store", () => {

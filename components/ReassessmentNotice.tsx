@@ -4,6 +4,7 @@ import { ActivityIndicator, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 
 import { IconButton, SecondaryButton, TextButton, type FeatherIconName } from "@/components/Button";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { listItemEntering } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -137,10 +138,13 @@ export function ReassessmentNotice({
   state,
   onDismiss,
   onRetry,
+  beforeReport,
 }: {
   state: ReassessState;
   onDismiss: () => void;
   onRetry: () => void;
+  /** Shown in a sheet (a session's Add context): closes it before Report opens feedback. */
+  beforeReport?: () => void;
 }) {
   const colors = useColors();
   const t = useTranslation();
@@ -189,6 +193,7 @@ export function ReassessmentNotice({
             ))}
             {deadlineUnchanged ? <Line icon="minus" text={r.deadlineUnchanged} muted /> : null}
             {keptUserEdits ? <Line icon="info" text={r.keptUserEdits} muted /> : null}
+            <ReportAiButton content={[summary, ...lines].filter(Boolean).join("\n")} beforeOpen={beforeReport} />
           </NoticeCard>
         ) : (
           <NoticeCard
@@ -203,6 +208,7 @@ export function ReassessmentNotice({
               </Text>
             ) : null}
             {keptUserEdits ? <Line icon="info" text={r.keptUserEdits} muted /> : null}
+            {summary ? <ReportAiButton content={summary} beforeOpen={beforeReport} /> : null}
           </NoticeCard>
         );
       break;
@@ -220,6 +226,7 @@ export function ReassessmentNotice({
             {state.question}
           </Text>
           <QuotedNote text={noteLine(state.pending, t)} />
+          <ReportAiButton content={state.question} beforeOpen={beforeReport} />
         </NoticeCard>
       );
       break;
@@ -231,6 +238,7 @@ export function ReassessmentNotice({
         save: r.saveFailed,
         file: t.taskDetail.attach.readFailed,
         empty: state.pending.file?.kind === "photo" ? t.taskDetail.attach.emptyPhoto : t.taskDetail.attach.emptyDocument,
+        consent: r.consentNeeded,
       };
       content = (
         <NoticeCard icon={<Feather name="alert-circle" size={14} color={colors.overdue[500]} />} title={titles[state.reason]}>

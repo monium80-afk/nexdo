@@ -191,13 +191,21 @@ function withoutNewerColumns(row: TaskRow): TaskRow {
 }
 
 /**
- * Saves several tasks in one request. PostgREST runs a bulk upsert as a single
- * statement, so the rows land together or not at all — a bulk AI change can't
- * be left half-written.
+ * Saves several tasks together. Insert candidates are first upserted with
+ * duplicate-ignore so the database can identify which rows this save created;
+ * the full version then lands in one bulk upsert.
  */
-export async function upsertTaskRows(tasks: Task[], userId: string): Promise<void> {
-  if (tasks.length === 0) return;
+export async function upsertTaskRows(
+  tasks: Task[],
+  userId: string,
+  insertCandidates: Task[] = [],
+  onInserted?: (ids: string[]) => void,
+): Promise<string[]> {
+  if (tasks.length === 0) return [];
   const rows = tasks.map((task) => toTaskRow(task, userId));
+  const candidateIds = new Set(insertCandidates.map((task) => task.id));
+  const candidateRows = rows.filter((row) => candidateIds.has(row.id));
+  const insertedIds = new Set<string>();
   // PostgREST names one missing column per error, so a database missing both
   // groups takes two rounds to find out; three attempts cover it.
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -212,8 +220,38 @@ export async function upsertTaskRows(tasks: Task[], userId: string): Promise<voi
       }
       sendable = sendable.map(withoutRecurrence);
     }
+    if (candidateRows.length > 0) {
+      const sendableCandidates = dropRecurrence
+        ? sendable.filter((row) => candidateIds.has(row.id))
+        : dropNewer
+          ? candidateRows.map(withoutNewerColumns).filter((row) => !dropRecurrence || !row.recurrence)
+          : candidateRows;
+      const { data, error } = await supabase
+        .from("tasks")
+        .upsert(sendableCandidates, { onConflict: "id", ignoreDuplicates: true })
+        .select("id");
+      if (error) {
+        if (!dropNewer && isMissingColumn(error, NEWER_COLUMNS)) {
+          newerColumnsMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
+          console.warn(
+            "[supabaseSync] The tasks table has no deadline_date/reminder_settings columns yet — run supabase/schema.sql. Tasks still save; a date-only deadline is stored as its end-of-day time until then.",
+          );
+          continue;
+        }
+        if (!dropRecurrence && isMissingColumn(error, ["recurrence"])) {
+          recurrenceColumnMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
+          console.warn(
+            "[supabaseSync] The tasks table has no recurrence column yet — run supabase/schema.sql. Repeating tasks stay unsaved until then.",
+          );
+          continue;
+        }
+        throw error;
+      }
+      for (const row of data ?? []) insertedIds.add(row.id);
+      if (insertedIds.size > 0) onInserted?.([...insertedIds]);
+    }
     const { error } = await supabase.from("tasks").upsert(sendable);
-    if (!error) return;
+    if (!error) return [...insertedIds];
     if (!dropNewer && isMissingColumn(error, NEWER_COLUMNS)) {
       newerColumnsMissingUntil = Date.now() + RECURRENCE_COLUMN_RECHECK_MS;
       console.warn(
@@ -234,7 +272,7 @@ export async function upsertTaskRows(tasks: Task[], userId: string): Promise<voi
 }
 
 export async function upsertTaskRow(task: Task, userId: string): Promise<void> {
-  return upsertTaskRows([task], userId);
+  await upsertTaskRows([task], userId);
 }
 
 // Scoped to the owner as well as the id. RLS already enforces this server
@@ -249,6 +287,19 @@ export async function deleteTaskRows(taskIds: string[], userId: string): Promise
   if (taskIds.length === 0) return;
   const { error } = await supabase.from("tasks").delete().in("id", taskIds).eq("user_id", userId);
   if (error) throw error;
+}
+
+/** Removes only created rows that still have the version this save wrote. */
+export async function deleteTaskRowsIfUnchanged(rows: { id: string; updatedAt: string }[], userId: string): Promise<void> {
+  for (const row of rows) {
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", row.id)
+      .eq("user_id", userId)
+      .eq("updated_at", row.updatedAt);
+    if (error) throw error;
+  }
 }
 
 export function subscribeToTasks(userId: string, onChange: (task: Task, event: "INSERT" | "UPDATE" | "DELETE", oldId?: string) => void): RealtimeChannel {
@@ -267,4 +318,3 @@ export function subscribeToTasks(userId: string, onChange: (task: Task, event: "
     )
     .subscribe();
 }
-

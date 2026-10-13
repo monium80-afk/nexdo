@@ -10,7 +10,7 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "deploy:server": "expo export --platform web && npx eas-cli deploy --prod --environment production",
-    "test": "node --import ./tests/register.mjs --test \"tests/*.test.ts\"",
+    "test": "node --import ./tests/register.mjs --import ./tests/setup-english.ts --test \"tests/*.test.ts\"",
     "eval:reassess": "node --env-file=.env --experimental-transform-types --import ./tests/register.mjs tests/ai-eval-reassess.ts"
   },
   "dependencies": {

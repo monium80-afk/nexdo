@@ -14,12 +14,14 @@ import Animated, {
   type AnimatedProps,
 } from "react-native-reanimated";
 
+import { AllowanceNote } from "@/components/AllowanceNote";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { CompletedOverlay, type OverlayOrigin } from "@/components/CompletedOverlay";
 import { ContextSheet } from "@/components/ContextSheet";
 import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { StartSessionButton } from "@/components/StartSessionButton";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TimerRing } from "@/components/TimerRing";
@@ -31,9 +33,12 @@ import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { formatTaskLength } from "@/lib/formatDuration";
+import { openPaywall } from "@/lib/paywall";
 import { getDueInfo } from "@/lib/taskMeta";
+import { useAllowance } from "@/store/usePlanUsageStore";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
+import { withUndo } from "@/store/useUndoStore";
 import type { StepDraft, Subtask, Task } from "@/types/task";
 
 // The hairline the card draws above and below its content — the stack sizes
@@ -121,7 +126,16 @@ function StepsProgress({ fraction }: { fraction: number }) {
 }
 
 /** The task's plan while a session runs on it — every step, each one tickable. */
-function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep: (stepId: string) => void }) {
+function MicroStepsChecklist({
+  task,
+  onToggleStep,
+  locked,
+}: {
+  task: Task;
+  onToggleStep: (stepId: string) => void;
+  /** The task is being celebrated as finished: a tap now would be drawn but never saved. */
+  locked: boolean;
+}) {
   const rtl = useRtlText();
   const steps = task.subtasks?.slice().sort((a, b) => a.order - b.order) ?? [];
 
@@ -144,9 +158,28 @@ function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep:
   const isDone = (step: Subtask) => ticked[step.id] ?? step.status === "completed";
   const doneCount = steps.filter(isDone).length;
 
+  // The toggle each step still has waiting to be handed over. A second tap
+  // before it goes undoes the first, so the two cancel out and nothing is
+  // sent — otherwise ticking the last step and unticking it straight away
+  // would start the task's celebration, and the untick would be dropped.
+  const waiting = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
   const handlePress = (step: Subtask) => {
+    if (locked) return;
     setTicked((current) => ({ ...current, [step.id]: !(current[step.id] ?? step.status === "completed") }));
-    setTimeout(() => onToggleStep(step.id), STEP_TICK_MS);
+    const earlier = waiting.current.get(step.id);
+    if (earlier !== undefined) {
+      clearTimeout(earlier);
+      waiting.current.delete(step.id);
+      return;
+    }
+    waiting.current.set(
+      step.id,
+      setTimeout(() => {
+        waiting.current.delete(step.id);
+        onToggleStep(step.id);
+      }, STEP_TICK_MS),
+    );
   };
 
   return (
@@ -161,7 +194,8 @@ function MicroStepsChecklist({ task, onToggleStep }: { task: Task; onToggleStep:
               key={step.id}
               onPress={() => handlePress(step)}
               accessibilityRole="checkbox"
-              accessibilityState={{ checked: done }}
+              accessibilityLabel={step.label}
+              accessibilityState={{ checked: done, disabled: locked }}
               className="flex-row items-center gap-3"
             >
               <StepCheckbox done={done} current={!done && step.status === "current"} />
@@ -489,7 +523,7 @@ export function NextTaskCard({
     }, CELEBRATION_MS);
   };
 
-  const handleComplete = () => celebrate(() => completeTask(task.id));
+  const handleComplete = () => celebrate(() => withUndo(t.undoToast.done(task.title), () => completeTask(task.id)));
 
   // Done without a session: the card floods green out of the button and
   // celebrates while the stack holds it, then the stack flies it off and only
@@ -549,7 +583,7 @@ export function NextTaskCard({
       completeStep(task.id, stepId);
       return;
     }
-    celebrate(() => completeStep(task.id, stepId));
+    celebrate(() => withUndo(t.undoToast.done(task.title), () => completeStep(task.id, stepId)));
   };
 
   // Confirmed, because the clock is thrown away with the session and a stray
@@ -566,6 +600,10 @@ export function NextTaskCard({
     plannedMinutes > 0 ? plannedMinutes : undefined,
   );
   const adviceShown = advice.status !== "idle";
+  // Free, and this month's breakdowns and advice are gone: the two buttons
+  // open the plans rather than asking for an answer that can't come.
+  const assistAllowance = useAllowance("assist");
+  const assistUsedUp = assistAllowance?.exhausted === true && assistAllowance.plan === "free";
 
   useEffect(() => {
     const sessionChanged = previousSessionState.current !== hasRunningSession;
@@ -759,7 +797,7 @@ export function NextTaskCard({
             }
             exiting={reduceMotion ? FadeOut.duration(0) : FadeOut.duration(MOTION.duration.short)}
           >
-            <MicroStepsChecklist task={task} onToggleStep={handleToggleStep} />
+            <MicroStepsChecklist task={task} onToggleStep={handleToggleStep} locked={celebrating} />
           </Animated.View>
         ) : null}
 
@@ -789,7 +827,7 @@ export function NextTaskCard({
                   A plain pane of glass each. */}
               <View className="flex-row gap-[10px]">
                 <AnimatedPressable
-                  onPress={handleOpenBreakdown}
+                  onPress={assistUsedUp ? () => openPaywall("assist") : handleOpenBreakdown}
                   accessibilityRole="button"
                   accessibilityLabel={t.session.aiBreakdown}
                   className="glass min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
@@ -798,7 +836,7 @@ export function NextTaskCard({
                   <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.breakDown}</Text>
                 </AnimatedPressable>
                 <AnimatedPressable
-                  onPress={adviceShown ? dismissAdvice : requestAdvice}
+                  onPress={adviceShown ? dismissAdvice : assistUsedUp ? () => openPaywall("assist") : requestAdvice}
                   accessibilityRole="button"
                   accessibilityLabel={t.session.aiAdvice}
                   accessibilityState={{ selected: adviceShown }}
@@ -812,6 +850,7 @@ export function NextTaskCard({
                   <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.getAdvice}</Text>
                 </AnimatedPressable>
               </View>
+              <AllowanceNote meter="assist" onDark />
               {/* Show Nexdo what you're working on — a photo of the
                   instructions, a document, a note — and it updates the
                   steps above and its advice. */}
@@ -881,6 +920,7 @@ export function NextTaskCard({
                     highlightClassName="font-grotesk-bold text-orange-500"
                   />
                 ) : null}
+                <ReportAiButton content={`${advice.data.headline} ${advice.data.detail}`} onDark />
               </>
             ) : null}
           </Animated.View>

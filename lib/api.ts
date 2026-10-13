@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { AiConsentError, hasAiConsent } from "@/lib/aiConsent";
+import { requestAiConsent } from "@/lib/aiConsentPrompt";
 import { getTrialId } from "@/lib/aiTrial";
 import { isPlanLimitBody, PLAN_HEADER, PlanLimitError } from "@/lib/plan";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
@@ -43,6 +45,38 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { "X-Nexdo-Trial": await getTrialId() };
 }
 
+/** The routes that send the user's content to Google's Gemini. */
+const AI_PATHS = new Set(["/api/inbox", "/api/extract-text", "/api/next", "/api/breakdown", "/api/reassess", "/api/live-session"]);
+
+/** Calls that use up part of the month's plan — Magic mic's usage report included. */
+const METERED_PATHS = new Set([...AI_PATHS, "/api/live-usage"]);
+
+const meteredCallListeners = new Set<() => void>();
+
+/**
+ * Called after every request that may have used part of the month's plan,
+ * however it ended — what keeps the "2 left" counts (store/usePlanUsageStore.ts)
+ * current without each feature refreshing them itself.
+ */
+export function onMeteredCall(listener: () => void): () => void {
+  meteredCallListeners.add(listener);
+  return () => meteredCallListeners.delete(listener);
+}
+
+/**
+ * Nothing goes to an AI route until the user has allowed it (lib/aiConsent.ts).
+ * Signed in, every AI call is something the user just asked for, so that is
+ * the moment to ask. Signed out — onboarding — the screens ask themselves
+ * before recording or organizing, and a call made without a yes is refused
+ * here rather than asked about in the middle of an animation.
+ */
+async function ensureAiConsent(path: string) {
+  if (!AI_PATHS.has(path) || hasAiConsent()) return;
+  const signedIn = getClerkToken ? Boolean(await getClerkToken()) : false;
+  if (signedIn && (await requestAiConsent())) return;
+  throw new AiConsentError();
+}
+
 function parsePlanLimit(detail: string): PlanLimitError | null {
   try {
     const body: unknown = JSON.parse(detail);
@@ -58,6 +92,8 @@ export async function apiPost<T>(
   signal?: AbortSignal,
   timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<T> {
+  // Before the timeout starts: the question can wait on the user.
+  await ensureAiConsent(path);
   const controller = new AbortController();
   const forwardAbort = () => controller.abort();
   if (signal?.aborted) {
@@ -91,5 +127,6 @@ export async function apiPost<T>(
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", forwardAbort);
+    if (METERED_PATHS.has(path)) meteredCallListeners.forEach((listener) => listener());
   }
 }

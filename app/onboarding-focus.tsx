@@ -7,11 +7,13 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { generateAdvice } from "@/lib/ai/generateAdvice";
+import { generateAdvice, offlineAdvice } from "@/lib/ai/generateAdvice";
+import { hasAiConsent } from "@/lib/aiConsent";
 import { formatTaskLength } from "@/lib/formatDuration";
 import { posthog } from "@/lib/posthog";
 import { rankTasksForNext } from "@/lib/scoring";
@@ -79,7 +81,8 @@ export default function OnboardingFocus() {
     // Signed in, this screen only redirects — no AI request on the way out.
     if (!top || !isLoaded || isSignedIn) return;
     let cancelled = false;
-    generateAdvice(top)
+    // Without the user's yes to AI, the tip is worked out on the phone.
+    (hasAiConsent() ? generateAdvice(top) : Promise.resolve(offlineAdvice(top)))
       .then((advice) => {
         if (!cancelled) setAdviceText(advice.headline);
       })
@@ -178,11 +181,15 @@ export default function OnboardingFocus() {
               <Text className="eyebrow text-orange-500">{t.onboardingFocus.advice}</Text>
             </View>
             {adviceText ? (
-              <HighlightedText
-                text={adviceText}
-                className="font-grotesk-regular text-[15px] leading-relaxed text-ink-charcoal-muted"
-                highlightClassName="font-grotesk-bold text-ink-charcoal"
-              />
+              <>
+                <HighlightedText
+                  text={adviceText}
+                  className="font-grotesk-regular text-[15px] leading-relaxed text-ink-charcoal-muted"
+                  highlightClassName="font-grotesk-bold text-ink-charcoal"
+                />
+                {/* Only what the AI wrote — the offline tip is the app's own. */}
+                {hasAiConsent() ? <ReportAiButton content={adviceText} onDark /> : null}
+              </>
             ) : (
               <View className="flex-row items-center gap-2 py-1">
                 <ActivityIndicator size="small" color={colors.orange[500]} />

@@ -9,7 +9,6 @@ import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-nati
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import type { UsageResponseBody } from "@/app/api/usage+api";
 import { AccountSheet } from "@/components/AccountSheet";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { FeatherIconName } from "@/components/Button";
@@ -25,13 +24,21 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { requestAiConsent } from "@/lib/aiConsentPrompt";
 import { showAlert } from "@/lib/alert";
-import { apiPost } from "@/lib/api";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
-import { isPurchasesEnabled, presentCustomerCenter, resetPurchaser, restorePurchases, resyncTrialReminder } from "@/lib/purchases";
+import {
+  isPurchasesEnabled,
+  openStoreSubscriptions,
+  presentCustomerCenter,
+  resetPurchaser,
+  restorePurchases,
+  resyncTrialReminder,
+} from "@/lib/purchases";
 import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
+import { usePlanUsageStore } from "@/store/usePlanUsageStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -279,6 +286,8 @@ export default function Settings() {
   const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
+  const aiConsent = useSettingsStore((state) => state.aiConsent);
+  const setAiConsent = useSettingsStore((state) => state.setAiConsent);
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
@@ -308,23 +317,13 @@ export default function Settings() {
   // What the month has used of the plan, asked again each time Settings comes
   // into view — which includes coming back from the paywall with a new plan.
   // Left out of the page, rather than shown as an error, when it can't be read.
-  const [usage, setUsage] = useState<UsageResponseBody | null>(null);
+  // Shared with the AI buttons' "2 left" notes (store/usePlanUsageStore.ts).
+  const usagePlan = usePlanUsageStore((state) => state.plan);
+  const usageUsed = usePlanUsageStore((state) => state.used);
+  const usage = usagePlan && usageUsed ? { plan: usagePlan, used: usageUsed } : null;
   useFocusEffect(
     useCallback(() => {
-      if (!isPurchasesEnabled) return;
-      let active = true;
-      apiPost<UsageResponseBody>("/api/usage", {}).then(
-        (value) => {
-          if (active) setUsage(value);
-        },
-        (error) => {
-          console.warn("[Settings] couldn't load plan usage", error);
-          if (active) setUsage(null);
-        },
-      );
-      return () => {
-        active = false;
-      };
+      void usePlanUsageStore.getState().refresh();
     }, []),
   );
 
@@ -428,8 +427,12 @@ export default function Settings() {
     showAlert(messages[outcome]);
   };
 
+  // RevenueCat's Customer Center first; if it can't open, the store's own
+  // subscriptions page — so cancelling from here always works, as the trial
+  // screens and the trial reminder promise.
   const handleManageSubscription = async () => {
-    if (!(await presentCustomerCenter())) showAlert(t.settings.manageError);
+    if (await presentCustomerCenter()) return;
+    if (!(await openStoreSubscriptions())) showAlert(t.settings.manageError);
   };
 
   const signOutNow = async () => {
@@ -656,6 +659,21 @@ export default function Settings() {
                 <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
                   {t.settings.notificationsNote}
                 </Text>
+              </Group>
+            </Section>
+
+            {/* Whether what the user types, says or photographs may go to
+                Google's AI (lib/aiConsent.ts). Turning it on asks the same
+                question the app asks the first time, so the disclosure is
+                always read before a yes. */}
+            <Section title={t.settings.ai}>
+              <Group>
+                <ToggleRow
+                  label={t.settings.aiToggle}
+                  body={t.settings.aiToggleBody}
+                  value={aiConsent}
+                  onValueChange={(enabled) => (enabled ? requestAiConsent() : setAiConsent(false))}
+                />
               </Group>
             </Section>
 

@@ -25,6 +25,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { extractAttachmentText } from "@/lib/ai/media";
+import { requestAiConsent } from "@/lib/aiConsentPrompt";
 import { isTrialUsed } from "@/lib/aiTrial";
 import { getLanguage } from "@/lib/i18n";
 import { posthog } from "@/lib/posthog";
@@ -168,6 +169,10 @@ export default function OnboardingDump() {
 
   const [dump, setDump] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
+  // A spoken dump leaves the step by itself (OnboardingLayout's `leaving`).
+  // Cleared on coming back, so the step works again after Back.
+  const [organizing, setOrganizing] = useState(false);
+  useFocusEffect(useCallback(() => setOrganizing(false), []));
   const rememberDump = useOnboardingStore((state) => state.setDump);
   // A signed-out install gets the AI once. Checked on focus, not just on
   // mount: stepping back here from a later step is the second run too.
@@ -226,6 +231,10 @@ export default function OnboardingDump() {
   if (isSignedIn) return <Redirect href="/" />;
 
   const startRecording = async () => {
+    // The recording is sent to Google's AI to be written down, so the user
+    // says yes to that before anything is recorded. "Not now" leaves the box
+    // to type in.
+    if (!(await requestAiConsent())) return;
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
@@ -244,6 +253,10 @@ export default function OnboardingDump() {
 
   const stopAndTranscribe = async () => {
     const seconds = Math.max(1, Math.round(recorderState.durationMillis / 1000));
+    // Said rather than typed: like Magic mic, it goes straight on to being
+    // organized. With something already typed, the words join it and the
+    // button waits, so the two can be read over together.
+    const spokenOnly = !dump.trim();
     setIsTranscribing(true);
     try {
       await recorder.stop();
@@ -263,6 +276,7 @@ export default function OnboardingDump() {
       );
       if (transcript) {
         setDump((current) => (current.trim() ? `${current.trimEnd()} ${transcript}` : transcript));
+        if (spokenOnly) setOrganizing(true);
       } else {
         Alert.alert(t.chat.couldntCatch, t.chat.attachmentReplies.voice);
       }
@@ -338,6 +352,7 @@ export default function OnboardingDump() {
       headline={t.onboardingDump.headline}
       body={t.onboardingDump.body}
       onNext={handleNext}
+      leaving={organizing}
       // Right under the box rather than at the foot of the screen: the mic is
       // the other way to fill that box, and on a tall phone the bottom edge
       // left it looking like a separate, far-off control.
@@ -349,7 +364,10 @@ export default function OnboardingDump() {
           onMicPress={handleMicPress}
           // Just `next`: the layout runs the exit and then calls onNext itself,
           // so navigating here as well would push the same screen twice.
-          onOrganize={next}
+          // Asked first whether the dump may go to Google's AI; either answer
+          // moves on — without a yes, the tasks are found on the phone instead
+          // (app/onboarding-analyzing.tsx).
+          onOrganize={() => void requestAiConsent().then(next)}
         />
       )}
     >

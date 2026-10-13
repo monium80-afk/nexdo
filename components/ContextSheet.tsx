@@ -5,7 +5,9 @@ import { Keyboard, ScrollView, Text, View } from "react-native";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ContextComposer } from "@/components/ContextComposer";
 import { HighlightedText } from "@/components/HighlightedText";
+import { AllowanceNote } from "@/components/AllowanceNote";
 import { ReassessmentNotice } from "@/components/ReassessmentNotice";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -65,7 +67,12 @@ export function ContextSheet({ visible, task, onClose }: { visible: boolean; tas
             {t.session.contextIntro}
           </Text>
           {reassess ? (
-            <ReassessmentNotice state={reassess} onDismiss={() => dismiss(task.id)} onRetry={() => void retry(task.id)} />
+            <ReassessmentNotice
+              state={reassess}
+              onDismiss={() => dismiss(task.id)}
+              onRetry={() => void retry(task.id)}
+              beforeReport={onClose}
+            />
           ) : null}
           {/* What it changed is above; how to go about the task now is the help itself. */}
           {reassess?.status === "done" && task.aiContext.advice ? (
@@ -76,6 +83,7 @@ export function ContextSheet({ visible, task, onClose }: { visible: boolean; tas
                 className="text-body text-ink-cream"
                 highlightClassName="font-grotesk-semibold text-orange-600"
               />
+              <ReportAiButton content={task.aiContext.advice} beforeOpen={onClose} />
             </View>
           ) : null}
           <ContextComposer
@@ -87,6 +95,8 @@ export function ContextSheet({ visible, task, onClose }: { visible: boolean; tas
             placeholder={reassess?.status === "clarify" ? t.taskDetail.reassess.answerPlaceholder : t.taskDetail.contextPlaceholder}
             disabled={running}
           />
+          <AllowanceNote meter="chat" beforeOpen={onClose} />
+          <AllowanceNote meter="media" beforeOpen={onClose} />
         </View>
       </ScrollView>
     </BottomSheet>

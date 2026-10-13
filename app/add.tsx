@@ -68,7 +68,9 @@ export default function Add() {
   const [customDurationText, setCustomDurationText] = useState("");
   const [customDurationError, setCustomDurationError] = useState(false);
 
-  const [deadlineValue, setDeadlineValue] = useState<DeadlineValue>("tomorrow");
+  // Today by default: a task added now usually means now, and Today only
+  // shows what's due today — "tomorrow" kept a first task off that page.
+  const [deadlineValue, setDeadlineValue] = useState<DeadlineValue>("today");
   const [customDeadlineOpen, setCustomDeadlineOpen] = useState(false);
   const [customDeadline, setCustomDeadline] = useState<DeadlineDraft>(() => deadlineToDraft(undefined));
 

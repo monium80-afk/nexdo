@@ -3,8 +3,6 @@ import { Redirect, Tabs } from "expo-router";
 import { useEffect } from "react";
 
 import { TabBar } from "@/components/TabBar";
-import { useAuthSync } from "@/hooks/useAuthSync";
-import { useNotifications } from "@/hooks/useNotifications";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
@@ -14,8 +12,8 @@ export default function TabsLayout() {
   const colors = useColors();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  useAuthSync();
-  useNotifications();
+  // Account setup (useAuthSync, useNotifications) lives in the root layout,
+  // so screens opened by a link get it too.
 
   // Identify the user with PostHog when they are signed in (catches both
   // fresh logins and returning sessions that are already authenticated).

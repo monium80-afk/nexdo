@@ -1,17 +1,20 @@
-import { ClerkProvider } from "@clerk/expo";
+import { ClerkProvider, useAuth } from "@clerk/expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
 import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { PostHogProvider } from "posthog-react-native";
-import { useEffect, useRef } from "react";
-import { Platform, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { UndoToast } from "@/components/UndoToast";
 import { colors } from "@/constants/theme";
+import { useAuthSync } from "@/hooks/useAuthSync";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useSessionAlarm } from "@/hooks/useSessionAlarm";
-import { publishableKey, tokenCache } from "@/lib/clerk";
+import { publishableKey, resourceCache, tokenCache } from "@/lib/clerk";
 import { configureNotifications } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
 import "../global.css";
@@ -22,6 +25,56 @@ configureNotifications();
 // The AI chat was removed (2026-10-08). Its conversation was cached on the
 // phone under this key; nothing reads it any more, so it isn't left behind.
 AsyncStorage.removeItem("nexdo-chat").catch(() => {});
+
+/** The longest the splash waits for Clerk before handing over to a spinner. */
+const SPLASH_MAX_MS = 6_000;
+
+/**
+ * The signed-in account's setup — API and Supabase tokens, its tasks read
+ * and kept in sync, RevenueCat, reminders — for every screen, not just the
+ * tabs: a link can open Magic mic, the paywall or a task straight away.
+ * Nothing renders until Clerk knows who's signed in (the tabs already
+ * waited for that), and this comes before the screens so its effects run
+ * before theirs: a screen's first request already carries the account.
+ */
+function AccountSetup({ children }: { children: ReactNode }) {
+  const { isLoaded } = useAuth();
+
+  // The splash stays up until Clerk knows who's signed in, not just until the
+  // fonts are in — otherwise a blank page showed in between. If Clerk takes
+  // longer than this (a first launch on a bad connection), the splash goes
+  // anyway and the spinner below says the app is working.
+  const [splashTimedOut, setSplashTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSplashTimedOut(true), SPLASH_MAX_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (isLoaded || splashTimedOut) SplashScreen.hideAsync().catch(() => {});
+  }, [isLoaded, splashTimedOut]);
+
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.cream[100] }}>
+        <ActivityIndicator color={colors.orange[500]} />
+      </View>
+    );
+  }
+  return (
+    <>
+      <AccountSync />
+      {children}
+      {/* Over every page: "Done · Undo" after finishing or deleting a task. */}
+      <UndoToast />
+    </>
+  );
+}
+
+function AccountSync() {
+  useAuthSync();
+  useNotifications();
+  return null;
+}
 
 // Mobile-first app: on web, RN Web's flex containers stretch full-bleed to
 // fill the browser window, which reads as a desktop site rather than the
@@ -47,12 +100,6 @@ export default function RootLayout() {
   // the clock is on.
   useSessionAlarm();
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
   // Manual screen tracking for Expo Router
   // @see https://posthog.com/docs/libraries/react-native
   useEffect(() => {
@@ -71,7 +118,7 @@ export default function RootLayout() {
   return (
     // Needed for drag gestures, e.g. the swipeable task cards on the Next tab.
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <ClerkProvider publishableKey={publishableKey!} tokenCache={tokenCache}>
+    <ClerkProvider publishableKey={publishableKey!} tokenCache={tokenCache} __experimental_resourceCache={resourceCache}>
       <PostHogProvider
         client={posthog}
         autocapture={{
@@ -89,6 +136,7 @@ export default function RootLayout() {
           }
         >
           <View style={Platform.OS === "web" ? { flex: 1, width: "100%", maxWidth: WEB_FRAME_MAX_WIDTH } : { flex: 1 }}>
+            <AccountSetup>
             <Stack
               // Without this, React Navigation defaults the initial route to
               // whichever screen is registered first — and "add" below,
@@ -141,6 +189,7 @@ export default function RootLayout() {
                 }}
               />
             </Stack>
+            </AccountSetup>
           </View>
         </View>
       </PostHogProvider>

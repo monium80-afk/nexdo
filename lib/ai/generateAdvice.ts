@@ -1,5 +1,6 @@
 import type { NextRequestBody, NextResponseBody } from "@/app/api/next+api";
 import { taskToContext } from "@/lib/ai/context";
+import { AiConsentError } from "@/lib/aiConsent";
 import { apiPost } from "@/lib/api";
 import { formatDuration } from "@/lib/formatDuration";
 import { getLanguage, translate } from "@/lib/i18n";
@@ -85,9 +86,16 @@ export async function generateAdvice(
     return advice;
   } catch (error) {
     if (error instanceof PlanLimitError && !options.unasked) throw error;
+    // The user said no to AI just now: nothing to show them instead of it.
+    if (error instanceof AiConsentError && !options.unasked) throw error;
     console.warn("[generateAdvice] falling back to heuristic", error);
     return generateAdviceHeuristic(task);
   }
+}
+
+/** The advice worked out on the phone alone — for where the AI isn't allowed (onboarding without consent). */
+export function offlineAdvice(task: Task): TaskAdvice {
+  return generateAdviceHeuristic(task);
 }
 
 // Heuristic fallback — was the only implementation before Layer B existed.

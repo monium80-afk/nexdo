@@ -3,7 +3,8 @@
 // them. Run it again whenever one of these values changes, then redeploy.
 //
 //   node scripts/push-server-env.mjs
-//   node scripts/push-server-env.mjs NAME …   (only these — one value changed)
+//   node scripts/push-server-env.mjs NAME …   (only these — one value changed,
+//                                             or the public keys an iOS build needs)
 //
 // The server checks Pro with RevenueCat's store keys (lib/serverPlan.ts); the
 // Test Store key is for development only and isn't pushed.
@@ -22,12 +23,24 @@ import { fileURLToPath } from "node:url";
 
 const project = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+// One line of .env, read the way dotenv (and so Expo) reads it: an optional
+// "export ", a value in single, double or back quotes — or bare, up to a "#"
+// comment — and "\n" in double quotes as a line break.
+const ENV_LINE = /^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*('[^']*'|"(?:\\"|[^"])*"|`[^`]*`|[^#]*?)\s*(?:#.*)?$/;
+
+function envValue(raw) {
+  const quote = raw[0];
+  if (quote === "'" || quote === "`") return raw.slice(1, -1);
+  if (quote === '"') return raw.slice(1, -1).replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+  return raw;
+}
+
 const env = Object.fromEntries(
   readFileSync(join(project, ".env"), "utf8")
     .split(/\r?\n/)
-    .map((line) => line.match(/^\s*([A-Z0-9_]+)\s*=\s*"?(.*?)"?\s*$/))
+    .map((line) => line.match(ENV_LINE))
     .filter(Boolean)
-    .map((match) => [match[1], match[2]]),
+    .map((match) => [match[1], envValue(match[2])]),
 );
 
 const serverNames = [
@@ -39,9 +52,21 @@ const serverNames = [
   "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY",
 ];
 
+// What an EAS cloud build (iOS) compiles into the app on top of the above —
+// .env isn't uploaded to EAS. All public: they ship inside the app anyway.
+// Only pushed when named.
+const buildNames = [
+  "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
+  "EXPO_PUBLIC_SUPABASE_ANON_KEY",
+  "POSTHOG_PROJECT_TOKEN",
+  "POSTHOG_HOST",
+];
+
 const only = process.argv.slice(2);
 for (const name of only) {
-  if (!serverNames.includes(name)) throw new Error(`${name} isn't one the server uses: ${serverNames.join(", ")}`);
+  if (!serverNames.includes(name) && !buildNames.includes(name)) {
+    throw new Error(`${name} isn't one the server or an EAS build uses: ${[...serverNames, ...buildNames].join(", ")}`);
+  }
 }
 const wanted = only.length > 0 ? only : serverNames;
 

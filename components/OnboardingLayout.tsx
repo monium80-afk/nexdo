@@ -60,7 +60,8 @@ export function OnboardingLayout({
   /**
    * Runs when the labelled button is pressed, before the step leaves — for a
    * question the step asks on the way out (notification permission), so the
-   * system prompt shows over this step rather than over a blank screen.
+   * system prompt shows over this step rather than over a blank screen. It
+   * can't hold the step back: if it fails, the step leaves anyway.
    */
   beforeNext?: () => Promise<unknown>;
   /**
@@ -111,6 +112,10 @@ export function OnboardingLayout({
       setPreparing(true);
       try {
         await beforeNext();
+      } catch (error) {
+        // A question on the way out is never what the step is for: if it
+        // fails, the step still leaves, rather than the button doing nothing.
+        console.warn("[OnboardingLayout] beforeNext failed", error);
       } finally {
         setPreparing(false);
       }

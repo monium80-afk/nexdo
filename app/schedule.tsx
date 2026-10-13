@@ -18,6 +18,7 @@ import { formatDuration } from "@/lib/formatDuration";
 import { addDaysToKey, keyToLocalDate, toLocalDateKey, type LocalDate } from "@/lib/localDate";
 import { buildSchedule, weekStart } from "@/lib/schedule";
 import { useTaskStore } from "@/store/useTaskStore";
+import { withUndo } from "@/store/useUndoStore";
 
 type ScheduleMode = "week" | "year";
 
@@ -289,7 +290,7 @@ export function ScheduleView() {
                   key={item.task.id}
                   item={item}
                   onPress={() => openTask(item.task.id)}
-                  onComplete={() => completeTask(item.task.id)}
+                  onComplete={() => withUndo(t.undoToast.done(item.task.title), () => completeTask(item.task.id))}
                 />
               ))}
 

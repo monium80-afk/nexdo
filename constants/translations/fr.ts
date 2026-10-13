@@ -44,6 +44,33 @@ export const fr: Translations = {
     aiUnreachable: "Impossible de joindre l'IA. Vérifiez votre connexion et réessayez.",
   },
 
+  aiConsent: {
+    title: "Utiliser l'IA avec Nexdo ?",
+    body: "Pour organiser vos tâches, Nexdo envoie ce que vous écrivez, dites ou photographiez pour une fonction d'IA à Gemini, l'IA de Google, qui le traite et renvoie le résultat. Vous pouvez changer cela à tout moment dans Réglages → IA.",
+    allow: "Autoriser",
+    notNow: "Pas maintenant",
+    privacy: "Politique de confidentialité",
+  },
+
+  undoToast: {
+    undo: "Annuler",
+    done: (title: string) => `Terminé : ${title}`,
+    deleted: (title: string) => `Supprimé : ${title}`,
+    reset: (count: number) => `${count} ${plural(count, "tâche replanifiée", "tâches replanifiées")}`,
+  },
+
+  resetWeek: {
+    title: "REPLANIFIER MA SEMAINE",
+    intro:
+      "Ces tâches sont encore sur le jour où elles étaient dues. Nexdo propose un nouveau jour pour chacune dans la semaine qui vient — touchez-en une pour le changer. Rien ne bouge avant votre confirmation.",
+    done: "Déjà faite",
+    noDate: "Sans échéance",
+    confirm: "Replanifier ma semaine",
+    cardTitle: (count: number) => `${count} ${plural(count, "tâche en retard", "tâches en retard")}`,
+    cardBody: "Donnez-leur un nouveau jour, d'un coup.",
+    cardAction: "Replanifier",
+  },
+
   tabs: {
     next: "Aujourd'hui",
     tasks: "Tâches",
@@ -123,6 +150,7 @@ export const fr: Translations = {
     doneForTodayBody: "Tout ce qui était à faire aujourd'hui est fait. La suite est dans votre planning.",
     nothingToday: "Aucune tâche pour aujourd'hui",
     nothingTodayBody: "Aucune tâche n'a aujourd'hui pour échéance. Le planning montre les autres jours, et Tâches les montre toutes — y compris celles sans échéance.",
+    upNextBody: "Voici la meilleure chose à faire ensuite, si vous avez le temps.",
     openSchedule: "Ouvrir le planning",
     seeTasks: "Voir toutes les tâches",
     today: "Aujourd'hui",
@@ -263,6 +291,7 @@ export const fr: Translations = {
       answerPlaceholder: "Répondez à Nexdo…",
       deadlineUnclear: "Quelle est la nouvelle échéance de cette tâche ? Nexdo n'a pas pu déduire une date précise de votre note.",
       aiFailed: "Nexdo n'a pas pu réévaluer cette tâche pour le moment. Rien n'a été modifié.",
+      consentNeeded: "Nexdo a besoin de votre accord pour utiliser l'IA ici. Rien n'a été modifié.",
       saveFailed: "Nexdo n'a pas pu enregistrer les modifications. Rien n'a été modifié.",
       keptUserEdits: "Certaines suggestions ont été ignorées, car vous avez modifié les mêmes détails pendant que Nexdo travaillait.",
       discard: "Supprimer la note",
@@ -604,7 +633,7 @@ export const fr: Translations = {
     restoreOffline: "Vous êtes hors ligne. Connectez-vous et réessayez.",
     restoreError: "Impossible de restaurer les achats. Réessayez.",
     manageSubscription: "Gérer l'abonnement",
-    manageError: "Impossible d'ouvrir votre abonnement. Réessayez.",
+    manageError: "Impossible d'ouvrir votre abonnement. Vous pouvez le gérer dans votre compte App Store ou Google Play.",
     proActive: "Nexdo Pro est actif.",
     proRenews: (date: string) => `Nexdo Pro · renouvelé le ${date}`,
     proEnds: (date: string) => `Nexdo Pro · prend fin le ${date}`,
@@ -631,6 +660,11 @@ export const fr: Translations = {
     notificationsDenied: "Les notifications de Nexdo sont désactivées dans les réglages du téléphone : aucun rappel ne peut arriver.",
 
     language: "LANGUE",
+
+    ai: "IA",
+    aiToggle: "Fonctions d'IA",
+    aiToggleBody:
+      "Envoie ce que vous confiez à une fonction d'IA (texte, voix, photos, fichiers) à Gemini, l'IA de Google, pour le traiter. Désactivé : rien n'est envoyé à l'IA, et l'ajout de tâches à la main fonctionne toujours.",
 
     support: "AIDE ET ASSISTANCE",
     help: "FAQ / Aide",
@@ -662,6 +696,14 @@ export const fr: Translations = {
     },
     liveProOnly: "Le micro magique fait partie de Nexdo Pro.",
     resets: "Votre quota repart le 1er du mois.",
+    left: {
+      chat: (count: number) => `Plus que ${count} ${plural(count, "note de contexte", "notes de contexte")} pour l'IA ce mois-ci`,
+      media: (count: number) => `Plus que ${count} ${plural(count, "photo ou document", "photos et documents")} ce mois-ci`,
+      voice: (minutes: number) => `Plus que ${minutes} min de notes vocales ce mois-ci`,
+      live: (minutes: number) => `Plus que ${minutes} min de micro magique ce mois-ci`,
+      assist: (count: number) => `Plus que ${count} ${plural(count, "découpage ou conseil", "découpages et conseils")} ce mois-ci`,
+    },
+    getMore: "En avoir plus avec Pro",
     upgradeHint: "Nexdo Pro vous en donne beaucoup plus chaque mois — et ajouter des tâches à la main reste toujours gratuit.",
     limitTitle: "Limite mensuelle atteinte",
     thisMonth: "Ce mois-ci",
@@ -723,6 +765,11 @@ export const fr: Translations = {
     screenshotInvalid: "Impossible de joindre cette image. Choisissez une capture ou une photo de moins de 5 Mo.",
     screenshotError: "Impossible d'envoyer votre capture d'écran. Réessayez, ou retirez-la pour envoyer sans elle.",
     privacyNote: "Envoyé avec votre compte Nexdo, la version de l'app et le type de téléphone : inutile d'ajouter votre e-mail.",
+    reportLabel: "Signaler",
+    reportA11y: "Signaler ce contenu généré par l'IA",
+    reportTitle: "Signaler un contenu de l'IA",
+    reportSubtitle: "Dites-nous ce qui ne va pas dans ce qu'a écrit l'IA de Nexdo.",
+    reportPrefill: (text: string) => `Ce qu'a écrit l'IA de Nexdo :\n« ${text} »\n\nCe qui ne va pas : `,
     submit: "Envoyer",
     sending: "Envoi…",
     success: "Merci pour votre commentaire.",
@@ -757,9 +804,14 @@ export const fr: Translations = {
       `${count} ${plural(count, "tâche due", "tâches dues")} aujourd'hui.${top ? ` Commencez par « ${top} ».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "tâche ouverte", "tâches ouvertes")}.${top ? ` Commencez par « ${top} ».` : ""}`,
+    dailySlippedNote: (count: number) =>
+      `${count} ${plural(count, "tâche est en retard", "tâches sont en retard")} — replanifiez votre semaine dans Nexdo.`,
     trialEndingTitle: "Votre essai gratuit se termine dans 2 jours",
     trialEndingBody: (date: string) =>
-      `Nexdo Pro démarre le ${date}. Vous n'en voulez pas ? Annulez avant depuis les Réglages.`,
+      `Nexdo Pro démarre le ${date}. Vous n'en voulez pas ? Touchez ici, puis Gérer l'abonnement, pour annuler avant.`,
+    sessionEndTitle: "C'est l'heure",
+    sessionEndBody: (title: string) =>
+      title ? `Votre session sur « ${title} » est terminée. Terminez la tâche ou continuez.` : "Votre session de concentration est terminée.",
   },
 
   profile: {
@@ -838,12 +890,12 @@ export const fr: Translations = {
   },
 
   onboardingDump: {
-    eyebrow: "ESSAYEZ AVEC VOS VRAIES TÂCHES",
-    headline: "Qu'avez-vous à faire cette semaine ?",
-    body: "**Listez toutes vos tâches**, même en vrac. Tapez-les, ou touchez le micro et dites-les à voix haute.",
+    eyebrow: "ESSAYEZ LE MICRO MAGIQUE",
+    headline: "Dites simplement ce que vous avez à faire.",
+    body: "**Touchez le micro et racontez votre semaine**, même en vrac. Nexdo en fait des tâches. Vous préférez écrire ? Utilisez la zone de texte.",
     placeholder: "Finir le devoir de maths pour vendredi\nÉcrire au prof\nFaire les courses ce soir…",
-    startRecording: "Commencer à parler",
-    stopRecording: "Arrêter et transcrire",
+    startRecording: "Lancer le micro magique",
+    stopRecording: "Arrêter et organiser",
     transcribing: "Transcription…",
     organize: "Organiser avec Nexdo",
     trialUsedHeadline: "Vous avez déjà essayé l'IA de Nexdo",
@@ -885,7 +937,8 @@ export const fr: Translations = {
 
   onboardingNotify: {
     headline: "Un rappel, pile au bon moment.",
-    body: "Pas cinquante notifications. Juste celle qui vous garde sur la bonne voie.",
+    body: "Chaque matin, la seule chose par laquelle commencer. Et un rappel quand une tâche arrive à échéance.",
+    morningPlan: "Plan du matin",
     sampleTime: "maintenant",
     sampleBody: "Votre devoir de chimie est à rendre demain. On s'y met maintenant ?",
     allow: "Autoriser les notifications",
@@ -906,7 +959,7 @@ export const fr: Translations = {
     endBody: (price: string, yearly: boolean) =>
       `${price}/${yearly ? "an" : "mois"} débités — ou annulez avant pour ne rien payer.`,
     cancelTitle: "Annulez quand vous voulez",
-    cancelBody: "Directement depuis les Réglages. Sans appel, sans formulaire.",
+    cancelBody: "Dans Réglages → Gérer l'abonnement, ou dans vos abonnements App Store ou Google Play. Sans appel, sans formulaire.",
     next: "Continuer",
   },
 

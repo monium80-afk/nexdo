@@ -22,6 +22,36 @@ export const en = {
     aiUnreachable: "Couldn't reach the AI. Check your connection and try again.",
   },
 
+  /** Asked once before anything goes to Google's AI (lib/aiConsentPrompt.ts). */
+  aiConsent: {
+    title: "Use AI with Nexdo?",
+    body: "To organize your tasks, Nexdo sends what you type, say or photograph for an AI feature to Google's Gemini AI, which processes it and sends back the result. You can change this anytime in Settings → AI.",
+    allow: "Allow",
+    notNow: "Not now",
+    privacy: "Privacy policy",
+  },
+
+  /** The "Undo" toast after finishing, deleting or resetting tasks (components/UndoToast.tsx). */
+  undoToast: {
+    undo: "Undo",
+    done: (title: string) => `Done: ${title}`,
+    deleted: (title: string) => `Deleted: ${title}`,
+    reset: (count: number) => `Reset ${count} ${plural(count, "task", "tasks")}`,
+  },
+
+  /** Reset my week (components/ResetWeekSheet.tsx) and its card on the Today page. */
+  resetWeek: {
+    title: "RESET MY WEEK",
+    intro:
+      "These are still on the days they were due. Nexdo suggests a new day for each over the coming week — tap one to change it. Nothing moves until you confirm.",
+    done: "Already done",
+    noDate: "No deadline",
+    confirm: "Reset my week",
+    cardTitle: (count: number) => `${count} ${plural(count, "task", "tasks")} slipped`,
+    cardBody: "Give each a new day in one go.",
+    cardAction: "Reset",
+  },
+
   tabs: {
     next: "Today",
     tasks: "Tasks",
@@ -114,6 +144,8 @@ export const en = {
     /** Open tasks exist, but none of them is due today. */
     nothingToday: "Nothing due today",
     nothingTodayBody: "No task is due today. Your schedule shows the other days, and Tasks has everything — tasks without a deadline too.",
+    /** Under "Nothing due today", above the best open tasks from any day. */
+    upNextBody: "Here's the best next thing, if you have time.",
     openSchedule: "Open schedule",
     /** Beside Open schedule when nothing is due today: the way to every task. */
     seeTasks: "See all tasks",
@@ -260,6 +292,8 @@ export const en = {
       answerPlaceholder: "Answer Nexdo…",
       deadlineUnclear: "When is this task due now? Nexdo couldn't tell an exact date from your note.",
       aiFailed: "Nexdo couldn't reassess this task right now. Nothing was changed.",
+      /** The user said "Not now" to AI — Try again asks again. */
+      consentNeeded: "Nexdo needs your OK to use AI for this. Nothing was changed.",
       saveFailed: "Nexdo couldn't save the changes. Nothing was changed.",
       keptUserEdits: "Some suggestions were skipped because you changed the same details while Nexdo was working.",
       discard: "Discard note",
@@ -630,7 +664,7 @@ export const en = {
     restoreOffline: "You're offline. Connect and try again.",
     restoreError: "Couldn't restore purchases. Try again.",
     manageSubscription: "Manage subscription",
-    manageError: "Couldn't open your subscription. Try again.",
+    manageError: "Couldn't open your subscription. You can manage it in your App Store or Google Play account.",
     proActive: "Nexdo Pro is active.",
     proRenews: (date: string) => `Nexdo Pro · renews ${date}`,
     proEnds: (date: string) => `Nexdo Pro · ends ${date}`,
@@ -656,6 +690,11 @@ export const en = {
     notificationsDenied: "Notifications are off for Nexdo in your phone's settings, so no reminder can arrive.",
 
     language: "LANGUAGE",
+
+    ai: "AI",
+    aiToggle: "AI features",
+    aiToggleBody:
+      "Sends what you give an AI feature (text, voice, photos, files) to Google's Gemini AI to process. Off: nothing goes to the AI, and adding tasks by hand still works.",
 
     support: "HELP & SUPPORT",
     help: "FAQ / Help",
@@ -690,6 +729,16 @@ export const en = {
     /** Free has no Magic mic at all. */
     liveProOnly: "Magic mic comes with Nexdo Pro.",
     resets: "Your allowance starts again on the 1st.",
+    /** Under an AI feature once few are left (components/AllowanceNote.tsx). */
+    left: {
+      chat: (count: number) => `${count} context ${plural(count, "note", "notes")} for AI left this month`,
+      media: (count: number) => `${count} ${plural(count, "photo or document", "photos and documents")} left this month`,
+      voice: (minutes: number) => `${minutes} min of voice notes left this month`,
+      live: (minutes: number) => `${minutes} min of Magic mic left this month`,
+      assist: (count: number) => `${count} ${plural(count, "breakdown or tip", "breakdowns and tips")} left this month`,
+    },
+    /** After what ran out, on Free: opens the plans. */
+    getMore: "Get more with Pro",
     upgradeHint: "Nexdo Pro gives you far more each month — and adding tasks by hand is always free.",
     limitTitle: "Monthly limit reached",
     /** Settings → Your plan: what the month has used so far. */
@@ -754,6 +803,12 @@ export const en = {
     screenshotInvalid: "That image can't be attached. Pick a screenshot or photo under 5 MB.",
     screenshotError: "Couldn't upload your screenshot. Try again, or remove it and send without it.",
     privacyNote: "Sent with your Nexdo account, app version and phone type, so there's no need to add your email.",
+    /** "Report" under something the AI wrote (components/ReportAiButton.tsx). */
+    reportLabel: "Report",
+    reportA11y: "Report this AI content",
+    reportTitle: "Report AI content",
+    reportSubtitle: "Tell us what's wrong with what Nexdo's AI wrote.",
+    reportPrefill: (text: string) => `What Nexdo's AI wrote:\n"${text}"\n\nWhat's wrong with it: `,
     submit: "Send feedback",
     sending: "Sending…",
     success: "Thanks for your feedback.",
@@ -791,9 +846,16 @@ export const en = {
       `${count} ${plural(count, "task", "tasks")} due today.${top ? ` Start with "${top}".` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} open ${plural(count, "task", "tasks")}.${top ? ` Start with "${top}".` : ""}`,
+    /** Added to the morning plan when tasks have slipped past their day. */
+    dailySlippedNote: (count: number) => `${count} ${plural(count, "task", "tasks")} slipped — reset your week in Nexdo.`,
     /** Two days before a free trial turns into a paid plan (lib/trialReminder.ts). */
     trialEndingTitle: "Your free trial ends in 2 days",
-    trialEndingBody: (date: string) => `Nexdo Pro starts on ${date}. Don't want it? Cancel before then from Settings.`,
+    trialEndingBody: (date: string) =>
+      `Nexdo Pro starts on ${date}. Don't want it? Tap here, then Manage subscription, to cancel before then.`,
+    /** A focus session's time is up while Nexdo isn't on screen (hooks/useSessionAlarm.ts). */
+    sessionEndTitle: "Time's up",
+    sessionEndBody: (title: string) =>
+      title ? `Your session on "${title}" is done. Finish it or keep going.` : "Your focus session is done.",
   },
 
   profile: {
@@ -880,12 +942,13 @@ export const en = {
   /** Onboarding step 4 — the brain dump, typed or spoken. Every line asks for
    *  tasks by name: "what's on your mind" read as an invitation to chat. */
   onboardingDump: {
-    eyebrow: "TRY IT WITH YOUR REAL TASKS",
-    headline: "What do you need to get done this week?",
-    body: "**List every task on your plate** — messy is fine. Type them, or tap the mic and say them out loud.",
+    // The step is Magic mic's demo: talk, and it becomes tasks. Typing still works.
+    eyebrow: "TRY MAGIC MIC",
+    headline: "Just say what's on your plate.",
+    body: "**Tap the mic and talk through your week** — messy is fine. Nexdo turns it into tasks. Rather type? Use the box.",
     placeholder: "Finish math homework by Friday\nEmail my professor\nBuy groceries tonight…",
-    startRecording: "Start speaking",
-    stopRecording: "Stop and write it down",
+    startRecording: "Start Magic mic",
+    stopRecording: "Stop and organize",
     transcribing: "Writing it down…",
     organize: "Organize with Nexdo",
     // Shown instead of the dump once this install has had its free AI run.
@@ -932,7 +995,9 @@ export const en = {
   /** Onboarding step 8 — asking for notifications, with a sample of one. */
   onboardingNotify: {
     headline: "One nudge, right when it matters.",
-    body: "Not fifty notifications. Just the one that keeps you on track.",
+    body: "Each morning, the one thing to start with. Plus a heads-up when something's due.",
+    /** The row that sets when the morning plan arrives. */
+    morningPlan: "Morning plan",
     sampleTime: "now",
     sampleBody: "Your chemistry assignment is due tomorrow. Want to start now?",
     allow: "Allow notifications",
@@ -954,7 +1019,7 @@ export const en = {
     endBody: (price: string, yearly: boolean) =>
       `${price}/${yearly ? "year" : "month"} charged — or cancel any time before this to pay nothing.`,
     cancelTitle: "Cancel anytime",
-    cancelBody: "Right from Settings. No calls, no forms.",
+    cancelBody: "In Settings → Manage subscription, or in your App Store or Google Play subscriptions. No calls, no forms.",
     next: "Continue",
   },
 

@@ -1,3 +1,4 @@
+import { deadlineOnThisPhone } from "@/lib/deadline";
 import { addDaysToKey, daysBetweenKeys, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { computeScore, isActionable } from "@/lib/priority";
 import type { Task } from "@/types/task";
@@ -67,8 +68,10 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
   const scores = new Map<string, number>();
 
   for (const task of tasks) {
-    const date = task.deadline?.date;
-    if (!date) continue;
+    if (!task.deadline) continue;
+    // By this phone's clock, as the deadline is shown and reminded about —
+    // an exact one set in another time zone can land on a different day here.
+    const { date, time } = deadlineOnThisPhone(task.deadline);
     const day = days[daysBetweenKeys(from, date)];
     if (!day) continue;
     if (task.status === "completed") {
@@ -77,7 +80,7 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
     }
     if (!isActionable(task)) continue;
     const minutes = minutesOf(task.estimatedMinutes);
-    day.items.push({ task, minutes, time: task.deadline?.time, overdue: isOverdue(task, now) });
+    day.items.push({ task, minutes, time, overdue: isOverdue(task, now) });
     day.plannedMinutes += minutes;
     scores.set(task.id, computeScore(task, { now }));
   }

@@ -74,6 +74,16 @@ describe("the days", () => {
     assert.equal(days[1].items[0].overdue, false);
   });
 
+  it("put an exact deadline set in another time zone on this phone's day and time; a date-only one keeps its day", () => {
+    // 06:30 in Tokyo on Wednesday is 23:30 on Tuesday in Paris (the phone's zone here).
+    const tokyo = withDeadline(makeTask({ id: "tokyo", title: "tokyo" }), makeDeadline({ date: "2026-10-07", time: "06:30" }, "Asia/Tokyo"));
+    const tokyoDay = withDeadline(makeTask({ id: "tokyo-day", title: "tokyo-day" }), makeDeadline({ date: "2026-10-07" }, "Asia/Tokyo"));
+    const days = week([tokyo, tokyoDay]);
+    assert.deepEqual(byDay(days)["2026-10-06"], ["tokyo"]);
+    assert.equal(days[1].items[0].time, "23:30");
+    assert.deepEqual(byDay(days)["2026-10-07"], ["tokyo-day"]);
+  });
+
   it("keep a task whose time today has passed on today, as overdue", () => {
     const [today] = buildSchedule([due("standup", "2026-10-06", {}, "09:00")], { now: NOW, from: "2026-10-06", until: "2026-10-06" });
     assert.deepEqual(today.items.map((item) => [item.task.id, item.overdue, item.time]), [["standup", true, "09:00"]]);

@@ -24,7 +24,9 @@ import { CELEBRATION_MS, NextTaskCard, type CardBounds } from "@/components/Next
 import { MOTION } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { translate } from "@/lib/i18n";
 import { useTaskStore } from "@/store/useTaskStore";
+import { withUndo } from "@/store/useUndoStore";
 import type { Task } from "@/types/task";
 
 // px-6 at this app's 14dp rem — lines the stack up with the header and the
@@ -421,6 +423,11 @@ export function NextTaskCardStack({
   }, [currentIndex, swipeLocked]);
 
   const completeTask = useTaskStore((state) => state.completeTask);
+  // "Mark complete" is one tap from Start session, so it can be taken back.
+  const completeWithUndo = (taskId: string) => {
+    const title = useTaskStore.getState().tasks.find((task) => task.id === taskId)?.title ?? "";
+    withUndo(translate().undoToast.done(title), () => completeTask(taskId));
+  };
   // A card finished with its Complete button: its task, and the timer holding
   // the card still while it celebrates. Kept until the task has left the queue.
   const sendOff = useRef<{ taskId: string; timer: ReturnType<typeof setTimeout> | null } | null>(null);
@@ -437,7 +444,7 @@ export function NextTaskCardStack({
     // is its task completed, so the queue never reshuffles under it mid-flight.
     // Its place in the queue may not change, so the stack unlocks here.
     if (finishedTaskId) {
-      completeTask(finishedTaskId);
+      completeWithUndo(finishedTaskId);
       swipeLocked.set(false);
     }
   };
@@ -517,7 +524,7 @@ export function NextTaskCardStack({
       // The last card (or no motion wanted): nowhere to fly — just complete it.
       sendOff.current = null;
       swipeLocked.set(false);
-      completeTask(taskId);
+      completeWithUndo(taskId);
     };
   });
 

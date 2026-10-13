@@ -164,6 +164,18 @@ export function deadlineToLocalDate(deadline: TaskDeadline): Date {
 }
 
 /**
+ * The day (and clock time) a deadline falls on by this phone's clock. An exact
+ * deadline set in another time zone moves to the moment it really happens
+ * here — 00:30 in Paris is the afternoon before in New York — while a
+ * date-only one stays on the calendar day it was given.
+ */
+export function deadlineOnThisPhone(deadline: TaskDeadline): { date: LocalDate; time?: string } {
+  if (!deadline.time) return { date: deadline.date };
+  if (isDeviceZone(deadline.timeZone)) return { date: deadline.date, time: deadline.time };
+  return wallTime(deadlineInstant(deadline).getTime(), undefined);
+}
+
+/**
  * "Thu, Oct 15" for a date-only deadline, "Thu, Oct 15, 7:00 PM" for an exact
  * one — never a time nobody gave. `withWeekday: false` drops the weekday.
  */

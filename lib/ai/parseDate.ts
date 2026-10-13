@@ -626,6 +626,30 @@ export function parseDateRange(text: string, now: Date = new Date(), language?: 
   return range(new Date(day), new Date(day));
 }
 
+/** That calendar day, or undefined when it doesn't exist — `Date` would quietly turn April 31 into May 1. */
+function calendarDay(year: number, monthIndex: number, day: number): Date | undefined {
+  const date = new Date(year, monthIndex, day);
+  return date.getFullYear() === year && date.getMonth() === monthIndex && date.getDate() === day ? date : undefined;
+}
+
+/**
+ * A day named without a year ("march 5", "10/15"): this year's, or next
+ * year's once this year's is more than half a year gone. A year the user
+ * said wins. Undefined for a day that doesn't exist in that year.
+ */
+function nearestCalendarDay(monthIndex: number, day: number, statedYear: number | undefined, now: Date): Date | undefined {
+  if (statedYear !== undefined) return calendarDay(statedYear, monthIndex, day);
+  const year = now.getFullYear();
+  const longPast = new Date(year, monthIndex, day).getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000;
+  let candidateYear = longPast ? year + 1 : year;
+  let date = calendarDay(candidateYear, monthIndex, day);
+  while (!date && monthIndex === 1 && day === 29) {
+    candidateYear += 1;
+    date = calendarDay(candidateYear, monthIndex, day);
+  }
+  return date;
+}
+
 const NUMERIC_DATE_PATTERN = /(?:^|[^\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?(?![\d/])/;
 
 /** A slashed day/month date, which way round it's meant, or "ambiguous" when both readings are real dates. */
@@ -635,7 +659,9 @@ function readNumericDate(lower: string): { day: number; month: number; year?: nu
   const a = Number(match[1]);
   const b = Number(match[2]);
   const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : undefined;
-  const valid = (month: number, day: number) => month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  // Without a year, February 29 counts — it's a real day in a leap year.
+  const valid = (month: number, day: number) =>
+    month >= 1 && month <= 12 && day >= 1 && day <= new Date(year ?? 2000, month, 0).getDate();
   const monthFirst = valid(a, b);
   const dayFirst = valid(b, a);
   if (monthFirst && dayFirst && a !== b) return "ambiguous";
@@ -773,7 +799,8 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   // today/tomorrow.
   const iso = lower.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (iso) {
-    return resolve(new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+    const date = calendarDay(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return date && resolve(date);
   }
 
   // "10/15", "15/10/2026" — read only when there's one way to read it. "3/4"
@@ -783,11 +810,8 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   const numeric = readNumericDate(lower);
   if (numeric === "ambiguous") return undefined;
   if (numeric) {
-    const date = new Date(numeric.year ?? now.getFullYear(), numeric.month - 1, numeric.day);
-    if (numeric.year === undefined && date.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
-      date.setFullYear(date.getFullYear() + 1);
-    }
-    return resolve(date);
+    const date = nearestCalendarDay(numeric.month - 1, numeric.day, numeric.year, now);
+    return date && resolve(date);
   }
 
   // "march 5", "5 march", "sept 20", "september 25th", "the 25th of september"
@@ -806,9 +830,9 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
     const day = Number.parseInt(match[1] ?? match[3], 10);
     if (!day || day > 31) continue;
     const statedYear = match[2] ?? match[4];
-    const date = new Date(statedYear ? Number(statedYear) : now.getFullYear(), i, day);
-    if (!statedYear && date.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) date.setFullYear(date.getFullYear() + 1);
-    return resolve(date);
+    // "April 31" names a day that doesn't exist: no deadline rather than May 1.
+    const date = nearestCalendarDay(i, day, statedYear ? Number(statedYear) : undefined, now);
+    return date && resolve(date);
   }
 
   for (let i = 0; i < WEEKDAYS.length; i += 1) {

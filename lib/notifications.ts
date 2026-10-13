@@ -47,12 +47,17 @@ export function configureNotifications() {
   // Without a handler, a notification that fires while Nexdo is open is
   // dropped instead of shown.
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) => {
+      // With Nexdo open, the session's own alarm already rings
+      // (hooks/useSessionAlarm.ts) — the notification is for when it isn't.
+      const sessionEnd = notification.request.identifier === SESSION_END_ID;
+      return {
+        shouldShowBanner: !sessionEnd,
+        shouldShowList: !sessionEnd,
+        shouldPlaySound: !sessionEnd,
+        shouldSetBadge: false,
+      };
+    },
   });
 }
 
@@ -194,12 +199,24 @@ export function clearAllNotifications(): Promise<void> {
  */
 const TRIAL_REMINDER_ID = "trial-end";
 
+type TrialReminder = { fireAt: number; title: string; body: string };
+
+// One change at a time, in the order they were asked for: an update that
+// pauses on the permission check mustn't schedule after a later cancel.
+let trialReminderQueue: Promise<unknown> = Promise.resolve();
+
 /**
  * Schedules the trial reminder for `fireAt`, replacing any earlier one — or
  * just cancels it, given null. Resolves false when the phone isn't left as
  * asked (no permission to notify, or it failed), so the caller can try again.
  */
-export async function setTrialReminder(reminder: { fireAt: number; title: string; body: string } | null): Promise<boolean> {
+export function setTrialReminder(reminder: TrialReminder | null): Promise<boolean> {
+  const write = trialReminderQueue.then(() => writeTrialReminder(reminder));
+  trialReminderQueue = write.catch(() => undefined);
+  return write;
+}
+
+async function writeTrialReminder(reminder: TrialReminder | null): Promise<boolean> {
   if (!isSupported) return true;
   try {
     await Notifications.cancelScheduledNotificationAsync(TRIAL_REMINDER_ID);
@@ -226,6 +243,57 @@ export async function setTrialReminder(reminder: { fireAt: number; title: string
   } catch (error) {
     console.warn("[notifications] couldn't update the trial reminder", error);
     return false;
+  }
+}
+
+/**
+ * The end of a running focus session. The in-app alarm (hooks/useSessionAlarm.ts)
+ * is a timer in the app, so it can't ring while the phone is locked or Nexdo
+ * is in the background — this is what does then. Outside the "nexdo-" prefix,
+ * like the trial reminder, so the task reconciler leaves it alone.
+ */
+const SESSION_END_ID = "session-end";
+
+type SessionEndReminder = { fireAt: number; title: string; body: string };
+
+let sessionEndQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Schedules the session-end notification for `fireAt`, replacing any earlier
+ * one — or just cancels it, given null (paused, finished, cancelled). Changes
+ * apply in the order they were asked for.
+ */
+export function setSessionEndReminder(reminder: SessionEndReminder | null): Promise<void> {
+  if (!isSupported) return Promise.resolve();
+  const write = sessionEndQueue.then(() => writeSessionEndReminder(reminder));
+  sessionEndQueue = write.catch(() => undefined);
+  return write;
+}
+
+async function writeSessionEndReminder(reminder: SessionEndReminder | null) {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(SESSION_END_ID);
+    if (!reminder || reminder.fireAt <= Date.now()) return;
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await ensureChannelsAndActions();
+    await Notifications.scheduleNotificationAsync({
+      identifier: SESSION_END_ID,
+      content: {
+        title: reminder.title,
+        body: reminder.body,
+        sound: "default",
+        // Back to the Today page, where the session runs.
+        data: { url: "/" },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: reminder.fireAt,
+        channelId: CHANNEL_IDS.reminders,
+      },
+    });
+  } catch (error) {
+    console.warn("[notifications] couldn't update the session-end notification", error);
   }
 }
 

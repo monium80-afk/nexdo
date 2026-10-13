@@ -49,6 +49,33 @@ export const es: Translations = {
     aiUnreachable: "No se pudo conectar con la IA. Revisa tu conexión e inténtalo de nuevo.",
   },
 
+  aiConsent: {
+    title: "¿Usar la IA con Nexdo?",
+    body: "Para organizar tus tareas, Nexdo envía lo que escribes, dices o fotografías para una función de IA a Gemini, la IA de Google, que lo procesa y devuelve el resultado. Puedes cambiarlo cuando quieras en Ajustes → IA.",
+    allow: "Permitir",
+    notNow: "Ahora no",
+    privacy: "Política de privacidad",
+  },
+
+  undoToast: {
+    undo: "Deshacer",
+    done: (title: string) => `Hecha: ${title}`,
+    deleted: (title: string) => `Eliminada: ${title}`,
+    reset: (count: number) => `${count} ${plural(count, "tarea replanificada", "tareas replanificadas")}`,
+  },
+
+  resetWeek: {
+    title: "REORGANIZAR MI SEMANA",
+    intro:
+      "Siguen en el día en que vencían. Nexdo sugiere un nuevo día para cada una en la próxima semana — toca una para cambiarlo. Nada se mueve hasta que confirmes.",
+    done: "Ya hecha",
+    noDate: "Sin fecha límite",
+    confirm: "Reorganizar mi semana",
+    cardTitle: (count: number) => `${count} ${plural(count, "tarea atrasada", "tareas atrasadas")}`,
+    cardBody: "Dales un nuevo día de una vez.",
+    cardAction: "Reorganizar",
+  },
+
   tabs: {
     next: "Hoy",
     tasks: "Tareas",
@@ -128,6 +155,7 @@ export const es: Translations = {
     doneForTodayBody: "Todo lo que vencía hoy está hecho. Lo siguiente está en tu agenda.",
     nothingToday: "Nada vence hoy",
     nothingTodayBody: "Ninguna tarea vence hoy. Tu agenda muestra los demás días, y Tareas las tiene todas, también las que no tienen fecha límite.",
+    upNextBody: "Esto es lo mejor que puedes hacer ahora, si tienes tiempo.",
     openSchedule: "Abrir agenda",
     seeTasks: "Ver todas las tareas",
     today: "Hoy",
@@ -266,6 +294,7 @@ export const es: Translations = {
       answerPlaceholder: "Responde a Nexdo…",
       deadlineUnclear: "¿Para cuándo es ahora esta tarea? Nexdo no pudo sacar una fecha exacta de tu nota.",
       aiFailed: "Nexdo no pudo reevaluar esta tarea ahora mismo. No se cambió nada.",
+      consentNeeded: "Nexdo necesita tu permiso para usar la IA aquí. No se cambió nada.",
       saveFailed: "Nexdo no pudo guardar los cambios. No se cambió nada.",
       keptUserEdits: "Se omitieron algunas sugerencias porque cambiaste esos mismos detalles mientras Nexdo trabajaba.",
       discard: "Descartar nota",
@@ -598,7 +627,7 @@ export const es: Translations = {
     restoreOffline: "No tienes conexión. Conéctate e inténtalo de nuevo.",
     restoreError: "No se pudieron restaurar las compras. Inténtalo de nuevo.",
     manageSubscription: "Gestionar la suscripción",
-    manageError: "No se pudo abrir tu suscripción. Inténtalo de nuevo.",
+    manageError: "No se pudo abrir tu suscripción. Puedes gestionarla en tu cuenta de App Store o Google Play.",
     proActive: "Nexdo Pro está activo.",
     proRenews: (date: string) => `Nexdo Pro · se renueva el ${date}`,
     proEnds: (date: string) => `Nexdo Pro · termina el ${date}`,
@@ -625,6 +654,11 @@ export const es: Translations = {
     notificationsDenied: "Las notificaciones de Nexdo están desactivadas en los ajustes del teléfono, así que no puede llegar ningún recordatorio.",
 
     language: "IDIOMA",
+
+    ai: "IA",
+    aiToggle: "Funciones de IA",
+    aiToggleBody:
+      "Envía lo que le das a una función de IA (texto, voz, fotos, archivos) a Gemini, la IA de Google, para procesarlo. Desactivado: no se envía nada a la IA, y añadir tareas a mano sigue funcionando.",
 
     support: "AYUDA Y SOPORTE",
     help: "Preguntas frecuentes / Ayuda",
@@ -656,6 +690,14 @@ export const es: Translations = {
     },
     liveProOnly: "El micro mágico viene con Nexdo Pro.",
     resets: "Tu cuota vuelve a empezar el día 1.",
+    left: {
+      chat: (count: number) => `Te ${plural(count, "queda", "quedan")} ${count} ${plural(count, "nota de contexto", "notas de contexto")} para la IA este mes`,
+      media: (count: number) => `Te ${plural(count, "queda", "quedan")} ${count} ${plural(count, "foto o documento", "fotos y documentos")} este mes`,
+      voice: (minutes: number) => `Te quedan ${minutes} min de notas de voz este mes`,
+      live: (minutes: number) => `Te quedan ${minutes} min de micro mágico este mes`,
+      assist: (count: number) => `Te ${plural(count, "queda", "quedan")} ${count} ${plural(count, "desglose o consejo", "desgloses y consejos")} este mes`,
+    },
+    getMore: "Consigue más con Pro",
     upgradeHint: "Nexdo Pro te da mucho más cada mes — y añadir tareas a mano siempre es gratis.",
     limitTitle: "Límite mensual alcanzado",
     thisMonth: "Este mes",
@@ -717,6 +759,11 @@ export const es: Translations = {
     screenshotInvalid: "No se puede adjuntar esa imagen. Elige una captura o foto de menos de 5 MB.",
     screenshotError: "No se pudo subir la captura de pantalla. Inténtalo de nuevo, o quítala y envía sin ella.",
     privacyNote: "Se envía con tu cuenta Nexdo, la versión de la app y el tipo de teléfono, así que no hace falta añadir tu correo.",
+    reportLabel: "Reportar",
+    reportA11y: "Reportar este contenido de la IA",
+    reportTitle: "Reportar contenido de la IA",
+    reportSubtitle: "Cuéntanos qué está mal en lo que escribió la IA de Nexdo.",
+    reportPrefill: (text: string) => `Lo que escribió la IA de Nexdo:\n"${text}"\n\nQué está mal: `,
     submit: "Enviar comentarios",
     sending: "Enviando…",
     success: "Gracias por tus comentarios.",
@@ -751,8 +798,14 @@ export const es: Translations = {
       `${count} ${plural(count, "tarea vence", "tareas vencen")} hoy.${top ? ` Empieza por «${top}».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "tarea abierta", "tareas abiertas")}.${top ? ` Empieza por «${top}».` : ""}`,
+    dailySlippedNote: (count: number) =>
+      `${count} ${plural(count, "tarea se ha atrasado", "tareas se han atrasado")}: reorganiza tu semana en Nexdo.`,
     trialEndingTitle: "Tu prueba gratis termina en 2 días",
-    trialEndingBody: (date: string) => `Nexdo Pro empieza el ${date}. ¿No lo quieres? Cancélalo antes desde Ajustes.`,
+    trialEndingBody: (date: string) =>
+      `Nexdo Pro empieza el ${date}. ¿No lo quieres? Toca aquí y luego Gestionar la suscripción para cancelarlo antes.`,
+    sessionEndTitle: "Se acabó el tiempo",
+    sessionEndBody: (title: string) =>
+      title ? `Tu sesión en "${title}" ha terminado. Termina la tarea o sigue un poco más.` : "Tu sesión de concentración ha terminado.",
   },
 
   profile: {
@@ -831,12 +884,12 @@ export const es: Translations = {
   },
 
   onboardingDump: {
-    eyebrow: "PRUÉBALO CON TUS TAREAS REALES",
-    headline: "¿Qué tienes que hacer esta semana?",
-    body: "**Apunta todas tus tareas**, aunque sea en desorden. Escríbelas, o toca el micrófono y dilas en voz alta.",
+    eyebrow: "PRUEBA EL MICRO MÁGICO",
+    headline: "Solo di lo que tienes pendiente.",
+    body: "**Toca el micrófono y cuéntale tu semana**, aunque sea en desorden. Nexdo lo convierte en tareas. ¿Prefieres escribir? Usa el cuadro de texto.",
     placeholder: "Terminar los deberes de mates para el viernes\nEscribir al profesor\nHacer la compra esta noche…",
-    startRecording: "Empezar a hablar",
-    stopRecording: "Parar y transcribir",
+    startRecording: "Activar el micro mágico",
+    stopRecording: "Parar y organizar",
     transcribing: "Transcribiendo…",
     organize: "Organizar con Nexdo",
     trialUsedHeadline: "Ya has probado la IA de Nexdo",
@@ -878,7 +931,8 @@ export const es: Translations = {
 
   onboardingNotify: {
     headline: "Un aviso, justo cuando importa.",
-    body: "No cincuenta notificaciones. Solo la que te mantiene al día.",
+    body: "Cada mañana, lo único con lo que empezar. Y un aviso cuando algo vence.",
+    morningPlan: "Plan de la mañana",
     sampleTime: "ahora",
     sampleBody: "Tu tarea de química es para mañana. ¿Empiezas ahora?",
     allow: "Permitir notificaciones",
@@ -899,7 +953,7 @@ export const es: Translations = {
     endBody: (price: string, yearly: boolean) =>
       `Se cobra ${price}/${yearly ? "año" : "mes"} — o cancela antes y no pagas nada.`,
     cancelTitle: "Cancela cuando quieras",
-    cancelBody: "Desde Ajustes. Sin llamadas ni formularios.",
+    cancelBody: "En Ajustes → Gestionar la suscripción, o en tus suscripciones de App Store o Google Play. Sin llamadas ni formularios.",
     next: "Continuar",
   },
 

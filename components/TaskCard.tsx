@@ -257,6 +257,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
           onPress={handleToggle}
           hitSlop={10}
           accessibilityRole="checkbox"
+          accessibilityLabel={task.title}
           accessibilityState={{ checked: isCompleted || celebrating }}
         >
           {/* Mounted only for the tick — it waits BURST_DELAY_MS to start, so it's in place before it plays. */}

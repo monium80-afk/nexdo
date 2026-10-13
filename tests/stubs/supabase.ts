@@ -83,13 +83,17 @@ function matches(row: Row, filters: Filter[]) {
 
 function query(name: string) {
   const filters: Filter[] = [];
-  let mode: "select" | "delete" = "select";
+  let mode: "select" | "delete" | "upsert" = "select";
+  let upsertRows: Row[] = [];
+  let ignoreDuplicates = false;
+  let returning = false;
   let sort: { column: string; ascending: boolean } | null = null;
   // Rows a select may return, as PostgREST's .limit() / .range() do.
   let window: { from: number; to: number } | null = null;
   const builder = {
     select() {
-      mode = "select";
+      if (mode !== "upsert") mode = "select";
+      else returning = true;
       return builder;
     },
     delete() {
@@ -116,20 +120,27 @@ function query(name: string) {
       window = { from, to };
       return builder;
     },
-    upsert(input: Row | Row[]) {
-      const rows = Array.isArray(input) ? input : [input];
-      const land = () => {
-        const missing = rows.flatMap((row) => Object.keys(row)).find((key) => fakeDb.missingColumns.has(key));
-        if (missing) return { error: { code: "PGRST204", message: `Could not find the '${missing}' column` } };
-        const error = takeError();
-        if (error) return { error };
-        rows.forEach((row) => table(name).set(row.id, { ...row }));
-        fakeDb.writes.push({ table: name, kind: "upsert", ids: rows.map((row) => row.id) });
-        return { error: null };
-      };
-      return fakeDb.upsertGate ? fakeDb.upsertGate.then(land) : Promise.resolve(land());
+    upsert(input: Row | Row[], options?: { ignoreDuplicates?: boolean }) {
+      mode = "upsert";
+      upsertRows = Array.isArray(input) ? input : [input];
+      ignoreDuplicates = options?.ignoreDuplicates ?? false;
+      return builder;
     },
-    then(resolve: (value: { data?: Row[]; error: unknown }) => void) {
+    then(resolve: (value: { data?: Row[] | null; error: unknown }) => void) {
+      if (mode === "upsert") {
+        const land = () => {
+          const missing = upsertRows.flatMap((row) => Object.keys(row)).find((key) => fakeDb.missingColumns.has(key));
+          if (missing) return { error: { code: "PGRST204", message: `Could not find the '${missing}' column` } };
+          const error = takeError();
+          if (error) return { error };
+          const changed = ignoreDuplicates ? upsertRows.filter((row) => !table(name).has(row.id)) : upsertRows;
+          changed.forEach((row) => table(name).set(row.id, { ...row }));
+          if (changed.length > 0) fakeDb.writes.push({ table: name, kind: "upsert", ids: changed.map((row) => row.id) });
+          return { data: returning ? changed.map((row) => ({ id: row.id })) : null, error: null };
+        };
+        const result = fakeDb.upsertGate ? fakeDb.upsertGate.then(land) : Promise.resolve(land());
+        return void result.then(resolve);
+      }
       if (mode === "delete") {
         const error = takeError();
         if (error) return resolve({ error });

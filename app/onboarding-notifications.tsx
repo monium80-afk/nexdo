@@ -1,26 +1,34 @@
 import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
+import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
 import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
-import { useColors } from "@/hooks/useTheme";
+import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
+import { pad } from "@/lib/localDate";
 import { requestNotificationPermission } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
 import { isPurchasesEnabled, loadOnboardingPlans, trialPlanOf, type ProPlans } from "@/lib/purchases";
 import { useSettingsStore } from "@/store/useSettingsStore";
 
+/** When the morning plan comes, unless the user picks another time. */
+const DEFAULT_PLAN_TIME = "08:30";
+
 /**
  * Onboarding step 8: asking for notifications, with a sample of the kind of
- * reminder Nexdo sends. The system prompt shows over this step, before it
- * leaves (OnboardingLayout's beforeNext).
+ * reminder Nexdo sends and the time of the morning plan — the daily note
+ * that's switched on once they're allowed. The system prompt shows over this
+ * step, before it leaves (OnboardingLayout's beforeNext).
  */
 export default function OnboardingNotifications() {
   const colors = useColors();
+  const scheme = useThemeScheme();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
@@ -30,6 +38,9 @@ export default function OnboardingNotifications() {
   // the time someone moves on, it's usually known whether the store has a
   // free trial to walk them through.
   const [plans, setPlans] = useState<ProPlans | "failed" | null>(null);
+  // When the morning plan arrives, if notifications are allowed.
+  const [planTime, setPlanTime] = useState(DEFAULT_PLAN_TIME);
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     if (!isPurchasesEnabled) return;
@@ -53,10 +64,28 @@ export default function OnboardingNotifications() {
 
   const askPermission = async () => {
     // Asked here, so the reminders hook doesn't ask again once there's a deadline.
-    useSettingsStore.getState().setNotificationPromptShown(true);
+    const settings = useSettingsStore.getState();
+    settings.setNotificationPromptShown(true);
     const granted = await requestNotificationPermission();
-    posthog.capture("onboarding_notifications_answered", { granted });
+    // The "one nudge" this screen promises: the morning plan, at the time
+    // picked above. (Off otherwise — Settings → Daily planning turns it on.)
+    if (granted) {
+      settings.setDailyNudgeTime(planTime);
+      settings.setDailyNudgeEnabled(true);
+    }
+    posthog.capture("onboarding_notifications_answered", { granted, morning_plan: granted ? planTime : null });
   };
+
+  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === "android") setShowPicker(false);
+    if (event.type === "dismissed" || !selected) return;
+    setPlanTime(`${pad(selected.getHours())}:${pad(selected.getMinutes())}`);
+  };
+
+  const [hours, minutes] = planTime.split(":").map(Number);
+  const planDate = new Date();
+  planDate.setHours(hours, minutes, 0, 0);
+  const planTimeLabel = planDate.toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
 
   // Without Nexdo Pro in this build: straight on to the account. With it: the
   // trial, day by day — or the plans themselves when the store has no trial
@@ -103,6 +132,30 @@ export default function OnboardingNotifications() {
             </Text>
           </View>
         </View>
+
+        {/* The morning plan's time, shown like a filled field (as in Settings). */}
+        <AnimatedPressable
+          onPress={() => setShowPicker((open) => !open)}
+          accessibilityRole="button"
+          className="card card--cream-inset mt-3 min-h-[48px] flex-row items-center gap-2 px-4"
+        >
+          <Feather name="sun" size={16} color={colors.orange[600]} />
+          <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
+            {t.onboardingNotify.morningPlan}
+          </Text>
+          <Text className="font-grotesk-bold text-sm text-orange-600">{planTimeLabel}</Text>
+        </AnimatedPressable>
+        {showPicker ? (
+          <DateTimePicker
+            value={planDate}
+            mode="time"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            themeVariant={scheme}
+            textColor={colors.ink.cream}
+            accentColor={colors.orange[500]}
+            onChange={handleTimeChange}
+          />
+        ) : null}
       </View>
     </OnboardingLayout>
   );

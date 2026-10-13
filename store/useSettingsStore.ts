@@ -30,6 +30,11 @@ type SettingsStore = {
   notificationPromptShown: boolean;
   /** Whether the first-run tour (components/AppTour.tsx) has been finished or skipped on this phone. */
   tourSeen: boolean;
+  /**
+   * Whether the user allowed Nexdo to send their own content to Google's
+   * Gemini AI (lib/aiConsent.ts). Off until they say yes; Settings → AI turns it off again.
+   */
+  aiConsent: boolean;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;
   setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
@@ -41,6 +46,7 @@ type SettingsStore = {
   setImportantExtraReminder: (importantExtraReminder: boolean) => void;
   setNotificationPromptShown: (notificationPromptShown: boolean) => void;
   setTourSeen: (tourSeen: boolean) => void;
+  setAiConsent: (aiConsent: boolean) => void;
 };
 
 /** The settings the reminder engine reads, in its own shape. */
@@ -56,11 +62,27 @@ export function reminderPreferences(state: SettingsStore): ReminderPreferences {
   };
 }
 
+const APP_LANGUAGES: AppLanguage[] = ["en", "fr", "es", "ar", "de"];
+
+/**
+ * The phone's own language, if Nexdo has it — English otherwise. Only the
+ * first launch uses it: once saved, the language stays what it was set to.
+ * Intl is built into the app's JavaScript engine, so no extra library.
+ */
+export function deviceLanguage(): AppLanguage {
+  try {
+    const code = Intl.DateTimeFormat().resolvedOptions().locale.slice(0, 2).toLowerCase();
+    return APP_LANGUAGES.find((language) => language === code) ?? "en";
+  } catch {
+    return "en";
+  }
+}
+
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
       theme: "system",
-      language: "en",
+      language: deviceLanguage(),
       dailyNudgeEnabled: false,
       dailyNudgeTime: "09:00",
       overdueAlertsEnabled: false,
@@ -70,6 +92,7 @@ export const useSettingsStore = create<SettingsStore>()(
       importantExtraReminder: DEFAULT_REMINDER_PREFERENCES.importantDayBefore,
       notificationPromptShown: false,
       tourSeen: false,
+      aiConsent: false,
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
@@ -86,6 +109,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setImportantExtraReminder: (importantExtraReminder) => set({ importantExtraReminder }),
       setNotificationPromptShown: (notificationPromptShown) => set({ notificationPromptShown }),
       setTourSeen: (tourSeen) => set({ tourSeen }),
+      setAiConsent: (aiConsent) => set({ aiConsent }),
     }),
     {
       name: "nexdo-settings",
@@ -105,6 +129,7 @@ export const useSettingsStore = create<SettingsStore>()(
         importantExtraReminder: state.importantExtraReminder,
         notificationPromptShown: state.notificationPromptShown,
         tourSeen: state.tourSeen,
+        aiConsent: state.aiConsent,
       }),
     },
   ),

@@ -12,7 +12,7 @@ import { clearAllNotifications } from "@/lib/notifications";
 import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
 import { buildRule, startSeries, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask, type ImportanceLevel } from "@/lib/scoring";
-import { deleteTaskRows, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
+import { deleteTaskRows, deleteTaskRowsIfUnchanged, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
 import {
   completeTaskDelta,
   expiredCompletedIds,
@@ -33,6 +33,42 @@ import type { StepDraft, Subtask, Task, TaskDeadline, TaskStep } from "@/types/t
 // `pendingDeletes`) until Supabase confirms it, so a failed one is retried
 // rather than forgotten.
 let realtimeChannel: RealtimeChannel | null = null;
+
+// The latest read of an account's tasks from Supabase (hydrateFromSupabase),
+// in flight or done — what whenAccountRead waits on.
+let latestAccountRead: { userId: string; done: Promise<boolean> } | null = null;
+
+/**
+ * Whether the phone's list is the signed-in account's latest: resolves once
+ * the read of it in flight (or the last one) is done, true if that read worked.
+ * False when signed out, before any read, or after `timeoutMs`. For acting on
+ * something only the latest list can confirm — another device may have moved
+ * or finished a task since the phone last looked.
+ */
+export function whenAccountRead(timeoutMs = 10_000): Promise<boolean> {
+  const userId = useTaskStore.getState().syncUserId;
+  const initialRead = latestAccountRead;
+  if (!userId || !initialRead || initialRead.userId !== userId) return Promise.resolve(false);
+  let read: { userId: string; done: Promise<boolean> } = initialRead;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  const waitForLatest = async (): Promise<boolean> => {
+    while (true) {
+      const waitingFor = read;
+      const worked = await Promise.race([waitingFor.done, timeout]);
+      if (!worked || useTaskStore.getState().syncUserId !== userId) return false;
+      const latest = latestAccountRead;
+      if (latest === waitingFor) return true;
+      if (!latest || latest.userId !== userId) return false;
+      read = latest;
+    }
+  };
+  return waitForLatest().finally(() => {
+    clearTimeout(timer);
+  });
+}
 
 function withoutKeys(record: Record<string, string>, keys: string[]): Record<string, string> {
   const copy = { ...record };
@@ -558,8 +594,9 @@ export const useTaskStore = create<TaskStore>()(
       // version. Anything local that Supabase is behind on gets pushed again
       // right here, so the row repairs itself instead of reverting the user's
       // edit on every launch.
-      hydrateFromSupabase: async (userId) => {
+      hydrateFromSupabase: (userId) => {
         set({ syncUserId: userId });
+        const done = (async () => {
         try {
           await rehydrated;
           if (get().syncUserId !== userId) return false;
@@ -617,6 +654,9 @@ export const useTaskStore = create<TaskStore>()(
           console.warn("[useTaskStore] hydrate failed", error);
           return false;
         }
+        })();
+        latestAccountRead = { userId, done };
+        return done;
       },
 
       subscribeToRealtime: (userId) => {
@@ -1022,19 +1062,53 @@ export const useTaskStore = create<TaskStore>()(
       // Remote first, unlike every other mutation here: the change is shown
       // to the user as done, so it has to be done before the phone shows it.
       saveTaskNow: async (taskId, build) => {
+        // Rows this save brought into being (a repeating task's next
+        // occurrence, say): id → the version last written. A retry can build
+        // something that no longer has one — the task was reopened meanwhile —
+        // and the row an earlier attempt wrote must not stay behind.
+        const createdRows = new Map<string, string>();
+        let createdBy: string | null = null;
+        const discardCreated = (keep: ReadonlySet<string>) => {
+          if (!createdBy || get().syncUserId !== createdBy) return;
+          const local = new Map(get().tasks.map((task) => [task.id, task]));
+          // A row changed since (on the phone, or by another device) is someone's now, not this save's leftover.
+          const stray = [...createdRows]
+            .filter(([id, updatedAt]) => !keep.has(id) && (!local.has(id) || local.get(id)!.updatedAt === updatedAt))
+            .map(([id, updatedAt]) => ({ id, updatedAt }));
+          if (stray.length === 0) return;
+          const gone = new Set(stray.map(({ id }) => id));
+          // The realtime echo of the earlier write may already have put it on the phone.
+          set((state) => ({ tasks: state.tasks.filter((task) => !gone.has(task.id)) }));
+          void inOrder(
+            stray.map(({ id }) => id),
+            () => deleteTaskRowsIfUnchanged(stray, createdBy!),
+          ).catch((error) => console.warn("[useTaskStore] created-row cleanup failed", error));
+        };
+
         for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
           const current = get().tasks.find((task) => task.id === taskId);
-          if (!current) return { ok: false, reason: "missing" };
+          if (!current) {
+            discardCreated(new Set());
+            return { ok: false, reason: "missing" };
+          }
           const built = build(current);
           const [next, ...others] = Array.isArray(built) ? built : [built];
           const ids = [taskId, ...others.map((task) => task.id)];
           const userId = get().syncUserId;
           if (userId) {
+            createdBy = userId;
             try {
-              // One statement: the whole new version lands or none of it does.
-              await inOrder(ids, () => upsertTaskRows([next, ...others], userId));
+              // The insert result identifies new rows; the bulk upsert writes their final versions.
+              await inOrder(ids, () =>
+                upsertTaskRows([next, ...others], userId, others, (insertedIds) => {
+                  for (const task of others) {
+                    if (insertedIds.includes(task.id)) createdRows.set(task.id, task.updatedAt);
+                  }
+                }),
+              );
             } catch (error) {
               console.warn("[useTaskStore] save failed", error);
+              discardCreated(new Set());
               return { ok: false, reason: "save-failed" };
             }
             // Signed out (or into another account) while the request was out:
@@ -1049,9 +1123,8 @@ export const useTaskStore = create<TaskStore>()(
             // bring it back, and a new task saved with it would be left behind.
             if (userId) {
               syncDelete(taskId, userId);
-              const local = new Set(get().tasks.map((task) => task.id));
-              others.filter((task) => !local.has(task.id)).forEach((task) => syncDelete(task.id, userId));
             }
+            discardCreated(new Set());
             return { ok: false, reason: "missing" };
           }
           // Changed meanwhile — by anything other than this save's own
@@ -1064,6 +1137,7 @@ export const useTaskStore = create<TaskStore>()(
             }
             continue;
           }
+          discardCreated(new Set(ids));
 
           const now = new Date();
           const changed = new Map([next, ...others].map((task) => [task.id, task]));
@@ -1082,6 +1156,7 @@ export const useTaskStore = create<TaskStore>()(
           });
           return { ok: true, task: get().tasks.find((task) => task.id === taskId) ?? next };
         }
+        discardCreated(new Set());
         return { ok: false, reason: "conflict" };
       },
 

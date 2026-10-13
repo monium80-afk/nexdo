@@ -8,7 +8,7 @@
     "scheme": "nexdo",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.nexdo.app",
       "config": {
         "usesNonExemptEncryption": false
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#EFEBDA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

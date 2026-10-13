@@ -8,6 +8,7 @@ import { BottomSheet } from "@/components/BottomSheet";
 import { IconButton, PrimaryButton } from "@/components/Button";
 import { ChecklistRow } from "@/components/ChecklistRow";
 import { Chip } from "@/components/Chip";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { listItemEntering, listItemLayout } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -90,12 +91,16 @@ export function BreakdownSheet({
   // it opens — see NextTaskCard).
   const [steps, setSteps] = useState(() => draftOf(task));
   const [stepDraft, setStepDraft] = useState("");
+  // The steps the AI wrote last, for its Report link — none until it has.
+  const [aiSteps, setAiSteps] = useState<PlanStep[]>([]);
   const isLoading = status === "loading";
 
   const generate = async () => {
     const sentIds = new Set(steps.map((step) => step.id));
     const next = await onGenerate(steps);
-    if (next) setSteps((current) => withNewSteps(current, next, sentIds));
+    if (!next) return;
+    setAiSteps(next);
+    setSteps((current) => withNewSteps(current, next, sentIds));
   };
 
   // Once, as the sheet opens.
@@ -192,6 +197,10 @@ export function BreakdownSheet({
           placeholder={t.breakdown.stepPlaceholder}
           addLabel={t.breakdown.addStep}
         />
+
+        {aiSteps.length > 0 ? (
+          <ReportAiButton content={aiSteps.map((step) => step.title).join("\n")} beforeOpen={onClose} />
+        ) : null}
       </ScrollView>
 
       <PrimaryButton

@@ -1,4 +1,5 @@
 import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
+import { AiConsentError } from "@/lib/aiConsent";
 import { audioLevel, decodeUtf8, encodeBase64, parseServerMessage, toMonoPcm16, type LiveEvent } from "@/lib/liveProtocol";
 import type { LiveToolCall, LiveToolResult } from "@/lib/liveVoiceTools";
 import { PlanLimitError } from "@/lib/plan";
@@ -20,6 +21,12 @@ export const MAX_LIVE_SECONDS = 5 * 60;
 export const SILENCE_STOP_SECONDS = 4;
 /** After Stop, the longest to wait for Google to act on the last sentence. */
 const LAST_TURN_WAIT_MS = 3000;
+/**
+ * The longest from opening the socket to listening (socket open, setup
+ * accepted, microphone on). A connection that stalls without closing would
+ * otherwise stay "connecting" until the user gave up.
+ */
+export const CONNECT_TIMEOUT_MS = 15_000;
 /** WebSocket.OPEN — a number here so the test stand-in doesn't need the class. */
 const SOCKET_OPEN = 1;
 
@@ -80,12 +87,16 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   // Bumped whenever a session starts or ends. Every callback checks it, so a
   // late message from a session that's already over changes nothing.
   let session = 0;
+  let microphoneGeneration: number | null = null;
+  const startingMicrophones = new Set<number>();
+  let microphoneStart: Promise<void> | null = null;
   let socket: WebSocket | null = null;
   let streaming = false;
   // Google heard speech it hasn't finished acting on yet (ACTIVITY_START
   // without a turnComplete after it) — what Stop has to wait for.
   let turnOpen = false;
   let finishTimer: ReturnType<typeof setTimeout> | undefined;
+  let connectTimer: ReturnType<typeof setTimeout> | undefined;
   let limitTimer: ReturnType<typeof setTimeout> | undefined;
   let silenceTimer: ReturnType<typeof setTimeout> | undefined;
   // How long this session may listen: MAX_LIVE_SECONDS, or what is left of
@@ -123,14 +134,22 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     }
   };
 
+  const stopMicrophone = (current: number) => {
+    if (microphoneGeneration !== current) return;
+    microphoneGeneration = null;
+    deps.stopMicrophone();
+  };
+
   const end = (status: "stopped" | "error", problem: LiveVoiceProblem | null) => {
+    const current = session;
     session += 1;
     clearTimeout(finishTimer);
+    clearTimeout(connectTimer);
     clearTimeout(limitTimer);
     clearTimeout(silenceTimer);
     streaming = false;
     turnOpen = false;
-    deps.stopMicrophone();
+    stopMicrophone(current);
     deps.onLevel?.(0);
     reportListened();
     closeSocket();
@@ -143,8 +162,9 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       return;
     }
     if (state.status !== "listening") return;
+    const current = session;
     streaming = false;
-    deps.stopMicrophone();
+    stopMicrophone(current);
     deps.onLevel?.(0);
     reportListened();
     clearTimeout(limitTimer);
@@ -156,7 +176,6 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     }
     // Mid-sentence: tell Google the audio is over, so it acts on what it has
     // now instead of waiting for a pause that won't come.
-    const current = session;
     socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
     setState({ status: "finishing", problem });
     finishTimer = setTimeout(() => {
@@ -175,25 +194,43 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   };
 
   const beginListening = async (current: number) => {
-    try {
-      await deps.startMicrophone();
-    } catch (error) {
-      console.warn("[liveVoice] microphone didn't start", error);
-      if (current === session) end("error", "unavailable");
-      return;
-    }
-    if (current !== session) {
-      deps.stopMicrophone(); // the session ended while the microphone was starting
-      return;
-    }
-    streaming = true;
-    listeningSince = Date.now();
-    setState({ status: "listening", startedAt: listeningSince });
-    limitTimer = setTimeout(() => {
-      // Cut short by the month's minutes running out, or by the usual limit.
-      if (current === session) stop(sessionSeconds < MAX_LIVE_SECONDS ? "planLimit" : "timeLimit");
-    }, sessionSeconds * 1000);
-    waitForSpeech();
+    if (microphoneGeneration === current || startingMicrophones.has(current)) return;
+    startingMicrophones.add(current);
+    const earlierStart = microphoneStart;
+    const start = (async () => {
+      if (earlierStart) await earlierStart;
+      if (current !== session) return;
+      try {
+        await deps.startMicrophone();
+      } catch (error) {
+        console.warn("[liveVoice] microphone didn't start", error);
+        deps.stopMicrophone();
+        if (current === session) end("error", "unavailable");
+        return;
+      }
+      if (current !== session) {
+        // Starts are serialized, so no newer session can own the shared mic yet.
+        deps.stopMicrophone();
+        return;
+      }
+      microphoneGeneration = current;
+      clearTimeout(connectTimer);
+      streaming = true;
+      listeningSince = Date.now();
+      setState({ status: "listening", startedAt: listeningSince });
+      limitTimer = setTimeout(() => {
+        // Cut short by the month's minutes running out, or by the usual limit.
+        if (current === session) stop(sessionSeconds < MAX_LIVE_SECONDS ? "planLimit" : "timeLimit");
+      }, sessionSeconds * 1000);
+      waitForSpeech();
+    })();
+    let tracked: Promise<void>;
+    tracked = start.finally(() => {
+      startingMicrophones.delete(current);
+      if (microphoneStart === tracked) microphoneStart = null;
+    });
+    microphoneStart = tracked;
+    await tracked;
   };
 
   const runTools = (calls: LiveToolCall[]) => {
@@ -280,6 +317,11 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
         end("error", "planLimit");
         return;
       }
+      // The user said no to AI: simply not listening.
+      if (error instanceof AiConsentError) {
+        end("stopped", null);
+        return;
+      }
       console.warn("[liveVoice] couldn't start a session", error);
       end("error", "unavailable");
       return;
@@ -292,6 +334,11 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     unreported = { sessionId: live.sessionId };
     sessionSeconds = Math.min(MAX_LIVE_SECONDS, Math.max(1, live.maxSeconds ?? MAX_LIVE_SECONDS));
 
+    // Stalled before listening began: close it, give the session's time back
+    // (none was used), and let the user try again.
+    connectTimer = setTimeout(() => {
+      if (current === session && state.status === "connecting") end("error", "connection");
+    }, CONNECT_TIMEOUT_MS);
     const opened = deps.openSocket(live.url);
     // Google sends its JSON as binary frames; React Native would otherwise
     // hand them over as Blobs, which can't be read synchronously.

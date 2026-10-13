@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { useTaskStore } from "@/store/useTaskStore";
-import { upsertTaskRows } from "@/lib/supabaseSync";
+import { deleteTaskRowsIfUnchanged, upsertTaskRows } from "@/lib/supabaseSync";
 
 import { fakeDb } from "./stubs/supabase";
 
@@ -22,6 +22,22 @@ describe("sync before the recurrence migration has been run", () => {
       estimatedMinutes: 60,
       priorityLevel: "medium",
       recurrence: { frequency: "daily" },
+    });
+
+    describe("cleaning up created task rows", () => {
+      it("deletes only when the row still has the version this save wrote", async () => {
+        fakeDb.reset();
+        fakeDb.tables.set(
+          "tasks",
+          new Map([["next", { id: "next", user_id: "user_1", updated_at: "2026-10-11T12:00:00.000Z" }]]),
+        );
+
+        await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T11:00:00.000Z" }], "user_1");
+        assert.ok(fakeDb.rows("tasks").some((row) => row.id === "next"), "a newer remote version is left in place");
+
+        await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T12:00:00.000Z" }], "user_1");
+        assert.equal(fakeDb.rows("tasks").some((row) => row.id === "next"), false);
+      });
     });
     await flush();
     const tasks = useTaskStore.getState().tasks.filter((task) => task.id === plainId || task.id === repeatingId);

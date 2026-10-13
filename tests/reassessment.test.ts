@@ -670,6 +670,61 @@ describe("repeated and overlapping submissions", () => {
     assert.ok(!fields(done.changes).includes("deadline"));
   });
 
+  it("a row only an earlier attempt needed is removed again, but not one changed since", async () => {
+    seed({ id: "gym", title: "Gym", estimatedMinutes: 30 });
+    const newRow = (id: string, builds: number): Task =>
+      makeTask({ id, title: "Gym", createdAt: at(0), updatedAt: new Date(Date.now() + builds).toISOString() });
+    let builds = 0;
+    const result = await useTaskStore.getState().saveTaskNow("gym", (current) => {
+      builds += 1;
+      const next = { ...current, title: `Gym ${builds}`, updatedAt: new Date(Date.now() + builds).toISOString() };
+      if (builds > 1) return next; // reopened meanwhile: no next occurrence any more
+      // The first attempt finishes the task and brings in its next occurrence —
+      // while the user changes the task.
+      useTaskStore.getState().updateTask("gym", { title: "Gym!" });
+      return [next, newRow("gym-next", builds)];
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(result.ok, true);
+    assert.equal(builds, 2);
+    assert.equal(dbRow("gym-next"), undefined, "the next occurrence written by the first attempt is gone");
+    assert.ok(!useTaskStore.getState().tasks.some((entry) => entry.id === "gym-next"));
+    assert.equal(dbRow("gym")?.title, "Gym 2");
+
+    // Changed on the phone after the first attempt wrote it: someone's task now, left alone.
+    seed({ id: "run", title: "Run", estimatedMinutes: 30 });
+    builds = 0;
+    await useTaskStore.getState().saveTaskNow("run", (current) => {
+      builds += 1;
+      const next = { ...current, updatedAt: new Date(Date.now() + builds).toISOString() };
+      if (builds > 1) return next;
+      const created = newRow("run-next", builds);
+      useTaskStore.setState((state) => ({ tasks: [...state.tasks, { ...created, title: "Edited", updatedAt: new Date(Date.now() + 50).toISOString() }] }));
+      useTaskStore.getState().updateTask("run", { title: "Run!" });
+      return [next, created];
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.ok(useTaskStore.getState().tasks.some((entry) => entry.id === "run-next"));
+  });
+
+  it("does not treat an existing remote row as newly created when it is absent on the phone", async () => {
+    seed({ id: "remote-parent", title: "Gym", estimatedMinutes: 30 });
+    fakeDb.tables.set("tasks", new Map([["remote-next", { id: "remote-next", user_id: USER, title: "Remote task" }]]));
+    const existing = makeTask({ id: "remote-next", title: "Remote task", createdAt: at(0) });
+    let builds = 0;
+    const result = await useTaskStore.getState().saveTaskNow("remote-parent", (current) => {
+      builds += 1;
+      const next = { ...current, title: `Gym ${builds}`, updatedAt: new Date(Date.now() + builds).toISOString() };
+      if (builds > 1) return next;
+      useTaskStore.getState().updateTask("remote-parent", { title: "Gym!" });
+      return [next, existing];
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(dbRow("remote-next"), "cleanup leaves the row that the insert response did not confirm as new");
+  });
+
   it("a change landing during the save itself is rebuilt on, not overwritten", async () => {
     seed({
       id: "mid",
@@ -702,7 +757,6 @@ describe("the route's boundary", () => {
       steps: [
         { id: "s1", title: "Keep", estimatedMinutes: 2 },
         { id: "s1", title: "Twice", estimatedMinutes: 99_999 },
-        { id: null, title: "", estimatedMinutes: 10 },
       ],
       estimatedMinutes: -5,
       priority: "urgent",
@@ -726,9 +780,26 @@ describe("the route's boundary", () => {
     assert.throws(() => normalizeReassessment({ outcome: "clarify", question: "  " }));
   });
 
+  it("refuses a step list it would have to cut short, since it replaces every unfinished step", () => {
+    const update = (steps: unknown[]) => normalizeReassessment({ outcome: "update", steps, summary: "" });
+    assert.throws(() => update([{ id: "s1", title: "Keep", estimatedMinutes: 10 }, { id: "s2", title: "  ", estimatedMinutes: 10 }]));
+    assert.throws(() => update([{ id: "s1", title: "dueDate: friday", estimatedMinutes: 10 }]));
+    assert.throws(() => update(Array.from({ length: 31 }, (_, index) => ({ id: null, title: `Step ${index}`, estimatedMinutes: 10 }))));
+  });
+
   it("refuses a request without a task or a note", () => {
     assert.equal(parseReassessBody({ task: { id: "x", title: "X" }, newContext: "   " }), null);
     assert.equal(parseReassessBody({ newContext: "hello" }), null);
+  });
+
+  it("flags a request whose unfinished steps couldn't all be passed on", () => {
+    const base = { task: { id: "x", title: "X" }, newContext: "hello" };
+    const steps = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `s${index + 1}`, title: `Step ${index + 1}`, estimatedMinutes: 10 }));
+    assert.equal(parseReassessBody(base), null);
+    assert.equal(parseReassessBody({ ...base, steps: "not-an-array" }), null);
+    assert.equal(parseReassessBody({ ...base, steps: steps(30) })?.stepsCut, undefined);
+    assert.equal(parseReassessBody({ ...base, steps: steps(31) })?.stepsCut, true);
+    assert.equal(parseReassessBody({ ...base, steps: [...steps(2), { id: "s3", title: " " }] })?.stepsCut, true);
   });
 });
 

@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import Purchases, {
   INTRO_ELIGIBILITY_STATUS,
   LOG_LEVEL,
@@ -307,6 +307,26 @@ export async function restorePurchases(): Promise<RestoreOutcome> {
   } catch (error) {
     console.warn("[purchases] restore failed", error);
     return isOffline(errorCode(error)) ? "offline" : "error";
+  }
+}
+
+/**
+ * The store's own subscriptions page — where Nexdo Pro is cancelled whatever
+ * happens in the app. The fallback for when the Customer Center below can't
+ * open: "cancel it from Settings" has to be true every time.
+ */
+export async function openStoreSubscriptions(): Promise<boolean> {
+  const url = Platform.select({
+    ios: "https://apps.apple.com/account/subscriptions",
+    android: "https://play.google.com/store/account/subscriptions?package=com.nexdo.app",
+  });
+  if (!url) return false;
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch (error) {
+    console.warn("[purchases] couldn't open the store's subscriptions page", error);
+    return false;
   }
 }
 

@@ -21,6 +21,7 @@ import { getDueInfo } from "@/lib/taskMeta";
 import { isListed } from "@/lib/taskOperations";
 import { useTaskFilterStore, type TaskSortOption, type TaskStatusFilter } from "@/store/useTaskFilterStore";
 import { useTaskStore } from "@/store/useTaskStore";
+import { withUndo } from "@/store/useUndoStore";
 import type { Task } from "@/types/task";
 
 const SORT_VALUES: TaskSortOption[] = ["recent", "dueDate", "priority"];
@@ -234,7 +235,12 @@ export default function TasksListScreen() {
                   <TaskCard
                     task={task}
                     onPress={() => handleOpenTask(task.id)}
-                    onToggle={() => toggleTaskStatus(task.id)}
+                    // Ticking one off can be taken back; unticking is its own undo.
+                    onToggle={() =>
+                      task.status === "pending"
+                        ? withUndo(t.undoToast.done(task.title), () => toggleTaskStatus(task.id))
+                        : toggleTaskStatus(task.id)
+                    }
                   />
                 </Animated.View>
               ))

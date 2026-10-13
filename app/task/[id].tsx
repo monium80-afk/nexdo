@@ -7,6 +7,7 @@ import Animated from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AddItemField } from "@/components/AddItemField";
+import { AllowanceNote } from "@/components/AllowanceNote";
 import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
 import { ChecklistRow } from "@/components/ChecklistRow";
 import { Chip } from "@/components/Chip";
@@ -17,6 +18,7 @@ import { GemLogo } from "@/components/GemLogo";
 import { HighlightedText } from "@/components/HighlightedText";
 import { MetaPill } from "@/components/MetaPill";
 import { ReassessmentNotice } from "@/components/ReassessmentNotice";
+import { ReportAiButton } from "@/components/ReportAiButton";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -43,6 +45,7 @@ import { useReassessStore, type ContextAttachment } from "@/store/useReassessSto
 import { useSessionStore } from "@/store/useSessionStore";
 import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
+import { withUndo } from "@/store/useUndoStore";
 import type { RecurrenceRule, Task } from "@/types/task";
 
 // Labels live in the translations (taskDetail.postpone).
@@ -179,6 +182,24 @@ export default function TaskDetail() {
     const timer = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
     return () => clearTimeout(timer);
   }, [reassessStatus]);
+
+  // One note open for editing at a time — each edit is its own reassessment,
+  // and they run one after another.
+  const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
+  // An edited note that Save Changes found alongside a new one: it goes as
+  // soon as the new one's reassessment is done. If that one doesn't go
+  // through (an error, or a question back), the edit stays open in its card
+  // for the user to save again — nothing is sent on a guess.
+  const queuedNoteEdit = useRef<{ replacesNote: string; text: string } | null>(null);
+  useEffect(() => {
+    const queued = queuedNoteEdit.current;
+    if (!queued || !task || reassessStatus === "running") return;
+    queuedNoteEdit.current = null;
+    const noteIndex = task.aiContext.notes.indexOf(queued.replacesNote);
+    if (reassessStatus === "done" && noteIndex >= 0 && editingNoteIndex === noteIndex) {
+      submitContext(task.id, { text: queued.text, replacesNote: queued.replacesNote });
+    }
+  }, [reassessStatus, task, submitContext, editingNoteIndex]);
 
   // A direct link skips the tabs' sign-in check, and signing out leaves
   // unsaved tasks on the phone — so this page checks for itself.
@@ -388,14 +409,20 @@ export default function TaskDetail() {
     if (editingSubtaskId && editingSubtaskText.trim()) updateSubtask(task.id, editingSubtaskId, editingSubtaskText);
     if (subtaskDraft.trim()) addSubtask(task.id, subtaskDraft);
 
+    // Only one card can be open for editing (editingNoteIndex).
     const editedNote = contextNotes
       .map((entry, index) => ({ index, text: noteCardRefs.current[index]?.pendingNote() }))
       .find((edit) => edit.text && edit.text !== contextNotes[edit.index]);
     if (note.trim() || noteFile || editedNote) {
       setEditingSubtaskId(null);
       setSubtaskDraft("");
-      if (note.trim() || noteFile) handleSendNote();
-      else if (editedNote?.text) handleUpdateNote(editedNote.index, editedNote.text);
+      if (note.trim() || noteFile) {
+        // Both: the new note first, and the edit right after it (see queuedNoteEdit).
+        if (editedNote?.text) queuedNoteEdit.current = { replacesNote: contextNotes[editedNote.index], text: editedNote.text };
+        handleSendNote();
+      } else if (editedNote?.text) {
+        handleUpdateNote(editedNote.index, editedNote.text);
+      }
       return;
     }
 
@@ -444,7 +471,7 @@ export default function TaskDetail() {
         ],
         t.common.cancel,
         (scope) => {
-          deleteTask(task.id, scope);
+          withUndo(t.undoToast.deleted(task.title), () => deleteTask(task.id, scope));
           router.back();
         },
       );
@@ -456,7 +483,7 @@ export default function TaskDetail() {
         text: t.common.delete,
         style: "destructive",
         onPress: () => {
-          deleteTask(task.id);
+          withUndo(t.undoToast.deleted(task.title), () => deleteTask(task.id));
           router.back();
         },
       },
@@ -740,6 +767,7 @@ export default function TaskDetail() {
                     className="text-body text-ink-cream"
                     highlightClassName="font-grotesk-semibold text-orange-600"
                   />
+                  <ReportAiButton content={task.aiContext.advice} />
                 </View>
               ) : null}
 
@@ -758,7 +786,11 @@ export default function TaskDetail() {
                     note={entry}
                     onSave={(text) => handleUpdateNote(index, text)}
                     onDelete={() => handleDeleteNote(index)}
-                    disabled={reassessing}
+                    onEditingChange={(open) => {
+                      if (!open && queuedNoteEdit.current?.replacesNote === task.aiContext.notes[index]) queuedNoteEdit.current = null;
+                      setEditingNoteIndex((current) => (open ? index : current === index ? null : current));
+                    }}
+                    disabled={reassessing || (editingNoteIndex !== null && editingNoteIndex !== index)}
                   />
                 ))}
                 {/* Right above the box, where the user just typed. */}
@@ -780,6 +812,8 @@ export default function TaskDetail() {
                   }
                   disabled={reassessing}
                 />
+                <AllowanceNote meter="chat" />
+                <AllowanceNote meter="media" />
               </View>
             </View>
           </ScrollView>

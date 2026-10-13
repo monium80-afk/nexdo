@@ -9,6 +9,7 @@ import { posthog } from "@/lib/posthog";
 import { identifyPurchaser, isPurchasesEnabled } from "@/lib/purchases";
 import { setClerkTokenGetter } from "@/lib/supabase";
 import { useOnboardingStore, waitForOnboardingHydration } from "@/store/useOnboardingStore";
+import { usePlanUsageStore } from "@/store/usePlanUsageStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 /**
@@ -156,6 +157,8 @@ export function useAuthSync() {
     // Magic mic sessions whose usage couldn't be reported when they ended
     // (lib/liveUsageReports.ts) — until it is, each counts in full.
     void flushLiveUsageReports(userId);
+    // This month's use of the plan, for the "2 left" notes on the AI buttons.
+    void usePlanUsageStore.getState().refresh();
 
     // Back in the foreground: after a while (or after a load that never
     // worked), everything is read again — which also sends any unsaved
@@ -171,6 +174,8 @@ export function useAuthSync() {
         void useTaskStore.getState().saveUnsyncedTasks();
       }
       void flushLiveUsageReports(userId);
+      // A new month, or a plan changed elsewhere, while the app was away.
+      void usePlanUsageStore.getState().refresh();
     });
 
     return () => {
@@ -178,6 +183,7 @@ export function useAuthSync() {
       clearTimeout(retryTimer);
       appState.remove();
       unsubscribeTasks();
+      usePlanUsageStore.getState().clear();
     };
   }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks]);
 

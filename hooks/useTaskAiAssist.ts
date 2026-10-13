@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import { generateAdvice, type TaskAdvice } from "@/lib/ai/generateAdvice";
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
+import { AiConsentError } from "@/lib/aiConsent";
 import type { PlanStep } from "@/lib/ai/types";
 import { showPlanLimit } from "@/lib/paywall";
 import { PlanLimitError } from "@/lib/plan";
@@ -105,6 +106,11 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
       return steps;
     } catch (error) {
       if (requestId !== breakdownRequestId.current) return null;
+      // The user said no to AI: nothing failed.
+      if (error instanceof AiConsentError) {
+        setBreakdownState({ taskId, status: "idle" });
+        return null;
+      }
       // Out of this month's breakdowns: not a failure to retry.
       if (error instanceof PlanLimitError) {
         setBreakdownState({ taskId, status: "idle" });

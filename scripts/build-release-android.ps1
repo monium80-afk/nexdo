@@ -4,7 +4,8 @@
 #
 # Before each new upload to Play, raise "android" > "versionCode" in app.json
 # (Play refuses a versionCode it has already seen) and, for a user-visible
-# release, "version" too.
+# release, "version" too — then commit. The build stops on uncommitted
+# changes, and tags the commit it built "android-build-<versionCode>".
 #
 # Signing uses the upload key in D:\Nexdo\android-signing (outside git — back
 # that folder up). It is passed to Gradle as the same "injected" signing
@@ -32,9 +33,17 @@ $keystore = Join-Path $signing $props.storeFile
 if (-not (Test-Path $keystore)) { throw "Upload keystore not found: $keystore" }
 
 # .env's values, for the RevenueCat checks below. Nothing from it is printed.
+# Read the way dotenv (and so Expo) reads them: an optional "export ", a value
+# in single, double or back quotes - or bare, up to a "#" comment - and "\n"
+# in double quotes as a line break.
 $dotenv = @{}
 foreach ($line in Get-Content (Join-Path $project ".env")) {
-  if ($line -match '^\s*([A-Z0-9_]+)\s*=\s*"?(.*?)"?\s*$') { $dotenv[$Matches[1]] = $Matches[2] }
+  if ($line -match '^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(''[^'']*''|"(?:\\"|[^"])*"|`[^`]*`|[^#]*?)\s*(?:#.*)?$') {
+    $value = $Matches[2]
+    if ($value.Length -ge 2 -and "'``".IndexOf($value[0]) -ge 0) { $value = $value.Substring(1, $value.Length - 2) }
+    elseif ($value.Length -ge 2 -and $value[0] -eq '"') { $value = $value.Substring(1, $value.Length - 2).Replace('\n', "`n").Replace('\r', "`r") }
+    $dotenv[$Matches[1]] = $value
+  }
 }
 $googleKey = $dotenv["EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY"]
 if (-not $googleKey -or -not $googleKey.StartsWith("goog_")) {
@@ -45,6 +54,21 @@ if (-not $googleKey -or -not $googleKey.StartsWith("goog_")) {
 $clerkKey = $dotenv["EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"]
 if (-not $clerkKey -or -not $clerkKey.StartsWith("pk_live_")) {
   throw "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in .env must be Clerk's production key (pk_live_...)"
+}
+
+# Every store build comes from a commit and is tagged with it
+# ("android-build-<versionCode>"), so whatever Play users report can be traced
+# to the exact code. Commit first; the build refuses otherwise.
+Set-Location $project
+$uncommitted = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "git status failed - is this a git repository?" }
+if ($uncommitted) { throw "Commit your changes first - a store build has to come from a commit:`n$($uncommitted -join "`n")" }
+$head = (git rev-parse HEAD).Trim()
+$versionCode = (Get-Content (Join-Path $project "app.json") -Raw | ConvertFrom-Json).expo.android.versionCode
+$tag = "android-build-$versionCode"
+$tagged = git rev-parse -q --verify "refs/tags/$tag^{commit}"
+if ($tagged -and $tagged.Trim() -ne $head) {
+  throw "$tag already marks another commit - raise android.versionCode in app.json for a new upload"
 }
 
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
@@ -73,9 +97,25 @@ Set-Location (Join-Path $project "android")
 if ($LASTEXITCODE -ne 0) { throw "Gradle build failed" }
 
 $aab = Join-Path $project "android\app\build\outputs\bundle\release\app-release.aab"
-# Fails the script if the bundle was signed with anything but the upload key.
-$cert = & "$env:JAVA_HOME\bin\keytool.exe" -printcert -jarfile $aab | Out-String
-if ($cert -notmatch "CN=Nexdo") { throw "The bundle is not signed with the upload key:`n$cert" }
+# Fails the script if the bundle was signed with anything but the upload key:
+# the bundle's certificate must have the upload key's own SHA-256 fingerprint
+# (a name like CN=Nexdo could be on any certificate). The password reaches
+# keytool through its environment, not its command line.
+$keytool = "$env:JAVA_HOME\bin\keytool.exe"
+$env:NEXDO_UPLOAD_STORE_PASS = $props.storePassword
+try {
+  $uploadCert = & $keytool -list -v -keystore $keystore -alias $props.keyAlias -storepass:env NEXDO_UPLOAD_STORE_PASS | Out-String
+} finally {
+  Remove-Item Env:NEXDO_UPLOAD_STORE_PASS
+}
+# keytool speaks the PC's language: "SHA256:" in English, "SHA 256:" in French.
+if ($LASTEXITCODE -ne 0 -or $uploadCert -notmatch 'SHA-? ?256\s*:\s*([0-9A-F:]{95})') { throw "Couldn't read the upload key's certificate from $keystore" }
+$uploadFingerprint = $Matches[1]
+$bundleCert = & $keytool -printcert -jarfile $aab | Out-String
+$bundleFingerprints = [regex]::Matches($bundleCert, 'SHA-? ?256\s*:\s*([0-9A-F:]{95})') | ForEach-Object { $_.Groups[1].Value }
+if (@($bundleFingerprints).Count -ne 1 -or $bundleFingerprints -ne $uploadFingerprint) {
+  throw "The bundle is not signed with the upload key (expected SHA-256 $uploadFingerprint):`n$bundleCert"
+}
 
 # The compiled JS must sell through Google Play, never the Test Store, and
 # talk to the hosted server.
@@ -99,4 +139,11 @@ $name = "nexdo-$($config.expo.version)-$($config.expo.android.versionCode).aab"
 $releases = Join-Path $root "releases"
 New-Item -ItemType Directory -Force $releases | Out-Null
 Copy-Item $aab (Join-Path $releases $name) -Force
-Write-Host "Built: $(Join-Path $releases $name)"
+
+# Only once the bundle is built and checked: the tag marks what was uploaded.
+Set-Location $project
+if (-not $tagged) {
+  git tag $tag $head
+  if ($LASTEXITCODE -ne 0) { throw "Built, but couldn't create the git tag $tag" }
+}
+Write-Host "Built: $(Join-Path $releases $name) (commit $($head.Substring(0, 7)), tag $tag)"

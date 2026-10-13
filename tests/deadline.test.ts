@@ -89,6 +89,25 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
     assert.equal(isAmbiguousDate("10/15"), false);
   });
 
+  it("a day that doesn't exist in its month is not rolled into the next one", () => {
+    assert.equal(parseDeadlinePhrase("31/4/2027", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("4/31", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("April 31, 2027", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("31st of April", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("2027-02-29", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("February 29, 2027", NOW), undefined);
+    assert.equal(looksLikeDate("April 31"), true, "so the caller asks instead");
+    // Real month ends and a leap day still read.
+    assert.deepEqual(parseDeadlinePhrase("30/4/2027", NOW), { date: "2027-04-30", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("February 29, 2028", NOW), { date: "2028-02-29", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("29/2/28", NOW), { date: "2028-02-29", time: undefined });
+  });
+
+  it("a yearless leap day advances to the next valid year after the 180-day rule", () => {
+    const now = local(2026, 10, 29, 10);
+    assert.deepEqual(parseDeadlinePhrase("February 29", now), { date: "2028-02-29", time: undefined });
+  });
+
   it("tells a date it can't read from words that aren't a date at all", () => {
     assert.equal(looksLikeDate("the 3rd week of term"), true);
     assert.equal(looksLikeDate("soon"), false);

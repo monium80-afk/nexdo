@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -50,9 +50,12 @@ export default function Feedback() {
   const insets = useSafeAreaInsets();
   const { isLoaded, isSignedIn, userId } = useAuth();
   useStatusBarStyle("light");
+  // Opened from "Report" under something the AI wrote (components/ReportAiButton.tsx):
+  // that text comes along, quoted, ready for the user to say what's wrong with it.
+  const { report } = useLocalSearchParams<{ report?: string }>();
 
-  const [type, setType] = useState<FeedbackType>("suggestion");
-  const [message, setMessage] = useState("");
+  const [type, setType] = useState<FeedbackType>(report ? "other" : "suggestion");
+  const [message, setMessage] = useState(() => (report ? t.feedback.reportPrefill(report) : ""));
   const [messageTouched, setMessageTouched] = useState(false);
   const [screenshot, setScreenshot] = useState<FeedbackScreenshot | null>(null);
   const [screenshotNote, setScreenshotNote] = useState<string | null>(null);
@@ -110,8 +113,8 @@ export default function Feedback() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScreenHeader
-          title={t.feedback.title}
-          subtitle={t.feedback.subtitle}
+          title={report ? t.feedback.reportTitle : t.feedback.title}
+          subtitle={report ? t.feedback.reportSubtitle : t.feedback.subtitle}
           accent
           actions={<IconButton icon="x" variant="header" onPress={handleClose} accessibilityLabel={t.common.close} />}
         />

@@ -7,6 +7,8 @@ import { ScrollView, Text, View } from "react-native";
 import { GemLogo } from "@/components/GemLogo";
 import { MetaPill } from "@/components/MetaPill";
 import { OnboardingLayout } from "@/components/OnboardingLayout";
+import { ReportAiButton } from "@/components/ReportAiButton";
+import { hasAiConsent } from "@/lib/aiConsent";
 import { gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useColors } from "@/hooks/useTheme";
@@ -117,6 +119,10 @@ export default function OnboardingPlan() {
         {drafts.map((draft, index) => (
           <PlanCard key={`${draft.title}-${index}`} draft={draft} now={now} />
         ))}
+        {/* Only what the AI wrote: without consent the phone found these itself. */}
+        {drafts.length > 0 && hasAiConsent() ? (
+          <ReportAiButton content={drafts.map((draft) => draft.title).join("\n")} />
+        ) : null}
       </ScrollView>
     </OnboardingLayout>
   );
