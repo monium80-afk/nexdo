@@ -50,7 +50,7 @@ export const de: Translations = {
 
   aiConsent: {
     title: "KI mit Nexdo nutzen?",
-    body: "Um deine Aufgaben zu ordnen, sendet Nexdo, was du für eine KI-Funktion schreibst, sagst oder fotografierst, an Gemini, die KI von Google, die es verarbeitet und das Ergebnis zurückschickt. Du kannst das jederzeit unter Einstellungen → KI ändern.",
+    body: "Um deine Aufgaben zu ordnen, sendet Nexdo, was du für eine KI-Funktion schreibst, sagst oder fotografierst, an Gemini, die KI von Google, die es verarbeitet und das Ergebnis zurückschickt.",
     allow: "Erlauben",
     notNow: "Nicht jetzt",
     privacy: "Datenschutzerklärung",
@@ -60,19 +60,6 @@ export const de: Translations = {
     undo: "Rückgängig",
     done: (title: string) => `Erledigt: ${title}`,
     deleted: (title: string) => `Gelöscht: ${title}`,
-    reset: (count: number) => `${count} ${plural(count, "Aufgabe neu geplant", "Aufgaben neu geplant")}`,
-  },
-
-  resetWeek: {
-    title: "WOCHE NEU PLANEN",
-    intro:
-      "Diese Aufgaben stehen noch an dem Tag, an dem sie fällig waren. Nexdo schlägt für jede einen neuen Tag in der kommenden Woche vor – tippe eine an, um ihn zu ändern. Nichts ändert sich, bevor du bestätigst.",
-    done: "Schon erledigt",
-    noDate: "Ohne Frist",
-    confirm: "Woche neu planen",
-    cardTitle: (count: number) => `${count} ${plural(count, "Aufgabe überfällig", "Aufgaben überfällig")}`,
-    cardBody: "Gib allen auf einmal einen neuen Tag.",
-    cardAction: "Neu planen",
   },
 
   tabs: {
@@ -123,6 +110,7 @@ export const de: Translations = {
   planTemplate: ["Alles Nötige zusammensuchen", "Die Hauptarbeit erledigen", "Abschließen und prüfen"],
 
   next: {
+    routinesTitle: "ROUTINEN",
     allCaughtUp: "Alles erledigt",
     allCaughtUpBody: "Du hast alles auf deiner Liste abgehakt. Füge eine neue Aufgabe hinzu, um weiterzumachen.",
     addATask: "Aufgabe hinzufügen",
@@ -158,6 +146,8 @@ export const de: Translations = {
     today: "Heute",
     tasksLeft: (count: number) => `Noch ${count} ${plural(count, "Aufgabe", "Aufgaben")}`,
     doneOfTotal: (done: number, total: number) => `${done} von ${total} erledigt`,
+    viewToday: (count: number) => `Heute · ${count}`,
+    viewAll: (count: number) => `Alle Aufgaben · ${count}`,
   },
 
   schedule: {
@@ -212,11 +202,22 @@ export const de: Translations = {
     takeAdvice: "KI-Tipp holen",
     stuck: "Ich hänge fest",
     noTimer: "Hierfür gibt es keinen Timer — tippe auf Erledigt, sobald es geschafft ist.",
-    addContext: "Kontext hinzufügen",
-    contextIntro: "Zeig Nexdo, woran du arbeitest — ein Foto der Aufgabenstellung, ein Dokument oder eine Notiz. Nexdo passt die Schritte und den Tipp dieser Aufgabe an.",
   },
 
   breakdown: {
+    button: "Aufgabe aufteilen",
+    contextTitle: "AUFGABE AUFTEILEN",
+    contextHeadline: "Zeig Nexdo die Aufgabe",
+    contextBody: "Nexdo liest sie und teilt sie in echte Schritte auf. Ein Foto der Aufgabenstellung ist am besten.",
+    photoHint: "Das Blatt, die Aufgabenstellung, die Tafel",
+    fileHint: "Ein PDF oder eine Textdatei",
+    sayIt: "Sag es",
+    sayItHint: "Beschreib die Aufgabe in ein, zwei Sätzen",
+    listening: "Hört zu … tippen zum Stoppen",
+    stopListening: "Stoppen und Gesagtes nutzen",
+    writingItDown: "Wird aufgeschrieben …",
+    couldntHear: "Nexdo hat dich nicht verstanden. Versuch es an einem ruhigeren Ort oder überspring es.",
+    skipContext: "Einfach aufteilen",
     eyebrow: "KI-AUFTEILUNG",
     close: "KI-Aufteilung schließen",
     steps: (count: number) => `${count} ${plural(count, "Schritt", "Schritte")}`,
@@ -261,6 +262,7 @@ export const de: Translations = {
     notes: "NOTIZEN",
     contextTitle: "KONTEXT FÜR DIE KI",
     contextPlaceholder: "z. B. Die Recherche habe ich schon erledigt.",
+    contextLocked: "Erzähl Nexdo mehr — eine Notiz, ein Foto, ein Dokument — und die KI passt Schritte, Frist und Tipps dieser Aufgabe für dich an. Teil von Nexdo Pro.",
     deleteTask: "Aufgabe löschen",
     saveChanges: "Änderungen speichern",
     deleteConfirmTitle: "Diese Aufgabe löschen?",
@@ -451,11 +453,15 @@ export const de: Translations = {
     steps: {
       next: {
         title: "Heute",
-        body: "Was heute fällig ist, die lohnendste Aufgabe oben. Wische für die anderen oder tippe auf Session starten, um dich zu konzentrieren.",
+        body: "Was heute fällig ist — und was überfällig ist — die lohnendste Aufgabe oben. Wische für die anderen oder wechsle zu Alle Aufgaben, um irgendeine andere zu wählen.",
       },
       tasks: {
         title: "Alle deine Aufgaben",
-        body: "Alles, was ansteht, in einer Liste. Mit Hinzufügen legst du eine von Hand an; tippe auf eine Aufgabe, um sie zu ändern, und hak sie ab, wenn sie erledigt ist.",
+        body: "Alles, was ansteht, in einer Liste. Tippe auf eine Aufgabe, um sie zu ändern, und hak sie ab, wenn sie erledigt ist.",
+      },
+      add: {
+        title: "Aufgabe hinzufügen",
+        body: "Tippe auf +, um eine Aufgabe von Hand hinzuzufügen — von jedem Tab aus.",
       },
       voice: {
         title: "Magisches Mikro",
@@ -510,11 +516,19 @@ export const de: Translations = {
   },
 
   recurrence: {
+    kindTitle: "ART",
+    kinds: { routine: "Routine", task: "Wiederkehrende Aufgabe" },
+    routineHint: "Steht unter deinen Karten bei Heute. Verpasst du eine, geht sie einfach vorbei.",
+    taskHint: "Eine deiner Karten bei Heute, wie jede Aufgabe.",
     everyDays: (n: number) => (n === 1 ? "Jeden Tag" : `Alle ${n} Tage`),
     everyWeeks: (n: number, days: string) => (n === 1 ? `Jede Woche: ${days}` : `Alle ${n} Wochen: ${days}`),
     everyMonths: (n: number, day: number) => (n === 1 ? `Jeden Monat am ${day}.` : `Alle ${n} Monate am ${day}.`),
     everyYears: (n: number, date: string) => (n === 1 ? `Jedes Jahr am ${date}` : `Alle ${n} Jahre am ${date}`),
     until: (label: string, date: string) => `${label}, bis ${date}`,
+    atTime: (label: string, time: string) => `${label} um ${time}`,
+    timeOfDay: "UM",
+    anyTime: "Jederzeit",
+    setTime: "Uhrzeit wählen",
     title: "WIEDERHOLEN",
     frequencies: {
       none: "Keine Wiederholung",
@@ -668,11 +682,6 @@ export const de: Translations = {
 
     language: "SPRACHE",
 
-    ai: "KI",
-    aiToggle: "KI-Funktionen",
-    aiToggleBody:
-      "Sendet, was du einer KI-Funktion gibst (Text, Sprache, Fotos, Dateien), zur Verarbeitung an Gemini, die KI von Google. Aus: Nichts geht an die KI, und Aufgaben von Hand hinzufügen klappt weiterhin.",
-
     support: "HILFE & SUPPORT",
     help: "FAQ / Hilfe",
     helpBody: "Antworten auf häufige Fragen, oder schreib uns.",
@@ -691,7 +700,7 @@ export const de: Translations = {
       media: "Fotos und Dokumente",
       voice: "Sprachnotizen",
       live: "Magisches Mikro",
-      assist: "Aufteilungen und Tipps",
+      assist: "KI-Aufteilungen",
     },
     minutes: (count: number) => `${count} Min.`,
     used: {
@@ -699,19 +708,27 @@ export const de: Translations = {
       media: "Du hast deine Fotos und Dokumente für diesen Monat aufgebraucht.",
       voice: "Du hast deine Sprachnotiz-Minuten für diesen Monat aufgebraucht.",
       live: "Du hast deine Minuten für das Magische Mikro in diesem Monat aufgebraucht.",
-      assist: "Du hast deine Aufteilungen und Tipps für diesen Monat aufgebraucht.",
+      assist: "Du hast deine KI-Aufteilungen für diesen Monat aufgebraucht.",
     },
-    liveProOnly: "Das Magische Mikro gehört zu Nexdo Pro.",
+    proFeature: {
+      chat: "Notizen für Nexdos KI gehören zu Nexdo Pro.",
+      media: "Fotos und Dokumente für Nexdos KI gehören zu Nexdo Pro.",
+      voice: "Sprachnotizen gehören zu Nexdo Pro.",
+      live: "Das Magische Mikro gehört zu Nexdo Pro.",
+      assist: "KI-Aufteilungen gehören zu Nexdo Pro.",
+    },
+    freeNoAi: "Kostenlos ist Nexdo von Hand: Aufgaben, Heute, der Zeitplan, Sessions und Erinnerungen. Alle KI-Funktionen gehören zu Pro.",
+    aiIsPro: "KI-Hilfe gehört zu Nexdo Pro.",
+    seePro: "Nexdo Pro ansehen",
     resets: "Dein Kontingent beginnt am 1. neu.",
     left: {
       chat: (count: number) => `Noch ${count} ${plural(count, "Kontextnotiz", "Kontextnotizen")} für die KI diesen Monat`,
       media: (count: number) => `Noch ${count} ${plural(count, "Foto oder Dokument", "Fotos und Dokumente")} diesen Monat`,
       voice: (minutes: number) => `Noch ${minutes} Min. Sprachnotizen diesen Monat`,
       live: (minutes: number) => `Noch ${minutes} Min. Magisches Mikro diesen Monat`,
-      assist: (count: number) => `Noch ${count} ${plural(count, "Aufteilung oder Tipp", "Aufteilungen und Tipps")} diesen Monat`,
+      assist: (count: number) => `Noch ${count} ${plural(count, "Aufteilung", "Aufteilungen")} diesen Monat`,
     },
-    getMore: "Mehr mit Pro",
-    upgradeHint: "Nexdo Pro gibt dir jeden Monat deutlich mehr — und Aufgaben von Hand hinzuzufügen bleibt immer kostenlos.",
+    upgradeHint: "Nexdos KI gehört zu Pro. Aufgaben von Hand hinzufügen, planen und erledigen bleibt kostenlos.",
     limitTitle: "Monatslimit erreicht",
     thisMonth: "Diesen Monat",
     names: { free: "Gratis-Tarif", pro: "Nexdo Pro" },
@@ -811,8 +828,6 @@ export const de: Translations = {
       `${count} ${plural(count, "Aufgabe ist", "Aufgaben sind")} heute fällig.${top ? ` Fang mit „${top}“ an.` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "offene Aufgabe", "offene Aufgaben")}.${top ? ` Fang mit „${top}“ an.` : ""}`,
-    dailySlippedNote: (count: number) =>
-      `${count} ${plural(count, "Aufgabe ist", "Aufgaben sind")} überfällig – plane deine Woche in Nexdo neu.`,
     trialEndingTitle: "Dein kostenloser Test endet in 2 Tagen",
     trialEndingBody: (date: string) =>
       `Nexdo Pro startet am ${date}. Du willst es nicht? Tippe hier und dann auf „Abo verwalten“, um vorher zu kündigen.`,
@@ -974,14 +989,14 @@ export const de: Translations = {
 
   onboardingPaywall: {
     headline: "Das ist alles drin.",
-    body: "Kostenlos deckt das Wichtigste ab. Pro gibt Nexdos KI jeden Monat viel mehr Spielraum:",
+    body: "Kostenlos ist Nexdo von Hand — Aufgaben hinzufügen, planen und erledigen. Pro bringt jeden Monat Nexdos KI dazu:",
     bestValue: (percent: number) => `BESTES ANGEBOT · ${percent} % SPAREN`,
     features: {
       chat: (count: number) => `${count} Kontextnotizen für die KI`,
       media: (count: number) => `${count} Fotos und Dokumente`,
       voice: (minutes: number) => `${minutes} Min. Sprachnotizen`,
       live: (minutes: number) => `${minutes} Min. Magisches Mikro`,
-      assist: (count: number) => `${count} Aufteilungen und Tipps`,
+      assist: (count: number) => `${count} KI-Aufteilungen`,
     },
   },
 

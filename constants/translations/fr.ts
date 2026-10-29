@@ -46,7 +46,7 @@ export const fr: Translations = {
 
   aiConsent: {
     title: "Utiliser l'IA avec Nexdo ?",
-    body: "Pour organiser vos tâches, Nexdo envoie ce que vous écrivez, dites ou photographiez pour une fonction d'IA à Gemini, l'IA de Google, qui le traite et renvoie le résultat. Vous pouvez changer cela à tout moment dans Réglages → IA.",
+    body: "Pour organiser vos tâches, Nexdo envoie ce que vous écrivez, dites ou photographiez pour une fonction d'IA à Gemini, l'IA de Google, qui le traite et renvoie le résultat.",
     allow: "Autoriser",
     notNow: "Pas maintenant",
     privacy: "Politique de confidentialité",
@@ -56,19 +56,6 @@ export const fr: Translations = {
     undo: "Annuler",
     done: (title: string) => `Terminé : ${title}`,
     deleted: (title: string) => `Supprimé : ${title}`,
-    reset: (count: number) => `${count} ${plural(count, "tâche replanifiée", "tâches replanifiées")}`,
-  },
-
-  resetWeek: {
-    title: "REPLANIFIER MA SEMAINE",
-    intro:
-      "Ces tâches sont encore sur le jour où elles étaient dues. Nexdo propose un nouveau jour pour chacune dans la semaine qui vient — touchez-en une pour le changer. Rien ne bouge avant votre confirmation.",
-    done: "Déjà faite",
-    noDate: "Sans échéance",
-    confirm: "Replanifier ma semaine",
-    cardTitle: (count: number) => `${count} ${plural(count, "tâche en retard", "tâches en retard")}`,
-    cardBody: "Donnez-leur un nouveau jour, d'un coup.",
-    cardAction: "Replanifier",
   },
 
   tabs: {
@@ -121,6 +108,7 @@ export const fr: Translations = {
   planTemplate: ["Rassembler le nécessaire", "Faire l'essentiel du travail", "Terminer et vérifier"],
 
   next: {
+    routinesTitle: "ROUTINES",
     allCaughtUp: "Tout est à jour",
     allCaughtUpBody: "Vous avez terminé tout ce qui était sur votre liste. Ajoutez une nouvelle tâche pour continuer.",
     addATask: "Ajouter une tâche",
@@ -156,6 +144,8 @@ export const fr: Translations = {
     today: "Aujourd'hui",
     tasksLeft: (count: number) => `${count} ${plural(count, "tâche restante", "tâches restantes")}`,
     doneOfTotal: (done: number, total: number) => `${done} sur ${total} ${plural(done, "faite", "faites")}`,
+    viewToday: (count: number) => `Aujourd'hui · ${count}`,
+    viewAll: (count: number) => `Toutes les tâches · ${count}`,
   },
 
   schedule: {
@@ -210,11 +200,22 @@ export const fr: Translations = {
     takeAdvice: "Demander conseil à l'IA",
     stuck: "Je bloque",
     noTimer: "Pas de minuteur pour celle-ci — touchez Terminer une fois que c'est fait.",
-    addContext: "Ajouter du contexte",
-    contextIntro: "Montrez à Nexdo ce sur quoi vous travaillez — une photo des consignes, un document ou une note. Il met à jour les étapes et le conseil de cette tâche.",
   },
 
   breakdown: {
+    button: "Découper la tâche",
+    contextTitle: "DÉCOUPER LA TÂCHE",
+    contextHeadline: "Montrez la tâche à Nexdo",
+    contextBody: "Nexdo la lit et la découpe en vraies étapes. Une photo des consignes, c'est l'idéal.",
+    photoHint: "La feuille, les consignes, le tableau",
+    fileHint: "Un PDF ou un fichier texte",
+    sayIt: "La dire",
+    sayItHint: "Décrivez la tâche en une ou deux phrases",
+    listening: "À l'écoute… touchez pour arrêter",
+    stopListening: "Arrêter et utiliser ce que j'ai dit",
+    writingItDown: "Transcription…",
+    couldntHear: "Nexdo n'a pas bien entendu. Réessayez dans un endroit plus calme, ou passez.",
+    skipContext: "Découper sans détails",
     eyebrow: "DÉCOUPAGE IA",
     close: "Fermer le découpage IA",
     steps: (count: number) => `${count} ${plural(count, "étape", "étapes")}`,
@@ -258,6 +259,7 @@ export const fr: Translations = {
     notes: "NOTES",
     contextTitle: "AJOUTER DU CONTEXTE POUR L'IA",
     contextPlaceholder: "ex. J'ai déjà terminé les recherches.",
+    contextLocked: "Dites-en plus à Nexdo — une note, une photo, un document — et son IA met à jour les étapes, l'échéance et les conseils de cette tâche. Inclus dans Nexdo Pro.",
     deleteTask: "Supprimer la tâche",
     saveChanges: "Enregistrer",
     deleteConfirmTitle: "Supprimer cette tâche ?",
@@ -440,11 +442,15 @@ export const fr: Translations = {
     steps: {
       next: {
         title: "Aujourd'hui",
-        body: "Ce qui est à faire aujourd'hui, avec en haut la tâche qui vaut le plus la peine. Balayez pour voir les autres, ou touchez Lancer la session pour vous concentrer.",
+        body: "Ce qui est à faire aujourd'hui — et ce qui est en retard — avec en haut la tâche qui vaut le plus la peine. Balayez pour voir les autres, ou passez à Toutes les tâches pour en choisir une autre.",
       },
       tasks: {
         title: "Toutes vos tâches",
-        body: "Tout ce que vous avez à faire, dans une seule liste. Ajouter en crée une à la main ; touchez une tâche pour la modifier, cochez-la une fois terminée.",
+        body: "Tout ce que vous avez à faire, dans une seule liste. Touchez une tâche pour la modifier, cochez-la une fois terminée.",
+      },
+      add: {
+        title: "Ajouter une tâche",
+        body: "Touchez + pour ajouter une tâche à la main, depuis n'importe quel onglet.",
       },
       voice: {
         title: "Micro magique",
@@ -499,11 +505,19 @@ export const fr: Translations = {
   },
 
   recurrence: {
+    kindTitle: "TYPE",
+    kinds: { routine: "Routine", task: "Tâche récurrente" },
+    routineHint: "Affichée sous vos cartes dans Aujourd'hui. Si vous en manquez une, elle passe, simplement.",
+    taskHint: "Une de vos cartes dans Aujourd'hui, comme toute tâche.",
     everyDays: (n: number) => (n === 1 ? "Tous les jours" : `Tous les ${n} jours`),
     everyWeeks: (n: number, days: string) => (n === 1 ? `Chaque semaine : ${days}` : `Toutes les ${n} semaines : ${days}`),
     everyMonths: (n: number, day: number) => (n === 1 ? `Chaque mois, le ${day}` : `Tous les ${n} mois, le ${day}`),
     everyYears: (n: number, date: string) => (n === 1 ? `Chaque année, le ${date}` : `Tous les ${n} ans, le ${date}`),
     until: (label: string, date: string) => `${label}, jusqu'au ${date}`,
+    atTime: (label: string, time: string) => `${label} à ${time}`,
+    timeOfDay: "À",
+    anyTime: "N'importe quand",
+    setTime: "Choisir une heure",
     title: "RÉPÉTITION",
     frequencies: {
       none: "Pas de répétition",
@@ -661,11 +675,6 @@ export const fr: Translations = {
 
     language: "LANGUE",
 
-    ai: "IA",
-    aiToggle: "Fonctions d'IA",
-    aiToggleBody:
-      "Envoie ce que vous confiez à une fonction d'IA (texte, voix, photos, fichiers) à Gemini, l'IA de Google, pour le traiter. Désactivé : rien n'est envoyé à l'IA, et l'ajout de tâches à la main fonctionne toujours.",
-
     support: "AIDE ET ASSISTANCE",
     help: "FAQ / Aide",
     helpBody: "Réponses aux questions courantes, ou contactez-nous.",
@@ -684,7 +693,7 @@ export const fr: Translations = {
       media: "Photos et documents",
       voice: "Notes vocales",
       live: "Micro magique",
-      assist: "Découpages et conseils",
+      assist: "Découpages par l'IA",
     },
     minutes: (count: number) => `${count} min`,
     used: {
@@ -692,19 +701,27 @@ export const fr: Translations = {
       media: "Vous avez utilisé vos photos et documents de ce mois-ci.",
       voice: "Vous avez utilisé vos minutes de notes vocales de ce mois-ci.",
       live: "Vous avez utilisé vos minutes de micro magique de ce mois-ci.",
-      assist: "Vous avez utilisé vos découpages et conseils de ce mois-ci.",
+      assist: "Vous avez utilisé vos découpages par l'IA de ce mois-ci.",
     },
-    liveProOnly: "Le micro magique fait partie de Nexdo Pro.",
+    proFeature: {
+      chat: "Les notes pour l'IA de Nexdo font partie de Nexdo Pro.",
+      media: "Les photos et documents pour l'IA de Nexdo font partie de Nexdo Pro.",
+      voice: "Les notes vocales font partie de Nexdo Pro.",
+      live: "Le micro magique fait partie de Nexdo Pro.",
+      assist: "Les découpages par l'IA font partie de Nexdo Pro.",
+    },
+    freeNoAi: "Le plan gratuit, c'est Nexdo à la main : tâches, Aujourd'hui, le planning, les sessions et les rappels. Toutes les fonctions d'IA font partie de Pro.",
+    aiIsPro: "L'aide de l'IA fait partie de Nexdo Pro.",
+    seePro: "Voir Nexdo Pro",
     resets: "Votre quota repart le 1er du mois.",
     left: {
       chat: (count: number) => `Plus que ${count} ${plural(count, "note de contexte", "notes de contexte")} pour l'IA ce mois-ci`,
       media: (count: number) => `Plus que ${count} ${plural(count, "photo ou document", "photos et documents")} ce mois-ci`,
       voice: (minutes: number) => `Plus que ${minutes} min de notes vocales ce mois-ci`,
       live: (minutes: number) => `Plus que ${minutes} min de micro magique ce mois-ci`,
-      assist: (count: number) => `Plus que ${count} ${plural(count, "découpage ou conseil", "découpages et conseils")} ce mois-ci`,
+      assist: (count: number) => `Plus que ${count} ${plural(count, "découpage", "découpages")} ce mois-ci`,
     },
-    getMore: "En avoir plus avec Pro",
-    upgradeHint: "Nexdo Pro vous en donne beaucoup plus chaque mois — et ajouter des tâches à la main reste toujours gratuit.",
+    upgradeHint: "L'IA de Nexdo fait partie de Pro. Ajouter, planifier et faire vos tâches à la main reste gratuit.",
     limitTitle: "Limite mensuelle atteinte",
     thisMonth: "Ce mois-ci",
     names: { free: "Formule gratuite", pro: "Nexdo Pro" },
@@ -804,8 +821,6 @@ export const fr: Translations = {
       `${count} ${plural(count, "tâche due", "tâches dues")} aujourd'hui.${top ? ` Commencez par « ${top} ».` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} ${plural(count, "tâche ouverte", "tâches ouvertes")}.${top ? ` Commencez par « ${top} ».` : ""}`,
-    dailySlippedNote: (count: number) =>
-      `${count} ${plural(count, "tâche est en retard", "tâches sont en retard")} — replanifiez votre semaine dans Nexdo.`,
     trialEndingTitle: "Votre essai gratuit se termine dans 2 jours",
     trialEndingBody: (date: string) =>
       `Nexdo Pro démarre le ${date}. Vous n'en voulez pas ? Touchez ici, puis Gérer l'abonnement, pour annuler avant.`,
@@ -965,14 +980,14 @@ export const fr: Translations = {
 
   onboardingPaywall: {
     headline: "Voici ce qui est inclus.",
-    body: "Le plan gratuit couvre l'essentiel. Pro donne bien plus de place à l'IA de Nexdo, chaque mois :",
+    body: "Le plan gratuit, c'est Nexdo à la main — ajouter, planifier et faire vos tâches. Pro y ajoute l'IA de Nexdo, chaque mois :",
     bestValue: (percent: number) => `MEILLEURE OFFRE · −${percent} %`,
     features: {
       chat: (count: number) => `${count} notes de contexte pour l'IA`,
       media: (count: number) => `${count} photos et documents`,
       voice: (minutes: number) => `${minutes} min de notes vocales`,
       live: (minutes: number) => `${minutes} min de Micro magique`,
-      assist: (count: number) => `${count} découpages et conseils`,
+      assist: (count: number) => `${count} découpages par l'IA`,
     },
   },
 

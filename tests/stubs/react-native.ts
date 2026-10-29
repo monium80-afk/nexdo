@@ -25,6 +25,10 @@ export const Appearance = {
 
 export const useColorScheme = () => Appearance.getColorScheme();
 
+// No phone here: the settings store falls back to the engine's locale.
+export const I18nManager = { getConstants: () => ({}) as { localeIdentifier?: string } };
+export const NativeModules: Record<string, unknown> = {};
+
 /** What was asked natively, for a test to look at. */
 export const alertCalls: unknown[][] = [];
 export const Alert = {

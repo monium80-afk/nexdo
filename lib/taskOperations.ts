@@ -1,6 +1,7 @@
 import {
   deadlineFromInstant,
   deadlineOf,
+  deadlineOnThisPhone,
   resolveDeadlineInput,
   sameDeadline,
   shiftDeadline,
@@ -12,6 +13,7 @@ import {
   buildNextOccurrence,
   buildOccurrence,
   buildRule,
+  isRoutine,
   latestDueSlot,
   nextSlot,
   openOccurrence,
@@ -415,15 +417,30 @@ export function restoreTaskDelta(task: Task, now: Date): TaskDelta {
  */
 export function skipMissedDelta(task: Task, now: Date, allTasks: Task[]): TaskDelta | null {
   const recurrence = task.recurrence;
-  if (!recurrence || recurrence.rule.missed !== "skip" || task.status !== "pending") return null;
-  if (!isOverdue(task, now)) return null;
+  if (!recurrence || task.status !== "pending") return null;
   const today = toLocalDateKey(now);
+  // A routine left undone just passes once its day is over (the user's call,
+  // 2026-10-28) — never overdue, never waiting: the next one comes in on its
+  // own day, today's if today has one.
+  if (isRoutine(task)) {
+    if (!task.deadline || deadlineOnThisPhone(task.deadline).date >= today) return null;
+    const next = nextSlot(recurrence.rule, recurrence.occurrenceDate, today);
+    return passDelta(task, next, now, allTasks);
+  }
+  if (recurrence.rule.missed !== "skip") return null;
+  if (!isOverdue(task, now)) return null;
   const slot = latestDueSlot(recurrence.rule, recurrence.occurrenceDate, today);
   if (!slot) return null;
+  return passDelta(task, slot, now, allTasks);
+}
+
+/** The occurrence marked skipped, and the one on `slot` (if any) brought in. */
+function passDelta(task: Task, slot: string | null, now: Date, allTasks: Task[]): TaskDelta {
   const nowIso = now.toISOString();
   const skipped: Task = { ...task, status: "skipped", closedAt: nowIso, updatedAt: nowIso };
   delete skipped.pinnedAt;
-  const current = buildOccurrence(task, slot, now);
+  // No slot: the series has ended, so nothing comes after it.
+  const current = slot ? buildOccurrence(task, slot, now) : null;
   const exists = current ? allTasks.some((candidate) => candidate.id === current.id) : true;
   return {
     upserts: exists || !current ? [skipped] : [skipped, current],

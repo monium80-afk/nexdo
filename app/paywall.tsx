@@ -189,9 +189,9 @@ function Paywall() {
     }
   };
 
-  // Opened because an allowance ran out: lead with that. Free has no Live
-  // voice at all, so there was nothing to run out of.
-  const title = !reason ? t.paywall.title : PLAN_LIMITS.free[reason] === 0 ? t.plan.liveProOnly : t.plan.used[reason];
+  // Opened from an AI feature: lead with it. Free has no AI at all
+  // (lib/plan.ts), so on Free it's "X comes with Pro", not "you've run out".
+  const title = !reason ? t.paywall.title : PLAN_LIMITS.free[reason] === 0 ? t.plan.proFeature[reason] : t.plan.used[reason];
   const subtitle = reason ? t.plan.upgradeHint : t.paywall.subtitle(taskCount);
 
   return (

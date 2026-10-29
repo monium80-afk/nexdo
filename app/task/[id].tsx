@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/expo";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@
 import { DeadlineDatePicker, deadlineToDraft, draftToDeadline, type DeadlineDraft } from "@/components/TaskFormFields";
 import { TextField } from "@/components/TextField";
 import { listItemEntering, listItemLayout } from "@/constants/theme";
+import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
@@ -35,9 +36,9 @@ import { showAlert } from "@/lib/alert";
 import { deadlineToLocalDate, formatDeadline, type DeadlineInput } from "@/lib/deadline";
 import { formatDuration, formatTaskLength } from "@/lib/formatDuration";
 import { addDaysToKey, toLocalDateKey } from "@/lib/localDate";
-import { showPlanLimit } from "@/lib/paywall";
+import { openPaywall, showPlanLimit } from "@/lib/paywall";
 import { summarizePlan } from "@/lib/planning";
-import { describeRule, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
+import { describeRule, recurrenceKind, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import type { Translations } from "@/lib/i18n";
 import { nextReminderFor, type ReminderPreferences } from "@/lib/reminders";
 import { getDueInfo } from "@/lib/taskMeta";
@@ -75,6 +76,8 @@ function ruleToInput(rule: RecurrenceRule): RuleInput {
     monthDay: rule.monthDay,
     endDate: rule.endDate,
     missed: rule.missed,
+    time: rule.allDay ? null : `${String(rule.hour).padStart(2, "0")}:${String(rule.minute).padStart(2, "0")}`,
+    kind: recurrenceKind(rule),
   };
 }
 
@@ -141,6 +144,7 @@ export default function TaskDetail() {
   // This task's own session, while one runs: Start session becomes Resume.
   const sessionHere = useSessionStore((state) => (id && state.session?.taskIds.includes(id) ? state.session : undefined));
   const requestSessionOpen = useSessionStore((state) => state.requestOpen);
+  const aiLocked = useAiLocked();
 
   // A note that ran into the end of the month's AI messages: the notice under
   // it says so, and on Free the paywall opens too — once, as it happens, not
@@ -167,7 +171,7 @@ export default function TaskDetail() {
   const [repeatDraft, setRepeatDraft] = useState<RuleInput | null | undefined>(undefined);
   const editPanelRef = useRef<TaskEditPanelHandle>(null);
   const noteCardRefs = useRef<(ContextNoteCardHandle | null)[]>([]);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
   // When a reassessment the user is waiting on finishes, bring its report
   // into view — the context card is the last thing on the page. Only on that
@@ -639,7 +643,7 @@ export default function TaskDetail() {
                   task.recurrence ? (
                     <View className="flex-row flex-wrap items-center justify-between gap-x-4 gap-y-1">
                       <Text className="shrink font-grotesk-semibold text-base text-ink-cream" style={rtl}>
-                        {describeRule(task.recurrence.rule, t)}
+                        {`${t.recurrence.kinds[recurrenceKind(task.recurrence.rule)]} · ${describeRule(task.recurrence.rule, t, { withTime: true })}`}
                       </Text>
                       {task.status === "pending" ? (
                         <TextButton label={t.taskDetail.stopRepeating} onPress={handleStopRepeating} tone="destructive" />
@@ -801,19 +805,32 @@ export default function TaskDetail() {
                     onRetry={() => retryContext(task.id)}
                   />
                 ) : null}
-                <ContextComposer
-                  value={note}
-                  onChangeText={setNote}
-                  file={noteFile}
-                  onChangeFile={setNoteFile}
-                  onSend={handleSendNote}
-                  placeholder={
-                    reassess?.status === "clarify" ? t.taskDetail.reassess.answerPlaceholder : t.taskDetail.contextPlaceholder
-                  }
-                  disabled={reassessing}
-                />
-                <AllowanceNote meter="chat" />
-                <AllowanceNote meter="media" />
+                {/* Free has no AI (lib/plan.ts): what this box does, and that
+                    it comes with Pro — said here, before anything is typed. */}
+                {aiLocked ? (
+                  <View className="gap-2">
+                    <Text className="text-body text-ink-cream-muted" style={rtl}>
+                      {t.taskDetail.contextLocked}
+                    </Text>
+                    <TextButton icon="lock" label={t.plan.seePro} tone="accent" onPress={() => openPaywall("chat")} className="self-start" />
+                  </View>
+                ) : (
+                  <>
+                    <ContextComposer
+                      value={note}
+                      onChangeText={setNote}
+                      file={noteFile}
+                      onChangeFile={setNoteFile}
+                      onSend={handleSendNote}
+                      placeholder={
+                        reassess?.status === "clarify" ? t.taskDetail.reassess.answerPlaceholder : t.taskDetail.contextPlaceholder
+                      }
+                      disabled={reassessing}
+                    />
+                    <AllowanceNote meter="chat" />
+                    <AllowanceNote meter="media" />
+                  </>
+                )}
               </View>
             </View>
           </ScrollView>

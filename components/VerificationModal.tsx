@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject, type ComponentRef } from "react";
 import {
   AppState,
   Keyboard,
@@ -31,7 +31,7 @@ const CODE_INPUT_STYLE = {
 } as const;
 
 /** Drop the field's focus and take it again, which brings the keyboard back up. */
-function refocus(ref: RefObject<TextInput | null>) {
+function refocus(ref: RefObject<ComponentRef<typeof TextInput> | null>) {
   const input = ref.current;
   if (!input) return;
   if (input.isFocused()) input.blur();
@@ -55,7 +55,7 @@ export function VerificationModal({
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   const [prevVisible, setPrevVisible] = useState(visible);
   if (visible !== prevVisible) {

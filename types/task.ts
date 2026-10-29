@@ -102,7 +102,18 @@ export type RecurrenceRule = {
    * brings in the current one.
    */
   missed?: "keep" | "skip";
+  /**
+   * "routine": a habit kept up (read, gym, water) — it sits under the cards on
+   * Today, not among them, and an occurrence left undone just passes when its
+   * day is over. "task": a repeating task, treated like any other (rent, a
+   * weekly report). Absent on series made before 2026-10-28: read through
+   * lib/recurrence.ts recurrenceKind, which works it out from how often it
+   * repeats.
+   */
+  kind?: RecurrenceKind;
 };
+
+export type RecurrenceKind = "routine" | "task";
 
 /** What each new occurrence is built from — kept apart from the occurrence's own fields, so editing just one occurrence doesn't leak into the next. */
 export type SeriesTemplate = {

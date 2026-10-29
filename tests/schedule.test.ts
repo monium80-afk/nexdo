@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { makeDeadline, withDeadline } from "@/lib/deadline";
-import { buildSchedule, weekStart, type DayPlan } from "@/lib/schedule";
+import { buildSchedule, buildToday, weekStart, type DayPlan } from "@/lib/schedule";
 import type { Subtask, Task } from "@/types/task";
 
 import { local, makeTask } from "./helpers";
@@ -115,6 +115,40 @@ describe("the days", () => {
     assert.deepEqual(byDay(week([occurrence]))["2026-10-10"], ["laundry"]);
   });
 
+  it("list a routine apart from the day's tasks: no share of its work, never late", () => {
+    const routine = (id: string, date: string, extra: Partial<Task> = {}, time?: string) =>
+      due(
+        id,
+        date,
+        {
+          estimatedMinutes: 20,
+          recurrence: {
+            seriesId: id,
+            occurrenceDate: date,
+            rule: { frequency: "daily", interval: 1, anchorDate: "2026-10-01", hour: 9, minute: 0, allDay: !time },
+            template: { title: id, estimatedMinutes: 20, importance: 50 },
+          },
+          ...extra,
+        },
+        time,
+      );
+    const [today] = buildSchedule(
+      [
+        routine("stretch", "2026-10-06"),
+        routine("pills", "2026-10-06", {}, "08:00"),
+        routine("read", "2026-10-06", { status: "completed", completedAt: local(2026, 10, 6, 8).toISOString() }),
+        due("report", "2026-10-06", { estimatedMinutes: 45 }),
+      ],
+      { now: NOW, from: "2026-10-06", until: "2026-10-06" },
+    );
+    assert.deepEqual(today.items.map((item) => item.task.id), ["report"]);
+    assert.deepEqual(today.done, []);
+    assert.deepEqual(today.routines.map((task) => task.id), ["pills", "read", "stretch"]);
+    assert.equal(today.plannedMinutes, 45);
+    // Not on Today's list either: it has its own, under the cards.
+    assert.deepEqual([...buildToday([routine("stretch", "2026-10-06")], { now: NOW, today: "2026-10-06" }).ids], []);
+  });
+
   it("keep a task with a plan whole, on its due day", () => {
     const thesis = due("thesis", "2026-10-09", { estimatedMinutes: 180, subtasks: steps(60, 60, 60), currentStepId: "s1" });
     const days = byDay(week([thesis]));
@@ -159,6 +193,35 @@ describe("the days", () => {
   it("leave out what's due outside the days asked for", () => {
     const days = week([due("before", "2026-10-04"), due("after", "2026-10-12")]);
     assert.equal(days.every((day) => day.items.length === 0), true);
+  });
+});
+
+describe("the Today page's list", () => {
+  const TODAY = "2026-10-06";
+  const today = (tasks: Task[]) => buildToday(tasks, { now: NOW, today: TODAY });
+
+  it("carries a task missed on an earlier day over to today, marked late", () => {
+    const list = today([due("yesterday", "2026-10-05"), due("last-week", "2026-09-28"), due("today", TODAY), due("tomorrow", "2026-10-07")]);
+    assert.deepEqual([...list.ids].sort(), ["last-week", "today", "yesterday"]);
+    assert.deepEqual([...list.lateIds].sort(), ["last-week", "yesterday"]);
+  });
+
+  it("leaves off tasks without a deadline, and ones put away", () => {
+    const list = today([
+      makeTask({ id: "no-deadline" }),
+      due("archived", "2026-10-05", { status: "archived" }),
+      due("skipped", TODAY, { status: "skipped" }),
+    ]);
+    assert.equal(list.ids.size, 0);
+  });
+
+  it("counts as done today's tasks, and late ones finished today — not late ones finished before", () => {
+    const list = today([
+      due("today-done", TODAY, { status: "completed", completedAt: local(2026, 10, 5, 20).toISOString() }),
+      due("late-done-today", "2026-10-03", { status: "completed", completedAt: local(2026, 10, 6, 9).toISOString() }),
+      due("late-done-before", "2026-10-03", { status: "completed", completedAt: local(2026, 10, 4, 9).toISOString() }),
+    ]);
+    assert.equal(list.done, 2);
   });
 });
 

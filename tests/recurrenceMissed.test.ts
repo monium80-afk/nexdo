@@ -123,8 +123,9 @@ describe("missed occurrences", () => {
     assert.deepEqual(again.upserts.map((task) => task.id), [skipDaily.id]);
   });
 
+  // A repeating task — a daily routine would just pass (tests/routines.test.ts).
   it('"keep" (the default): the missed one stays open and overdue, and the series waits', () => {
-    const keep = series("read", rule({ frequency: "daily", anchorDate: "2026-09-25" }));
+    const keep = series("read", rule({ frequency: "daily", anchorDate: "2026-09-25", kind: "task" }));
     assert.equal(skipMissedDelta(keep, local(2026, 9, 29, 10), [keep]), null);
   });
 

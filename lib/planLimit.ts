@@ -10,7 +10,7 @@ import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 export function planLimitMessage(meter: Meter): string {
   const t = translate();
   const isPro = useSubscriptionStore.getState().pro !== null;
-  // Free doesn't include Live voice at all, so nothing was "used up".
-  if (!isPro && PLAN_LIMITS.free[meter] === 0) return t.plan.liveProOnly;
+  // Free doesn't include any AI (lib/plan.ts), so nothing was "used up".
+  if (!isPro && PLAN_LIMITS.free[meter] === 0) return t.plan.proFeature[meter];
   return `${t.plan.used[meter]} ${isPro ? t.plan.resets : t.plan.upgradeHint}`;
 }

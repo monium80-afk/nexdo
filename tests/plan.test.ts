@@ -37,11 +37,12 @@ describe("the plans", () => {
       live: displayLimit(plan, "live"),
       assist: displayLimit(plan, "assist"),
     });
-    assert.deepEqual(shown("free"), { chat: 20, media: 3, voice: 3, live: 0, assist: 5 });
-    assert.deepEqual(shown("pro"), { chat: 400, media: 50, voice: 50, live: 50, assist: 100 });
+    // Free has no AI at all since 2026-10-26; Magic mic went to 90 minutes on Pro.
+    assert.deepEqual(shown("free"), { chat: 0, media: 0, voice: 0, live: 0, assist: 0 });
+    assert.deepEqual(shown("pro"), { chat: 400, media: 50, voice: 50, live: 90, assist: 100 });
     // Voice and Live voice are counted in seconds.
-    assert.equal(PLAN_LIMITS.free.voice, 180);
-    assert.equal(PLAN_LIMITS.pro.live, 3000);
+    assert.equal(PLAN_LIMITS.pro.voice, 3000);
+    assert.equal(PLAN_LIMITS.pro.live, 5400);
   });
 
   it("recognises the server's limit answer, and nothing else", () => {
@@ -150,33 +151,38 @@ describe("which plan a request is on", () => {
     assert.equal(await resolvePlan(request, "user_bad_key"), "free");
   });
 
-  it("counts a Pro claim it can't check as Free — past Free's allowance it's 'try again later', not the paywall", async (t) => {
+  it("counts a Pro claim it can't check as Free — which has no AI, so 'try again later', not the paywall", async (t) => {
     process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
     withSupabaseKeys();
-    const limits: unknown[] = [];
-    let used = PLAN_LIMITS.free.chat - 1;
-    t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    const fetchMock = t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
       if (String(url).startsWith("https://api.revenuecat.com")) throw new Error("network down");
-      const body = JSON.parse(String(init?.body)) as { p_amount: number; p_limit: number };
-      limits.push(body.p_limit);
-      if (used + body.p_amount > body.p_limit) return Response.json(-1);
-      used += body.p_amount;
-      return Response.json(used);
+      throw new Error("nothing should be counted");
     });
     t.mock.method(console, "warn", () => {});
     const request = () => new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
 
     assert.equal(await resolvePlan(request(), "user_outage"), "free");
-    // Free's last message goes through…
-    assert.equal(await claimPlanUsage(request(), "user_outage", "chat"), null);
-    assert.deepEqual(limits, [PLAN_LIMITS.free.chat]);
-    // …and the next one is "unavailable", which the app doesn't answer with the paywall.
+    // "Unavailable", which the app doesn't answer with the paywall: it may well be a paying customer.
     const refused = await claimPlanUsage(request(), "user_outage", "chat");
     assert.equal(refused?.status, 503);
     assert.deepEqual(await refused?.json(), { error: "usage_unavailable" });
-    // Live voice isn't part of Free at all.
     const live = await startLiveSession(request(), "user_outage", 300);
     assert.ok("refused" in live && live.refused.status === 503);
+    // Only RevenueCat was asked; nothing was spent or read.
+    assert.ok(fetchMock.mock.calls.every((call) => String(call.arguments[0]).startsWith("https://api.revenuecat.com")));
+  });
+
+  it("refuses every AI request on Free with the paywall's answer, without counting anything", async (t) => {
+    withSupabaseKeys();
+    const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+      throw new Error("nothing should be asked");
+    });
+    for (const meter of ["chat", "media", "voice", "live", "assist"] as const) {
+      const refused = await claimPlanUsage(new Request("https://nexdo.test/api/inbox", { method: "POST" }), "user_free_ai", meter);
+      assert.equal(refused?.status, 429);
+      assert.deepEqual(await refused?.json(), { error: "plan_limit", meter, plan: "free" });
+    }
+    assert.equal(fetchMock.mock.callCount(), 0);
   });
 });
 
@@ -198,14 +204,20 @@ const freeRequest = () => new Request("https://nexdo.test/api/inbox", { method: 
 describe("spending the month's allowance", () => {
   it("refuses rather than waving the request through when the count can't be read", async (t) => {
     withSupabaseKeys();
-    t.mock.method(globalThis, "fetch", async () => new Response("unavailable", { status: 503 }));
+    process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
+    t.mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+      String(url).startsWith("https://api.revenuecat.com")
+        ? Response.json({ request_date_ms: Date.now(), subscriber: { entitlements: { nexdo_pro: { expires_date: iso(Date.now() + HOUR) } } } })
+        : new Response("unavailable", { status: 503 }),
+    );
     t.mock.method(console, "error", () => {});
-    const response = await claimPlanUsage(freeRequest(), "user_free", "chat");
+    const proRequest = () => new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
+    const response = await claimPlanUsage(proRequest(), "user_pro_db_down", "chat");
     assert.equal(response?.status, 503);
 
     // A server missing its key doesn't hand out unlimited AI either.
     delete process.env.SUPABASE_SECRET_KEY;
-    assert.equal((await claimPlanUsage(freeRequest(), "user_free", "chat"))?.status, 503);
+    assert.equal((await claimPlanUsage(proRequest(), "user_pro_db_down", "chat"))?.status, 503);
   });
 
   it("answers the paywall's 429 when the amount doesn't fit", async (t) => {

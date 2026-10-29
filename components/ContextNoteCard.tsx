@@ -50,8 +50,12 @@ export function ContextNoteCard({
   const [draft, setDraft] = useState(parsed.text);
   const [expanded, setExpanded] = useState(false);
 
+  // The latest callback, kept for the unmount below — set after each render,
+  // not during it.
   const onEditingChangeRef = useRef(onEditingChange);
-  onEditingChangeRef.current = onEditingChange;
+  useEffect(() => {
+    onEditingChangeRef.current = onEditingChange;
+  });
   const editingRef = useRef(false);
   const setEditing = (open: boolean) => {
     editingRef.current = open;

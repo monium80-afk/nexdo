@@ -44,15 +44,19 @@ export function PlanUsage({ plan, used }: { plan: Plan; used: Record<Meter, numb
               </Text>
               <Text className={`font-grotesk-bold text-sm ${limit === 0 ? "text-ink-cream-subtle" : "text-ink-cream"}`}>{value}</Text>
             </View>
-            <View className="h-[5px] overflow-hidden rounded-full bg-cream-200">
-              <View className="h-full rounded-full bg-orange-500" style={{ width: `${fraction * 100}%` }} />
-            </View>
+            {/* No bar for something the plan doesn't include: there's nothing to fill. */}
+            {limit === 0 ? null : (
+              <View className="h-[5px] overflow-hidden rounded-full bg-cream-200">
+                <View className="h-full rounded-full bg-orange-500" style={{ width: `${fraction * 100}%` }} />
+              </View>
+            )}
           </View>
         );
       })}
 
+      {/* Free has no AI at all (lib/plan.ts), so nothing to start again on the 1st. */}
       <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-        {t.plan.resets}
+        {plan === "free" ? t.plan.freeNoAi : t.plan.resets}
       </Text>
     </View>
   );

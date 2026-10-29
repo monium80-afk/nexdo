@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect, useState, type ReactNode } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Keyboard, Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
@@ -65,6 +65,14 @@ export function BottomSheet({
     transform: [{ translateY: (1 - progress.value) * height }],
   }));
 
+  // How much of the screen the keyboard covers. The sheet is a modal drawn
+  // edge to edge, which Android doesn't resize or pan for the keyboard — so
+  // without this, the keyboard opened over the field being typed in (the
+  // Account sheet's name, 2026-10-26). The sheet sits on top of the keyboard
+  // instead, and shrinks to what's left of the screen above it.
+  const keyboardHeight = useKeyboardHeight(mounted);
+  const keyboardOpen = keyboardHeight > 0;
+
   return (
     // Drawn under the phone's own bars on Android too, as the app is: the
     // sheet's foot pads itself clear of the navigation bar (insets.bottom
@@ -77,11 +85,16 @@ export function BottomSheet({
       navigationBarTranslucent
       onRequestClose={onClose}
     >
-      {/* Lets a sheet with a text field rise above the keyboard on iOS. */}
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }, scrimStyle]}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        {/* Lifted clear of the keyboard while it's open (see keyboardHeight). */}
+        <View style={{ flex: 1, paddingBottom: keyboardHeight }}>
           <Pressable className="flex-1 justify-end" onPress={onClose}>
-            <Animated.View style={[{ maxHeight: "88%" }, panelStyle]}>
+            <Animated.View
+              style={[
+                { maxHeight: keyboardOpen ? height - keyboardHeight - insets.top - 12 : "88%" },
+                panelStyle,
+              ]}
+            >
               {/* The sheet runs under the phone's own navigation bar (edge to
                   edge), so its foot is kept at least that bar's height clear.
                   It shrinks to the 88% above it, so a long list inside (one
@@ -91,7 +104,8 @@ export function BottomSheet({
               <Pressable
                 onPress={() => {}}
                 className={`card--cream-elevated rounded-t-[30px] p-6 pt-[8px] ${panelClassName}`}
-                style={{ flexShrink: 1, paddingBottom: Math.max(35, insets.bottom + 21) }}
+                // Over the keyboard there's no navigation bar to keep clear of.
+                style={{ flexShrink: 1, paddingBottom: keyboardOpen ? 16 : Math.max(35, insets.bottom + 21) }}
               >
                 {/* The grab handle: says "this slid up, and slides back down".
                     8 + 5 + 8 = the sheet's old 21dp of top padding. */}
@@ -113,8 +127,31 @@ export function BottomSheet({
               </Pressable>
             </Animated.View>
           </Pressable>
-        </KeyboardAvoidingView>
+        </View>
       </Animated.View>
     </Modal>
   );
+}
+
+/**
+ * The keyboard's height while it's open, 0 otherwise — followed only while
+ * `active` (the sheet is up). iOS says just before the keyboard moves, so the
+ * sheet moves with it; Android only once it has.
+ */
+function useKeyboardHeight(active: boolean): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, (event) => setHeight(event.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+      // A sheet that closes with the keyboard up opens next time without it.
+      setHeight(0);
+    };
+  }, [active]);
+  return active ? height : 0;
 }

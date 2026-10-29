@@ -25,6 +25,7 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatTaskLength } from "@/lib/formatDuration";
 import { describeRule } from "@/lib/recurrence";
+import { playSound } from "@/lib/sounds";
 import { getDueInfo, type DueTone } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 
@@ -198,6 +199,7 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
 
     if (reduceMotion) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      playSound("complete");
       onToggle();
       return;
     }
@@ -205,6 +207,8 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
     successBeat.current = setTimeout(() => {
       successBeat.current = null;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // With the strike landing, like the haptic — a tap taken back before it plays nothing.
+      playSound("complete");
     }, STRIKE_DELAY_MS + STRIKE_MS);
 
     setStrikeLines(titleLines.current);

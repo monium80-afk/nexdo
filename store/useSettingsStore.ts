@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { I18nManager, NativeModules, Platform } from "react-native";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -32,7 +33,8 @@ type SettingsStore = {
   tourSeen: boolean;
   /**
    * Whether the user allowed Nexdo to send their own content to Google's
-   * Gemini AI (lib/aiConsent.ts). Off until they say yes; Settings → AI turns it off again.
+   * Gemini AI (lib/aiConsent.ts). Off until they say yes; "Not now" leaves it
+   * off, so the question comes back the next time an AI feature is used.
    */
   aiConsent: boolean;
   setTheme: (theme: ThemePreference) => void;
@@ -64,15 +66,46 @@ export function reminderPreferences(state: SettingsStore): ReminderPreferences {
 
 const APP_LANGUAGES: AppLanguage[] = ["en", "fr", "es", "ar", "de"];
 
+/** The app language for a locale ("fr-CA", "fr_CA", "ar"), or null when Nexdo doesn't have it. */
+export function languageFromLocale(locale: string | undefined | null): AppLanguage | null {
+  const code = typeof locale === "string" ? locale.slice(0, 2).toLowerCase() : "";
+  return APP_LANGUAGES.find((language) => language === code) ?? null;
+}
+
+/**
+ * The phone's languages, most preferred first, as its own settings list
+ * them: Android's current locale, iOS's preferred languages. Read through
+ * React Native's built-in modules, so no extra library.
+ */
+function phoneLocales(): string[] {
+  try {
+    if (Platform.OS === "android") {
+      const identifier = I18nManager.getConstants?.().localeIdentifier;
+      return identifier ? [identifier] : [];
+    }
+    if (Platform.OS === "ios") {
+      const settings = NativeModules.SettingsManager?.settings as { AppleLanguages?: string[]; AppleLocale?: string } | undefined;
+      return [...(settings?.AppleLanguages ?? []), ...(settings?.AppleLocale ? [settings.AppleLocale] : [])];
+    }
+  } catch {
+    // Not available here: the engine's own locale below.
+  }
+  return [];
+}
+
 /**
  * The phone's own language, if Nexdo has it — English otherwise. Only the
  * first launch uses it: once saved, the language stays what it was set to.
- * Intl is built into the app's JavaScript engine, so no extra library.
+ * The phone's settings are asked first, then the JavaScript engine's own
+ * locale (Intl), which follows the phone too.
  */
 export function deviceLanguage(): AppLanguage {
+  for (const locale of phoneLocales()) {
+    const language = languageFromLocale(locale);
+    if (language) return language;
+  }
   try {
-    const code = Intl.DateTimeFormat().resolvedOptions().locale.slice(0, 2).toLowerCase();
-    return APP_LANGUAGES.find((language) => language === code) ?? "en";
+    return languageFromLocale(Intl.DateTimeFormat().resolvedOptions().locale) ?? "en";
   } catch {
     return "en";
   }
@@ -115,8 +148,9 @@ export const useSettingsStore = create<SettingsStore>()(
       name: "nexdo-settings",
       storage: createJSONStorage(() => AsyncStorage),
       // Listing the keys also drops retired values older installs still have
-      // saved ("planningStyle", and "aiAutoMode" / "voiceAddButton" from
-      // before the AI chat was removed), the next time this store writes.
+      // saved ("planningStyle", "aiAutoMode" / "voiceAddButton" from before
+      // the AI chat was removed, "soundsEnabled" from before Settings →
+      // Sounds was removed), the next time this store writes.
       partialize: (state) => ({
         theme: state.theme,
         language: state.language,

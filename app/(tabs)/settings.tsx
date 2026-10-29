@@ -24,7 +24,6 @@ import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors, useThemeScheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
-import { requestAiConsent } from "@/lib/aiConsentPrompt";
 import { showAlert } from "@/lib/alert";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { openPaywall } from "@/lib/paywall";
@@ -286,8 +285,6 @@ export default function Settings() {
   const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
-  const aiConsent = useSettingsStore((state) => state.aiConsent);
-  const setAiConsent = useSettingsStore((state) => state.setAiConsent);
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
   useStatusBarStyle("light");
@@ -659,21 +656,6 @@ export default function Settings() {
                 <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
                   {t.settings.notificationsNote}
                 </Text>
-              </Group>
-            </Section>
-
-            {/* Whether what the user types, says or photographs may go to
-                Google's AI (lib/aiConsent.ts). Turning it on asks the same
-                question the app asks the first time, so the disclosure is
-                always read before a yes. */}
-            <Section title={t.settings.ai}>
-              <Group>
-                <ToggleRow
-                  label={t.settings.aiToggle}
-                  body={t.settings.aiToggleBody}
-                  value={aiConsent}
-                  onValueChange={(enabled) => (enabled ? requestAiConsent() : setAiConsent(false))}
-                />
               </Group>
             </Section>
 

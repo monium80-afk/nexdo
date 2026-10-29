@@ -224,14 +224,9 @@ function planDailyNotes(tasks: Task[], prefs: ReminderPreferences, now: Date, t:
     const fireAt = atLocalTime(date, prefs.dailyPlanningTime);
     if (fireAt <= now.getTime() + MIN_LEAD_MS) continue;
     const dueThatDay = open.filter((task) => task.deadline?.date === date).length;
-    // One-off tasks whose day will have gone by then, unless they're done or
-    // moved first — what "Reset my week" on the Today page is for. (Planned
-    // again on every change and every return to the app, so this follows.)
-    const slipped = open.filter((task) => !task.recurrence && !!task.deadline && task.deadline.date < date).length;
     const top = recommendTasks(open, { now: new Date(fireAt) })[0]?.task.title ?? "";
     const title = t.notifications.dailyTitle;
-    const plan = dueThatDay > 0 ? t.notifications.dailyDueBody(dueThatDay, top) : t.notifications.dailyOpenBody(open.length, top);
-    const body = slipped > 0 ? `${plan} ${t.notifications.dailySlippedNote(slipped)}` : plan;
+    const body = dueThatDay > 0 ? t.notifications.dailyDueBody(dueThatDay, top) : t.notifications.dailyOpenBody(open.length, top);
     notes.push({
       id: `${NOTIFICATION_ID_PREFIX}daily-${date}`,
       kind: "daily",

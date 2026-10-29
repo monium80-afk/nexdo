@@ -15,16 +15,15 @@ import Animated, {
 
 import { PrimaryButton, TextButton } from "@/components/Button";
 import { MOTION, colors } from "@/constants/theme";
+import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
-import { isPurchasesEnabled } from "@/lib/purchases";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { useIsPro } from "@/store/useSubscriptionStore";
 
 /** The tab bar slots the tour points at. */
-export type TourAnchor = "index" | "tasks" | "mic";
+export type TourAnchor = "index" | "tasks" | "add" | "mic";
 type TourTab = "index" | "tasks" | "settings";
 
 // Left to right along the bar, one sentence or two each — Settings is left
@@ -32,7 +31,8 @@ type TourTab = "index" | "tasks" | "settings";
 const STEPS: { anchor: TourAnchor; tab: TourTab }[] = [
   { anchor: "index", tab: "index" },
   { anchor: "tasks", tab: "tasks" },
-  // The page behind stays on Tasks: the mic doesn't open anything during the tour.
+  // The page behind stays on Tasks: neither button opens anything during the tour.
+  { anchor: "add", tab: "tasks" },
   { anchor: "mic", tab: "tasks" },
 ];
 
@@ -77,8 +77,7 @@ export function AppTour({
   const tourSeen = useSettingsStore((state) => state.tourSeen);
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
   // On Free the mic wears a padlock, and the tour says why.
-  const isPro = useIsPro();
-  const micLocked = !isPro && isPurchasesEnabled;
+  const micLocked = useAiLocked();
   const settingsHydrated = useSyncExternalStore(
     useSettingsStore.persist.onFinishHydration,
     useSettingsStore.persist.hasHydrated,
@@ -235,6 +234,8 @@ function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micL
       return t.tour.steps.next;
     case "tasks":
       return t.tour.steps.tasks;
+    case "add":
+      return t.tour.steps.add;
     case "mic":
       return micLocked ? t.tour.steps.voiceLocked : t.tour.steps.voice;
   }

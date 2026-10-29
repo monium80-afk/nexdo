@@ -42,10 +42,22 @@ export const SHOWN_METERS: readonly Meter[] = ["live", "assist", "chat", "media"
 
 const MINUTE = 60;
 
+/**
+ * Free has no AI at all since 2026-10-26 (the user's call): every AI feature
+ * is part of Pro, and Free is Nexdo by hand — tasks, Today, the Schedule,
+ * sessions, reminders. The app shows those features locked up front
+ * (hooks/useAiLocked.ts) rather than letting a request be refused. Magic mic
+ * went from 50 to 90 minutes a month on Pro the same day.
+ */
 export const PLAN_LIMITS: Record<Plan, Record<Meter, number>> = {
-  free: { chat: 20, media: 3, voice: 3 * MINUTE, live: 0, assist: 5 },
-  pro: { chat: 400, media: 50, voice: 50 * MINUTE, live: 50 * MINUTE, assist: 100 },
+  free: { chat: 0, media: 0, voice: 0, live: 0, assist: 0 },
+  pro: { chat: 400, media: 50, voice: 50 * MINUTE, live: 90 * MINUTE, assist: 100 },
 };
+
+/** Whether a plan includes a meter at all (Free includes none of them). */
+export function planIncludes(plan: Plan, meter: Meter): boolean {
+  return PLAN_LIMITS[plan][meter] > 0;
+}
 
 /** Meters counted in seconds and shown in minutes; the rest are plain counts. */
 export function isTimeMeter(meter: Meter): boolean {

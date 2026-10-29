@@ -35,17 +35,15 @@ const SIDE_PADDING = 21;
 const CARD_RADIUS = 28;
 const FLING_VELOCITY = 800;
 
-// The deck shuffle (after Lightswind's Sliding Cards): the top card swings out
-// to the side turning in 3D, turns back the other way, and tucks in behind the
-// deck while the next card comes forward. TUCK_MS is the whole move; the
-// card behind is already in front after RISE_MS.
-const TUCK_MS = 560;
+// The top card flies off the side it was swiped to, turning a little in 3D
+// and fading, while the card behind comes forward (the user's call,
+// 2026-10-28: it used to swing out and tuck in behind the deck). FLY_MS is the
+// whole flight; the card behind is already in front after RISE_MS. Previous
+// plays the flight backwards: the last card flies back in from the left.
+const FLY_MS = 420;
 const RISE_MS = 320;
-// The move's three beats, as fractions of TUCK_MS: out, turn, back in behind.
-const OUT_END = 0.34;
-const TURN_END = 0.58;
-/** How far out to the side it swings, in card widths. */
-const OUT_WIDTHS = 0.82;
+/** How far out it flies, in card widths: clear of the screen, turn and all. */
+const OUT_WIDTHS = 1.3;
 const TURN_DEG = 24;
 const PERSPECTIVE = 1000;
 // While dragged, the card turns with the finger and fades a little.
@@ -53,10 +51,9 @@ const DRAG_TURN_PER_DP = 0.16;
 const DRAG_FADE = 0.3;
 /** How far the card behind rises while the top one is only being dragged. */
 const PREVIEW_RISE = 0.3;
-// Drawing order: the card being thrown goes over everything, until it turns
-// to go behind; then the deck in place order.
+// Drawing order: the card being thrown goes over everything; then the deck in
+// place order.
 const Z_THROWN = 40;
-const Z_BACK = 0;
 
 // A waiting card is a plain card — its text and buttons showing in the band
 // under the top card only looked broken. Its content fades out as it goes
@@ -78,11 +75,11 @@ const REVEAL_RISE = 6;
 const SLOT_COUNT = 4;
 /**
  * Place 0 is the active card, 1 and 2 wait behind it, and -1 is the previous
- * task, tucked away at the very back of the deck (where Previous brings it
- * back from).
+ * task, flown off to the side and hidden there (where Previous brings it back
+ * from).
  */
 const DEPTHS = [0, 1, 2];
-/** The back of the deck: sized and placed like place 2, and hidden. */
+/** The deepest place in the deck. */
 const BACK_DEPTH = 2;
 const DEPTH_SCALE = [1, 0.93, 0.86];
 // How far each place's bottom edge shows below the active card. At rest only
@@ -124,11 +121,6 @@ function easeOut(u: number) {
   return 1 - (1 - u) ** 3;
 }
 
-function easeInOut(u: number) {
-  "worklet";
-  return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
-}
-
 /** Where a card is drawn: sideways travel, 3D turn, how deep in the deck, how visible, drawing order. */
 type Pose = { x: number; turn: number; depth: number; opacity: number; z: number };
 
@@ -160,38 +152,21 @@ function dragPose(dragX: number, cardWidth: number): Pose {
 }
 
 /**
- * The shuffle at `s` (0 = on top, 1 = tucked in at the back), starting from
- * wherever the finger let go (`fromX`) and swinging out to `dir`'s side.
- * Previous plays it from 1 back to 0.
+ * The flight at `s` (0 = on top, 1 = gone off the side), starting from
+ * wherever the finger let go (`fromX`) and flying out to `dir`'s side. It
+ * keeps its size and content all the way, fading as it goes. Previous plays
+ * it from 1 back to 0.
  */
-function tuckPose(s: number, dir: number, fromX: number, cardWidth: number): Pose {
+function flyPose(s: number, dir: number, fromX: number, cardWidth: number): Pose {
   "worklet";
-  const out = dir * OUT_WIDTHS * cardWidth;
-  if (s <= OUT_END) {
-    // Out to the side, turning towards it, back to full strength.
-    const from = dragPose(fromX, cardWidth);
-    const e = easeOut(s / OUT_END);
-    return {
-      x: from.x + (out - from.x) * e,
-      turn: from.turn + (dir * TURN_DEG - from.turn) * e,
-      depth: 0,
-      opacity: from.opacity + (1 - from.opacity) * e,
-      z: Z_THROWN,
-    };
-  }
-  if (s <= TURN_END) {
-    // Out at the side, it turns round to face the way back.
-    const e = easeInOut((s - OUT_END) / (TURN_END - OUT_END));
-    return { x: out, turn: dir * TURN_DEG * (1 - 2 * e), depth: 0, opacity: 1, z: Z_THROWN };
-  }
-  // Back in, behind the deck: shrinking to its back place and fading out there.
-  const e = easeInOut((s - TURN_END) / (1 - TURN_END));
+  const from = dragPose(fromX, cardWidth);
+  const e = easeOut(s);
   return {
-    x: out * (1 - e),
-    turn: -dir * TURN_DEG * (1 - e),
-    depth: BACK_DEPTH * e,
-    opacity: e < 0.7 ? 1 : 1 - (e - 0.7) / 0.3,
-    z: Z_BACK,
+    x: from.x + (dir * OUT_WIDTHS * cardWidth - from.x) * e,
+    turn: from.turn + (dir * TURN_DEG - from.turn) * e,
+    depth: 0,
+    opacity: from.opacity * (1 - s),
+    z: Z_THROWN,
   };
 }
 
@@ -200,13 +175,13 @@ type StackMotion = {
   activeSlot: SharedValue<number>;
   /** The finger's travel on the top card. Held where it let go until the shuffle lands. */
   dragX: SharedValue<number>;
-  /** The top card's shuffle to the back, 0 → 1. */
+  /** The top card's flight off the side, 0 → 1. */
   shuffle: SharedValue<number>;
-  /** The back card's place in its shuffle: 1 tucked away; Previous plays it back to 0. */
+  /** The previous card's place in its flight: 1 gone off the side; Previous plays it back to 0. */
   back: SharedValue<number>;
   /** How far the rest of the deck has moved up one place (1) — or down one, for Previous (-1). */
   rise: SharedValue<number>;
-  /** Which side the shuffle swings out to: -1 left, 1 right. */
+  /** Which side the card flies out to (or, for Previous, back in from): -1 left, 1 right. */
   dir: SharedValue<number>;
   stackHeight: SharedValue<number>;
 };
@@ -243,12 +218,12 @@ function StackSlot({
   const { activeSlot, dragX, shuffle, back, rise, dir, stackHeight } = motion;
 
   // Where this card is at this instant, from its place in the deck and
-  // whatever the stack is doing: the top card is dragged or thrown, the back
-  // card is brought out again by Previous, and the rest move up or down a place.
+  // whatever the stack is doing: the top card is dragged or thrown, the
+  // previous card is flown back in by Previous, and the rest move up or down a place.
   const pose = useDerivedValue(() => {
     const place = depthOf(slot, activeSlot.get());
-    if (place === -1) return tuckPose(back.get(), dir.get(), 0, cardWidth);
-    if (place === 0 && shuffle.get() > 0) return tuckPose(shuffle.get(), dir.get(), dragX.get(), cardWidth);
+    if (place === -1) return flyPose(back.get(), dir.get(), 0, cardWidth);
+    if (place === 0 && shuffle.get() > 0) return flyPose(shuffle.get(), dir.get(), dragX.get(), cardWidth);
     if (place === 0 && rise.get() >= 0) {
       return dragX.get() === 0 ? restPose(0) : dragPose(dragX.get(), cardWidth);
     }
@@ -322,7 +297,20 @@ function StackSlot({
       }
     },
   );
+  // The card off to the side keeps its content: Previous flies it back in
+  // showing what it is. Once it has landed on top, its content stays shown.
+  useAnimatedReaction(
+    () => depthOf(slot, activeSlot.get()),
+    (place, previous) => {
+      if (previous === -1 && place === 0) {
+        cancelAnimation(reveal);
+        arriving.set(false);
+        reveal.set(1);
+      }
+    },
+  );
   const contentStyle = useAnimatedStyle(() => {
+    if (depthOf(slot, activeSlot.get()) === -1) return { opacity: 1, transform: [{ translateY: 0 }] };
     const shown = reveal.get();
     const inDeck = arriving.get() ? 1 : 1 - Math.min(Math.max(pose.get().depth / CONTENT_GONE_DEPTH, 0), 1);
     return {
@@ -471,10 +459,12 @@ export function NextTaskCardStack({
   };
 
   const riseTiming = { duration: reduceMotion ? 0 : RISE_MS, easing: MOTION.easing.standard };
-  // Linear: each beat of the shuffle eases itself (tuckPose).
-  const tuckTiming = { duration: reduceMotion ? 0 : TUCK_MS, easing: Easing.linear };
+  // Linear: the flight eases itself (flyPose).
+  const flyTiming = { duration: reduceMotion ? 0 : FLY_MS, easing: Easing.linear };
+  // Previous plays the flight backwards, so its clock slows as it lands.
+  const flyBackTiming = { duration: reduceMotion ? 0 : FLY_MS, easing: Easing.out(Easing.cubic) };
 
-  // Next: the top card is shuffled to the back, swinging out to `swingDir`.
+  // Next: the top card flies off to `swingDir`'s side.
   // The Next button and the send-off take the same move a swipe does; the
   // swipe's copy is written out in the gesture below — the callback that lands
   // the step has to be a worklet, and it is the call site that makes it one.
@@ -483,7 +473,7 @@ export function NextTaskCardStack({
     dir.set(swingDir);
     rise.set(withTiming(1, riseTiming));
     shuffle.set(
-      withTiming(1, tuckTiming, (finished) => {
+      withTiming(1, flyTiming, (finished) => {
         if (finished) settle(1, nextIndex, finishedTaskId);
       }),
     );
@@ -494,16 +484,16 @@ export function NextTaskCardStack({
     shuffleForward(-1, (currentIndex + 1) % total);
   };
 
-  // Previous: the shuffle played backwards — the card tucked at the back comes
-  // out on the left, turns, and lands on top, while the deck steps back a
-  // place just as it arrives.
+  // Previous: the flight played backwards — the previous card flies back in
+  // from the left and lands on top, while the deck steps back a place just
+  // as it arrives.
   const showPrevious = () => {
     if (swipeLocked.get()) return;
     swipeLocked.set(true);
     dir.set(-1);
-    rise.set(withDelay(reduceMotion ? 0 : TUCK_MS - RISE_MS, withTiming(-1, riseTiming)));
+    rise.set(withDelay(reduceMotion ? 0 : FLY_MS - RISE_MS, withTiming(-1, riseTiming)));
     back.set(
-      withTiming(0, tuckTiming, (finished) => {
+      withTiming(0, flyBackTiming, (finished) => {
         if (finished) settle(-1, (currentIndex - 1 + total) % total, null);
       }),
     );
@@ -577,16 +567,16 @@ export function NextTaskCardStack({
         rise.set(withTiming(0, riseTiming));
         return;
       }
-      // Either way brings up the next card, as with a real deck: the top card
-      // swings out the way it was thrown and goes to the back. It starts from
-      // where the finger let go (dragX is held there until it lands).
+      // Either way brings up the next card: the top card flies off the way it
+      // was thrown, from where the finger let go (dragX is held there until
+      // it's gone).
       const swingDir = Math.sign(event.translationX || event.velocityX) || -1;
       const nextIndex = (currentIndex + 1) % total;
       swipeLocked.set(true);
       dir.set(swingDir);
       rise.set(withTiming(1, riseTiming));
       shuffle.set(
-        withTiming(1, tuckTiming, (finished) => {
+        withTiming(1, flyTiming, (finished) => {
           if (finished) settle(1, nextIndex, null);
         }),
       );

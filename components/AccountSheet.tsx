@@ -1,7 +1,7 @@
 import { useClerk, useUser } from "@clerk/expo";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
+import { useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -21,6 +21,9 @@ import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
 const MIN_PASSWORD_LENGTH = 8;
+
+/** How long the keyboard takes to open, roughly — on Android the sheet only moves once it has. */
+const KEYBOARD_SETTLE_MS = 320;
 
 /** Every file in the account's storage goes too, so this can take longer than an AI answer. */
 const DELETE_ACCOUNT_TIMEOUT_MS = 60_000;
@@ -58,6 +61,14 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const [passwordStatus, setPasswordStatus] = useState<string | null>(null);
 
   const [deleting, setDeleting] = useState(false);
+
+  // With the keyboard up the sheet sits on top of it and shrinks
+  // (BottomSheet), so the field being typed in is scrolled into what's left:
+  // the name at the top, the password fields at the foot. After a beat, once
+  // the keyboard — and the sheet with it — has moved.
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const revealNameField = () => setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), KEYBOARD_SETTLE_MS);
+  const revealPasswordFields = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), KEYBOARD_SETTLE_MS);
 
   // Reopening the sheet starts from whatever the account holds now, and drops
   // any half-finished edit from last time. Same pattern as VerificationModal:
@@ -218,6 +229,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   return (
     <BottomSheet visible={visible} onClose={onClose} title={t.account.title} closeLabel={t.account.close}>
       <ScrollView
+        ref={scrollRef}
         // Shrinks so the sheet scrolls inside itself rather than growing past the screen.
         style={{ flexGrow: 0, flexShrink: 1 }}
         contentContainerStyle={{ gap: 20, paddingTop: 4 }}
@@ -273,6 +285,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
             // Blur only: Done blurs a single-line field anyway, so handling
             // submit as well sent the same update twice.
             onBlur={handleSaveName}
+            onFocus={revealNameField}
             returnKeyType="done"
             placeholder={t.account.namePlaceholder}
           />
@@ -311,6 +324,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
                 placeholder={t.account.currentPassword}
                 secureTextEntry
                 autoCapitalize="none"
+                onFocus={revealPasswordFields}
               />
             ) : null}
             <TextField
@@ -319,6 +333,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
               placeholder={t.account.newPassword}
               secureTextEntry
               autoCapitalize="none"
+              onFocus={revealPasswordFields}
             />
             <TextField
               value={confirmPassword}
@@ -326,6 +341,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
               placeholder={t.account.confirmPassword}
               secureTextEntry
               autoCapitalize="none"
+              onFocus={revealPasswordFields}
             />
 
             {passwordError ? (

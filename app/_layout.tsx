@@ -26,6 +26,15 @@ configureNotifications();
 // phone under this key; nothing reads it any more, so it isn't left behind.
 AsyncStorage.removeItem("nexdo-chat").catch(() => {});
 
+/**
+ * The tabs sit under every other screen. Before SDK 58 this was the Stack's
+ * initialRouteName="(tabs)": without it, "add" — the first screen listed
+ * below — became the initial route, so the app could open on Add Task with
+ * nothing under it and its ✕ (router.back()) had nowhere to go. The anchor
+ * also puts the tabs under a screen opened straight from a link.
+ */
+export const unstable_settings = { anchor: "(tabs)" };
+
 /** The longest the splash waits for Clerk before handing over to a spinner. */
 const SPLASH_MAX_MS = 6_000;
 
@@ -138,14 +147,9 @@ export default function RootLayout() {
           <View style={Platform.OS === "web" ? { flex: 1, width: "100%", maxWidth: WEB_FRAME_MAX_WIDTH } : { flex: 1 }}>
             <AccountSetup>
             <Stack
-              // Without this, React Navigation defaults the initial route to
-              // whichever screen is registered first — and "add" below,
-              // being the only *explicit* Stack.Screen, was winning that
-              // slot over the file-system-discovered "(tabs)" group. That
-              // put the app on the Add Task modal on cold start with no
-              // history underneath it, so its "x" button (router.back())
-              // had nothing to go back to.
-              initialRouteName="(tabs)"
+              // The tabs are kept underneath every screen by
+              // unstable_settings.anchor (below the imports) — SDK 58's
+              // replacement for initialRouteName="(tabs)".
               screenOptions={{
                 headerShown: false,
                 // No transition between pages, anywhere — the user's call

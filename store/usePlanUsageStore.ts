@@ -47,11 +47,13 @@ onMeteredCall(() => {
   refreshTimer = setTimeout(() => void usePlanUsageStore.getState().refresh(), REFRESH_DELAY_MS);
 });
 
-/** Below this many left, the count shows — a few on Free, a handful more on Pro. In minutes for time meters. */
-const SHOW_COUNT_FROM: Record<Plan, Record<Meter, number>> = {
-  free: { chat: 3, media: 1, voice: 1, live: 0, assist: 2 },
-  pro: { chat: 20, media: 5, voice: 5, live: 5, assist: 10 },
-};
+/**
+ * The count shows once a quarter or less of the month's allowance is left —
+ * early enough to see it coming, rather than first hearing of a limit when it
+ * stops something (the user's point, 2026-10-26). Free has no allowance to
+ * count: its AI features are shown locked instead (hooks/useAiLocked.ts).
+ */
+const SHOW_COUNT_SHARE = 0.25;
 
 export type Allowance = {
   plan: Plan;
@@ -71,5 +73,6 @@ export function useAllowance(meter: Meter): Allowance | null {
   const limit = PLAN_LIMITS[plan][meter];
   const remaining = Math.max(0, limit - used);
   const left = isTimeMeter(meter) ? Math.floor(remaining / 60) : remaining;
-  return { plan, left, low: limit > 0 && left <= SHOW_COUNT_FROM[plan][meter], exhausted: remaining <= 0 };
+  const shownLimit = isTimeMeter(meter) ? Math.floor(limit / 60) : limit;
+  return { plan, left, low: limit > 0 && left <= Math.ceil(shownLimit * SHOW_COUNT_SHARE), exhausted: remaining <= 0 };
 }

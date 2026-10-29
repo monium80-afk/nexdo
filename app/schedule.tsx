@@ -1,6 +1,6 @@
 import { useAuth } from "@clerk/expo";
 import { Redirect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,6 +10,7 @@ import { DoneScheduleRow, ScheduleItemRow, formatBudget } from "@/components/Sch
 import { ScheduleYear } from "@/components/ScheduleYear";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SectionHeader } from "@/components/SectionHeader";
+import { TodayRoutines } from "@/components/TodayRoutines";
 import { gradients } from "@/constants/theme";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
@@ -118,7 +119,7 @@ export function ScheduleView() {
 
   // A day picked on the year's calendar: back to the week, on that day — at
   // the top of the page, not wherever the year had been scrolled to.
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const handlePickDay = useCallback((date: LocalDate) => {
     setWeekOf(weekStart(date));
     setSelected(date);
@@ -142,6 +143,7 @@ export function ScheduleView() {
   const plan = plans.get(selected);
   const items = plan?.items ?? [];
   const done = plan?.done ?? [];
+  const routines = plan?.routines ?? [];
   const dayTitle =
     selected === today
       ? t.schedule.today
@@ -294,15 +296,23 @@ export function ScheduleView() {
                 />
               ))}
 
-              {items.length === 0 && done.length === 0 ? (
+              {items.length === 0 && done.length === 0 && routines.length === 0 ? (
                 <View className="card card--cream-muted items-center px-4 py-5">
                   <Text className="font-grotesk-medium text-sm text-ink-cream-muted">{t.schedule.nothingDue}</Text>
                 </View>
               ) : null}
 
+              {/* The day's routines, apart from its tasks, as on Today: no
+                  share of the day's work, never late (lib/schedule.ts). */}
+              {routines.length > 0 ? (
+                <View className={items.length > 0 ? "pt-1.5" : undefined}>
+                  <TodayRoutines routines={routines} onOpen={openTask} inset={false} />
+                </View>
+              ) : null}
+
               {done.length > 0 ? (
                 <>
-                  {items.length > 0 ? (
+                  {items.length > 0 || routines.length > 0 ? (
                     <View className="px-1 pt-1.5">
                       <SectionHeader icon="check" label={t.schedule.done} />
                     </View>

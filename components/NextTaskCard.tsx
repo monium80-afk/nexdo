@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View, type ViewProps } from "react-native";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { ScrollView, Text, View, type ViewProps } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -16,16 +16,15 @@ import Animated, {
 
 import { AllowanceNote } from "@/components/AllowanceNote";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { BreakdownContextSheet } from "@/components/BreakdownContextSheet";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { CompletedOverlay, type OverlayOrigin } from "@/components/CompletedOverlay";
-import { ContextSheet } from "@/components/ContextSheet";
 import { GemLogo } from "@/components/GemLogo";
-import { HighlightedText } from "@/components/HighlightedText";
-import { ReportAiButton } from "@/components/ReportAiButton";
 import { StartSessionButton } from "@/components/StartSessionButton";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TimerRing } from "@/components/TimerRing";
 import { MOTION, gradients } from "@/constants/theme";
+import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useSessionCountdown } from "@/hooks/useSessionCountdown";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
@@ -34,8 +33,8 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { formatTaskLength } from "@/lib/formatDuration";
 import { openPaywall } from "@/lib/paywall";
+import { playSound } from "@/lib/sounds";
 import { getDueInfo } from "@/lib/taskMeta";
-import { useAllowance } from "@/store/usePlanUsageStore";
 import { useSessionStore, type ActiveSession } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import { withUndo } from "@/store/useUndoStore";
@@ -395,10 +394,10 @@ export function NextTaskCard({
 }) {
   const colors = useColors();
   const tabBarHeight = useTabBarHeight();
-  const cardRef = useRef<View>(null);
-  const completeButtonRef = useRef<View>(null);
+  const cardRef = useRef<ComponentRef<typeof View>>(null);
+  const completeButtonRef = useRef<ComponentRef<typeof View>>(null);
   // Measured on Start: the session opens out of the button itself.
-  const startButtonRef = useRef<View>(null);
+  const startButtonRef = useRef<ComponentRef<typeof View>>(null);
   const t = useTranslation();
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();
@@ -430,10 +429,11 @@ export function NextTaskCard({
   const [breakdownAutoGenerate, setBreakdownAutoGenerate] = useState(false);
   const [breakdownClosingTask, setBreakdownClosingTask] = useState<Task | null>(null);
   const breakdownCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The session's Add context sheet — mounted while open and as it slides away.
-  const [contextOpen, setContextOpen] = useState(false);
-  const [contextMounted, setContextMounted] = useState(false);
-  const contextCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "Break it down"'s first card, asking to see the task — mounted while open
+  // and as it slides away.
+  const [breakdownContextOpen, setBreakdownContextOpen] = useState(false);
+  const [breakdownContextMounted, setBreakdownContextMounted] = useState(false);
+  const breakdownContextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Which task is being celebrated, rather than a plain flag: the stack keeps
   // a fixed set of cards mounted and rotates the tasks through them, so a card
   // can be handed a different task mid-celebration. The overlay belongs to the
@@ -458,24 +458,8 @@ export function NextTaskCard({
 
   useEffect(() => () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
-    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
+    if (breakdownContextTimer.current) clearTimeout(breakdownContextTimer.current);
   }, []);
-
-  const handleOpenContext = () => {
-    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
-    contextCloseTimer.current = null;
-    setContextMounted(true);
-    setContextOpen(true);
-  };
-
-  const handleCloseContext = () => {
-    setContextOpen(false);
-    if (contextCloseTimer.current) clearTimeout(contextCloseTimer.current);
-    contextCloseTimer.current = setTimeout(() => {
-      setContextMounted(false);
-      contextCloseTimer.current = null;
-    }, MOTION.duration.screen + 30);
-  };
 
   const closeBreakdown = () => {
     if (!breakdownMounted) {
@@ -507,6 +491,7 @@ export function NextTaskCard({
     setCelebrationOrigin(undefined);
     setCelebratedTaskId(taskId);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    playSound("complete");
     setTimeout(() => {
       onCelebrated?.();
       // A turn later, so the close is already running on the UI thread.
@@ -536,6 +521,7 @@ export function NextTaskCard({
     // A second, firmer tap as the tick lands on the disc.
     setTimeout(() => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      playSound("complete");
     }, CHECK_LANDS_MS);
 
     let begun = false;
@@ -580,6 +566,8 @@ export function NextTaskCard({
       step.id === stepId ? step.status !== "completed" : step.status === "completed",
     );
     if (!finishesTask) {
+      // A small tick for a step done — none for taking one back.
+      if (steps.find((step) => step.id === stepId)?.status !== "completed") playSound("step");
       completeStep(task.id, stepId);
       return;
     }
@@ -595,15 +583,13 @@ export function NextTaskCard({
     ]);
   };
 
-  const { advice, requestAdvice, dismissAdvice, breakdownStatus, regenerateBreakdown, cancelBreakdown } = useTaskAiAssist(
+  const { breakdownStatus, regenerateBreakdown, cancelBreakdown } = useTaskAiAssist(
     task,
     plannedMinutes > 0 ? plannedMinutes : undefined,
   );
-  const adviceShown = advice.status !== "idle";
-  // Free, and this month's breakdowns and advice are gone: the two buttons
-  // open the plans rather than asking for an answer that can't come.
-  const assistAllowance = useAllowance("assist");
-  const assistUsedUp = assistAllowance?.exhausted === true && assistAllowance.plan === "free";
+  // Free has no AI (lib/plan.ts): the session's AI buttons wear a padlock and
+  // open the plans, so it's clear before the tap that they come with Pro.
+  const aiLocked = useAiLocked();
 
   useEffect(() => {
     const sessionChanged = previousSessionState.current !== hasRunningSession;
@@ -615,15 +601,35 @@ export function NextTaskCard({
     return () => clearTimeout(timer);
   }, [focusMode, hasRunningSession, onBoundsChange, preview, task.id]);
 
+  // Opened from "Break it down", after the context card: the user asked for
+  // steps, so the AI drafts them as the sheet opens.
   const handleOpenBreakdown = () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
     breakdownCloseTimer.current = null;
-    // No steps left to do — the sheet has the AI draft some right away.
-    setBreakdownAutoGenerate(!(task.subtasks ?? []).some((subtask) => subtask.status !== "completed"));
+    setBreakdownAutoGenerate(true);
     setBreakdownKey((key) => key + 1);
     setBreakdownMounted(true);
     setBreakdownClosingTask(null);
     setBreakdownOpen(true);
+  };
+
+  // "Break it down": first the card asking to see the task (a photo, a file,
+  // a sentence) — then, once it has slid away, AI Breakdown.
+  const handleOpenBreakdownContext = () => {
+    if (breakdownContextTimer.current) clearTimeout(breakdownContextTimer.current);
+    breakdownContextTimer.current = null;
+    setBreakdownContextMounted(true);
+    setBreakdownContextOpen(true);
+  };
+
+  const closeBreakdownContext = (then?: () => void) => {
+    setBreakdownContextOpen(false);
+    if (breakdownContextTimer.current) clearTimeout(breakdownContextTimer.current);
+    breakdownContextTimer.current = setTimeout(() => {
+      setBreakdownContextMounted(false);
+      breakdownContextTimer.current = null;
+      then?.();
+    }, MOTION.duration.screen + 30);
   };
 
   // ✕, the scrim or Back: the draft is dropped, and so is a request still on its way.
@@ -822,46 +828,27 @@ export function NextTaskCard({
                 onEnd={leaveSession}
               />
 
-              {/* The AI helpers belong to the session: breaking the task down
-                  and asking how to go about it are for when you're doing it.
-                  A plain pane of glass each. */}
-              <View className="flex-row gap-[10px]">
-                <AnimatedPressable
-                  onPress={assistUsedUp ? () => openPaywall("assist") : handleOpenBreakdown}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.session.aiBreakdown}
-                  className="glass min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
-                >
-                  <Ionicons name="list-outline" size={16} color={colors.ink.charcoal} />
-                  <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.breakDown}</Text>
-                </AnimatedPressable>
-                <AnimatedPressable
-                  onPress={adviceShown ? dismissAdvice : assistUsedUp ? () => openPaywall("assist") : requestAdvice}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.session.aiAdvice}
-                  accessibilityState={{ selected: adviceShown }}
-                  className={
-                    adviceShown
-                      ? "min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] border border-orange-500/40 bg-orange-500/15 px-3 py-2"
-                      : "glass min-h-[40px] flex-1 flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
-                  }
-                >
-                  <Ionicons name="bulb-outline" size={15} color={colors.ink.charcoal} />
-                  <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.next.getAdvice}</Text>
-                </AnimatedPressable>
-              </View>
-              <AllowanceNote meter="assist" onDark />
-              {/* Show Nexdo what you're working on — a photo of the
-                  instructions, a document, a note — and it updates the
-                  steps above and its advice. */}
+              {/* The AI's help belongs to the session, where you're doing the
+                  task. One button (the user's call, 2026-10-28): it first asks
+                  to see what the task really is — a photo, a file, a sentence
+                  said — so the steps fit the actual work, or goes straight to
+                  them from what the task already says. */}
               <AnimatedPressable
-                onPress={handleOpenContext}
+                onPress={aiLocked ? () => openPaywall("assist") : handleOpenBreakdownContext}
                 accessibilityRole="button"
-                className="glass min-h-[40px] flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
+                accessibilityLabel={aiLocked ? `${t.breakdown.button} — ${t.plan.proOnly}` : t.breakdown.button}
+                className="glass min-h-[44px] flex-row items-center justify-center gap-2 rounded-[14px] px-3 py-2"
               >
-                <Ionicons name="attach" size={17} color={colors.ink.charcoal} />
-                <Text className="shrink font-grotesk-semibold text-[13px] text-ink-charcoal">{t.session.addContext}</Text>
+                <Ionicons name="sparkles-outline" size={16} color={colors.ink.charcoal} />
+                <Text className="shrink font-grotesk-semibold text-[14px] text-ink-charcoal">{t.breakdown.button}</Text>
+                {aiLocked ? <Feather name="lock" size={12} color={colors.ink.charcoalMuted} /> : null}
               </AnimatedPressable>
+              <AllowanceNote meter="assist" onDark />
+              {aiLocked ? (
+                <Text className="text-center font-grotesk-medium text-[13px] text-ink-charcoal-muted" style={rtl}>
+                  {t.plan.aiIsPro}
+                </Text>
+              ) : null}
             </>
           ) : (
             <>
@@ -890,47 +877,19 @@ export function NextTaskCard({
           )}
         </Animated.View>
 
-        {/* Advice is asked for during a session, and goes with it. */}
-        {adviceShown && runningSession ? (
-          <Animated.View entering={FadeIn.duration(220)} className="gap-2 rounded-[20px] border border-orange-500/30 bg-white/5 p-4">
-            {advice.status === "loading" ? (
-              <View className="flex-row items-center gap-2.5">
-                <ActivityIndicator size="small" color={colors.orange[500]} />
-                <Text className="font-grotesk-medium text-[15px] text-ink-charcoal-muted">{t.session.readingTask}</Text>
-              </View>
-            ) : null}
-            {advice.status === "error" ? (
-              <Text className="font-grotesk-medium text-[15px] text-ink-charcoal-muted" style={rtl}>
-                {t.common.aiUnreachable}
-              </Text>
-            ) : null}
-            {advice.status === "ready" ? (
-              <>
-                {advice.data.headline ? (
-                  <HighlightedText
-                    text={advice.data.headline}
-                    className="font-grotesk-semibold text-[15px] leading-6 text-ink-charcoal"
-                    highlightClassName="font-grotesk-bold text-orange-500"
-                  />
-                ) : null}
-                {advice.data.detail ? (
-                  <HighlightedText
-                    text={advice.data.detail}
-                    className="font-grotesk-regular text-[15px] leading-6 text-ink-charcoal/80"
-                    highlightClassName="font-grotesk-bold text-orange-500"
-                  />
-                ) : null}
-                <ReportAiButton content={`${advice.data.headline} ${advice.data.detail}`} onDark />
-              </>
-            ) : null}
-          </Animated.View>
-        ) : null}
         </Animated.View>
       </ScrollView>
 
       {celebrating ? <CompletedOverlay title={task.title} origin={celebrationOrigin} /> : null}
 
-      {contextMounted && focusMode ? <ContextSheet visible={contextOpen} task={task} onClose={handleCloseContext} /> : null}
+      {breakdownContextMounted && focusMode ? (
+        <BreakdownContextSheet
+          visible={breakdownContextOpen}
+          task={task}
+          onClose={() => closeBreakdownContext()}
+          onContinue={() => closeBreakdownContext(handleOpenBreakdown)}
+        />
+      ) : null}
 
       {/* Mounted only while open — a Modal per card is expensive, and these
           cards are re-rendered on every swipe. */}

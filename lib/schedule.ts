@@ -1,6 +1,7 @@
 import { deadlineOnThisPhone } from "@/lib/deadline";
-import { addDaysToKey, daysBetweenKeys, weekdayOf, type LocalDate } from "@/lib/localDate";
+import { addDaysToKey, daysBetweenKeys, toLocalDateKey, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { computeScore, isActionable } from "@/lib/priority";
+import { isRoutine } from "@/lib/recurrence";
 import type { Task } from "@/types/task";
 
 // The days behind the Schedule screen and the Today page: each task on the
@@ -8,10 +9,15 @@ import type { Task } from "@/types/task";
 // every tick, new task and moved deadline by itself, and costs no AI.
 //
 // One rule, no planning (the user's call, 2026-10-07):
-// - A task is on its deadline's day. One that's late stays on the day it was
-//   due, shown there as overdue — it isn't carried over to today.
+// - A task is on its deadline's day. On the Schedule one that's late stays on
+//   the day it was due, shown there as overdue; the Today page also carries it
+//   over until it's done (buildToday, since 2026-10-26).
 // - A task without a deadline is on no day: it's in the Tasks tab.
 // - A finished task shows, ticked, on the day it was due.
+// - A routine (lib/recurrence.ts isRoutine) isn't one of a day's tasks: it's
+//   in the day's own routines list, open or done, and adds nothing to the
+//   day's work, its count or its dot (the user's call, 2026-10-28). A missed
+//   one simply passes, so it's never shown as late.
 // There's no amount of work a day is filled up to. That may come back later
 // as a feature of its own.
 
@@ -33,9 +39,20 @@ export type DayPlan = {
   items: ScheduleItem[];
   /** The finished tasks that were due on the day, in the order they were done. */
   done: Task[];
+  /** The day's routines, open or done: kept apart from its tasks (byRoutineOrder). */
+  routines: Task[];
   /** How long the open tasks take, together. */
   plannedMinutes: number;
 };
+
+/** Routines in a day's list: those with a time first, in time order, then the rest by title. */
+export function byRoutineOrder(a: Task, b: Task): number {
+  const aTime = a.deadline?.time;
+  const bTime = b.deadline?.time;
+  if (!!aTime !== !!bTime) return aTime ? -1 : 1;
+  if (aTime && bTime && aTime !== bTime) return aTime < bTime ? -1 : 1;
+  return a.title.localeCompare(b.title);
+}
 
 export type ScheduleOptions = {
   now: Date;
@@ -63,6 +80,7 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
     date: addDaysToKey(from, index),
     items: [],
     done: [],
+    routines: [],
     plannedMinutes: 0,
   }));
   const scores = new Map<string, number>();
@@ -74,6 +92,10 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
     const { date, time } = deadlineOnThisPhone(task.deadline);
     const day = days[daysBetweenKeys(from, date)];
     if (!day) continue;
+    if (isRoutine(task)) {
+      if (task.status === "completed" || task.status === "pending") day.routines.push(task);
+      continue;
+    }
     if (task.status === "completed") {
       day.done.push(task);
       continue;
@@ -95,8 +117,42 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
       return a.task.id < b.task.id ? -1 : a.task.id > b.task.id ? 1 : 0;
     });
     day.done.sort((a, b) => completedAt(a) - completedAt(b));
+    day.routines.sort(byRoutineOrder);
   }
   return days;
+}
+
+export type TodayList = {
+  /** The open tasks on today's list: those due today, and late ones from earlier days. */
+  ids: Set<string>;
+  /** Which of those are late — due on a day already gone. */
+  lateIds: Set<string>;
+  /** Finished: the tasks due today (whenever they were done), and late ones finished today. */
+  done: number;
+};
+
+/**
+ * The Today page's list. Unlike the Schedule, where a late task stays on the
+ * day it was due, Today carries it over until it's done or moved (the user's
+ * call, 2026-10-26 — "a task you missed yesterday never shows again" was the
+ * problem). A task without a deadline still isn't on it.
+ */
+export function buildToday(tasks: Task[], { now, today }: { now: Date; today: LocalDate }): TodayList {
+  const list: TodayList = { ids: new Set(), lateIds: new Set(), done: 0 };
+  for (const task of tasks) {
+    // Routines are listed apart, under the cards (components/TodayRoutines.tsx).
+    if (!task.deadline || isRoutine(task)) continue;
+    const { date } = deadlineOnThisPhone(task.deadline);
+    if (task.status === "completed") {
+      const finishedToday = !!task.completedAt && toLocalDateKey(new Date(task.completedAt)) === today;
+      if (date === today || (date < today && finishedToday)) list.done += 1;
+      continue;
+    }
+    if (!isActionable(task) || date > today) continue;
+    list.ids.add(task.id);
+    if (date < today) list.lateIds.add(task.id);
+  }
+  return list;
 }
 
 /** Monday of the week `date` is in — the Schedule's weeks run Monday to Sunday. */

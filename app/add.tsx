@@ -68,8 +68,8 @@ export default function Add() {
   const [customDurationText, setCustomDurationText] = useState("");
   const [customDurationError, setCustomDurationError] = useState(false);
 
-  // Today by default: a task added now usually means now, and Today only
-  // shows what's due today — "tomorrow" kept a first task off that page.
+  // Today by default (since 2026-10-12): a task added now usually means now,
+  // and Today shows what's due today — "tomorrow" kept a first task off it.
   const [deadlineValue, setDeadlineValue] = useState<DeadlineValue>("today");
   const [customDeadlineOpen, setCustomDeadlineOpen] = useState(false);
   const [customDeadline, setCustomDeadline] = useState<DeadlineDraft>(() => deadlineToDraft(undefined));
@@ -185,11 +185,9 @@ export default function Add() {
       recurrence: recurrence?.frequency ?? "none",
     });
 
-    if (router.canGoBack()) {
-      router.dismissTo("/(tabs)/tasks");
-    } else {
-      router.replace("/(tabs)/tasks");
-    }
+    // Back to the page it was opened from — Today, Tasks, Settings — now that
+    // Add Task is in the tab bar on every tab, rather than always to Tasks.
+    handleClose();
   };
 
   // Charcoal at the top, as on the Tasks page. The header covers the modal's

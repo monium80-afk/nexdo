@@ -15,6 +15,7 @@ import type { Translations } from "@/lib/i18n";
 import { toLocalDateKey } from "@/lib/localDate";
 import { describeRule } from "@/lib/recurrence";
 import type { ScheduleItem } from "@/lib/schedule";
+import { playSound } from "@/lib/sounds";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 
@@ -72,6 +73,7 @@ export function ScheduleItemRow({
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    playSound("complete");
     if (reduceMotion) {
       onComplete();
       return;

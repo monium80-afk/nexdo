@@ -12,10 +12,12 @@ import {
   nextSlot,
   normalizeRule,
   occursOn,
+  ruleTime,
   slotDueDate,
   startSeries,
   toLocalDateKey,
 } from "@/lib/recurrence";
+import { makeDeadline } from "@/lib/deadline";
 import type { RecurrenceRule } from "@/types/task";
 
 import { local, makeTask } from "./helpers";
@@ -123,6 +125,30 @@ describe("buildRule", () => {
     const built = buildRule({ frequency: "daily" }, undefined, local(2026, 10, 6, 10));
     assert.equal(built?.anchorDate, "2026-10-06");
     assert.equal(built?.hour, 18);
+  });
+
+  it("takes the time picked for the repeat over a date-only deadline", () => {
+    const built = buildRule({ frequency: "daily", time: "07:30" }, makeDeadline({ date: "2026-10-06" }), local(2026, 10, 6, 6));
+    assert.equal(built?.allDay, undefined);
+    assert.equal(built?.hour, 7);
+    assert.equal(built?.minute, 30);
+    assert.equal(built?.anchorDate, "2026-10-06");
+  });
+
+  it("starts tomorrow when the picked time has already gone by today", () => {
+    const built = buildRule({ frequency: "daily", time: "08:00" }, makeDeadline({ date: "2026-10-06" }), local(2026, 10, 6, 15));
+    assert.equal(built?.anchorDate, "2026-10-07");
+    assert.equal(built?.hour, 8);
+  });
+
+  it("is due any time on the day when the picker says so, whatever the deadline's time", () => {
+    const built = buildRule({ frequency: "daily", time: null }, makeDeadline({ date: "2026-10-06", time: "18:00" }), local(2026, 10, 6, 10));
+    assert.equal(built?.allDay, true);
+  });
+
+  it("follows the deadline's time when the picker has none, and ignores a malformed one", () => {
+    assert.equal(ruleTime({}, makeDeadline({ date: "2026-10-06", time: "18:00" })), "18:00");
+    assert.equal(ruleTime({ time: "25:00" }, makeDeadline({ date: "2026-10-06" })), undefined);
   });
 });
 

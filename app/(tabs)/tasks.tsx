@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -66,9 +66,9 @@ export default function TasksListScreen() {
   // Where the open menu hangs from — each drops out of its own chip.
   const [statusMenu, setStatusMenu] = useState<DropdownAnchor | null>(null);
   const [sortMenu, setSortMenu] = useState<DropdownAnchor | null>(null);
-  const statusChipRef = useRef<View>(null);
-  const sortChipRef = useRef<View>(null);
-  const openMenu = (chip: View | null, open: (anchor: DropdownAnchor) => void) => {
+  const statusChipRef = useRef<ComponentRef<typeof View>>(null);
+  const sortChipRef = useRef<ComponentRef<typeof View>>(null);
+  const openMenu = (chip: ComponentRef<typeof View> | null, open: (anchor: DropdownAnchor) => void) => {
     chip?.measureInWindow((x, y, width, height) => open({ x, y, width, height }));
   };
   const [deadlineNow, setDeadlineNow] = useState(() => new Date());

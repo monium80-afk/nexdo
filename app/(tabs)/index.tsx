@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
@@ -21,8 +21,8 @@ import { Chip } from "@/components/Chip";
 import { GemLogo } from "@/components/GemLogo";
 import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
-import { ResetWeekSheet } from "@/components/ResetWeekSheet";
 import { useTabBarHeight } from "@/components/TabBar";
+import { TodayRoutines, routinesFor } from "@/components/TodayRoutines";
 import { MOTION, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
@@ -32,8 +32,9 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { keyToLocalDate } from "@/lib/localDate";
 import { posthog } from "@/lib/posthog";
 import { recommendTasks } from "@/lib/priority";
-import { slippedTasks } from "@/lib/resetWeek";
-import { buildSchedule } from "@/lib/schedule";
+import { isRoutine } from "@/lib/recurrence";
+import { buildToday } from "@/lib/schedule";
+import { playSound } from "@/lib/sounds";
 import { useSessionStore } from "@/store/useSessionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -187,6 +188,8 @@ function FocusCardTransition({
 }
 
 const PROGRESS_MS = 650;
+/** After the last task's own sound has had its moment (lib/sounds.ts). */
+const DAY_DONE_SOUND_DELAY_MS = 650;
 // Pressed into the card, like the setup bar (SetupProgressBar).
 const TRACK_INSET = { boxShadow: "inset 0 1px 3px rgba(92, 58, 26, 0.16)" };
 
@@ -248,33 +251,6 @@ function TodayCard({ done, left }: { done: number; left: number }) {
   );
 }
 
-/**
- * Late tasks, said calmly: how many slipped, and the one way to deal with them
- * all — Reset my week (components/ResetWeekSheet.tsx). Orange, not red: it's a
- * nudge to re-plan, not an alarm.
- */
-function SlippedCard({ count, onReset }: { count: number; onReset: () => void }) {
-  const t = useTranslation();
-  const colors = useColors();
-  const rtl = useRtlText();
-  return (
-    <View className="card card--cream-soft flex-row items-center gap-3 px-4 py-3" style={gradients.card}>
-      <View className="tile tile--orange h-[38px] w-[38px] rounded-[12px]" style={gradients.tileOrange}>
-        <Feather name="rotate-cw" size={17} color={colors.orange[600]} />
-      </View>
-      <View className="flex-1 gap-0.5">
-        <Text className="font-grotesk-bold text-[15px] text-ink-cream" style={rtl}>
-          {t.resetWeek.cardTitle(count)}
-        </Text>
-        <Text className="font-grotesk-medium text-[13px] leading-[18px] text-ink-cream-muted" style={rtl}>
-          {t.resetWeek.cardBody}
-        </Text>
-      </View>
-      <PrimaryButton label={t.resetWeek.cardAction} onPress={onReset} />
-    </View>
-  );
-}
-
 export default function Next() {
   const colors = useColors();
   const t = useTranslation();
@@ -283,7 +259,7 @@ export default function Next() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
   const reduceMotion = useReducedMotion();
-  const rootRef = useRef<View>(null);
+  const rootRef = useRef<ComponentRef<typeof View>>(null);
   const startingSession = useRef(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const tasks = useTaskStore((state) => state.tasks);
@@ -315,23 +291,28 @@ export default function Next() {
   // the new day.
   const dayKey = useToday();
 
-  // Today, as the Schedule shows it (lib/schedule.ts): the open tasks due
-  // today and the ones due today already done. Late tasks stay on the day
-  // they were due, and tasks without a deadline aren't on any day — neither
-  // is on this page (the user's call, 2026-10-07).
-  const today = useMemo(() => {
-    const [plan] = buildSchedule(tasks, { now: new Date(), from: dayKey, until: dayKey });
-    return {
-      ids: new Set(plan.items.map((item) => item.task.id)),
-      done: plan.done.length,
-    };
-  }, [tasks, dayKey]);
+  // Routines (lib/recurrence.ts isRoutine) are never one of the cards, nor in
+  // the progress bar: they're listed under the cards instead (TodayRoutines).
+  // Repeating tasks that aren't routines stay cards, like any task.
+  const cardTasks = useMemo(() => tasks.filter((task) => !isRoutine(task)), [tasks]);
+  const routines = useMemo(() => routinesFor(tasks, dayKey), [tasks, dayKey]);
+
+  // Today's list (lib/schedule.ts buildToday): the open tasks due today, the
+  // late ones carried over from earlier days until they're done (the user's
+  // call, 2026-10-26 — before, a task missed yesterday never showed here
+  // again), and what's been finished. Tasks without a deadline aren't on it.
+  const today = useMemo(() => buildToday(cardTasks, { now: new Date(), today: dayKey }), [cardTasks, dayKey]);
+
+  // "Today" or "All tasks": the same stack of cards, either today's list or
+  // every open task, so any task can be picked up and focused on from here.
+  const [view, setView] = useState<"today" | "all">("today");
+  const showAll = view === "all";
 
   // Every open task, best first: pinned ones ahead, then the priority
   // engine's ranking.
   const rankedTasks = useMemo(
-    () => recommendTasks(tasks, { now: new Date() }, stickyTopId).map((entry) => entry.task),
-    [tasks, stickyTopId],
+    () => recommendTasks(cardTasks, { now: new Date() }, stickyTopId).map((entry) => entry.task),
+    [cardTasks, stickyTopId],
   );
   // Nothing due today at all — neither open nor done. Rather than an empty
   // page, Today then offers the best next thing from any day, or none: the
@@ -343,16 +324,12 @@ export default function Next() {
   // from Task Details on a task due another day (or never) runs here too.
   const pendingTasks = useMemo(
     () =>
-      nothingDueToday
+      showAll || nothingDueToday
         ? rankedTasks
         : rankedTasks.filter((task) => today.ids.has(task.id) || activeSession?.taskIds.includes(task.id)),
-    [rankedTasks, today, activeSession, nothingDueToday],
+    [rankedTasks, today, activeSession, nothingDueToday, showAll],
   );
 
-  // Open tasks whose day has gone by. They stay on that day (lib/schedule.ts),
-  // so this card is where they're seen — and moved on all at once.
-  const slipped = useMemo(() => slippedTasks(tasks, keyToLocalDate(dayKey)), [tasks, dayKey]);
-  const [resetOpen, setResetOpen] = useState(false);
   const total = pendingTasks.length;
 
   // The card follows its task, not its position: if the ranking moves while
@@ -382,12 +359,12 @@ export default function Next() {
 
   // The session's card is gone once its task is finished or deleted — nothing
   // is left to show the clock, so the session ends with it. Checked against
-  // every open task, not just today's.
+  // every open task, not just today's — a routine's too, started from its page.
   useEffect(() => {
     if (!activeSession) return;
-    const stillRunning = rankedTasks.some((task) => activeSession.taskIds.includes(task.id));
+    const stillRunning = tasks.some((task) => task.status === "pending" && activeSession.taskIds.includes(task.id));
     if (!stillRunning) leaveSession();
-  }, [activeSession, rankedTasks, leaveSession]);
+  }, [activeSession, tasks, leaveSession]);
 
   // Finished in the session, the card closes it itself once its celebration
   // has played (onCelebrated), before the task is marked done. This catches
@@ -448,6 +425,7 @@ export default function Next() {
           task_count: 1,
         });
         startSession({ taskIds: [task.id], plannedMinutes, energy: "ready" });
+        playSound("sessionStart");
       }
       setFocusClosing(false);
       setFocusLanded(false);
@@ -496,9 +474,21 @@ export default function Next() {
   // Done against what's left of today's tasks — not a session's task from
   // another day. The card shows once there's a day to measure: anything due
   // today, open or done.
-  const todayLeft = pendingTasks.filter((task) => today.ids.has(task.id)).length;
+  const todayLeft = today.ids.size;
   const todayTotal = today.done + todayLeft;
   const dateLabel = keyToLocalDate(dayKey).toLocaleDateString(t.locale, { weekday: "long", month: "long", day: "numeric" });
+
+  // The last of today's tasks done: a short chime, a beat after the task's
+  // own sound. Only on that change, seen here — not on opening the app to a
+  // day already finished, and not when the day itself moves on.
+  const previousLeft = useRef({ dayKey, left: todayLeft });
+  useEffect(() => {
+    const before = previousLeft.current;
+    previousLeft.current = { dayKey, left: todayLeft };
+    if (before.dayKey !== dayKey || before.left === 0 || todayLeft !== 0 || today.done === 0) return;
+    const timer = setTimeout(() => playSound("dayDone"), DAY_DONE_SOUND_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [dayKey, todayLeft, today.done]);
 
   // The page says what it is at the top: today's date over "Today", then
   // today's progress — so it reads as today's list, not the whole backlog.
@@ -530,19 +520,36 @@ export default function Next() {
             className="mt-1"
           />
         </View>
-        {todayTotal > 0 ? (
+        {/* Today's list, or every open task — the same cards either way. */}
+        {rankedTasks.length > 0 ? (
+          <View className="mt-3 flex-row gap-2" accessibilityRole="radiogroup">
+            <Chip
+              label={t.next.viewToday(todayLeft)}
+              selected={!showAll}
+              solid
+              accessibilityRole="radio"
+              onPress={() => setView("today")}
+            />
+            <Chip
+              label={t.next.viewAll(rankedTasks.length)}
+              selected={showAll}
+              solid
+              accessibilityRole="radio"
+              onPress={() => {
+                if (!showAll) posthog.capture("today_all_tasks_opened");
+                setView("all");
+              }}
+            />
+          </View>
+        ) : null}
+        {!showAll && todayTotal > 0 ? (
           <View className="mt-4">
             <TodayCard done={today.done} left={todayLeft} />
           </View>
         ) : null}
-        {slipped.length > 0 ? (
-          <View className="mt-3">
-            <SlippedCard count={slipped.length} onReset={() => setResetOpen(true)} />
-          </View>
-        ) : null}
         {/* Nothing due today, but open tasks elsewhere: the cards below are
             the best of those, and this says so. */}
-        {nothingDueToday && rankedTasks.length > 0 ? (
+        {!showAll && nothingDueToday && rankedTasks.length > 0 ? (
           <View className="mt-3 gap-0.5">
             <Text className="font-grotesk-bold text-[17px] text-ink-cream" style={rtl}>
               {t.next.nothingToday}
@@ -556,42 +563,50 @@ export default function Next() {
     </>
   );
 
-  const resetSheet = <ResetWeekSheet visible={resetOpen} onClose={() => setResetOpen(false)} />;
+  // Under the cards, on the Today view only — "All tasks" is the cards alone.
+  const routineList = showAll ? null : <TodayRoutines routines={routines} onOpen={handleDetails} />;
 
   if (!currentTask && !focusState) {
     // Nothing left for today: all of today's tasks are done (the bar is
     // full), or no open task at all. (Nothing due today with open tasks
-    // elsewhere shows those instead — "Up next" above.)
+    // elsewhere shows those instead — "Up next" above.) Today's routines
+    // still follow, under it.
     const finishedToday = today.done > 0;
+    const hasRoutines = !showAll && routines.length > 0;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
         {header}
-        {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
-          className="flex-1 items-center justify-center gap-3 px-6"
-          // Centred in what the tab bar leaves showing.
-          style={{ paddingBottom: tabBarHeight }}
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 + tabBarHeight }}
+          showsVerticalScrollIndicator={false}
         >
-          <View
-            className={`tile h-[52px] w-[52px] rounded-[16px] ${finishedToday ? "tile--green" : "tile--orange"}`}
-            style={finishedToday ? gradients.tileGreen : gradients.tileOrange}
+          {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
+            // Centred in the page when it's all there is; at the top, with
+            // the routines under it, when there are some.
+            className={`items-center justify-center gap-3 px-6 ${hasRoutines ? "pb-6 pt-8" : "flex-1"}`}
           >
-            <Ionicons name="checkmark-done" size={26} color={finishedToday ? colors.success[500] : colors.orange[500]} />
-          </View>
-          <Text className="text-card-title text-center text-ink-cream">
-            {finishedToday ? t.next.doneForToday : t.next.allCaughtUp}
-          </Text>
-          <Text className="text-body text-center text-ink-cream-muted">
-            {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
-          </Text>
-          {finishedToday ? (
-            <SecondaryButton icon="calendar" size="lg" label={t.next.openSchedule} onPress={openSchedule} className="mt-2" />
-          ) : (
-            <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
-          )}
-        </Animated.View>
-        {resetSheet}
+            <View
+              className={`tile h-[52px] w-[52px] rounded-[16px] ${finishedToday ? "tile--green" : "tile--orange"}`}
+              style={finishedToday ? gradients.tileGreen : gradients.tileOrange}
+            >
+              <Ionicons name="checkmark-done" size={26} color={finishedToday ? colors.success[500] : colors.orange[500]} />
+            </View>
+            <Text className="text-card-title text-center text-ink-cream">
+              {finishedToday ? t.next.doneForToday : t.next.allCaughtUp}
+            </Text>
+            <Text className="text-body text-center text-ink-cream-muted">
+              {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
+            </Text>
+            {finishedToday ? (
+              <SecondaryButton icon="calendar" size="lg" label={t.next.openSchedule} onPress={openSchedule} className="mt-2" />
+            ) : (
+              <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
+            )}
+          </Animated.View>
+          {routineList}
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -621,6 +636,7 @@ export default function Next() {
               onFocusBoundsChange={handleFocusBoundsChange}
             />
           ) : null}
+          {routineList ? <View className="mt-7">{routineList}</View> : null}
         </ScrollView>
       </View>
       {focusState && focusedTask ? (
@@ -636,7 +652,6 @@ export default function Next() {
         />
       ) : null}
       </View>
-      {resetSheet}
     </SafeAreaView>
   );
 }

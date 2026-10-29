@@ -14,6 +14,7 @@ import {
 } from "@/lib/localDate";
 import type {
   RecurrenceFrequency,
+  RecurrenceKind,
   RecurrenceRule,
   SeriesTemplate,
   Subtask,
@@ -94,7 +95,41 @@ export function normalizeRule(raw: Partial<RecurrenceRule> | null | undefined): 
   if (isLocalDateKey(raw.endDate)) rule.endDate = raw.endDate;
   if (raw.allDay === true) rule.allDay = true;
   if (raw.missed === "skip") rule.missed = "skip";
+  if (raw.kind === "routine" || raw.kind === "task") rule.kind = raw.kind;
   return rule;
+}
+
+/**
+ * Average days between occurrences at or below which a repeat is a routine
+ * unless the user says otherwise (the user's call, 2026-10-28): daily, every 2
+ * or 3 days, or 3+ days a week ("gym Mon, Wed, Fri") are routines; once a
+ * week, monthly or yearly ("pay rent") are repeating tasks.
+ */
+const ROUTINE_MAX_AVERAGE_GAP_DAYS = 3;
+
+/** What a repeat is by default, from how often it comes round. */
+export function defaultRecurrenceKind(rule: Pick<RecurrenceRule, "frequency" | "interval" | "weekdays">): RecurrenceKind {
+  const interval = Math.max(1, rule.interval || 1);
+  switch (rule.frequency) {
+    case "daily":
+      return interval <= ROUTINE_MAX_AVERAGE_GAP_DAYS ? "routine" : "task";
+    case "weekly": {
+      const perWeek = Math.max(1, rule.weekdays?.length ?? 1);
+      return (7 * interval) / perWeek <= ROUTINE_MAX_AVERAGE_GAP_DAYS ? "routine" : "task";
+    }
+    default:
+      return "task";
+  }
+}
+
+/** A rule's kind: the one chosen (or set when it was made), or its default. */
+export function recurrenceKind(rule: RecurrenceRule): RecurrenceKind {
+  return rule.kind ?? defaultRecurrenceKind(rule);
+}
+
+/** An occurrence of a routine — Today lists it under the cards, not among them. */
+export function isRoutine(task: Pick<Task, "recurrence">): boolean {
+  return !!task.recurrence && recurrenceKind(task.recurrence.rule) === "routine";
 }
 
 /** Whether the rule has an occurrence on this day (ignoring the end date). */
@@ -233,20 +268,43 @@ export type RuleInput = {
   endDate?: string;
   /** What happens to a missed occurrence — see RecurrenceRule.missed. Keep when absent. */
   missed?: "keep" | "skip";
+  /**
+   * The time of day every occurrence is due, "HH:MM" (24h) — chosen in the
+   * repeat picker itself since 2026-10-26, so a repeating task can have a
+   * time without one being set on the deadline first. null: any time on the
+   * day. Absent: whatever the task's deadline says (older callers, the AI).
+   */
+  time?: string | null;
+  /**
+   * Routine or repeating task. Absent: the default for how often it repeats
+   * (defaultRecurrenceKind), which buildRule then stores on the rule, so the
+   * series keeps it.
+   */
+  kind?: RecurrenceKind;
 };
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** The time a rule built from `input` uses: its own, if it has one, else the deadline's — or none. */
+export function ruleTime(input: Pick<RuleInput, "time">, deadline: TaskDeadline | undefined): string | undefined {
+  if (input.time === null) return undefined;
+  if (typeof input.time === "string" && TIME_PATTERN.test(input.time)) return input.time;
+  return deadline?.time;
+}
 
 /**
  * A rule for a task with deadline `due` (a TaskDeadline, or an ISO instant as
- * older callers pass). It takes that time of day — or, for a date-only
- * deadline or none at all, no time: the occurrences are due on their day
- * ("memorize Qur'an every day" is today, not today at 18:00). It is anchored
+ * older callers pass). It takes the time the picker chose (input.time), or
+ * else that deadline's time of day — or, for a date-only deadline or none at
+ * all, no time: the occurrences are due on their day ("memorize Qur'an every
+ * day" is today, not today at 18:00). It is anchored
  * on its first occurrence on or after the due day (today without one) — never
  * on a day already gone, and never on an occurrence whose time has already
  * passed ("every day at 9" set up at 15:00 starts tomorrow).
  */
 export function buildRule(input: RuleInput, due: TaskDeadline | string | undefined, now: Date): RecurrenceRule | null {
   const deadline = typeof due === "string" ? deadlineFromInstant(due) : due;
-  const time = deadline?.time;
+  const time = ruleTime(input, deadline);
   const [hour, minute] = time ? time.split(":").map(Number) : [DEFAULT_RECURRENCE_HOUR, 0];
   const draft = normalizeRule({
     frequency: input.frequency,
@@ -261,6 +319,7 @@ export function buildRule(input: RuleInput, due: TaskDeadline | string | undefin
     missed: input.missed,
   });
   if (!draft) return null;
+  draft.kind = input.kind ?? defaultRecurrenceKind(draft);
   const today = toLocalDateKey(now);
   let rule = anchorRuleOnOrAfter(draft, draft.anchorDate > today ? draft.anchorDate : today);
   if (rule && Date.parse(slotDueDate(rule, rule.anchorDate)) < now.getTime()) {
@@ -471,8 +530,24 @@ function keyToDate(key: LocalDate): Date {
   return new Date(y, m - 1, d);
 }
 
-/** "Every Monday", "Every 2 weeks on Mon, Thu", "Monthly on day 15", "Every day until Dec 31" — in the app language. */
-export function describeRule(rule: RecurrenceRule, t: Translations): string {
+/** A rule's time of day as the app shows times ("8:00 AM"), or undefined for an all-day rule. */
+export function formatRuleTime(rule: Pick<RecurrenceRule, "hour" | "minute" | "allDay">, locale: string): string | undefined {
+  if (rule.allDay) return undefined;
+  return new Date(2024, 0, 1, rule.hour, rule.minute).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+}
+
+/**
+ * "Every Monday", "Every 2 weeks on Mon, Thu", "Monthly on day 15", "Every day
+ * until Dec 31" — in the app language. `withTime` adds the time of day ("Every
+ * day at 8:00 AM") where there's room for it; a list's small pill leaves it out.
+ */
+export function describeRule(rule: RecurrenceRule, t: Translations, { withTime = false }: { withTime?: boolean } = {}): string {
+  const described = describeRuleDays(rule, t);
+  const time = withTime ? formatRuleTime(rule, t.locale) : undefined;
+  return time ? t.recurrence.atTime(described, time) : described;
+}
+
+function describeRuleDays(rule: RecurrenceRule, t: Translations): string {
   const r = t.recurrence;
   let label: string;
   switch (rule.frequency) {

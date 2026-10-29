@@ -25,31 +25,17 @@ export const en = {
   /** Asked once before anything goes to Google's AI (lib/aiConsentPrompt.ts). */
   aiConsent: {
     title: "Use AI with Nexdo?",
-    body: "To organize your tasks, Nexdo sends what you type, say or photograph for an AI feature to Google's Gemini AI, which processes it and sends back the result. You can change this anytime in Settings → AI.",
+    body: "To organize your tasks, Nexdo sends what you type, say or photograph for an AI feature to Google's Gemini AI, which processes it and sends back the result.",
     allow: "Allow",
     notNow: "Not now",
     privacy: "Privacy policy",
   },
 
-  /** The "Undo" toast after finishing, deleting or resetting tasks (components/UndoToast.tsx). */
+  /** The "Undo" toast after finishing or deleting a task (components/UndoToast.tsx). */
   undoToast: {
     undo: "Undo",
     done: (title: string) => `Done: ${title}`,
     deleted: (title: string) => `Deleted: ${title}`,
-    reset: (count: number) => `Reset ${count} ${plural(count, "task", "tasks")}`,
-  },
-
-  /** Reset my week (components/ResetWeekSheet.tsx) and its card on the Today page. */
-  resetWeek: {
-    title: "RESET MY WEEK",
-    intro:
-      "These are still on the days they were due. Nexdo suggests a new day for each over the coming week — tap one to change it. Nothing moves until you confirm.",
-    done: "Already done",
-    noDate: "No deadline",
-    confirm: "Reset my week",
-    cardTitle: (count: number) => `${count} ${plural(count, "task", "tasks")} slipped`,
-    cardBody: "Give each a new day in one go.",
-    cardAction: "Reset",
   },
 
   tabs: {
@@ -106,6 +92,7 @@ export const en = {
   planTemplate: ["Gather what you need", "Do the core work", "Wrap up and review"],
 
   next: {
+    routinesTitle: "ROUTINES",
     allCaughtUp: "All caught up",
     allCaughtUpBody: "You've completed everything on your list. Add a new task to keep going.",
     addATask: "Add a task",
@@ -154,6 +141,9 @@ export const en = {
     /** Today's card: what's left and what's done. */
     tasksLeft: (count: number) => `${count} ${plural(count, "task", "tasks")} left`,
     doneOfTotal: (done: number, total: number) => `${done} of ${total} done`,
+    /** The switch under the title: today's list (late tasks included), or every open task. */
+    viewToday: (count: number) => `Today · ${count}`,
+    viewAll: (count: number) => `All tasks · ${count}`,
   },
 
   /** The Schedule screen (app/schedule.tsx): the week — or the whole year — and the plan for each day. */
@@ -213,11 +203,22 @@ export const en = {
     /** A session on a task with no duration, which has no timer. */
     noTimer: "No timer for this one — tap Complete once it's done.",
     /** The session's button for a photo, document or note about the task. */
-    addContext: "Add context",
-    contextIntro: "Show Nexdo what you're working on — a photo of the instructions, a document or a note. It updates this task's steps and advice.",
   },
 
   breakdown: {
+    button: "Break it down",
+    contextTitle: "BREAK IT DOWN",
+    contextHeadline: "Show Nexdo the task",
+    contextBody: "Nexdo reads it and splits the task into real steps. A photo of the instructions works best.",
+    photoHint: "The sheet, the instructions, the whiteboard",
+    fileHint: "A PDF or a text file",
+    sayIt: "Say it",
+    sayItHint: "Describe the task in a sentence or two",
+    listening: "Listening… tap to stop",
+    stopListening: "Stop and use what I said",
+    writingItDown: "Writing it down…",
+    couldntHear: "Nexdo couldn't catch that. Try again somewhere quieter, or skip.",
+    skipContext: "Just break it down",
     eyebrow: "AI BREAKDOWN",
     close: "Close AI breakdown",
     steps: (count: number) => `${count} ${plural(count, "step", "steps")}`,
@@ -260,6 +261,8 @@ export const en = {
     notes: "NOTES",
     contextTitle: "ADD CONTEXT FOR AI",
     contextPlaceholder: "e.g. I already finished the research.",
+    /** The same card on Free, which has no AI. */
+    contextLocked: "Tell Nexdo more — a note, a photo, a document — and its AI updates this task's steps, deadline and advice for you. Part of Nexdo Pro.",
     deleteTask: "Delete Task",
     saveChanges: "Save Changes",
     deleteConfirmTitle: "Delete this task?",
@@ -460,11 +463,15 @@ export const en = {
     steps: {
       next: {
         title: "Today",
-        body: "What's due today, with the task most worth doing on top. Swipe for the others, or tap Start session to focus.",
+        body: "What's due today — and anything late — with the task most worth doing on top. Swipe for the others, or switch to All tasks to pick any of them.",
       },
       tasks: {
         title: "All your tasks",
-        body: "Everything on your plate, in one list. Add Task adds one by hand; tap a task to change it, and tick it off when it's done.",
+        body: "Everything on your plate, in one list. Tap a task to change it, and tick it off when it's done.",
+      },
+      add: {
+        title: "Add a task",
+        body: "Tap + to add a task by hand, from any tab.",
       },
       voice: {
         title: "Magic mic",
@@ -521,11 +528,21 @@ export const en = {
 
   /** Repeating tasks — the rule in words, and the picker on the Add form and Task Details. */
   recurrence: {
+    kindTitle: "TYPE",
+    kinds: { routine: "Routine", task: "Recurring task" },
+    routineHint: "Listed under your cards on Today. If you miss one, it simply passes.",
+    taskHint: "One of your cards on Today, like any task.",
     everyDays: (n: number) => (n === 1 ? "Every day" : `Every ${n} days`),
     everyWeeks: (n: number, days: string) => (n === 1 ? `Every week on ${days}` : `Every ${n} weeks on ${days}`),
     everyMonths: (n: number, day: number) => (n === 1 ? `Every month on day ${day}` : `Every ${n} months on day ${day}`),
     everyYears: (n: number, date: string) => (n === 1 ? `Every year on ${date}` : `Every ${n} years on ${date}`),
     until: (label: string, date: string) => `${label}, until ${date}`,
+    /** "Every day at 8:00 AM" — the rule with its time of day. */
+    atTime: (label: string, time: string) => `${label} at ${time}`,
+    /** The picker's time-of-day row. */
+    timeOfDay: "AT",
+    anyTime: "Any time",
+    setTime: "Set a time",
     title: "REPEAT",
     frequencies: { none: "Doesn't repeat", daily: "Daily", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" },
     every: "Every",
@@ -691,11 +708,6 @@ export const en = {
 
     language: "LANGUAGE",
 
-    ai: "AI",
-    aiToggle: "AI features",
-    aiToggleBody:
-      "Sends what you give an AI feature (text, voice, photos, files) to Google's Gemini AI to process. Off: nothing goes to the AI, and adding tasks by hand still works.",
-
     support: "HELP & SUPPORT",
     help: "FAQ / Help",
     helpBody: "Answers to common questions, or get in touch.",
@@ -716,7 +728,7 @@ export const en = {
       media: "Photos and documents",
       voice: "Voice notes",
       live: "Magic mic",
-      assist: "Breakdowns and advice",
+      assist: "AI breakdowns",
     },
     minutes: (count: number) => `${count} min`,
     used: {
@@ -724,10 +736,22 @@ export const en = {
       media: "You've used this month's photos and documents.",
       voice: "You've used this month's voice note minutes.",
       live: "You've used this month's Magic mic minutes.",
-      assist: "You've used this month's breakdowns and advice.",
+      assist: "You've used this month's AI breakdowns.",
     },
-    /** Free has no Magic mic at all. */
-    liveProOnly: "Magic mic comes with Nexdo Pro.",
+    /** Free has no AI at all (since 2026-10-26): the paywall's headline when opened from one of these. */
+    proFeature: {
+      chat: "Notes for Nexdo's AI come with Nexdo Pro.",
+      media: "Photos and documents for Nexdo's AI come with Nexdo Pro.",
+      voice: "Voice notes come with Nexdo Pro.",
+      live: "Magic mic comes with Nexdo Pro.",
+      assist: "AI breakdowns come with Nexdo Pro.",
+    },
+    /** Settings → Your plan on Free, in place of when the allowance starts again. */
+    freeNoAi: "Free is Nexdo by hand: tasks, Today, the Schedule, sessions and reminders. Every AI feature comes with Pro.",
+    /** Under a focus session's AI buttons on Free. */
+    aiIsPro: "AI help comes with Nexdo Pro.",
+    /** Opens the plans from a locked AI feature. */
+    seePro: "See Nexdo Pro",
     resets: "Your allowance starts again on the 1st.",
     /** Under an AI feature once few are left (components/AllowanceNote.tsx). */
     left: {
@@ -735,11 +759,9 @@ export const en = {
       media: (count: number) => `${count} ${plural(count, "photo or document", "photos and documents")} left this month`,
       voice: (minutes: number) => `${minutes} min of voice notes left this month`,
       live: (minutes: number) => `${minutes} min of Magic mic left this month`,
-      assist: (count: number) => `${count} ${plural(count, "breakdown or tip", "breakdowns and tips")} left this month`,
+      assist: (count: number) => `${count} ${plural(count, "breakdown", "breakdowns")} left this month`,
     },
-    /** After what ran out, on Free: opens the plans. */
-    getMore: "Get more with Pro",
-    upgradeHint: "Nexdo Pro gives you far more each month — and adding tasks by hand is always free.",
+    upgradeHint: "Nexdo's AI is part of Pro. Adding, planning and focusing on tasks by hand stays free.",
     limitTitle: "Monthly limit reached",
     /** Settings → Your plan: what the month has used so far. */
     thisMonth: "This month",
@@ -846,8 +868,6 @@ export const en = {
       `${count} ${plural(count, "task", "tasks")} due today.${top ? ` Start with "${top}".` : ""}`,
     dailyOpenBody: (count: number, top: string) =>
       `${count} open ${plural(count, "task", "tasks")}.${top ? ` Start with "${top}".` : ""}`,
-    /** Added to the morning plan when tasks have slipped past their day. */
-    dailySlippedNote: (count: number) => `${count} ${plural(count, "task", "tasks")} slipped — reset your week in Nexdo.`,
     /** Two days before a free trial turns into a paid plan (lib/trialReminder.ts). */
     trialEndingTitle: "Your free trial ends in 2 days",
     trialEndingBody: (date: string) =>
@@ -1026,7 +1046,7 @@ export const en = {
   /** Onboarding step 10 — the plans, before the account is made. Prices come from the store. */
   onboardingPaywall: {
     headline: "Here's what's included.",
-    body: "Free covers the basics. Pro gives Nexdo's AI far more room, every month:",
+    body: "Free is Nexdo by hand — adding, planning and focusing on your tasks. Pro adds Nexdo's AI, every month:",
     bestValue: (percent: number) => `BEST VALUE · SAVE ${percent}%`,
     /** What a Pro month includes, from lib/plan.ts. */
     features: {
@@ -1034,7 +1054,7 @@ export const en = {
       media: (count: number) => `${count} photos and documents`,
       voice: (minutes: number) => `${minutes} min of voice notes`,
       live: (minutes: number) => `${minutes} min of Magic mic`,
-      assist: (count: number) => `${count} breakdowns and advice`,
+      assist: (count: number) => `${count} AI breakdowns`,
     },
   },
 
