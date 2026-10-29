@@ -86,6 +86,21 @@ Set-Location $project
 npx expo prebuild --platform android --no-install
 if ($LASTEXITCODE -ne 0) { throw "expo prebuild failed" }
 
+# The C++ build needs a ninja that can handle Windows paths over 260
+# characters (gesture-handler 3's generated files reach ~340): ninja 1.12,
+# which comes with the SDK's CMake 3.30+. The default CMake 3.22.1 brings
+# ninja 1.10, which fails with "Filename longer than 260 characters".
+# Prebuild regenerates android/, so this is written after it, every time.
+$sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "D:\Documents\Sdk" }
+$cmake = Get-ChildItem (Join-Path $sdk "cmake") -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' -and [version]$_.Name -ge [version]"3.30.0" } |
+  Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+if (-not $cmake) { throw "Install CMake 3.30 or newer from the Android SDK (sdkmanager `"cmake;3.31.6`") - 3.22.1's ninja can't handle long paths" }
+$localProps = Join-Path $project "android\local.properties"
+$kept = @()
+if (Test-Path $localProps) { $kept = @(Get-Content $localProps | Where-Object { $_ -notmatch '^cmake\.dir=' }) }
+$kept + "cmake.dir=$($cmake.FullName.Replace('\', '\\').Replace(':', '\:'))" | Set-Content $localProps -Encoding ascii
+
 Set-Location (Join-Path $project "android")
 # Phones only (32- and 64-bit ARM), like the dev build: x86/x86_64 are for
 # emulators and a few Chromebooks and would add a lot of native compile time.
