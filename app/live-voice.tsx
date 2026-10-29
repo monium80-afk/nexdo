@@ -6,7 +6,6 @@ import { BackHandler, Platform, ScrollView, Text, View } from "react-native";
 import Animated, { Easing, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AllowanceNote } from "@/components/AllowanceNote";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { IconButton, PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
 import { EmptyState } from "@/components/EmptyState";
@@ -224,9 +223,6 @@ function LiveVoice() {
             {problem === "planLimit" ? planLimitMessage("live") : t.live.problems[problem]}
           </Text>
         ) : null}
-        {/* What's left of the month's Magic mic, always: its minutes run
-            out unseen while talking, so they're never a surprise. */}
-        {problem ? null : <AllowanceNote meter="live" always />}
 
         {isActive ? (
           // Undo on the left, balanced by an empty slot on the right, so the

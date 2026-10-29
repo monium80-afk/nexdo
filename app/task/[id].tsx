@@ -22,7 +22,6 @@ import { ReportAiButton } from "@/components/ReportAiButton";
 import { RecurrencePicker } from "@/components/RecurrencePicker";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SectionHeader } from "@/components/SectionHeader";
-import { StartSessionButton } from "@/components/StartSessionButton";
 import { TaskEditPanel, type TaskEditChanges, type TaskEditPanelHandle } from "@/components/TaskEditPanel";
 import { DeadlineDatePicker, deadlineToDraft, draftToDeadline, type DeadlineDraft } from "@/components/TaskFormFields";
 import { TextField } from "@/components/TextField";
@@ -43,7 +42,6 @@ import type { Translations } from "@/lib/i18n";
 import { nextReminderFor, type ReminderPreferences } from "@/lib/reminders";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useReassessStore, type ContextAttachment } from "@/store/useReassessStore";
-import { useSessionStore } from "@/store/useSessionStore";
 import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import { withUndo } from "@/store/useUndoStore";
@@ -141,9 +139,6 @@ export default function TaskDetail() {
   const submitContext = useReassessStore((state) => state.submit);
   const retryContext = useReassessStore((state) => state.retry);
   const dismissContext = useReassessStore((state) => state.dismiss);
-  // This task's own session, while one runs: Start session becomes Resume.
-  const sessionHere = useSessionStore((state) => (id && state.session?.taskIds.includes(id) ? state.session : undefined));
-  const requestSessionOpen = useSessionStore((state) => state.requestOpen);
   const aiLocked = useAiLocked();
 
   // A note that ran into the end of the month's AI messages: the notice under
@@ -433,26 +428,6 @@ export default function TaskDetail() {
     router.back();
   };
 
-  // The session runs on the Today page, full screen, like one started from a
-  // card there (it asks, see useSessionStore.openRequest). A session already
-  // running on another task is ended first — asked, since its clock is lost.
-  const handleStartSession = () => {
-    const open = () => {
-      requestSessionOpen(task.id, Math.max(0, task.estimatedMinutes || 0));
-      if (router.canGoBack()) router.dismissTo("/");
-      else router.replace("/");
-    };
-    const running = useSessionStore.getState().session;
-    if (running && !running.taskIds.includes(task.id)) {
-      showAlert(t.taskDetail.switchSessionTitle, t.taskDetail.switchSessionBody, [
-        { text: t.session.keepGoing, style: "cancel" },
-        { text: t.taskDetail.switchSession, style: "destructive", onPress: open },
-      ]);
-      return;
-    }
-    open();
-  };
-
   const handleDelete = () => {
     const repeating = Boolean(task.recurrence) && task.status === "pending";
     // A browser's dialog can only say yes or no (lib/alert.ts), so the web
@@ -547,14 +522,6 @@ export default function TaskDetail() {
             accessibilityLabel={t.tasks.score(task.priorityScore)}
           />
         </View>
-        {/* Any open task can be worked on now — one with no deadline, or due
-            another day, never shows on Today, so this is its way in. Hidden
-            while editing: leaving would drop the edits. */}
-        {isOpen && !editing ? (
-          <View className="mt-1">
-            <StartSessionButton minutes={task.estimatedMinutes} runningSession={sessionHere} onPress={handleStartSession} />
-          </View>
-        ) : null}
       </ScreenHeader>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>

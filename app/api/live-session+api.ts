@@ -51,10 +51,14 @@ export type LiveSessionResponseBody = {
   sessionId?: string;
 };
 
-// The low-latency Live model — the "extended thinking" one reasons in the
-// background first, which is the opposite of what this is for. Audio in is
-// ≈$0.005/min; text in $0.75/M tokens; text out $4.50/M (Google, 2026-09).
-const LIVE_MODEL = "models/gemini-3.8-live";
+// Gemini 3.1 Flash Live since 2026-10-29. Gemini 3.8 Live had become slow:
+// about half the time a finished sentence waited 3–7 s before Google acted on
+// it (its speech recognition held it back; marking sentence ends ourselves
+// didn't help), where 3.1 Flash Live acted 0.1–0.5 s after every one, with
+// the same tool choices, on the same test clips. Same text prices ($0.75/M in,
+// $4.50/M out); audio in ≈$0.0045/min (≈$0.005 for 3.8). It's a preview
+// model: if Google retires it, try 3.8 Live again first.
+const LIVE_MODEL = "models/gemini-3.1-flash-live-preview";
 
 // The app stops listening once the session's time is up (lib/liveVoice.ts);
 // the token dies a minute after that — time to connect, and for Google to act

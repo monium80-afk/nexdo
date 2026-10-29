@@ -205,8 +205,10 @@ function TodayCard({ done, left }: { done: number; left: number }) {
   const colors = useColors();
   const reduceMotion = useReducedMotion();
   const total = done + left;
-  const fraction = total > 0 ? Math.min(1, done / total) : 0;
-  const finished = total > 0 && left === 0;
+  // Nothing due today at all: a clear day, shown as a full bar too.
+  const nothingDue = total === 0;
+  const fraction = nothingDue ? 1 : Math.min(1, done / total);
+  const finished = left === 0;
   const fill = useSharedValue(fraction);
   // The track's width, so the fill can slide in from the left as a whole pill
   // — its rounded end stays round at any length, which scaling would squash.
@@ -228,10 +230,12 @@ function TodayCard({ done, left }: { done: number; left: number }) {
         <View className="shrink flex-row items-center gap-2">
           {finished ? <Feather name="check-circle" size={17} color={colors.success[500]} /> : null}
           <Text className={`font-grotesk-bold text-[17px] ${finished ? "text-success-500" : "text-ink-cream"}`}>
-            {finished ? t.next.doneForToday : t.next.tasksLeft(left)}
+            {nothingDue ? t.next.nothingToday : finished ? t.next.doneForToday : t.next.tasksLeft(left)}
           </Text>
         </View>
-        <Text className="font-grotesk-semibold text-[13px] text-ink-cream-muted">{t.next.doneOfTotal(done, total)}</Text>
+        {nothingDue ? null : (
+          <Text className="font-grotesk-semibold text-[13px] text-ink-cream-muted">{t.next.doneOfTotal(done, total)}</Text>
+        )}
       </View>
       <View
         accessible
@@ -314,20 +318,16 @@ export default function Next() {
     () => recommendTasks(cardTasks, { now: new Date() }, stickyTopId).map((entry) => entry.task),
     [cardTasks, stickyTopId],
   );
-  // Nothing due today at all — neither open nor done. Rather than an empty
-  // page, Today then offers the best next thing from any day, or none: the
-  // same ranking, just not limited to today.
-  const nothingDueToday = today.ids.size === 0 && today.done === 0;
-
-  // Today's tasks, in that order. A task with a session running on it always
-  // stays — its card is the way back into the session, and a session started
-  // from Task Details on a task due another day (or never) runs here too.
+  // Today's tasks, in that order — only today's, even when none are left or
+  // none were due: other days' tasks are under "All tasks" (the user's call,
+  // 2026-10-29; Today used to fill an empty day with them). A task with a
+  // session running on it always stays — its card is the way back into it.
   const pendingTasks = useMemo(
     () =>
-      showAll || nothingDueToday
+      showAll
         ? rankedTasks
         : rankedTasks.filter((task) => today.ids.has(task.id) || activeSession?.taskIds.includes(task.id)),
-    [rankedTasks, today, activeSession, nothingDueToday, showAll],
+    [rankedTasks, today, activeSession, showAll],
   );
 
   const total = pendingTasks.length;
@@ -542,21 +542,11 @@ export default function Next() {
             />
           </View>
         ) : null}
-        {!showAll && todayTotal > 0 ? (
+        {/* Always there on Today once there's anything at all — full and
+            green when today's tasks are done, or when none were due. */}
+        {!showAll && (todayTotal > 0 || rankedTasks.length > 0 || routines.length > 0) ? (
           <View className="mt-4">
             <TodayCard done={today.done} left={todayLeft} />
-          </View>
-        ) : null}
-        {/* Nothing due today, but open tasks elsewhere: the cards below are
-            the best of those, and this says so. */}
-        {!showAll && nothingDueToday && rankedTasks.length > 0 ? (
-          <View className="mt-3 gap-0.5">
-            <Text className="font-grotesk-bold text-[17px] text-ink-cream" style={rtl}>
-              {t.next.nothingToday}
-            </Text>
-            <Text className="text-body text-ink-cream-muted" style={rtl}>
-              {t.next.upNextBody}
-            </Text>
           </View>
         ) : null}
       </View>
@@ -567,12 +557,29 @@ export default function Next() {
   const routineList = showAll ? null : <TodayRoutines routines={routines} onOpen={handleDetails} />;
 
   if (!currentTask && !focusState) {
-    // Nothing left for today: all of today's tasks are done (the bar is
-    // full), or no open task at all. (Nothing due today with open tasks
-    // elsewhere shows those instead — "Up next" above.) Today's routines
-    // still follow, under it.
-    const finishedToday = today.done > 0;
+    // No card left. On Today: today's tasks are all done — or none were due
+    // and the routines are all ticked — "Done for today"; none were due and
+    // routines are still open — just the routines; none were due at all —
+    // "Nothing due today", with the way to every other task. No open task
+    // anywhere (or the All tasks view, empty): "All caught up".
     const hasRoutines = !showAll && routines.length > 0;
+    const routinesDone = hasRoutines && routines.every((task) => task.status === "completed");
+    const finishedToday = !showAll && (todayTotal > 0 || routinesDone);
+    const routinesOnly = !showAll && !finishedToday && hasRoutines;
+    const nothingDue = !showAll && !finishedToday && !hasRoutines && rankedTasks.length > 0;
+    if (routinesOnly) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
+          {header}
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1, paddingTop: 16, paddingBottom: 28 + tabBarHeight }}
+            showsVerticalScrollIndicator={false}
+          >
+            {routineList}
+          </ScrollView>
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
         {header}
@@ -594,13 +601,17 @@ export default function Next() {
               <Ionicons name="checkmark-done" size={26} color={finishedToday ? colors.success[500] : colors.orange[500]} />
             </View>
             <Text className="text-card-title text-center text-ink-cream">
-              {finishedToday ? t.next.doneForToday : t.next.allCaughtUp}
+              {finishedToday ? t.next.doneForToday : nothingDue ? t.next.nothingToday : t.next.allCaughtUp}
             </Text>
-            <Text className="text-body text-center text-ink-cream-muted">
-              {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
-            </Text>
+            {nothingDue ? null : (
+              <Text className="text-body text-center text-ink-cream-muted">
+                {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
+              </Text>
+            )}
             {finishedToday ? (
               <SecondaryButton icon="calendar" size="lg" label={t.next.openSchedule} onPress={openSchedule} className="mt-2" />
+            ) : nothingDue ? (
+              <SecondaryButton icon="list" size="lg" label={t.next.viewAll(rankedTasks.length)} onPress={() => setView("all")} className="mt-2" />
             ) : (
               <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
             )}
