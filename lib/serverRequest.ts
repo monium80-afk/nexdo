@@ -145,7 +145,16 @@ export function parseTaskContext(raw: unknown): TaskContext | null {
     overdue: task.overdue === true ? true : undefined,
     completedLabel: clampString(task.completedLabel, 100),
     repeats: clampString(task.repeats, 160),
+    steps: optionalSteps(task.steps),
   };
+}
+
+/** A task's step labels, when the app sent them (Magic mic) — absent otherwise. */
+function optionalSteps(raw: unknown): string[] | undefined {
+  const steps = clampArray(raw, MAX_STEPS)
+    .map((step) => clampString(step, MAX_TITLE_LENGTH))
+    .filter((step): step is string => !!step);
+  return steps.length > 0 ? steps : undefined;
 }
 
 /** A step with no id — what the breakdown route sends and receives. */

@@ -542,16 +542,19 @@ export default function Next() {
             />
           </View>
         ) : null}
-        {/* Always there on Today once there's anything at all — full and
-            green when today's tasks are done, or when none were due. */}
-        {!showAll && (todayTotal > 0 || rankedTasks.length > 0 || routines.length > 0) ? (
-          <View className="mt-4">
-            <TodayCard done={today.done} left={todayLeft} />
-          </View>
-        ) : null}
       </View>
     </>
   );
+
+  // Always there on Today once there's anything at all — full and green when
+  // today's tasks are done, or when none were due. It scrolls with the cards
+  // and the routines (the user's call, 2026-10-31); only the title stays put.
+  const progressCard =
+    !showAll && (todayTotal > 0 || rankedTasks.length > 0 || routines.length > 0) ? (
+      <View className="px-6 pb-[20px] pt-[14px]">
+        <TodayCard done={today.done} left={todayLeft} />
+      </View>
+    ) : null;
 
   // Under the cards, on the Today view only — "All tasks" is the cards alone.
   const routineList = showAll ? null : <TodayRoutines routines={routines} onOpen={handleDetails} />;
@@ -572,9 +575,10 @@ export default function Next() {
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
           {header}
           <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingTop: 16, paddingBottom: 28 + tabBarHeight }}
+            contentContainerStyle={{ flexGrow: 1, paddingTop: progressCard ? 0 : 16, paddingBottom: 28 + tabBarHeight }}
             showsVerticalScrollIndicator={false}
           >
+            {progressCard}
             {routineList}
           </ScrollView>
         </SafeAreaView>
@@ -587,6 +591,7 @@ export default function Next() {
           contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
+          {progressCard}
           {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
           <Animated.View
             entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
@@ -633,9 +638,10 @@ export default function Next() {
       <View className="flex-1">
         <ScrollView
           // Clear of the tab bar, which floats over the foot of the page.
-          contentContainerStyle={{ paddingTop: 18, paddingBottom: 28 + tabBarHeight }}
+          contentContainerStyle={{ paddingTop: progressCard ? 0 : 18, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
+          {progressCard}
           {currentTask ? (
             <NextTaskCardStack
               tasks={pendingTasks}

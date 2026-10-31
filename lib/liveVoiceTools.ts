@@ -1,8 +1,10 @@
-import type { InboxAction, InboxActionType, InboxRecurrence } from "@/app/api/inbox+api";
+import type { InboxAction, InboxActionType, InboxFilter, InboxRecurrence } from "@/app/api/inbox+api";
 import { toStructuredAction } from "@/lib/ai/classifyIntent";
 import { guessDuration } from "@/lib/ai/extractTasks";
+import type { StructuredAction } from "@/lib/ai/types";
+import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { useTaskStore } from "@/store/useTaskStore";
-import type { Task } from "@/types/task";
+import type { RecurrenceKind, RecurrenceRule, StepDraft, Task } from "@/types/task";
 
 // Live voice's hands: Gemini Live calls the tools declared in
 // app/api/live-session+api.ts, and each call is carried out here, on the
@@ -15,7 +17,7 @@ import type { Task } from "@/types/task";
 export type LiveToolCall = { id: string; name: string; args: Record<string, unknown> };
 
 /** What the model hears back: whether it worked, and the id to use for "that" next time. */
-export type LiveToolResult = { ok: boolean; taskId?: string; note?: string; error?: string };
+export type LiveToolResult = { ok: boolean; taskId?: string; note?: string; error?: string; count?: number };
 
 type Snapshot = { taskId: string; before: Task | null };
 
@@ -24,6 +26,10 @@ const FREQUENCIES = ["daily", "weekly", "monthly", "yearly", "none"] as const;
 const PRIORITIES = ["critical", "high", "medium", "low"];
 const SHIFT_UNITS = ["minutes", "hours", "days", "weeks", "months"] as const;
 const SCOPES = ["this", "future", "series"] as const;
+const KINDS = ["routine", "task"] as const;
+const BULK_TYPES = { complete: "COMPLETE_TASKS", reopen: "REOPEN_TASKS", delete: "DELETE_TASKS", update: "UPDATE_TASKS" } as const;
+const FILTER_STATUSES = ["pending", "completed", "overdue", "all"] as const;
+const FILTER_PRIORITIES = ["high", "medium", "low"] as const;
 
 // Gemini Live sometimes repeats a call it has just made (seen in testing:
 // the same add_task twice, a quarter of a second apart). The same call again
@@ -79,8 +85,81 @@ function dueShiftOf(value: unknown): InboxAction["fields"]["dueDateShift"] {
   return amount && unit ? { amount, unit } : undefined;
 }
 
-function inboxAction(type: InboxActionType, taskId: string | null, fields: InboxAction["fields"]): InboxAction {
-  return { type, taskId, taskIds: null, filter: null, fields, confirmationRequired: false };
+function filterOf(value: unknown): InboxFilter | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const keywords = Array.isArray(raw.titleKeywords) ? raw.titleKeywords.map(text).filter((word): word is string => !!word) : [];
+  const filter: InboxFilter = {
+    status: oneOf(raw.status, FILTER_STATUSES),
+    titleKeywords: keywords.length > 0 ? keywords : undefined,
+    dueWithin: text(raw.dueWithin),
+    completedWithin: text(raw.completedWithin),
+    recurring: typeof raw.recurring === "boolean" ? raw.recurring : undefined,
+    hasDeadline: typeof raw.hasDeadline === "boolean" ? raw.hasDeadline : undefined,
+    priority: oneOf(raw.priority, FILTER_PRIORITIES),
+  };
+  return Object.values(filter).some((entry) => entry !== undefined) ? filter : null;
+}
+
+function inboxAction(
+  type: InboxActionType,
+  taskId: string | null,
+  fields: InboxAction["fields"],
+  bulk: { taskIds?: string[]; filter?: InboxFilter | null } = {},
+): InboxAction {
+  return { type, taskId, taskIds: bulk.taskIds ?? null, filter: bulk.filter ?? null, fields, confirmationRequired: false };
+}
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/** A series' rule as the repeat picker would hand it back — to change just its kind. */
+function ruleInputOf(rule: RecurrenceRule, kind: RecurrenceKind): RuleInput {
+  return {
+    frequency: rule.frequency,
+    interval: rule.interval,
+    weekdays: rule.weekdays,
+    monthDay: rule.monthDay,
+    endDate: rule.endDate,
+    missed: rule.missed,
+    time: rule.allDay ? null : `${pad(rule.hour)}:${pad(rule.minute)}`,
+    kind,
+  };
+}
+
+/**
+ * Runs a change made straight on the store (steps) and returns what undo
+ * needs: every task it added, changed or removed, as it was before. A task
+ * counts as changed when its updatedAt, status or steps moved — scores are
+ * recomputed for every task on each change, so the object itself always
+ * differs, and two changes can land in the same millisecond.
+ */
+function capture(run: () => void): Snapshot[] {
+  const before = new Map(useTaskStore.getState().tasks.map((task) => [task.id, task]));
+  run();
+  const after = useTaskStore.getState().tasks;
+  const changed: Snapshot[] = [];
+  for (const task of after) {
+    const old = before.get(task.id);
+    if (!old) changed.push({ taskId: task.id, before: null });
+    else if (old.updatedAt !== task.updatedAt || old.status !== task.status || old.subtasks !== task.subtasks) {
+      changed.push({ taskId: task.id, before: old });
+    }
+    before.delete(task.id);
+  }
+  for (const [taskId, old] of before) changed.push({ taskId, before: old });
+  return changed;
+}
+
+/** The task's steps, in order, as AI Breakdown's sheet edits them. */
+function stepDrafts(task: Task): StepDraft[] {
+  return (task.subtasks ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((step) => ({ id: step.id, label: step.label, estimatedMinutes: step.estimatedMinutes, completed: step.status === "completed" }));
+}
+
+function newStepId(index: number): string {
+  return `subtask-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** The same call with its arguments in another order is still the same call. */
@@ -124,32 +203,70 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
     return true;
   };
 
-  const perform = (action: InboxAction): LiveToolResult => {
+  /** The task the model means by its id, if it's still there. */
+  const taskFor = (alias: string | null): Task | undefined => {
+    const id = realId(alias);
+    return id ? useTaskStore.getState().tasks.find((task) => task.id === id) : undefined;
+  };
+
+  /**
+   * Carries out one action. `adjust` adds what /api/inbox's shape can't say
+   * (no deadline any more, routine or repeating task) to the operation it
+   * resolved to, before anything changes.
+   */
+  const perform = (action: InboxAction, adjust?: (structured: StructuredAction) => void): LiveToolResult => {
     const structured = toStructuredAction(action, { now: new Date(), realId });
-    if (!structured || structured.type === "UNKNOWN" || structured.type === "CLARIFY") {
+    if (!structured || structured.type === "UNKNOWN") {
       return { ok: false, error: "No task with that id — nothing changed." };
     }
+    if (structured.type === "CLARIFY") {
+      return { ok: false, error: "Couldn't tell which tasks or which date that means — nothing changed." };
+    }
+    adjust?.(structured);
     const store = useTaskStore.getState();
     // Adding a note is the one change that doesn't report its own undo.
     const noteTarget = structured.type === "ADD_TASK_CONTEXT" ? store.tasks.find((task) => task.id === structured.taskId) : undefined;
     const result = store.applyStructuredAction(structured);
-    if (structured.type === "OPERATE" && (result.taskIds?.length ?? 0) === 0) {
+    const touched = result.taskIds?.length ?? 0;
+    if (structured.type === "OPERATE" && touched === 0) {
       // Already done, already open, nothing to change: say why, keep no undo.
       return { ok: false, taskId: action.taskId ?? undefined, error: result.message };
     }
     const undo = result.undo ?? (noteTarget ? [{ taskId: noteTarget.id, before: noteTarget }] : []);
     if (undo.length > 0) undoStack.push(undo);
+    if (action.type.endsWith("_TASKS")) return { ok: true, count: touched };
     return { ok: true, taskId: result.taskId ? aliasFor(result.taskId) : (action.taskId ?? undefined) };
+  };
+
+  /** A change made straight on the store, kept for undo like the others. */
+  const performDirect = (alias: string, run: () => void): LiveToolResult => {
+    const undo = capture(run);
+    if (undo.length === 0) return { ok: false, taskId: alias, error: "Nothing changed." };
+    undoStack.push(undo);
+    return { ok: true, taskId: alias };
   };
 
   const dispatch = (call: LiveToolCall): LiveToolResult => {
     const { args } = call;
     const taskId = text(args.taskId) ?? null;
+    const recurrence = recurrenceOf(args.repeat);
     const details = {
       dueDatePhrase: text(args.dueDatePhrase),
       estimatedMinutes: number(args.estimatedMinutes),
       priority: oneOf(args.priority, PRIORITIES),
-      recurrence: recurrenceOf(args.repeat),
+      recurrence,
+    };
+    // "Every day — it's a routine": the kind rides along with a new rule.
+    const repeatKind = recurrence && args.repeat && typeof args.repeat === "object"
+      ? oneOf((args.repeat as Record<string, unknown>).kind, KINDS)
+      : undefined;
+    const withKind = (structured: StructuredAction) => {
+      if (!repeatKind) return;
+      if (structured.type === "CREATE_TASK") {
+        for (const draft of structured.drafts) if (draft.recurrence) draft.recurrence = { ...draft.recurrence, kind: repeatKind };
+      } else if (structured.type === "OPERATE" && structured.operation.kind === "update" && structured.operation.changes.recurrence) {
+        structured.operation.changes.recurrence = { ...structured.operation.changes.recurrence, kind: repeatKind };
+      }
     };
 
     switch (call.name) {
@@ -169,30 +286,120 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
           }
           // Not ok when it changed nothing (it already looked like that) or
           // couldn't be applied: the model hears why, and nothing is counted.
-          const updated = perform(inboxAction("UPDATE_TASK", alias, details));
+          const updated = perform(inboxAction("UPDATE_TASK", alias, details), withKind);
           return updated.ok
             ? { ...updated, note: "Already on the list — updated it instead of adding a copy." }
             : { ...updated, taskId: alias };
         }
         return perform(
           inboxAction("CREATE_TASK", null, { ...details, title, estimatedMinutes: details.estimatedMinutes ?? guessDuration(title) }),
+          withKind,
         );
       }
-      case "update_task":
+      case "update_task": {
+        const task = taskFor(taskId);
+        const removeDeadline = args.removeDeadline === true;
+        // Routine ↔ repeating task, keeping how often it repeats.
+        const kindOnly = !recurrence ? oneOf(args.repeatType, KINDS) : undefined;
         return perform(
           inboxAction("UPDATE_TASK", taskId, {
             ...details,
+            dueDatePhrase: removeDeadline ? undefined : details.dueDatePhrase,
             title: text(args.title),
-            dueDateShift: dueShiftOf(args.dueDateShift),
+            dueDateShift: removeDeadline ? undefined : dueShiftOf(args.dueDateShift),
+            estimatedMinutesDelta: number(args.estimatedMinutesDelta),
             recurrenceScope: oneOf(args.scope, SCOPES),
           }),
+          (structured) => {
+            withKind(structured);
+            if (structured.type !== "OPERATE" || structured.operation.kind !== "update") return;
+            const changes = structured.operation.changes;
+            if (removeDeadline) {
+              changes.deadline = null;
+              delete changes.keepTimeOfDay;
+            }
+            if (kindOnly && task?.recurrence) changes.recurrence = ruleInputOf(task.recurrence.rule, kindOnly);
+          },
         );
+      }
       case "complete_task":
         return perform(inboxAction("COMPLETE_TASK", taskId, {}));
       case "reopen_task":
         return perform(inboxAction("REOPEN_TASK", taskId, {}));
-      case "delete_task":
-        return perform(inboxAction("DELETE_TASK", taskId, { recurrenceScope: oneOf(args.scope, SCOPES) }));
+      case "delete_task": {
+        // "Delete the gym" means the gym, every repeat of it — skipping just
+        // today's is skip_occurrence. Before 2026-10-31 a delete without a
+        // scope only skipped this occurrence, so the task came straight back
+        // for the next day and looked as if it had been ticked off. A finished
+        // occurrence named on its own is just that one, though.
+        const task = taskFor(taskId);
+        const scope = oneOf(args.scope, SCOPES) ?? (task?.status === "completed" ? undefined : "series");
+        return perform(inboxAction("DELETE_TASK", taskId, { recurrenceScope: scope }));
+      }
+      case "skip_occurrence": {
+        const task = taskFor(taskId);
+        if (task && !task.recurrence) {
+          return { ok: false, taskId: taskId ?? undefined, error: "That task doesn't repeat — nothing to skip. To move it, use update_task." };
+        }
+        return perform(inboxAction("DELETE_TASK", taskId, { recurrenceScope: "this" }));
+      }
+      case "change_tasks": {
+        const kind = oneOf(args.action, Object.keys(BULK_TYPES) as (keyof typeof BULK_TYPES)[]);
+        if (!kind) return { ok: false, error: "action must be complete, reopen, delete or update." };
+        const taskIds = Array.isArray(args.taskIds) ? args.taskIds.map(text).filter((id): id is string => !!id) : [];
+        const filter = filterOf(args.filter);
+        if (taskIds.length === 0 && !filter) return { ok: false, error: "Say which tasks: taskIds or a filter." };
+        // Deleting finished tasks clears just those; deleting open ones that
+        // repeat stops them repeating but keeps what was already done.
+        const deleteScope: RecurrenceScope | undefined = filter?.status === "completed" || filter?.completedWithin ? undefined : "future";
+        return perform(
+          inboxAction(
+            BULK_TYPES[kind],
+            null,
+            kind === "update"
+              ? {
+                  dueDatePhrase: text(args.dueDatePhrase),
+                  dueDateShift: dueShiftOf(args.dueDateShift),
+                  priority: oneOf(args.priority, PRIORITIES),
+                  estimatedMinutesDelta: number(args.estimatedMinutesDelta),
+                }
+              : kind === "delete"
+                ? { recurrenceScope: deleteScope }
+                : {},
+            { taskIds, filter },
+          ),
+        );
+      }
+      case "set_steps": {
+        const task = taskFor(taskId);
+        if (!task || !taskId) return { ok: false, error: "No task with that id — nothing changed." };
+        if (task.status !== "pending") return { ok: false, taskId, error: "That task is already done — reopen it first." };
+        const said = Array.isArray(args.steps) ? args.steps : [];
+        const steps: StepDraft[] = said
+          .map((entry, index) => {
+            const raw = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+            const label = text(raw.title);
+            return label
+              ? { id: newStepId(index), label, estimatedMinutes: Math.max(1, Math.round(number(raw.estimatedMinutes) ?? 10)), completed: false }
+              : null;
+          })
+          .filter((step): step is StepDraft => !!step);
+        if (steps.length === 0) return { ok: false, taskId, error: "No steps were given." };
+        const kept = args.mode === "add" ? stepDrafts(task) : [];
+        return performDirect(taskId, () => useTaskStore.getState().setSteps(task.id, [...kept, ...steps]));
+      }
+      case "check_step": {
+        const task = taskFor(taskId);
+        if (!task || !taskId) return { ok: false, error: "No task with that id — nothing changed." };
+        if (task.status !== "pending") return { ok: false, taskId, error: "That task is already done." };
+        const steps = stepDrafts(task);
+        const index = Math.round(number(args.step) ?? 0) - 1;
+        if (index < 0 || index >= steps.length) return { ok: false, taskId, error: `It has ${steps.length} steps — no step ${index + 1}.` };
+        const done = args.done !== false;
+        if (steps[index].completed === done) return { ok: false, taskId, error: done ? "That step is already done." : "That step is already open." };
+        steps[index] = { ...steps[index], completed: done };
+        return performDirect(taskId, () => useTaskStore.getState().setSteps(task.id, steps));
+      }
       case "add_note": {
         const note = text(args.note);
         if (!note) return { ok: false, error: "The note was empty." };

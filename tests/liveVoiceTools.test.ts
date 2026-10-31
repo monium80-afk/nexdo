@@ -180,6 +180,79 @@ describe("live voice tools", () => {
     assert.deepEqual(byTitle("Team standup")?.recurrence?.rule.weekdays, [1, 3]);
   });
 
+  it("deletes a repeating task completely — it doesn't come back for tomorrow", () => {
+    const { runner } = withGym();
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "daily" } }));
+    assert.ok(byTitle("Gym")?.recurrence);
+    runner.run(call("delete_task", { taskId: "t1" }));
+    assert.deepEqual(tasks(), [], "no next occurrence, nothing ticked off");
+    assert.equal(runner.undo(), true);
+    assert.equal(byTitle("Gym")?.status, "pending");
+  });
+
+  it("skips just this occurrence of a repeating task, and refuses to skip a one-off task", () => {
+    const { runner, gym } = withGym();
+    assert.equal(runner.run(call("skip_occurrence", { taskId: "t1" })).ok, false);
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "daily" } }));
+    const before = byTitle("Gym")!;
+    assert.equal(runner.run(call("skip_occurrence", { taskId: "t1" })).ok, true);
+    const open = tasks().filter((task) => task.status === "pending");
+    assert.equal(open.length, 1);
+    assert.notEqual(open[0].id, gym, "the next repeat took its place");
+    assert.ok(open[0].dueDate! > (before.dueDate ?? ""));
+    assert.equal(tasks().some((task) => task.status === "completed"), false, "skipped, not done");
+  });
+
+  it("changes several tasks at once, by filter or by ids", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk", estimatedMinutes: 15, dueDatePhrase: "today" }));
+    runner.run(call("add_task", { title: "Call mom", estimatedMinutes: 10, dueDatePhrase: "today" }));
+    const done = runner.run(call("change_tasks", { action: "complete", filter: { status: "pending", dueWithin: "today" } }));
+    assert.deepEqual(done, { ok: true, count: 2 });
+    assert.equal(byTitle("Gym")?.status, "pending", "no deadline, so not due today");
+
+    const removed = runner.run(call("change_tasks", { action: "delete", filter: { status: "completed" } }));
+    assert.deepEqual(removed, { ok: true, count: 2 });
+    assert.deepEqual(tasks().map((task) => task.title), ["Gym"]);
+
+    runner.run(call("change_tasks", { action: "update", taskIds: ["t1"], priority: "high" }));
+    assert.equal(runner.run(call("change_tasks", { action: "complete" })).ok, false, "never every task without saying so");
+    runner.undo(); // the priority
+    runner.undo(); // the delete
+    assert.equal(tasks().length, 3, "undo brings the deleted ones back");
+  });
+
+  it("removes a deadline, adds minutes, and turns a repeating task into a routine and back", () => {
+    const { runner } = withGym();
+    runner.run(call("update_task", { taskId: "t1", dueDatePhrase: "tomorrow" }));
+    runner.run(call("update_task", { taskId: "t1", removeDeadline: true, estimatedMinutesDelta: 15 }));
+    assert.equal(byTitle("Gym")?.deadline, undefined);
+    assert.equal(byTitle("Gym")?.estimatedMinutes, 75);
+
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "weekly", weekdays: ["mon"], kind: "routine" } }));
+    assert.equal(byTitle("Gym")?.recurrence?.rule.kind, "routine");
+    runner.run(call("update_task", { taskId: "t1", repeatType: "task" }));
+    const rule = byTitle("Gym")?.recurrence?.rule;
+    assert.equal(rule?.kind, "task");
+    assert.deepEqual(rule?.weekdays, [1], "how often it repeats is kept");
+  });
+
+  it("gives a task steps, ticks them off — the last one finishes it — and undoes that", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("set_steps", { taskId: "t1", steps: [{ title: "Warm up", estimatedMinutes: 10 }, { title: "Legs", estimatedMinutes: 40 }] }));
+    assert.deepEqual(byTitle("Gym")?.subtasks?.map((step) => step.label), ["Warm up", "Legs"]);
+    runner.run(call("set_steps", { taskId: "t1", mode: "add", steps: [{ title: "Stretch", estimatedMinutes: 5 }] }));
+    assert.equal(byTitle("Gym")?.subtasks?.length, 3);
+
+    assert.equal(runner.run(call("check_step", { taskId: "t1", step: 1 })).ok, true);
+    assert.equal(runner.run(call("check_step", { taskId: "t1", step: 9 })).ok, false);
+    runner.run(call("check_step", { taskId: "t1", step: 2 }));
+    runner.run(call("check_step", { taskId: "t1", step: 3 }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    runner.undo();
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "pending");
+  });
+
   it("refuses an unknown tool and a task with no title", () => {
     const { runner } = withGym();
     assert.equal(runner.run(call("launch_rocket")).ok, false);

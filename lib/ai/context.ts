@@ -1,5 +1,5 @@
 import { capContextNotes } from "@/lib/contextFile";
-import { describeRuleForAi } from "@/lib/recurrence";
+import { describeRuleForAi, isRoutine } from "@/lib/recurrence";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { ImportanceLevel } from "@/lib/scoring";
 import { importanceLevelOf, isListed, isOverdue } from "@/lib/taskOperations";
@@ -28,6 +28,8 @@ export type TaskContext = {
   completedLabel?: string;
   /** Set on an occurrence of a repeating task: the rule, in words. */
   repeats?: string;
+  /** The task's steps in order, "✓ " before the finished ones — sent by Magic mic only (hooks/useLiveVoice.ts). */
+  steps?: string[];
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,7 +86,9 @@ export function taskToContext(task: Task, now: Date = new Date()): TaskContext {
     priority: importanceLevelOf(task.importance),
     overdue: isOverdue(task, now) || undefined,
     completedLabel: completed && task.completedAt ? completedLabelFor(task.completedAt, now) : undefined,
-    repeats: task.recurrence ? `${describeRuleForAi(task.recurrence.rule)} (this is one occurrence)` : undefined,
+    repeats: task.recurrence
+      ? `${describeRuleForAi(task.recurrence.rule)}, ${isRoutine(task) ? "a routine" : "a recurring task"} (this is one occurrence)`
+      : undefined,
   };
 }
 

@@ -72,7 +72,18 @@ export function useLiveVoice() {
           // Without their context notes: the live prompt names each task in
           // one line and never reads them, and a note can hold a whole
           // photo's or document's text — 80 of those would outgrow the request.
-          tasks: tasks.map((task, index) => ({ ...taskToContext(task, now), contextNotes: [], id: `t${index + 1}` })),
+          // Steps go too, so "I finished the second step" can be ticked off.
+          tasks: tasks.map((task, index) => ({
+            ...taskToContext(task, now),
+            contextNotes: [],
+            id: `t${index + 1}`,
+            steps: task.subtasks?.length
+              ? task.subtasks
+                  .slice()
+                  .sort((a, b) => a.order - b.order)
+                  .map((step) => `${step.status === "completed" ? "✓ " : ""}${step.label}`)
+              : undefined,
+          })),
           today: describeNow(now),
           language: getLanguage(),
         } satisfies LiveSessionRequestBody);

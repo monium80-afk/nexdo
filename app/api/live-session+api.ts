@@ -84,8 +84,43 @@ const REPEAT = {
     weekdays: { type: "ARRAY", items: { type: "STRING", enum: WEEKDAYS }, description: "Weekly only: which days." },
     monthDay: { type: "NUMBER", description: "Monthly only: day of the month." },
     endDatePhrase: { type: "STRING", description: 'When it stops, in English ("end of december").' },
+    kind: {
+      type: "STRING",
+      enum: ["routine", "task"],
+      description:
+        'Only if the user says which: "routine" for a habit kept up (read, gym, vitamins), "task" for a repeating job to get done (rent, weekly report). Leave out otherwise.',
+    },
   },
   required: ["frequency"],
+};
+
+const FILTER = {
+  type: "OBJECT",
+  description: "Which tasks, as criteria — for the ones not named by id, or \"all my …\".",
+  properties: {
+    status: { type: "STRING", enum: ["pending", "completed", "overdue", "all"], description: "pending = still open." },
+    titleKeywords: { type: "ARRAY", items: { type: "STRING" }, description: "Words in the task names." },
+    dueWithin: { type: "STRING", description: 'Due in this range, in English ("today", "this week", "before friday").' },
+    completedWithin: { type: "STRING", description: 'Finished in this range, in English ("yesterday", "last week").' },
+    recurring: { type: "BOOLEAN", description: "true = only repeating tasks and routines; false = only one-off tasks." },
+    hasDeadline: { type: "BOOLEAN" },
+    priority: { type: "STRING", enum: ["high", "medium", "low"] },
+  },
+};
+
+const SHIFT = {
+  type: "OBJECT",
+  description: 'Move the deadline by an amount ("two days later" → 2 days; "an hour earlier" → -1 hours).',
+  properties: {
+    amount: { type: "NUMBER" },
+    unit: { type: "STRING", enum: ["minutes", "hours", "days", "weeks", "months"] },
+  },
+  required: ["amount", "unit"],
+};
+
+const MINUTES_DELTA = {
+  type: "NUMBER",
+  description: 'Add or take away minutes from the length ("it\'ll take 30 more minutes" → 30, "10 minutes less" → -10).',
 };
 
 const DETAILS = {
@@ -102,10 +137,18 @@ const DETAILS = {
   repeat: REPEAT,
 };
 
-const SCOPE = {
+const UPDATE_SCOPE = {
   type: "STRING",
   enum: ["this", "future", "series"],
-  description: 'For a repeating task: just this occurrence (default), this and later ones ("from now on"), or all of them.',
+  description:
+    'Repeating tasks only. "this" = just this occurrence ("only today", "push today\'s gym to tonight"). "future" = this one and every later repeat ("from now on", or a change to the task itself: rename it, it takes 45 minutes, it\'s important). "series" = also rename past ones. Moving one day\'s date or time is "this" unless they say "from now on".',
+};
+
+const DELETE_SCOPE = {
+  type: "STRING",
+  enum: ["series", "future"],
+  description:
+    'Repeating tasks only. "series" (the default) = delete it completely, every repeat. "future" = stop it from now on but keep the times it was already done. To skip just one day, use skip_occurrence instead.',
 };
 
 // Declared in Gemini's OpenAPI subset, like the inbox's response schema. The
@@ -138,31 +181,32 @@ const FUNCTIONS = [
       },
       {
         name: "update_task",
-        description: "Change an existing task: rename it, move its deadline, change its length, importance or how it repeats.",
+        description:
+          "Change an existing task: rename it, move or remove its deadline, change its length or importance, make it repeat or stop repeating, turn it into a routine or a recurring task.",
         parameters: {
           type: "OBJECT",
           properties: {
             taskId: TASK_ID,
             title: { type: "STRING", description: "The new name, only when renaming." },
             estimatedMinutes: { type: "NUMBER", description: "The new length in minutes, only when the user changes it." },
+            estimatedMinutesDelta: MINUTES_DELTA,
             ...DETAILS,
-            dueDateShift: {
-              type: "OBJECT",
-              description: 'Move the deadline by an amount ("two days later" → 2 days; "an hour earlier" → -1 hours).',
-              properties: {
-                amount: { type: "NUMBER" },
-                unit: { type: "STRING", enum: ["minutes", "hours", "days", "weeks", "months"] },
-              },
-              required: ["amount", "unit"],
+            dueDateShift: SHIFT,
+            removeDeadline: { type: "BOOLEAN", description: 'true when the task should have no deadline any more ("no due date", "whenever").' },
+            repeatType: {
+              type: "STRING",
+              enum: ["routine", "task"],
+              description: 'Turn a repeating task into a "routine" (a habit) or back into a recurring "task", keeping how often it repeats.',
             },
-            scope: SCOPE,
+            scope: UPDATE_SCOPE,
           },
           required: ["taskId"],
         },
       },
       {
         name: "complete_task",
-        description: "Mark a task as done.",
+        description:
+          "Mark a task as done (\"I did it\", \"finished\", \"done\"). For a repeating task this ticks off the current one and the next repeat comes in. NEVER use it to delete or skip.",
         parameters: { type: "OBJECT", properties: { taskId: TASK_ID }, required: ["taskId"] },
       },
       {
@@ -172,8 +216,70 @@ const FUNCTIONS = [
       },
       {
         name: "delete_task",
-        description: "Delete a task.",
-        parameters: { type: "OBJECT", properties: { taskId: TASK_ID, scope: SCOPE }, required: ["taskId"] },
+        description:
+          "Delete a task for good (\"delete\", \"remove\", \"get rid of\", \"cancel\", \"I don't need it any more\"). A repeating task or routine is deleted completely, every repeat, unless the scope says otherwise.",
+        parameters: { type: "OBJECT", properties: { taskId: TASK_ID, scope: DELETE_SCOPE }, required: ["taskId"] },
+      },
+      {
+        name: "skip_occurrence",
+        description:
+          "Repeating tasks and routines only: skip just the current one (\"skip the gym today\", \"not reading tonight\", \"skip this week's report\"). It is not done and not deleted; the next repeat takes its place.",
+        parameters: { type: "OBJECT", properties: { taskId: TASK_ID }, required: ["taskId"] },
+      },
+      {
+        name: "change_tasks",
+        description:
+          "Do the same thing to several tasks at once: \"mark everything due today as done\", \"delete all my completed tasks\", \"move all overdue tasks to tomorrow\", \"make the gym and the essay high priority\".",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            action: { type: "STRING", enum: ["complete", "reopen", "delete", "update"] },
+            taskIds: { type: "ARRAY", items: { type: "STRING" }, description: "The tasks named, by id." },
+            filter: FILTER,
+            dueDatePhrase: DETAILS.dueDatePhrase,
+            dueDateShift: SHIFT,
+            priority: DETAILS.priority,
+            estimatedMinutesDelta: MINUTES_DELTA,
+          },
+          required: ["action"],
+        },
+      },
+      {
+        name: "set_steps",
+        description:
+          "Give a task its steps, as the user lists them (\"break the essay into research, outline, write\"). mode \"add\" keeps the steps it has and adds these after them.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            taskId: TASK_ID,
+            steps: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  title: { type: "STRING", description: "Short, in the user's words." },
+                  estimatedMinutes: { type: "NUMBER", description: "What the user said, or your realistic estimate." },
+                },
+                required: ["title", "estimatedMinutes"],
+              },
+            },
+            mode: { type: "STRING", enum: ["replace", "add"], description: "replace (default) or add." },
+          },
+          required: ["taskId", "steps"],
+        },
+      },
+      {
+        name: "check_step",
+        description: "Tick one of a task's steps off (\"I finished the outline\"), or back on with done false. Ticking the last one finishes the task.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            taskId: TASK_ID,
+            step: { type: "NUMBER", description: "The step's number in the task's list, starting at 1." },
+            done: { type: "BOOLEAN", description: "false to mark it not done again. Default true." },
+          },
+          required: ["taskId", "step"],
+        },
       },
       {
         name: "add_note",
@@ -201,6 +307,7 @@ function taskLine(task: TaskContext): string {
     task.estimatedMinutes > 0 ? `${task.estimatedMinutes} min` : "no duration",
     task.priority ? `${task.priority} priority` : undefined,
     task.repeats ? `repeats ${task.repeats}` : undefined,
+    task.steps ? `steps: ${task.steps.map((step, index) => `${index + 1}. ${step}`).join("; ")}` : undefined,
   ].filter(Boolean);
   return `${task.id} | ${task.title} | ${details.join(", ")}`;
 }

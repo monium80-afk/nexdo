@@ -24,7 +24,7 @@ import { MOTION, colors, gradients } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatTaskLength } from "@/lib/formatDuration";
-import { describeRule, isRoutine } from "@/lib/recurrence";
+import { describeRule } from "@/lib/recurrence";
 import { playSound } from "@/lib/sounds";
 import { getDueInfo, type DueTone } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
@@ -337,10 +337,10 @@ export function TaskCard({ task, onPress, onToggle }: TaskCardProps) {
               labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
             />
             {/* The rule in a few words, so a repeating task is recognisable in
-                the list — olive arrows for a routine, orange for a recurring task. */}
+                the list. */}
             {task.recurrence ? (
               <MetaPill
-                icon={<Feather name="repeat" size={14} color={isRoutine(task) ? colors.olive[500] : colors.orange[500]} />}
+                icon={<Feather name="repeat" size={14} color={colors.orange[500]} />}
                 label={describeRule(task.recurrence.rule, t)}
                 labelClassName="font-grotesk-medium text-[13px] text-ink-cream-muted"
               />
