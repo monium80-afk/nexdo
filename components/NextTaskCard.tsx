@@ -499,7 +499,7 @@ export function NextTaskCard({
         try {
           finish();
           // Only this task's own session ends with it.
-          if (useSessionStore.getState().session?.taskIds.includes(taskId)) leaveSession();
+          if (useSessionStore.getState().session?.taskIds.includes(taskId)) leaveSession("task_completed");
         } finally {
           pendingCelebrationTaskIds.current.delete(taskId);
           if (!onCelebrated) setCelebratedTaskId((current) => (current === taskId ? null : current));

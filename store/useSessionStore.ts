@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { posthog } from "@/lib/posthog";
 import type { EnergyLevel } from "@/lib/sessionPlan";
 
 /**
@@ -35,6 +36,25 @@ export function sessionElapsedMs(session: ActiveSession, now: number = Date.now(
   return session.elapsedMs + (session.runningSince === null ? 0 : now - session.runningSince);
 }
 
+/**
+ * How a session ended, for analytics: one event per session, so a funnel
+ * from `session_started` shows how many sessions get finished. A session
+ * counts as completed when its task was finished in it, or when its clock ran
+ * the full planned time — read here, as it ends, because the alarm's own
+ * timer only runs while the app is open.
+ */
+function captureSessionEnd(session: ActiveSession, taskCompleted: boolean) {
+  const elapsedMs = sessionElapsedMs(session);
+  const timeUp = session.plannedMinutes > 0 && elapsedMs >= session.plannedMinutes * 60_000;
+  const outcome = taskCompleted ? "task_completed" : timeUp ? "time_up" : "ended_early";
+  posthog.capture(outcome === "ended_early" ? "session_ended" : "session_completed", {
+    outcome,
+    elapsed_minutes: Math.round(elapsedMs / 60_000),
+    planned_minutes: session.plannedMinutes,
+    task_count: session.taskIds.length,
+  });
+}
+
 type SessionStore = {
   session: ActiveSession | null;
   /**
@@ -55,19 +75,22 @@ type SessionStore = {
   focusTask: (index: number) => void;
   /** Pulls a task out of the run ("I'm stuck") and keeps the focus in range. */
   dropTask: (taskId: string) => void;
-  leave: () => void;
+  /** Ends the session. "task_completed" when its task was finished in it. */
+  leave: (reason?: "task_completed") => void;
 };
 
 export const useSessionStore = create<SessionStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       session: null,
       openRequest: null,
 
       requestOpen: (taskId, plannedMinutes) => set({ openRequest: { taskId, plannedMinutes } }),
       clearOpenRequest: () => set({ openRequest: null }),
 
-      start: ({ taskIds, plannedMinutes, energy }) =>
+      start: ({ taskIds, plannedMinutes, energy }) => {
+        const replaced = get().session;
+        if (replaced) captureSessionEnd(replaced, false);
         set({
           session: {
             taskIds,
@@ -77,7 +100,8 @@ export const useSessionStore = create<SessionStore>()(
             elapsedMs: 0,
             runningSince: Date.now(),
           },
-        }),
+        });
+      },
 
       pause: () =>
         set((state) => {
@@ -124,7 +148,10 @@ export const useSessionStore = create<SessionStore>()(
           const dropped = session ? session.taskIds.indexOf(taskId) : -1;
           if (!session || dropped < 0) return {};
           const taskIds = session.taskIds.filter((id) => id !== taskId);
-          if (taskIds.length === 0) return { session: null };
+          if (taskIds.length === 0) {
+            captureSessionEnd(session, false);
+            return { session: null };
+          }
           // A task before the focused one going moves the focus down a place
           // with it; the focused one going hands it to the task after.
           const activeIndex = dropped < session.activeIndex ? session.activeIndex - 1 : session.activeIndex;
@@ -137,7 +164,11 @@ export const useSessionStore = create<SessionStore>()(
           };
         }),
 
-      leave: () => set({ session: null }),
+      leave: (reason) => {
+        const session = get().session;
+        if (session) captureSessionEnd(session, reason === "task_completed");
+        set({ session: null });
+      },
     }),
     {
       name: "nexdo-session",
