@@ -294,6 +294,22 @@ export async function purchasePlan(plan: PurchasesPackage): Promise<PurchaseOutc
   }
 }
 
+/**
+ * What a purchase just made is worth, for analytics: the store's product,
+ * price and currency, and whether it was a test — the Test Store, or a
+ * sandbox purchase from a development or TestFlight / internal build — so
+ * those stay apart from real customers' money. Read after purchasePlan, once
+ * Pro has been published.
+ */
+export function purchaseAnalytics(plan: PurchasesPackage) {
+  return {
+    product_id: plan.product.identifier,
+    price: plan.product.price,
+    currency: plan.product.currencyCode,
+    test: isTestStore || useSubscriptionStore.getState().pro?.isSandbox === true,
+  };
+}
+
 export type RestoreOutcome = "restored" | "nothing" | "offline" | "error";
 
 /** Brings back Pro bought with this phone's App Store / Google Play account. */
