@@ -19,7 +19,7 @@ import { showAlert } from "@/lib/alert";
 import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, SHOWN_METERS, type Meter, type Plan } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
 import { productPrice } from "@/lib/price";
-import { billedYearly, loadProPlans, purchasePlan, restorePurchases } from "@/lib/purchases";
+import { billedYearly, loadProPlans, purchaseAnalytics, purchasePlan, restorePurchases } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -157,7 +157,11 @@ function Paywall() {
     setBusy(false);
     if (outcome === "cancelled") return;
     if (outcome === "purchased") {
-      posthog.capture("paywall_purchased", { plan: selectedIsYearly ? "yearly" : "monthly", trial: trial !== null });
+      posthog.capture("paywall_purchased", {
+        plan: selectedIsYearly ? "yearly" : "monthly",
+        trial: trial !== null,
+        ...purchaseAnalytics(selected.package),
+      });
       // The screen closes itself as soon as Pro is on (see above).
       showAlert(t.paywall.welcomeTitle, t.paywall.welcomeBody);
       return;

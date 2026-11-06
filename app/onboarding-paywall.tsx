@@ -17,7 +17,7 @@ import { showAlert } from "@/lib/alert";
 import { displayLimit, SHOWN_METERS } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
 import { productPrice } from "@/lib/price";
-import { billedYearly, loadOnboardingPlans, purchasePlan, restorePurchases, trialPlanOf } from "@/lib/purchases";
+import { billedYearly, loadOnboardingPlans, purchaseAnalytics, purchasePlan, restorePurchases, trialPlanOf } from "@/lib/purchases";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 
 // Widened past the page margins and padded back, so the scroll's edges don't
@@ -92,7 +92,12 @@ export default function OnboardingPaywall() {
     setBusy(false);
     if (outcome === "cancelled") return;
     if (outcome === "purchased") {
-      posthog.capture("paywall_purchased", { plan: selectedIsYearly ? "yearly" : "monthly", trial: trial !== null, reason: "onboarding" });
+      posthog.capture("paywall_purchased", {
+        plan: selectedIsYearly ? "yearly" : "monthly",
+        trial: trial !== null,
+        reason: "onboarding",
+        ...purchaseAnalytics(selected.package),
+      });
       setDone(true);
       return;
     }
