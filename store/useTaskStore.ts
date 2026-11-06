@@ -10,6 +10,7 @@ import { deadlineFromDate, makeDeadline, reconcileDeadline, withDeadline, type D
 import { translate } from "@/lib/i18n";
 import { clearAllNotifications } from "@/lib/notifications";
 import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
+import { posthog } from "@/lib/posthog";
 import { buildRule, startSeries, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, createSkipRecord, recalcTask, type ImportanceLevel } from "@/lib/scoring";
 import { deleteTaskRows, deleteTaskRowsIfUnchanged, fetchTasks, subscribeToTasks, upsertTaskRows } from "@/lib/supabaseSync";
@@ -22,8 +23,10 @@ import {
   type OperationPlan,
   type TaskChanges,
   type TaskOperation,
+  type TaskOutcome,
 } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
+import { sessionElapsedMs, useSessionStore } from "@/store/useSessionStore";
 import type { StepDraft, Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
@@ -235,6 +238,19 @@ const SAMPLE_TASK_IDS = new Set([
   "reading-assignment",
   "water-plants",
 ]);
+
+/** One `task_completed` event per task a plan finished, and whether a focus session was running on it. */
+function captureCompletions(outcomes: TaskOutcome[]) {
+  const session = useSessionStore.getState().session;
+  for (const outcome of outcomes) {
+    if (outcome.outcome !== "completed") continue;
+    const inSession = session?.taskIds.includes(outcome.taskId) ? session : undefined;
+    posthog.capture("task_completed", {
+      had_session: Boolean(inSession),
+      minutes_in_session: inSession ? Math.round(sessionElapsedMs(inSession) / 60_000) : 0,
+    });
+  }
+}
 
 function isSampleTask(task: Task): boolean {
   return SAMPLE_TASK_IDS.has(task.id);
@@ -807,6 +823,7 @@ export const useTaskStore = create<TaskStore>()(
       executeOperation: (operation, now = new Date()) => {
         const plan = planOperation(get().tasks, operation, now);
         get().applyPlan(plan, now);
+        captureCompletions(plan.outcomes);
         return plan;
       },
 
@@ -892,6 +909,7 @@ export const useTaskStore = create<TaskStore>()(
             estimatedMinutes: 0,
           });
           get().applyPlan(delta, now);
+          captureCompletions([delta.outcome]);
           return;
         }
 
@@ -1300,6 +1318,7 @@ export const useTaskStore = create<TaskStore>()(
             estimatedMinutes: 0,
           });
           get().applyPlan(delta, now);
+          captureCompletions([delta.outcome]);
           return;
         }
 

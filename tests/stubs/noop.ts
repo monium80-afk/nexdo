@@ -13,8 +13,13 @@ export function listenForNotificationTaps() {
   return () => {};
 }
 
+/** Every analytics event the code captured, oldest first — a test empties it. */
+export const captured: { event: string; properties?: Record<string, unknown> }[] = [];
+
 export const posthog = {
-  capture() {},
+  capture(event: string, properties?: Record<string, unknown>) {
+    captured.push({ event, properties });
+  },
   screen() {},
   identify() {},
   reset() {},

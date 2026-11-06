@@ -363,7 +363,10 @@ export default function Next() {
   useEffect(() => {
     if (!activeSession) return;
     const stillRunning = tasks.some((task) => task.status === "pending" && activeSession.taskIds.includes(task.id));
-    if (!stillRunning) leaveSession();
+    if (!stillRunning) {
+      const finished = tasks.some((task) => task.status === "completed" && activeSession.taskIds.includes(task.id));
+      leaveSession(finished ? "task_completed" : undefined);
+    }
   }, [activeSession, tasks, leaveSession]);
 
   // Finished in the session, the card closes it itself once its celebration
