@@ -1,0 +1,309 @@
+/// <reference types="node" />
+// Live voice's tool calls carried out on the real task store: what each call
+// changes, the id the model gets back for "that", the guards against the
+// duplicates Gemini Live was seen producing, and undo.
+import assert from "node:assert/strict";
+import { beforeEach, describe, it } from "node:test";
+
+import { createLiveToolRunner, type LiveToolCall } from "@/lib/liveVoiceTools";
+import { useSettingsStore } from "@/store/useSettingsStore";
+import { useTaskStore } from "@/store/useTaskStore";
+
+let callNumber = 0;
+function call(name: string, args: Record<string, unknown> = {}): LiveToolCall {
+  callNumber += 1;
+  return { id: `call_${callNumber}`, name, args };
+}
+
+function tasks() {
+  return useTaskStore.getState().tasks;
+}
+
+function byTitle(title: string) {
+  return tasks().find((task) => task.title === title);
+}
+
+/** "Gym" on the list as t1, and a runner that knows it by that id. */
+function withGym() {
+  const gym = useTaskStore.getState().addTask({ title: "Gym", estimatedMinutes: 60, priorityLevel: "medium" });
+  return { gym, runner: createLiveToolRunner(new Map([["t1", gym]])) };
+}
+
+beforeEach(() => {
+  useSettingsStore.setState({ language: "en" });
+  useTaskStore.setState({ tasks: [], unsynced: {}, syncUserId: null, ownerId: null });
+});
+
+describe("live voice tools", () => {
+  it("adds a task with its deadline worked out on the phone, and gives it the next id", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "Call mom", dueDatePhrase: "tomorrow at 6 pm" }));
+    assert.deepEqual(result, { ok: true, taskId: "t2" });
+
+    const task = byTitle("Call mom")!;
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const due = new Date(task.dueDate!);
+    assert.equal(due.getDate(), tomorrow.getDate());
+    assert.equal(due.getHours(), 18);
+  });
+
+  it("follows up on the task it just added: \"actually make that Thursday\"", () => {
+    // The weekday three days from now, not always Thursday: on a Wednesday
+    // "tomorrow" is Thursday already, and the follow-up rightly changes nothing.
+    const target = new Date();
+    target.setDate(target.getDate() + 3);
+    const weekday = target.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Call mom", dueDatePhrase: "tomorrow at 6 pm" }));
+    assert.deepEqual(runner.run(call("update_task", { taskId: "t2", dueDatePhrase: weekday })), { ok: true, taskId: "t2" });
+    const due = new Date(byTitle("Call mom")!.dueDate!);
+    assert.equal(due.getDay(), target.getDay());
+    assert.equal(due.getHours(), 18, "keeps the time it already had");
+  });
+
+  it("never adds a second copy of a task already on the list", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "gym!" }));
+    assert.deepEqual(result, { ok: true, taskId: "t1", note: "Already on the list — nothing added." });
+    assert.equal(tasks().length, 1);
+  });
+
+  it("puts what was said about a task already on the list onto it, instead of a copy — and it can be undone", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "Gym", dueDatePhrase: "tomorrow at 7 am", estimatedMinutes: 45 }));
+    assert.deepEqual(result, { ok: true, taskId: "t1", note: "Already on the list — updated it instead of adding a copy." });
+    assert.equal(tasks().length, 1);
+    const gym = byTitle("Gym")!;
+    assert.equal(new Date(gym.dueDate!).getHours(), 7);
+    assert.equal(gym.estimatedMinutes, 45);
+
+    // Said again just the same, it changes nothing — and says so.
+    const again = runner.run(call("add_task", { title: "gym", dueDatePhrase: "tomorrow at 7 am", estimatedMinutes: 45 }));
+    assert.equal(again.ok, false);
+    assert.equal(again.taskId, "t1");
+
+    assert.equal(runner.undo(), true);
+    assert.equal(byTitle("Gym")!.dueDate, undefined);
+    assert.equal(byTitle("Gym")!.estimatedMinutes, 60);
+  });
+
+  it("ignores the same call made again straight away, even with its arguments reordered", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("add_task", { title: "Call mom", dueDatePhrase: "tomorrow at 6 pm" }));
+    runner.run(call("add_task", { dueDatePhrase: "tomorrow at 6 pm", title: "Call mom" }));
+    assert.equal(tasks().length, 2);
+
+    const first = runner.run(call("complete_task", { taskId: "t1" }));
+    const echo = runner.run(call("complete_task", { taskId: "t1" }));
+    assert.deepEqual(echo, first, "the echo gets the first answer, not 'already completed'");
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    assert.equal(runner.undoCount(), 2, "two changes, not three");
+  });
+
+  it("adds a task again after it was undone, however soon — that's not an echo", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk" }));
+    runner.run(call("undo_last_change"));
+    assert.equal(byTitle("Buy milk"), undefined);
+    assert.equal(runner.run(call("add_task", { title: "Buy milk" })).ok, true);
+    assert.ok(byTitle("Buy milk"));
+
+    // The same after the Undo button.
+    runner.undo();
+    assert.equal(byTitle("Buy milk"), undefined);
+    runner.run(call("add_task", { title: "Buy milk" }));
+    assert.ok(byTitle("Buy milk"));
+  });
+
+  it("completes a task again after it was reopened, however soon", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("complete_task", { taskId: "t1" }));
+    runner.run(call("reopen_task", { taskId: "t1" }));
+    runner.run(call("complete_task", { taskId: "t1" }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    assert.equal(runner.undoCount(), 3);
+  });
+
+  it("completes, reopens, notes and deletes by id", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("complete_task", { taskId: "t1" }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    runner.run(call("reopen_task", { taskId: "t1" }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "pending");
+    runner.run(call("add_note", { taskId: "t1", note: "Leg day, bring the knee brace" }));
+    assert.deepEqual(tasks().find((task) => task.id === gym)?.aiContext.notes, ["Leg day, bring the knee brace"]);
+    runner.run(call("delete_task", { taskId: "t1" }));
+    assert.equal(tasks().length, 0);
+  });
+
+  it("undoes one change at a time, latest first — from the button or said out loud", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk" }));
+    runner.run(call("delete_task", { taskId: "t1" }));
+    assert.deepEqual(tasks().map((task) => task.title), ["Buy milk"]);
+
+    assert.deepEqual(runner.run(call("undo_last_change")), { ok: true });
+    assert.deepEqual(tasks().map((task) => task.title).sort(), ["Buy milk", "Gym"]);
+    assert.equal(runner.undo(), true);
+    assert.deepEqual(tasks().map((task) => task.title), ["Gym"]);
+    assert.deepEqual(runner.run(call("undo_last_change")), { ok: false, error: "Nothing to undo." });
+  });
+
+  it("\"undo, undo\" undoes twice", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk" }));
+    runner.run(call("add_task", { title: "Buy bread" }));
+    runner.run(call("undo_last_change"));
+    runner.run(call("undo_last_change"));
+    assert.deepEqual(tasks().map((task) => task.title), ["Gym"]);
+  });
+
+  it("changes nothing for an id it never gave out", () => {
+    const { runner } = withGym();
+    assert.deepEqual(runner.run(call("delete_task", { taskId: "t99" })), { ok: false, error: "No task with that id — nothing changed." });
+    assert.equal(tasks().length, 1);
+    assert.equal(runner.undoCount(), 0);
+  });
+
+  it("reports an edit that changes nothing, and keeps no undo for it", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("reopen_task", { taskId: "t1" }));
+    assert.equal(result.ok, false);
+    assert.equal(runner.undoCount(), 0);
+  });
+
+  it("reads a repeat rule with weekday names", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Team standup", dueDatePhrase: "monday at 9 am", repeat: { frequency: "weekly", weekdays: ["mon", "wed"] } }));
+    assert.deepEqual(byTitle("Team standup")?.recurrence?.rule.weekdays, [1, 3]);
+  });
+
+  it("deletes a repeating task completely — it doesn't come back for tomorrow", () => {
+    const { runner } = withGym();
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "daily" } }));
+    assert.ok(byTitle("Gym")?.recurrence);
+    runner.run(call("delete_task", { taskId: "t1" }));
+    assert.deepEqual(tasks(), [], "no next occurrence, nothing ticked off");
+    assert.equal(runner.undo(), true);
+    assert.equal(byTitle("Gym")?.status, "pending");
+  });
+
+  it("skips just this occurrence of a repeating task, and refuses to skip a one-off task", () => {
+    const { runner, gym } = withGym();
+    assert.equal(runner.run(call("skip_occurrence", { taskId: "t1" })).ok, false);
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "daily" } }));
+    const before = byTitle("Gym")!;
+    assert.equal(runner.run(call("skip_occurrence", { taskId: "t1" })).ok, true);
+    const open = tasks().filter((task) => task.status === "pending");
+    assert.equal(open.length, 1);
+    assert.notEqual(open[0].id, gym, "the next repeat took its place");
+    assert.ok(open[0].dueDate! > (before.dueDate ?? ""));
+    assert.equal(tasks().some((task) => task.status === "completed"), false, "skipped, not done");
+  });
+
+  it("changes several tasks at once, by filter or by ids", () => {
+    const { runner } = withGym();
+    runner.run(call("add_task", { title: "Buy milk", estimatedMinutes: 15, dueDatePhrase: "today" }));
+    runner.run(call("add_task", { title: "Call mom", estimatedMinutes: 10, dueDatePhrase: "today" }));
+    const done = runner.run(call("change_tasks", { action: "complete", filter: { status: "pending", dueWithin: "today" } }));
+    assert.deepEqual(done, { ok: true, count: 2 });
+    assert.equal(byTitle("Gym")?.status, "pending", "no deadline, so not due today");
+
+    const removed = runner.run(call("change_tasks", { action: "delete", filter: { status: "completed" } }));
+    assert.deepEqual(removed, { ok: true, count: 2 });
+    assert.deepEqual(tasks().map((task) => task.title), ["Gym"]);
+
+    runner.run(call("change_tasks", { action: "update", taskIds: ["t1"], priority: "high" }));
+    assert.equal(runner.run(call("change_tasks", { action: "complete" })).ok, false, "never every task without saying so");
+    runner.undo(); // the priority
+    runner.undo(); // the delete
+    assert.equal(tasks().length, 3, "undo brings the deleted ones back");
+  });
+
+  it("removes a deadline, adds minutes, and turns a repeating task into a routine and back", () => {
+    const { runner } = withGym();
+    runner.run(call("update_task", { taskId: "t1", dueDatePhrase: "tomorrow" }));
+    runner.run(call("update_task", { taskId: "t1", removeDeadline: true, estimatedMinutesDelta: 15 }));
+    assert.equal(byTitle("Gym")?.deadline, undefined);
+    assert.equal(byTitle("Gym")?.estimatedMinutes, 75);
+
+    runner.run(call("update_task", { taskId: "t1", repeat: { frequency: "weekly", weekdays: ["mon"], kind: "routine" } }));
+    assert.equal(byTitle("Gym")?.recurrence?.rule.kind, "routine");
+    runner.run(call("update_task", { taskId: "t1", repeatType: "task" }));
+    const rule = byTitle("Gym")?.recurrence?.rule;
+    assert.equal(rule?.kind, "task");
+    assert.deepEqual(rule?.weekdays, [1], "how often it repeats is kept");
+  });
+
+  it("gives a task steps, ticks them off — the last one finishes it — and undoes that", () => {
+    const { runner, gym } = withGym();
+    runner.run(call("set_steps", { taskId: "t1", steps: [{ title: "Warm up", estimatedMinutes: 10 }, { title: "Legs", estimatedMinutes: 40 }] }));
+    assert.deepEqual(byTitle("Gym")?.subtasks?.map((step) => step.label), ["Warm up", "Legs"]);
+    runner.run(call("set_steps", { taskId: "t1", mode: "add", steps: [{ title: "Stretch", estimatedMinutes: 5 }] }));
+    assert.equal(byTitle("Gym")?.subtasks?.length, 3);
+
+    assert.equal(runner.run(call("check_step", { taskId: "t1", step: 1 })).ok, true);
+    assert.equal(runner.run(call("check_step", { taskId: "t1", step: 9 })).ok, false);
+    runner.run(call("check_step", { taskId: "t1", step: 2 }));
+    runner.run(call("check_step", { taskId: "t1", step: 3 }));
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
+    runner.undo();
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "pending");
+  });
+
+  it("refuses an unknown tool and a task with no title", () => {
+    const { runner } = withGym();
+    assert.equal(runner.run(call("launch_rocket")).ok, false);
+    assert.equal(runner.run(call("add_task", { title: "  " })).ok, false);
+    assert.equal(tasks().length, 1);
+  });
+});
+
+// Naming a task with nothing to change yet puts its card up (the user's ask,
+// 2026-11-02: the list is behind the blur, so it's hard to change what you can't see).
+describe("show_task", () => {
+  it("records the named task and changes nothing", () => {
+    const { gym, runner } = withGym();
+    const before = tasks().find((task) => task.id === gym)!;
+    assert.deepEqual(runner.run(call("show_task", { taskIds: ["t1"] })), { ok: true, count: 1 });
+    assert.deepEqual(runner.shownTasks().map((entry) => entry.taskId), [gym]);
+    // Nothing saved, nothing to undo, nothing counted as touched.
+    assert.equal(tasks().find((task) => task.id === gym), before);
+    assert.equal(runner.undoCount(), 0);
+    assert.deepEqual(runner.touchedIds(), []);
+  });
+
+  it("refuses an id that isn't on the list", () => {
+    const { runner } = withGym();
+    assert.equal(runner.run(call("show_task", { taskIds: ["t9"] })).ok, false);
+    assert.deepEqual(runner.shownTasks(), []);
+  });
+
+  it("keeps a changed task as touched, apart from the ones only named", () => {
+    const { gym, runner } = withGym();
+    runner.run(call("add_task", { title: "Call mom", estimatedMinutes: 10 }));
+    runner.run(call("show_task", { taskIds: ["t1"] }));
+    const callMom = byTitle("Call mom")!.id;
+    assert.deepEqual(runner.touchedIds(), [callMom]);
+    assert.deepEqual(runner.shownTasks().map((entry) => entry.taskId), [gym]);
+  });
+});
+
+describe("show_task with a group", () => {
+  it("shows every open task for \"all my tasks\", and changes none of them", () => {
+    const { gym, runner } = withGym();
+    const read = useTaskStore.getState().addTask({ title: "Read", estimatedMinutes: 20, priorityLevel: "low" });
+    const before = tasks();
+    assert.deepEqual(runner.run(call("show_task", { filter: { status: "pending" } })), { ok: true, count: 2 });
+    assert.deepEqual(new Set(runner.shownTasks().map((entry) => entry.taskId)), new Set([gym, read]));
+    assert.equal(tasks(), before);
+    assert.equal(runner.undoCount(), 0);
+  });
+
+  it("says so when nothing matches", () => {
+    const { runner } = withGym();
+    assert.equal(runner.run(call("show_task", { filter: { status: "completed" } })).ok, false);
+  });
+});
