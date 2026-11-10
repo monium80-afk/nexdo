@@ -16,6 +16,7 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
+import { PRO_EXTRAS, type ProExtra } from "@/lib/paywall";
 import { displayLimit, isTimeMeter, METERS, PLAN_LIMITS, SHOWN_METERS, type Meter, type Plan } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
 import { productPrice } from "@/lib/price";
@@ -97,6 +98,7 @@ function Paywall() {
   const insets = useSafeAreaInsets();
   const { reason: reasonParam } = useLocalSearchParams<{ reason?: string }>();
   const reason = METERS.includes(reasonParam as Meter) ? (reasonParam as Meter) : null;
+  const extra = PRO_EXTRAS.includes(reasonParam as ProExtra) ? (reasonParam as ProExtra) : null;
   const taskCount = useTaskStore((state) => state.tasks.length);
   const isPro = useSubscriptionStore((state) => state.pro !== null);
   useStatusBarStyle("dark");
@@ -121,8 +123,8 @@ function Paywall() {
 
   useEffect(() => {
     loadPlans();
-    posthog.capture("paywall_viewed", { reason: reason ?? "none" });
-  }, [loadPlans, reason]);
+    posthog.capture("paywall_viewed", { reason: reason ?? extra ?? "none" });
+  }, [loadPlans, reason, extra]);
 
   const handleRetry = () => {
     setState({ status: "loading" });
@@ -191,8 +193,14 @@ function Paywall() {
 
   // Opened from an AI feature: lead with it. Free has no AI at all
   // (lib/plan.ts), so on Free it's "X comes with Pro", not "you've run out".
-  const title = !reason ? t.paywall.title : PLAN_LIMITS.free[reason] === 0 ? t.plan.proFeature[reason] : t.plan.used[reason];
-  const subtitle = reason ? t.plan.upgradeHint : t.paywall.subtitle(taskCount);
+  const title = extra
+    ? t.paywall.extraTitle[extra]
+    : !reason
+      ? t.paywall.title
+      : PLAN_LIMITS.free[reason] === 0
+        ? t.plan.proFeature[reason]
+        : t.plan.used[reason];
+  const subtitle = extra ? t.paywall.extraHint : reason ? t.plan.upgradeHint : t.paywall.subtitle(taskCount);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
@@ -224,15 +232,23 @@ function Paywall() {
 
         <View className="pt-5">
           <CompareRow label={t.paywall.eachMonth} free={t.paywall.free} pro={t.paywall.pro} position="header" />
-          {COMPARED.map((meter, index) => (
+          {COMPARED.map((meter) => (
             <CompareRow
               key={meter}
               label={t.plan.meters[meter]}
               free={limitLabel("free", meter)}
               pro={limitLabel("pro", meter)}
-              position={index === COMPARED.length - 1 ? "last" : "middle"}
+              position="middle"
             />
           ))}
+          {/* Pro's extras: not counted, just part of Pro. */}
+          <CompareRow label={t.paywall.extras.sounds} free="–" pro="✓" position="middle" />
+          <CompareRow
+            label={t.paywall.extras.insights}
+            free={t.paywall.extras.insightsFree}
+            pro={t.paywall.extras.insightsPro}
+            position="last"
+          />
         </View>
 
         <Text className="pt-4 font-grotesk-medium text-[13px] leading-[19px] text-ink-cream-muted" style={rtl}>

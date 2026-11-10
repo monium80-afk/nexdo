@@ -24,6 +24,7 @@ import {
   type TaskOperation,
 } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
+import { useFocusLogStore } from "@/store/useFocusLogStore";
 import type { StepDraft, Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
 
 // Local-first background sync: mutations below stay synchronous against
@@ -721,6 +722,8 @@ export const useTaskStore = create<TaskStore>()(
           if (options?.accountDeleted) {
             await AsyncStorage.removeItem(stashKey(owner));
             await AsyncStorage.removeItem(deletesStashKey(owner));
+            // Its focus sessions too (Insights) — they only ever lived on this phone.
+            useFocusLogStore.getState().forget(owner);
           } else {
             await stashUnsynced(owner, tasks, unsynced, Object.keys(pendingDeletes));
           }

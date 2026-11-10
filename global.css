@@ -80,6 +80,32 @@
      Named for the surface it sits on, not the palette it comes from. */
   --color-on-accent: #fff9f2;
 
+  /* ---- The 2026-11 redesign (nexdo-design-handoff/HANDOFF.md) ----
+   * Pages move to these one at a time (Today first). Mirrored in
+   * constants/theme/colors.ts as `colors.palette`. */
+  --color-paper: #faf1e4; /* page background */
+  --color-paper-card: #fcf7ef; /* light cards, inputs, open circles */
+  --color-paper-dim: #e9dfd5; /* body text on a dark card */
+  --color-paper-faint: #a89a8e; /* quiet labels on a dark card ("Score") */
+  --color-ink: #221c17; /* text, dark cards, the tab bar, dark buttons */
+  --color-ink-muted: #7a6e64; /* secondary text */
+  --color-accent: #f26a2e; /* primary buttons, progress, accents */
+  --color-accent-ink: #c4461a; /* orange text on light backgrounds */
+  --color-peach: #fce2d2; /* soft tags, score pills */
+  --color-peach-on-dark: #ffb089; /* orange text on dark cards */
+  --color-alert: #d93a2b; /* the "Overdue" label only */
+  --color-line: #e2d6c8; /* borders */
+  --color-line-soft: #eadccb; /* empty tracks */
+  --color-chip: #efe3d4; /* an unpicked pill, a light round button */
+  --color-ring: #d9ccbd; /* an open routine's circle */
+  --color-ring-soft: #cfc4b9; /* a small open circle (Anytime chips) */
+  /* The Add task sheet (addtask-design/, 2026-11-08). */
+  --color-handle: #dccfbf; /* a sheet's grab handle */
+  --color-tile: #f3eadf; /* day tiles, priority rows, the unpicked Show-it-as tile */
+  --color-ink-faint: #b5a99d; /* placeholders, row chevrons */
+  --color-line-warm: #e7dacb; /* a light pill's border (a time, a file) */
+  --color-on-accent-soft: #ffe1d2; /* a small label on an orange tile */
+
   /* ---- Fonts -------------------------------------------------
    * Space Grotesk is the only typeface in the app. Variable fonts
    * don't render reliably on React Native (NativeWind v5 docs
@@ -96,6 +122,8 @@
   --font-grotesk-semibold: "SpaceGrotesk-SemiBold"; /* weight 600 — labels of consequence */
   --font-grotesk-bold: "SpaceGrotesk-Bold"; /* weight 700 — the one or two things that must win first */
   --font-sans: "SpaceGrotesk-Regular"; /* default fallback for plain text */
+  /* Space Mono 700: the redesign's small uppercase labels and times. */
+  --font-mono-bold: "SpaceMono-Bold";
 
   /* ---- Shadows -------------------------------------------------
    * Warm brown, never grey, so they read as light on paper. One soft

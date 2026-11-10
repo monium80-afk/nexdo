@@ -1,33 +1,34 @@
-import { useClerk } from "@clerk/expo";
-import { Feather } from "@expo/vector-icons";
+import { useClerk, useUser } from "@clerk/expo";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Constants from "expo-constants";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
+import { Image, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Feather } from "@expo/vector-icons";
+
 import { AccountSheet } from "@/components/AccountSheet";
+import { type FeatherIconName } from "@/components/Button";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import type { FeatherIconName } from "@/components/Button";
-import { Chip } from "@/components/Chip";
-import { IconTile } from "@/components/IconTile";
-import { PlanUsage } from "@/components/PlanUsage";
-import { ProfileCard } from "@/components/ProfileCard";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { SheetIcon } from "@/components/addSheet/SheetParts";
+import { GemMascot } from "@/components/GemMascot";
+import { LanguageSheet, LANGUAGE_OPTIONS } from "@/components/LanguageSheet";
 import { useTabBarHeight } from "@/components/TabBar";
 import { SUPPORT_LINKS } from "@/constants/support";
-import { MOTION, gradients } from "@/constants/theme";
+import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
-import { useColors, useThemeScheme } from "@/hooks/useTheme";
+import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
+import { buildInsights } from "@/lib/pace";
 import { openPaywall } from "@/lib/paywall";
+import { displayLimit, isTimeMeter, PLAN_LIMITS, type Meter } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
+import { REMINDER_LEAD_OPTIONS, reminderLead } from "@/lib/reminders";
 import {
   isPurchasesEnabled,
   openStoreSubscriptions,
@@ -36,23 +37,25 @@ import {
   restorePurchases,
   resyncTrialReminder,
 } from "@/lib/purchases";
-import { REMINDER_OFFSET_OPTIONS } from "@/lib/reminders";
+import { entriesFor, useFocusLogStore } from "@/store/useFocusLogStore";
 import { usePlanUsageStore } from "@/store/usePlanUsageStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { AppLanguage } from "@/types/settings";
+import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
-// Each language is listed in its own name, so it's recognizable to someone who reads it.
-const LANGUAGE_OPTIONS: { value: AppLanguage; label: string }[] = [
-  { value: "en", label: "English" },
-  { value: "fr", label: "Français" },
-  { value: "es", label: "Español" },
-  { value: "ar", label: "العربية" },
-  { value: "de", label: "Deutsch" },
-];
-
+const P = colors.palette;
 const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const TIGHT = { includeFontPadding: false } as const;
+const CARD_SHADOW = SOFT_SHADOW;
+const RULE = "#EADFD1";
+/** On the dark plan card. */
+const ON_DARK_MUTED = "#C9BDB2";
+const ON_DARK_FAINT = "#A99D92";
+const ON_DARK_TRACK = "#3A322C";
+/** The three allowances the plan card shows. */
+const CARD_METERS: Meter[] = ["live", "assist", "media"];
 
 /** "09:00" → a Date today at 09:00, which is what the picker works in. */
 function timeToDate(value: string): Date {
@@ -66,235 +69,289 @@ function dateToTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 }
 
-/** A section: a frosted tray holding its eyebrow and the cards under it. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** Days until the 1st of next month, when the allowances start again. */
+function daysToReset(now: Date): number {
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((next.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** "Monium Benmouna" → "MB". */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
+
+/** A small uppercase section label, in Space Mono. */
+function Eyebrow({ children }: { children: ReactNode }) {
+  return (
+    <Text style={[{ fontFamily: "SpaceMono-Bold", fontSize: 10, lineHeight: 12, letterSpacing: 2, color: P.inkMuted }, TIGHT]}>
+      {children}
+    </Text>
+  );
+}
+
+/** A list row on the page itself: label, an optional value, a ›. */
+function Row({ label, value, onPress, disabled = false }: { label: string; value?: string; onPress: () => void; disabled?: boolean }) {
   const rtl = useRtlText();
   return (
-    <View className="tray gap-3 px-2.5 pb-2.5 pt-4">
-      <Text className="eyebrow px-3.5 text-ink-cream-muted" style={rtl}>
-        {title}
+    <AnimatedPressable
+      onPress={onPress}
+      disabled={disabled}
+      scaleTo={0.99}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      style={{ height: 54.5, flexDirection: "row", alignItems: "center", gap: 12, opacity: disabled ? 0.4 : 1 }}
+    >
+      <Text numberOfLines={1} style={[{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 16, color: P.ink }, TIGHT, rtl]}>
+        {label}
       </Text>
-      {children}
-    </View>
+      {value ? <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, color: P.inkMuted }, TIGHT]}>{value}</Text> : null}
+      <SheetIcon name="chevronRight" size={17} color={P.inkFaint} />
+    </AnimatedPressable>
   );
 }
 
-/** The card a section's rows sit in — the task list's card. */
-function Group({ children }: { children: ReactNode }) {
+function RowList({ rows }: { rows: { key: string; label: string; value?: string; onPress: () => void; disabled?: boolean }[] }) {
   return (
-    <View className="card card--cream-soft gap-4 p-[16px]" style={gradients.card}>
-      {children}
+    <View>
+      {rows.map((row, index) => (
+        <Fragment key={row.key}>
+          {index > 0 ? <View style={{ height: 1, backgroundColor: RULE }} /> : null}
+          <Row label={row.label} value={row.value} onPress={row.onPress} disabled={row.disabled} />
+        </Fragment>
+      ))}
     </View>
   );
 }
 
-/**
- * Between rows. In a group whose rows have tiles (Help & Support) it starts
- * under their labels, so they read as one list: 46.5 = the 36dp tile + the
- * row's gap-3.
- */
-function Divider({ inset = false }: { inset?: boolean }) {
-  return <View className={`h-px bg-cream-200 ${inset ? "ml-[46.5px]" : ""}`} />;
-}
+/** The icon tiles' tints in the notifications card. */
+const REMINDER_TINT = { bg: "#FCE3D3", fg: "#D9561C" };
+const OVERDUE_TINT = { bg: "#F7DCD6", fg: "#D4402A" };
 
-function ToggleControl({
-  label,
-  value,
-  onValueChange,
-}: {
-  label: string;
-  value: boolean;
-  /** Returning false refuses the change: the switch stays where it was. */
-  onValueChange: (next: boolean) => unknown;
-}) {
-  const progress = useSharedValue(value ? 1 : 0);
-  const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    progress.value = withTiming(value ? 1 : 0, {
-      duration: reduceMotion ? 0 : MOTION.duration.standard,
-      easing: MOTION.easing.standard,
-    });
-  }, [progress, reduceMotion, value]);
-
-  // A gradient can't be colour-interpolated, so the lit track fades in over
-  // the resting one instead.
-  const litStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-  // 16 = the 42dp track − its two 1dp edges − 2dp padding each side − the 20dp thumb.
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * 16 }],
-  }));
-
-  // The switch only moves once `value` does (the effect above): a change
-  // waiting on the phone's permission, then refused, leaves it where it was.
-  const toggle = () => {
-    void onValueChange(!value);
-  };
-
+/** The orange switch (the screenshot's 48 × 28); `size` "small" inside the open Reminders. */
+function MiniSwitch({ value, onChange, label, size = "large" }: { value: boolean; onChange: (next: boolean) => unknown; label: string; size?: "large" | "small" }) {
+  const width = size === "large" ? 48 : 40;
+  const height = size === "large" ? 28 : 24;
+  const knob = height - 6;
   return (
     <Pressable
-      onPress={toggle}
-      hitSlop={6}
+      onPress={() => void onChange(!value)}
+      hitSlop={8}
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityState={{ checked: value }}
-      className="h-10 items-center justify-center"
+      style={{ width, height, borderRadius: height / 2, padding: 3, backgroundColor: value ? P.accent : "#E7DCCF", alignItems: value ? "flex-end" : "flex-start" }}
     >
-      {/* Flat rather than pressed in: an inset shadow per switch was a real
-          cost on Android, and the darker edge reads as a track on its own. */}
-      <View className="h-7 w-12 justify-center rounded-full border border-cream-300 bg-cream-200/60 px-[2px]">
-        {/* Over the edge too, so a switched-on track is orange right to its
-            rim. Its glow only while it's on — hidden, it still cost a shadow. */}
-        <Animated.View className="absolute -inset-px rounded-full" style={[gradients.accent, value ? TRACK_GLOW : null, litStyle]} />
-        <Animated.View className="h-[20px] w-[20px] rounded-full bg-white" style={[THUMB_SHADOW, thumbStyle]} />
-      </View>
+      <View style={{ width: knob, height: knob, borderRadius: knob / 2, backgroundColor: "#FFFFFF" }} />
     </Pressable>
   );
 }
 
-// The lit track glows onto the card; the thumb sits up on it.
-const TRACK_GLOW = { boxShadow: "0 4px 12px -4px rgba(236, 86, 28, 0.6)" };
-const THUMB_SHADOW = { boxShadow: "0 2px 5px rgba(60, 30, 10, 0.25)" };
-
-/** Label + explanation, and a switch on the right. */
-function ToggleRow({
-  label,
-  body,
+/**
+ * A row of the notifications card: a tinted icon, the name with a line under
+ * it, and its switch. With `expanded` set, the line ends in a chevron and
+ * tapping the row opens or closes what's under it.
+ */
+function NotificationRow({
+  icon,
+  tint,
+  title,
+  subtitle,
+  expanded,
+  onPress,
   value,
-  onValueChange,
+  onChange,
 }: {
-  label: string;
-  body: string;
+  icon: FeatherIconName;
+  tint: { bg: string; fg: string };
+  title: string;
+  subtitle: string;
+  expanded?: boolean;
+  onPress?: () => void;
   value: boolean;
-  onValueChange: (next: boolean) => unknown;
+  onChange: (next: boolean) => unknown;
 }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 18 }}>
+      <Pressable
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? "button" : undefined}
+        accessibilityState={onPress ? { expanded } : undefined}
+        accessibilityLabel={`${title}. ${subtitle}`}
+        style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 14 }}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: tint.bg, alignItems: "center", justifyContent: "center" }}>
+          <Feather name={icon} size={16} color={tint.fg} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: P.ink }, TIGHT]}>{title}</Text>
+          <View style={{ marginTop: 2, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={[{ flexShrink: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 17, color: P.inkMuted }, TIGHT]}>{subtitle}</Text>
+            {expanded !== undefined ? <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={P.accentInk} /> : null}
+          </View>
+        </View>
+      </Pressable>
+      <MiniSwitch value={value} onChange={onChange} label={title} />
+    </View>
+  );
+}
+
+/** A time as a cream pill with a clock — "🕘 9:00 AM" — that opens the time picker. */
+function TimeChip({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.96}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${value}`}
+      style={{ flexDirection: "row", alignItems: "center", gap: 7, height: 36, paddingHorizontal: 13, borderRadius: 18, backgroundColor: P.chip }}
+    >
+      <Feather name="clock" size={14} color={P.ink} />
+      <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: P.ink }, TIGHT]}>{value}</Text>
+    </AnimatedPressable>
+  );
+}
+
+/** A setting's name with a line under it, and what to set on the right. */
+function SettingLine({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   const rtl = useRtlText();
   return (
-    <View className="flex-row items-center gap-3">
-      <View className="flex-1 gap-1">
-        <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
-          {label}
-        </Text>
-        <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-          {body}
-        </Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 16 }}>
+      <View style={{ flex: 1 }}>
+        <Text style={[{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, lineHeight: 19, color: P.ink }, TIGHT, rtl]}>{title}</Text>
+        <Text style={[{ marginTop: 2, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16.5, color: P.inkMuted }, TIGHT, rtl]}>{hint}</Text>
       </View>
-      <ToggleControl label={label} value={value} onValueChange={onValueChange} />
+      {children}
     </View>
   );
 }
 
 /**
- * A tappable row inside a card: label, optional explanation, chevron. Only
- * Help & Support's rows lead with a tile.
+ * What a reminder will look like with the lead chosen (the screenshot's dark
+ * card): "Dentist in 15 min · Starts at 3:00 PM", marked as a preview.
  */
-function ActionRow({
-  icon,
-  label,
-  body,
-  disabled = false,
-  onPress,
-}: {
-  icon?: FeatherIconName;
-  label: string;
-  body?: string;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  const colors = useColors();
-  const rtl = useRtlText();
+function ReminderPreview({ title, body, label }: { title: string; body: string; label: string }) {
   return (
-    <AnimatedPressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      className={`flex-row items-center gap-3 ${disabled ? "opacity-40" : ""}`}
+    <View
+      accessibilityLabel={`${label}: ${title}. ${body}`}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: P.ink }}
     >
-      {icon ? <IconTile icon={icon} tone="neutral" /> : null}
-      <View className="flex-1 gap-1">
-        <Text className="font-grotesk-bold text-base text-ink-cream" style={rtl}>
-          {label}
-        </Text>
-        {body ? (
-          <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-            {body}
-          </Text>
-        ) : null}
+      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: P.accent, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: "#FFFFFF", transform: [{ rotate: "45deg" }] }} />
       </View>
-      <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
-    </AnimatedPressable>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14.5, lineHeight: 19, color: "#FFFFFF" }, TIGHT]}>{title}</Text>
+        <Text numberOfLines={1} style={[{ marginTop: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16, color: ON_DARK_MUTED }, TIGHT]}>{body}</Text>
+      </View>
+      <Text style={[{ fontFamily: "SpaceGrotesk-Medium", fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", color: ON_DARK_FAINT }, TIGHT]}>{label}</Text>
+    </View>
   );
 }
 
 /**
- * A row that ends or destroys something (Sign out): its own red-tinted card,
- * so it can't be mistaken for a setting.
+ * "How long before" as a row of stops on a line (the screenshot's slider):
+ * the line and dots orange up to the chosen stop, which wears a halo; its
+ * label in bold. Each stop is a tap target.
  */
-function DangerRow({
-  label,
-  disabled = false,
-  onPress,
+function LeadSlider({
+  options,
+  value,
+  labelFor,
+  onChange,
 }: {
-  label: string;
-  disabled?: boolean;
-  onPress: () => void;
+  options: readonly number[];
+  value: number;
+  labelFor: (minutes: number) => string;
+  onChange: (minutes: number) => void;
 }) {
-  const colors = useColors();
-  const rtl = useRtlText();
+  const [width, setWidth] = useState(0);
+  const selectedIndex = Math.max(0, options.indexOf(value));
+  const column = options.length > 0 ? width / options.length : 0;
+  const DOT_ROW = 26;
   return (
-    <AnimatedPressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      scaleTo={0.98}
-      style={gradients.danger}
-      className={`card card--danger flex-row items-center gap-3 px-[16px] py-[15px] ${disabled ? "opacity-40" : ""}`}
-    >
-      <Text className="flex-1 font-grotesk-bold text-base text-overdue-500" style={rtl}>
-        {label}
-      </Text>
-      <Feather name="chevron-right" size={16} color={colors.overdue[500]} />
-    </AnimatedPressable>
+    <View accessibilityRole="radiogroup" onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      {width > 0 ? (
+        <View pointerEvents="none" style={{ position: "absolute", top: DOT_ROW / 2 - 1.5, left: column / 2, right: column / 2, height: 3, borderRadius: 1.5, backgroundColor: "#E7DCCF" }}>
+          <View style={{ width: column * selectedIndex, height: 3, borderRadius: 1.5, backgroundColor: P.accent }} />
+        </View>
+      ) : null}
+      <View style={{ flexDirection: "row" }}>
+        {options.map((minutes, index) => {
+          const selected = index === selectedIndex;
+          const reached = index <= selectedIndex;
+          return (
+            <Pressable
+              key={minutes}
+              onPress={() => onChange(minutes)}
+              hitSlop={{ top: 8, bottom: 8 }}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              accessibilityLabel={labelFor(minutes)}
+              style={{ flex: 1, alignItems: "center" }}
+            >
+              <View style={{ height: DOT_ROW, alignItems: "center", justifyContent: "center" }}>
+                {selected ? (
+                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(242,106,46,0.22)", alignItems: "center", justifyContent: "center" }}>
+                    <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: P.accent }} />
+                  </View>
+                ) : (
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: reached ? P.accent : "#D9CCBD" }} />
+                )}
+              </View>
+              <Text
+                numberOfLines={1}
+                style={[{ marginTop: 8, fontFamily: selected ? "SpaceGrotesk-Bold" : "SpaceGrotesk-Medium", fontSize: 12.5, color: selected ? P.ink : P.inkMuted }, TIGHT]}
+              >
+                {labelFor(minutes)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
+/**
+ * Settings (2026-11 redesign, from the user's screenshots): who's signed in
+ * and the Account button; the plan card with this month's allowances; this
+ * week at a glance (→ Insights); the three notification switches; then
+ * Preferences and Support as plain lists, and Sign out at the foot.
+ */
 export default function Settings() {
   const router = useRouter();
-  const colors = useColors();
-  const scheme = useThemeScheme();
   const t = useTranslation();
   const rtl = useRtlText();
+  const { user } = useUser();
   const { signOut } = useClerk();
   const handleTaskSignOut = useTaskStore((state) => state.handleSignOut);
   const saveUnsyncedTasks = useTaskStore((state) => state.saveUnsyncedTasks);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
-  const dailyNudgeEnabled = useSettingsStore((state) => state.dailyNudgeEnabled);
-  const setDailyNudgeEnabled = useSettingsStore((state) => state.setDailyNudgeEnabled);
-  const dailyNudgeTime = useSettingsStore((state) => state.dailyNudgeTime);
-  const setDailyNudgeTime = useSettingsStore((state) => state.setDailyNudgeTime);
+  const dayReminderTime = useSettingsStore((state) => state.dayReminderTime);
+  const setDayReminderTime = useSettingsStore((state) => state.setDayReminderTime);
+  const lead = useSettingsStore((state) => reminderLead({ beforeOffsets: state.reminderOffsets }));
+  const setReminderLead = useSettingsStore((state) => state.setReminderLead);
   const overdueAlertsEnabled = useSettingsStore((state) => state.overdueAlertsEnabled);
   const setOverdueAlertsEnabled = useSettingsStore((state) => state.setOverdueAlertsEnabled);
   const deadlineRemindersEnabled = useSettingsStore((state) => state.deadlineRemindersEnabled);
   const setDeadlineRemindersEnabled = useSettingsStore((state) => state.setDeadlineRemindersEnabled);
-  const dayReminderTime = useSettingsStore((state) => state.dayReminderTime);
-  const setDayReminderTime = useSettingsStore((state) => state.setDayReminderTime);
-  const reminderOffsets = useSettingsStore((state) => state.reminderOffsets);
-  const toggleReminderOffset = useSettingsStore((state) => state.toggleReminderOffset);
-  const importantExtraReminder = useSettingsStore((state) => state.importantExtraReminder);
-  const setImportantExtraReminder = useSettingsStore((state) => state.setImportantExtraReminder);
   // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
   const pro = useSubscriptionStore((state) => state.pro);
   const tabBarHeight = useTabBarHeight();
-  useStatusBarStyle("light");
+  const today = useToday();
+  useStatusBarStyle("dark");
 
   const [accountOpen, setAccountOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+  const [timePicker, setTimePicker] = useState<"day" | null>(null);
+  const [remindersOpen, setRemindersOpen] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>("undetermined");
 
   // Checked again whenever Settings comes into view — the user may have just
@@ -311,88 +368,67 @@ export default function Settings() {
     }, []),
   );
 
-  // What the month has used of the plan, asked again each time Settings comes
-  // into view — which includes coming back from the paywall with a new plan.
-  // Left out of the page, rather than shown as an error, when it can't be read.
-  // Shared with the AI buttons' "2 left" notes (store/usePlanUsageStore.ts).
+  // What the month has used of the plan, asked again each time Settings comes into view.
   const usagePlan = usePlanUsageStore((state) => state.plan);
   const usageUsed = usePlanUsageStore((state) => state.used);
-  const usage = usagePlan && usageUsed ? { plan: usagePlan, used: usageUsed } : null;
   useFocusEffect(
     useCallback(() => {
       void usePlanUsageStore.getState().refresh();
     }, []),
   );
 
-  const nudgeTimeLabel = timeToDate(dailyNudgeTime).toLocaleTimeString(t.locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const reminderTimeLabel = timeToDate(dayReminderTime).toLocaleTimeString(t.locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // This week, from the phone's focus log (as on Insights).
+  const userId = useTaskStore((state) => state.syncUserId);
+  const tasks = useTaskStore((state) => state.tasks);
+  const allEntries = useFocusLogStore((state) => state.entries);
+  const allCompletions = useFocusLogStore((state) => state.completions);
+  const week = useMemo(
+    () => buildInsights(entriesFor(allEntries, userId), entriesFor(allCompletions, userId), tasks, "week"),
+    [allEntries, allCompletions, tasks, userId],
+  );
+  const weekMax = Math.max(1, ...week.bars.map((bar) => bar.tasksDone));
+
+  const name = user?.fullName?.trim() || user?.primaryEmailAddress?.emailAddress?.split("@")[0] || "";
+  const firstName = name.split(/\s+/)[0] ?? "";
+  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const dayTimeLabel = timeToDate(dayReminderTime).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
+  // The preview's made-up task starts at 3 PM, written the phone's way.
+  const previewTime = timeToDate("15:00").toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
+  const languageName = LANGUAGE_OPTIONS.find((option) => option.value === language)?.label ?? "";
 
   const handleSelectLanguage = (value: AppLanguage) => {
     setLanguage(value);
     posthog.capture("language_changed", { language: value });
   };
 
+  // The time for reminders on tasks with only a date (the daily plan's own
+  // time went with it from Settings, 2026-11-09).
   const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === "android") setShowTimePicker(false);
+    const target = timePicker;
+    if (Platform.OS === "android") setTimePicker(null);
     if (event.type === "dismissed" || !selected) return;
-    setDailyNudgeTime(dateToTime(selected));
+    if (target === "day") setDayReminderTime(dateToTime(selected));
   };
 
-  // Asked right as the user turns a kind of notification on, while it's
-  // obvious why Nexdo wants to notify them. The switch stays off until the
-  // phone says yes; if the phone won't ask again, the way to its settings is shown.
-  const enableWithPermission = async (enable: () => void) => {
+  // A tile turns on the moment it's tapped (waiting on the phone's answer
+  // first made it look broken, 2026-11-09). Then the phone is asked, if it
+  // hasn't been; if it says no, the user is told and shown the way to its
+  // settings — the red line under the tiles says so too, until it's allowed.
+  const switchWith = (set: (on: boolean) => void) => async (enabled: boolean) => {
+    set(enabled);
+    if (!enabled) return;
     const granted = await requestNotificationPermission();
     const current = await getNotificationPermission();
     setPermission(current);
     if (granted) {
-      enable();
       resyncTrialReminder();
       return;
     }
-    // Not something the phone's settings can change (the web build, Expo Go
-    // on Android): there's nowhere to send the user.
     if (current === "unsupported") return;
     showAlert(t.settings.notificationsBlockedTitle, t.settings.notificationsBlockedBody, [
       { text: t.common.cancel, style: "cancel" },
       { text: t.settings.openPhoneSettings, onPress: () => Linking.openSettings() },
     ]);
-  };
-
-  const handleOverdueAlertsChange = async (enabled: boolean) => {
-    if (!enabled) {
-      setOverdueAlertsEnabled(false);
-      return;
-    }
-    await enableWithPermission(() => setOverdueAlertsEnabled(true));
-  };
-
-  const handleDeadlineRemindersChange = async (enabled: boolean) => {
-    if (!enabled) {
-      setDeadlineRemindersEnabled(false);
-      return;
-    }
-    await enableWithPermission(() => setDeadlineRemindersEnabled(true));
-  };
-
-  const handleDailyNudgeChange = async (enabled: boolean) => {
-    if (!enabled) {
-      setDailyNudgeEnabled(false);
-      return;
-    }
-    await enableWithPermission(() => setDailyNudgeEnabled(true));
-  };
-
-  const handleReminderTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === "android") setShowReminderTimePicker(false);
-    if (event.type === "dismissed" || !selected) return;
-    setDayReminderTime(dateToTime(selected));
   };
 
   const handleOpenLink = async (url: string) => {
@@ -403,13 +439,6 @@ export default function Settings() {
       showAlert(t.settings.linkError);
     }
   };
-
-  // Under the Pro row: when the plan renews, or — once cancelled — when Pro
-  // ends. A plan without an end date is simply active.
-  const proExpiry = pro?.expirationDate
-    ? new Date(pro.expirationDate).toLocaleDateString(t.locale, { day: "numeric", month: "short", year: "numeric" })
-    : null;
-  const proStatus = !proExpiry ? t.settings.proActive : pro?.willRenew ? t.settings.proRenews(proExpiry) : t.settings.proEnds(proExpiry);
 
   const handleRestore = async () => {
     setIsRestoring(true);
@@ -424,11 +453,11 @@ export default function Settings() {
     showAlert(messages[outcome]);
   };
 
-  // RevenueCat's Customer Center first; if it can't open, the store's own
-  // subscriptions page — so cancelling from here always works, as the trial
-  // screens and the trial reminder promise.
+  // Android: Google Play's own subscriptions page, straight away — RevenueCat's
+  // Customer Center could open nothing at all there (2026-11-09). iOS: the
+  // Customer Center first, then the App Store's page.
   const handleManageSubscription = async () => {
-    if (await presentCustomerCenter()) return;
+    if (Platform.OS !== "android" && (await presentCustomerCenter())) return;
     if (!(await openStoreSubscriptions())) showAlert(t.settings.manageError);
   };
 
@@ -437,17 +466,10 @@ export default function Settings() {
     setSignOutError(null);
     try {
       await signOut();
-      // Only once it worked: a failed sign-out leaves the user signed in, and
-      // their later events should still carry who they are.
-      posthog.capture('user_signed_out')
-      posthog.reset()
-      const cleanupResults = await Promise.allSettled([
-        Promise.resolve().then(() => handleTaskSignOut()),
-        resetPurchaser(),
-      ]);
-      if (cleanupResults.some((result) => result.status === "rejected")) {
-        setSignOutError(t.settings.signOutCleanupError);
-      }
+      posthog.capture("user_signed_out");
+      posthog.reset();
+      const cleanupResults = await Promise.allSettled([Promise.resolve().then(() => handleTaskSignOut()), resetPurchaser()]);
+      if (cleanupResults.some((result) => result.status === "rejected")) setSignOutError(t.settings.signOutCleanupError);
     } catch {
       setSignOutError(t.settings.signOutError);
     } finally {
@@ -455,11 +477,7 @@ export default function Settings() {
     }
   };
 
-  // Signing out never deletes tasks: the account keeps them for the next
-  // sign-in. This is the last moment the app can still save any change that
-  // hasn't reached the account yet, so it tries once more first. Anything
-  // still unsaved stays on this phone (useTaskStore.handleSignOut) — the
-  // question is only whether to wait for a better connection.
+  // Signing out never deletes tasks; anything not yet saved gets one more try first.
   const handleSignOut = async () => {
     setIsSigningOut(true);
     setSignOutError(null);
@@ -475,260 +493,253 @@ export default function Settings() {
     ]);
   };
 
+  // The plan card's line: when Pro renews (or ends), and when the allowances start again.
+  const now = new Date();
+  const resets = t.redesign.resetsIn(daysToReset(now));
+  const expiry = pro?.expirationDate ? new Date(pro.expirationDate).toLocaleDateString(t.locale, { month: "short", day: "numeric" }) : null;
+  const planLine = pro
+    ? expiry
+      ? `${pro.willRenew ? t.redesign.renews(expiry) : t.redesign.ends(expiry)} · ${resets}`
+      : `${t.settings.proActive} · ${resets}`
+    : t.redesign.freeBody;
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScreenHeader title={t.settings.title} subtitle={t.settings.subtitle} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: P.paper }} edges={["top"]}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28 + tabBarHeight }} showsVerticalScrollIndicator={false}>
+        {/* Who's signed in, and their Account sheet. */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+          <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: P.accent, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            {user?.hasImage ? (
+              <Image source={{ uri: user.imageUrl }} style={{ width: 60, height: 60 }} />
+            ) : (
+              <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 21, letterSpacing: -0.4, color: "#FFFFFF" }, TIGHT]}>{initials(name)}</Text>
+            )}
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text numberOfLines={1} style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 23, lineHeight: 28, letterSpacing: -0.4, color: P.ink }, TIGHT, rtl]}>
+              {firstName}
+            </Text>
+            <Text numberOfLines={1} style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, lineHeight: 17, color: P.inkMuted }, TIGHT]}>
+              {email}
+            </Text>
+          </View>
+          <AnimatedPressable
+            onPress={() => setAccountOpen(true)}
+            scaleTo={0.95}
+            accessibilityRole="button"
+            style={{ height: 37.5, paddingHorizontal: 14, borderRadius: 19, backgroundColor: P.chip, justifyContent: "center" }}
+          >
+            <Text style={[{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14, color: P.ink }, TIGHT]}>{t.redesign.accountButton}</Text>
+          </AnimatedPressable>
+        </View>
 
-      <View className="screen-body">
-        <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
-        <ScrollView
-          // Clear of the tab bar, which floats over the foot of the page.
-          contentContainerStyle={{ paddingBottom: 40 + tabBarHeight }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+        {/* The plan: Pro with this month's allowances, or Free and the way to Pro. */}
+        {isPurchasesEnabled ? (
+          <View style={{ marginTop: 14, borderRadius: 24, backgroundColor: P.ink, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, ...shadow("0 10px 24px rgba(34, 28, 23, 0.22)", 8) }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <View style={{ width: 44, alignItems: "center" }}>
+                <GemMascot level={4} width={44} animate={false} />
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17.5, color: "#FFFFFF" }, TIGHT]}>{pro ? "Nexdo Pro" : t.redesign.freePlan}</Text>
+                <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 16.5, color: ON_DARK_MUTED }, TIGHT, rtl]}>{planLine}</Text>
+              </View>
+              <AnimatedPressable
+                onPress={pro ? handleManageSubscription : () => openPaywall()}
+                scaleTo={0.95}
+                accessibilityRole="button"
+                style={{ height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: pro ? ON_DARK_TRACK : P.accent, justifyContent: "center" }}
+              >
+                <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 13.5, color: "#FFFFFF" }, TIGHT]}>{pro ? t.redesign.manage : t.redesign.upgrade}</Text>
+              </AnimatedPressable>
+            </View>
+
+            {/* Always there on Pro, so the card never jumps: "–" until this
+                month's numbers arrive, and Pro's limits even if the server
+                still counts the account as Free for a moment after buying. */}
+            {pro ? (
+              <View style={{ marginTop: 20, flexDirection: "row", gap: 16 }}>
+                {CARD_METERS.map((meter) => {
+                  const limit = PLAN_LIMITS.pro[meter];
+                  const known = usageUsed !== null && usagePlan !== null;
+                  const amount = usageUsed?.[meter] ?? 0;
+                  const shownLimit = displayLimit("pro", meter);
+                  const shownUsed = !known ? "–" : amount >= limit ? shownLimit : isTimeMeter(meter) ? Math.floor(amount / 60) : amount;
+                  const fraction = limit === 0 ? 0 : Math.min(1, amount / limit);
+                  return (
+                    <View key={meter} style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 11.5, color: ON_DARK_MUTED }, TIGHT]}>
+                        {t.redesign.meterLabels[meter as "live" | "assist" | "media"]}
+                      </Text>
+                      <View style={{ marginTop: 7, flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                        <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 20, color: "#FFFFFF" }, TIGHT]}>{shownUsed}</Text>
+                        <Text numberOfLines={1} style={[{ flexShrink: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 11.5, color: ON_DARK_FAINT }, TIGHT]}>
+                          {isTimeMeter(meter) ? t.redesign.ofMinutes(shownLimit) : `/ ${shownLimit}`}
+                        </Text>
+                      </View>
+                      <View style={{ marginTop: 8, height: 4, borderRadius: 2, backgroundColor: ON_DARK_TRACK, overflow: "hidden" }}>
+                        <View style={{ height: 4, borderRadius: 2, width: `${fraction * 100}%`, backgroundColor: P.accent }} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* This week at a glance; the full picture is on Insights. */}
+        <AnimatedPressable
+          onPress={() => {
+            posthog.capture("insights_opened", { from: "settings" });
+            router.push("/insights");
+          }}
+          scaleTo={0.98}
+          accessibilityRole="button"
+          style={[{ marginTop: 14, height: 116, borderRadius: 24, backgroundColor: P.paperCard, paddingLeft: 16, paddingRight: 16, flexDirection: "row" }, CARD_SHADOW]}
         >
-          <View className="gap-4 px-3 pt-3">
-            <Section title={t.settings.account}>
-              <ProfileCard onPress={() => setAccountOpen(true)} />
+          <View style={{ flex: 1, paddingTop: 18 }}>
+            <Eyebrow>{t.redesign.thisWeek}</Eyebrow>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[{ marginTop: 6, fontFamily: "SpaceGrotesk-Bold", fontSize: 23, lineHeight: 28, letterSpacing: -0.3, color: P.ink }, TIGHT]}>
+              {t.redesign.tasksDone(week.tasksDone)}
+            </Text>
+            <Text numberOfLines={2} style={[{ marginTop: 3, maxWidth: 180, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 16, color: P.inkMuted }, TIGHT, rtl]}>
+              {t.redesign.focused(t.format.budget(Math.floor(week.focusMinutes / 60), Math.round(week.focusMinutes % 60)))}
+            </Text>
+          </View>
+          <View style={{ paddingBottom: 17, flexDirection: "row", alignItems: "flex-end", gap: 5 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            {week.bars.map((bar) => {
+              const isToday = bar.start <= today && today <= bar.end;
+              return bar.tasksDone > 0 ? (
+                <View
+                  key={bar.start}
+                  style={{ width: 10, height: Math.max(12, (bar.tasksDone / weekMax) * 56), borderRadius: 5, backgroundColor: isToday ? P.accent : "#EDE2D5" }}
+                />
+              ) : (
+                <View key={bar.start} style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: isToday ? P.accent : "#EDE2D5", marginHorizontal: 0.5 }} />
+              );
+            })}
+          </View>
+        </AnimatedPressable>
 
-              <DangerRow
-                label={isSigningOut ? t.settings.signingOut : t.settings.signOut}
-                disabled={isSigningOut}
-                onPress={handleSignOut}
+        {/* Notifications: the three switches, then the time they use — named
+            and explained, since a bare "at 9 AM" said nothing about what for. */}
+        <View style={{ marginTop: 25 }}>
+          <Eyebrow>{t.redesign.notifications}</Eyebrow>
+        </View>
+        {/* One card (the 2026-11-09 screenshots): Reminders, with when they
+            ring under its name — tapping the row opens the timing (and the
+            daily plan) — then Overdue. */}
+        <View style={[{ marginTop: 12, borderRadius: 24, backgroundColor: P.paperCard, paddingHorizontal: 16 }, CARD_SHADOW]}>
+          <NotificationRow
+            icon="bell"
+            tint={REMINDER_TINT}
+            title={t.redesign.reminders}
+            subtitle={deadlineRemindersEnabled ? t.redesign.remindersPinged : t.redesign.remindersHint}
+            expanded={deadlineRemindersEnabled ? remindersOpen : undefined}
+            onPress={deadlineRemindersEnabled ? () => setRemindersOpen((open) => !open) : undefined}
+            value={deadlineRemindersEnabled}
+            onChange={switchWith(setDeadlineRemindersEnabled)}
+          />
+          {/* Open (the 2026-11 screenshot): a preview of the reminder, the
+              lead as stops on a line, then the date-only time — and the
+              daily plan, which keeps its own switch and time. */}
+          {deadlineRemindersEnabled && remindersOpen ? (
+            <View>
+              <ReminderPreview
+                label={t.redesign.previewLabel}
+                title={
+                  lead === 0
+                    ? t.redesign.previewNow(t.redesign.previewTask)
+                    : lead >= 1440
+                      ? t.redesign.previewTomorrow(t.redesign.previewTask)
+                      : t.redesign.previewIn(t.redesign.previewTask, t.redesign.leadShort(lead))
+                }
+                body={t.redesign.previewStarts(previewTime)}
               />
 
-              {signOutError ? (
-                <Text className="px-3.5 font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                  {signOutError}
+              <View style={{ marginTop: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <Text style={[{ flexShrink: 1, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, lineHeight: 19, color: P.ink }, TIGHT, rtl]}>{t.redesign.timedTitle}</Text>
+                <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: P.accentInk }, TIGHT]}>
+                  {lead === 0 ? t.redesign.leadAtStart : t.redesign.leadBefore(t.redesign.leadShort(lead))}
                 </Text>
+              </View>
+              <View style={{ marginTop: 18, marginBottom: 18 }}>
+                <LeadSlider options={REMINDER_LEAD_OPTIONS} value={lead} labelFor={t.redesign.leadStop} onChange={setReminderLead} />
+              </View>
+
+              <View style={{ height: 1, backgroundColor: RULE }} />
+              <SettingLine title={t.redesign.dateOnlyLabel} hint={t.redesign.dateOnlyHint}>
+                <TimeChip label={t.redesign.dateOnlyLabel} value={dayTimeLabel} onPress={() => setTimePicker((open) => (open === "day" ? null : "day"))} />
+              </SettingLine>
+              {timePicker === "day" ? (
+                <DateTimePicker value={timeToDate(dayReminderTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} onChange={handleTimeChange} />
               ) : null}
-            </Section>
+            </View>
+          ) : null}
+          <View style={{ height: 1, backgroundColor: RULE }} />
+          <NotificationRow
+            icon="alert-circle"
+            tint={OVERDUE_TINT}
+            title={t.redesign.overdue}
+            subtitle={t.redesign.overdueHint}
+            value={overdueAlertsEnabled}
+            onChange={switchWith(setOverdueAlertsEnabled)}
+          />
+        </View>
+        {permission === "denied" ? (
+          <AnimatedPressable onPress={() => Linking.openSettings()} accessibilityRole="button" style={{ marginTop: 10 }}>
+            <Text style={[{ fontFamily: "SpaceGrotesk-Medium", fontSize: 13, lineHeight: 18, color: P.alert }, rtl]}>
+              {`${t.settings.notificationsDenied} ${t.settings.openPhoneSettings} ›`}
+            </Text>
+          </AnimatedPressable>
+        ) : null}
 
-            {/* "Your plan" on both plans: what it is (Free or Pro) is the
-                first line of the card under it. */}
-            {isPurchasesEnabled ? (
-              <Section title={t.settings.plan}>
-                {usage ? (
-                  <Group>
-                    <PlanUsage plan={usage.plan} used={usage.used} />
-                  </Group>
-                ) : null}
+        <View style={{ marginTop: 25 }}>
+          <Eyebrow>{t.redesign.preferences}</Eyebrow>
+        </View>
+        <View style={{ marginTop: 6 }}>
+          <RowList
+            rows={[
+              { key: "language", label: t.redesign.language, value: languageName, onPress: () => setLanguageOpen(true) },
+              { key: "tour", label: t.redesign.appTour, onPress: () => setTourSeen(false) },
+              ...(isPurchasesEnabled && !pro
+                ? [{ key: "restore", label: isRestoring ? t.settings.restoring : t.redesign.restore, onPress: handleRestore, disabled: isRestoring }]
+                : []),
+            ]}
+          />
+        </View>
 
-                <Group>
-                  {pro ? (
-                    <ActionRow
-                      label={t.settings.manageSubscription}
-                      body={proStatus}
-                      onPress={handleManageSubscription}
-                    />
-                  ) : (
-                    <>
-                      <ActionRow label={t.settings.upgrade} body={t.settings.upgradeBody} onPress={() => openPaywall()} />
+        <View style={{ marginTop: 24 }}>
+          <Eyebrow>{t.redesign.support}</Eyebrow>
+        </View>
+        <View style={{ marginTop: 6 }}>
+          <RowList
+            rows={[
+              { key: "help", label: t.redesign.help, onPress: () => handleOpenLink(SUPPORT_LINKS.helpCenter) },
+              { key: "feedback", label: t.settings.sendFeedback, onPress: () => router.push("/feedback") },
+              { key: "privacy", label: t.settings.privacy, onPress: () => handleOpenLink(SUPPORT_LINKS.privacyPolicy) },
+              { key: "terms", label: t.settings.terms, onPress: () => handleOpenLink(SUPPORT_LINKS.termsOfService) },
+            ]}
+          />
+        </View>
 
-                      <Divider />
-
-                      <ActionRow
-                        label={isRestoring ? t.settings.restoring : t.settings.restorePurchases}
-                        disabled={isRestoring}
-                        onPress={handleRestore}
-                      />
-                    </>
-                  )}
-                </Group>
-              </Section>
-            ) : null}
-
-            <Section title={t.settings.notifications}>
-              <Group>
-                {permission === "denied" ? (
-                  <View className="gap-2">
-                    <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                      {t.settings.notificationsDenied}
-                    </Text>
-                    <AnimatedPressable onPress={() => Linking.openSettings()} accessibilityRole="button" className="self-start">
-                      <Text className="font-grotesk-semibold text-sm text-orange-600">{t.settings.openPhoneSettings}</Text>
-                    </AnimatedPressable>
-                  </View>
-                ) : null}
-
-                <ToggleRow
-                  label={t.settings.deadlineReminders}
-                  body={t.settings.deadlineRemindersBody}
-                  value={deadlineRemindersEnabled}
-                  onValueChange={handleDeadlineRemindersChange}
-                />
-
-                {/* Controls that belong to the row above them. */}
-                {deadlineRemindersEnabled ? (
-                  <View className="gap-3">
-                    <AnimatedPressable
-                      onPress={() => setShowReminderTimePicker((open) => !open)}
-                      accessibilityRole="button"
-                      className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
-                    >
-                      <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
-                        {t.settings.reminderTime}
-                      </Text>
-                      <Text className="font-grotesk-bold text-sm text-orange-600">{reminderTimeLabel}</Text>
-                    </AnimatedPressable>
-
-                    {showReminderTimePicker ? (
-                      <DateTimePicker
-                        value={timeToDate(dayReminderTime)}
-                        mode="time"
-                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                        themeVariant={scheme}
-                        textColor={colors.ink.cream}
-                        accentColor={colors.orange[500]}
-                        onChange={handleReminderTimeChange}
-                      />
-                    ) : null}
-
-                    <Text className="eyebrow text-ink-cream-muted" style={rtl}>
-                      {t.settings.beforeDeadline}
-                    </Text>
-                    <View className="flex-row flex-wrap gap-2">
-                      {REMINDER_OFFSET_OPTIONS.map((minutes) => (
-                        <Chip
-                          key={minutes}
-                          label={t.settings.offsetChip(minutes)}
-                          selected={reminderOffsets.includes(minutes)}
-                          onPress={() => toggleReminderOffset(minutes)}
-                        />
-                      ))}
-                    </View>
-
-                    <ToggleRow
-                      label={t.settings.importantReminder}
-                      body={t.settings.importantReminderBody}
-                      value={importantExtraReminder}
-                      onValueChange={setImportantExtraReminder}
-                    />
-                  </View>
-                ) : null}
-
-                <Divider />
-
-                <ToggleRow
-                  label={t.settings.dailyNudge}
-                  body={t.settings.dailyNudgeBody}
-                  value={dailyNudgeEnabled}
-                  onValueChange={handleDailyNudgeChange}
-                />
-
-                {dailyNudgeEnabled ? (
-                  <View className="gap-3">
-                    {/* The picked time, shown like a filled field that opens the picker. */}
-                    <AnimatedPressable
-                      onPress={() => setShowTimePicker((open) => !open)}
-                      accessibilityRole="button"
-                      className="card card--cream-inset min-h-[44px] flex-row items-center gap-2 px-4"
-                    >
-                      <Text className="flex-1 font-grotesk-medium text-sm text-ink-cream" style={rtl}>
-                        {t.settings.nudgeTime}
-                      </Text>
-                      <Text className="font-grotesk-bold text-sm text-orange-600">{nudgeTimeLabel}</Text>
-                    </AnimatedPressable>
-
-                    {showTimePicker ? (
-                      <DateTimePicker
-                        value={timeToDate(dailyNudgeTime)}
-                        mode="time"
-                        display={Platform.OS === "ios" ? "spinner" : "default"}
-                        themeVariant={scheme}
-                        textColor={colors.ink.cream}
-                        accentColor={colors.orange[500]}
-                        onChange={handleTimeChange}
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <Divider />
-
-                <ToggleRow
-                  label={t.settings.overdueAlerts}
-                  body={t.settings.overdueAlertsBody}
-                  value={overdueAlertsEnabled}
-                  onValueChange={handleOverdueAlertsChange}
-                />
-
-                <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                  {t.settings.notificationsNote}
-                </Text>
-              </Group>
-            </Section>
-
-            {/* Language is the one thing here, so it's the section's own
-                name — not tucked under "Appearance". */}
-            <Section title={t.settings.language}>
-              <Group>
-                <View className="flex-row flex-wrap gap-2">
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <Chip
-                      key={option.value}
-                      label={option.label}
-                      selected={language === option.value}
-                      onPress={() => handleSelectLanguage(option.value)}
-                      accessibilityRole="radio"
-                    />
-                  ))}
-                </View>
-              </Group>
-            </Section>
-
-            <Section title={t.settings.support}>
-              <Group>
-                <ActionRow
-                  icon="help-circle"
-                  label={t.settings.help}
-                  body={t.settings.helpBody}
-                  onPress={() => handleOpenLink(SUPPORT_LINKS.helpCenter)}
-                />
-
-                <Divider inset />
-
-                <ActionRow
-                  icon="compass"
-                  label={t.settings.tour}
-                  body={t.settings.tourBody}
-                  onPress={() => setTourSeen(false)}
-                />
-
-                <Divider inset />
-
-                <ActionRow
-                  icon="message-circle"
-                  label={t.settings.sendFeedback}
-                  onPress={() => router.push("/feedback")}
-                />
-
-                <Divider inset />
-
-                <ActionRow
-                  icon="shield"
-                  label={t.settings.privacy}
-                  onPress={() => handleOpenLink(SUPPORT_LINKS.privacyPolicy)}
-                />
-
-                <Divider inset />
-
-                <ActionRow
-                  icon="file-text"
-                  label={t.settings.terms}
-                  onPress={() => handleOpenLink(SUPPORT_LINKS.termsOfService)}
-                />
-              </Group>
-
-              <Text className="pb-1 text-center font-grotesk-medium text-sm text-ink-cream-subtle">
-                {t.settings.version(APP_VERSION)}
-              </Text>
-            </Section>
-          </View>
-        </ScrollView>
-      </View>
+        {/* Sign out on the left, the version on the right. */}
+        <View style={{ marginTop: 26, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <AnimatedPressable onPress={handleSignOut} disabled={isSigningOut} scaleTo={0.96} hitSlop={8} accessibilityRole="button">
+            <Text style={[{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: P.alert, opacity: isSigningOut ? 0.5 : 1 }, TIGHT]}>
+              {isSigningOut ? t.settings.signingOut : t.settings.signOut}
+            </Text>
+          </AnimatedPressable>
+          <Text style={[{ fontFamily: "SpaceMono-Bold", fontSize: 10.5, letterSpacing: 2, color: P.inkFaint }, TIGHT]}>{`NEXDO ${APP_VERSION}`}</Text>
+        </View>
+        {signOutError ? (
+          <Text style={[{ marginTop: 8, fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.alert }, rtl]}>{signOutError}</Text>
+        ) : null}
+      </ScrollView>
 
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+      <LanguageSheet visible={languageOpen} value={language} onChange={handleSelectLanguage} onClose={() => setLanguageOpen(false)} />
     </SafeAreaView>
   );
 }

@@ -77,9 +77,25 @@ export const ar: Translations = {
     privacy: "سياسة الخصوصية",
   },
 
+  /** What a task's score is (components/ScoreSheet.tsx, from the Tasks page's score pill). */
+  scoreInfo: {
+    /** The compact score card (2026-11-09). */
+    compact: { headline: "نتيجة أعلى، أنجزها أبكر", line: "ترتفع كلما اقترب الموعد.", soon: "قريبة", important: "مهمة", long: "طويلة" },
+    card: { first: "ابدأ بهذه", soon: "تستحق أن تُنجز قريبًا", wait: "هذه يمكنها الانتظار", means: "النتيجة العالية تعني: أنجزها قريبًا.", dueSoon: "موعدها قريب", important: "إنها مهمة", takesWhile: "تستغرق وقتًا" },
+    footer2: "يحدّثها Nexdo تلقائيًا كلما اقتربت المواعيد.",
+    gotIt: "فهمت",
+    title: "ما هي الدرجة؟",
+    body: "رقم من 0 إلى 100 يخبرك بما تبدأ به. كلما ارتفع، استحقت المهمة وقتك أسرع. يحسبه Nexdo من ثلاثة أشياء:",
+    parts: { soon: "مدى قرب موعدها", important: "مدى أهميتها", long: "المدة التي تستغرقها" },
+    footer: "تتحدّث تلقائيًا مع اقتراب المواعيد، لتبقى القائمة بالترتيب الصحيح.",
+  },
+
   undoToast: {
     undo: "تراجع",
     done: (title: string) => `تمّت: ${title}`,
+    /** A task done that feeds today's gem (Anim-TaskDone.html). */
+    gemBrighter: "رائع! الجوهرة تتوهج أكثر",
+    doneToday: (done: number, total: number) => `تم إنجاز ${done} من أصل ${tasksObject(total)} اليوم`,
     deleted: (title: string) => `حُذفت: ${title}`,
   },
 
@@ -87,6 +103,7 @@ export const ar: Translations = {
     next: "اليوم",
     tasks: "المهام",
     settings: "الإعدادات",
+    calendar: "التقويم",
   },
 
   format: {
@@ -122,6 +139,9 @@ export const ar: Translations = {
     dueTodayBy: (time: string) => `مستحقة اليوم قبل ${time}`,
     dueTomorrow: "مستحقة غدًا",
     dueTomorrowAt: (time: string) => `مستحقة غدًا عند ${time}`,
+    /** On a Tasks card: just the day, without "Due" (2026-11-03). */
+    todayShort: "اليوم",
+    tomorrowShort: "غدًا",
     inDays: (days: number) => `بعد ${counted(days, "يوم", "أيام", "يومين")}`,
     dueOnAt: (day: string, time: string) => `مستحقة ${day} عند ${time}`,
     dueOn: (day: string) => `مستحقة ${day}`,
@@ -159,6 +179,8 @@ export const ar: Translations = {
     taskComplete: "اكتملت المهمة",
     pinned: "مثبّتة أولًا",
     schedule: "الجدول",
+    gemNewStar: (days: number) => `نجمة جديدة! ${counted(days, "يوم", "أيام", "يومان")} من المثابرة.`,
+    gemNextStar: (days: number) => `${counted(days, "يوم آخر", "أيام أخرى", "يومان آخران")} تُنجز فيها شيئًا للنجمة التالية`,
     todayProgress: (done: number, total: number) => `اليوم: أُنجز ${done} من ${total}`,
     doneForToday: "انتهيت لهذا اليوم",
     doneForTodayBody: "أنجزت كل ما كان مستحقًا اليوم. ما يأتي بعده في جدولك.",
@@ -172,6 +194,16 @@ export const ar: Translations = {
     doneOfTotal: (done: number, total: number) => `أُنجز ${done} من ${total}`,
     viewToday: (count: number) => `اليوم · ${count}`,
     viewAll: (count: number) => `كل المهام · ${count}`,
+    doThisFirst: "ابدأ بهذه",
+    startFocus: "ابدأ التركيز",
+    startFocusFor: (duration: string) => `ابدأ التركيز (${duration})`,
+    score: "الدرجة",
+    routinesHeading: "العادات اليومية",
+    routinesToday: (done: number, total: number): [string, string, string] => ["", String(done), ` من ${total} اليوم`],
+    anytime: "في أي وقت اليوم",
+    allShort: "الكل",
+    noRoutinesToday: "لا عادات اليوم. جرّب «اقرأ كل يوم الساعة 9 مساءً».",
+    addRoutine: "أضف عادة",
   },
 
   schedule: {
@@ -190,6 +222,24 @@ export const ar: Translations = {
     stepOf: (step: number, total: number, label: string) => `الخطوة ${step} من ${total}: ${label}`,
     nothingDue: "لا شيء مستحق في هذا اليوم",
     done: "المنجزة",
+    /** The redesigned page (2026-11-08): the Month view, the titles over each view. */
+    month: "الشهر",
+    thisWeekTitle: "هذا الأسبوع",
+    weekOf: (date: string) => `أسبوع ${date}`,
+    monthTasks: (count: number) => `مهام هذا الشهر: ${count}`,
+    yearSubtitle: "سنتك بالأحجار الكريمة",
+    /** The labels over a day's two lists (shown in capitals). */
+    tasksLabel: "المهام",
+    routinesLabel: "الروتين",
+    /** The month's key, from a quiet day to a busy one. */
+    fewerTasks: "مهام أقل",
+    moreTasks: "أكثر",
+    /** In the time column, for a task due on a day but at no set time. */
+    allDay: "طوال اليوم",
+    /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
+    length: (hours: number, mins: number) => (hours === 0 ? `${mins} د` : mins === 0 ? `${hours} س` : `${hours} س ${mins} د`),
+    /** The year's key: a day's gem, from nothing done to everything done. */
+    gemLevels: { sleepy: "نائمة", flicker: "خافتة", steady: "ثابتة", glowing: "متوهجة", blazing: "مشتعلة" },
   },
 
   session: {
@@ -218,13 +268,79 @@ export const ar: Translations = {
     complete: "إكمال",
     cancelSession: "إلغاء الجلسة",
     cancelTitle: "هل تريد إلغاء هذه الجلسة؟",
-    cancelBody: "سيتوقف المؤقت ولن يُحفظ الوقت الذي قضيته. أما المهمة فتبقى كما هي.",
+    cancelBody: "سيتوقف المؤقت. يُحتسب الوقت الذي قضيته في الإحصاءات، وتبقى المهمة كما هي.",
     keepGoing: "المتابعة",
     endSession: "إنهاء الجلسة",
     hideAdvice: "إخفاء النصيحة",
     takeAdvice: "اطلب نصيحة الذكاء الاصطناعي",
-    stuck: "أنا متعثر",
     noTimer: "لا مؤقّت لهذه المهمة — اضغط إكمال عند إنجازها.",
+  },
+
+  /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
+  focusSound: {
+    label: "صوت التركيز",
+    names: { off: "بلا صوت", rain: "مطر", waves: "أمواج", thunder: "عاصفة رعدية", stream: "جدول ماء", forest: "غابة", fireplace: "مدفأة", cafe: "مقهى" },
+  },
+
+  insights: {
+    /** The focus chart's big number: "18 min", "2 h 10 min". */
+    focusTotal: (hours: number, minutes: number) => (hours > 0 ? `${hours} س ${minutes} د` : `${minutes} د`),
+    tasksOf: (done: number, total: number) => `تم إنجاز ${done} من أصل ${tasksObject(total)}`,
+    /** "Finish 1 more and it starts to blaze." — level is the gem level reached next (2–5). */
+    nextHint: (n: number, level: number, name: string) => `أنجز ${n} أخرى لتصبح «${name}».`,
+    allDone: "أنجزت كل شيء اليوم. إنها متوهجة!",
+    nothingDue: "لا شيء مستحق اليوم.",
+    daysSoFar: "أيامك حتى الآن",
+    focusedLower: "تركيز",
+    doneLower: "منجزة",
+    streakLower: "سلسلة",
+    bestStreak: "أفضل سلسلة",
+    bestDay: "أفضل يوم",
+    bestWeek: "أفضل أسبوع",
+    thisWeekLower: "هذا الأسبوع",
+    since: (date: string) => `منذ ${date}`,
+    thisWeek: "هذا الأسبوع",
+    sessionsTitle: "الجلسات",
+    sessionsSoFar: "جلسات تركيز حتى الآن",
+    sessionsTotal: "جلسات تركيز إجمالًا",
+    paceProgress: (done: number, n: number) => `${done} من ${n}`,
+    paceHint: (n: number) => `أنجز ${n} مهام في جلسة تركيز ليتعلّم Nexdo إيقاعك.`,
+    title: "الإحصاءات",
+    subtitle: "من جلسات التركيز والمهام المنجزة",
+    open: "عرض إحصاءاتك",
+    openBody: "وقت التركيز، والمهام المنجزة، وسلسلة أيامك، وإيقاعك",
+    week: "آخر 7 أيام",
+    all: "منذ البداية",
+    focused: "تركيز",
+    done: "منجزة",
+    streak: "سلسلة",
+    streakDays: (count: number) => counted(count, "يوم", "أيام", "يومان"),
+    focusChart: "وقت التركيز",
+    barSummary: (date: string, focus: string, done: number) => `${date} · ${focus} تركيز · ${done} منجزة`,
+    weekOf: (date: string) => `أسبوع ${date}`,
+    today: "اليوم",
+    bestTime: {
+      morning: "تركيزك في أفضل حالاته صباحًا.",
+      afternoon: "تركيزك في أفضل حالاته بعد الظهر.",
+      evening: "تركيزك في أفضل حالاته مساءً.",
+      night: "تركيزك في أفضل حالاته ليلًا.",
+    },
+    sessions: (count: number) => `${counted(count, "جلسة تركيز", "جلسات تركيز", "جلستا تركيز")} حتى الآن.`,
+    empty: "ابدأ جلسة تركيز من صفحة «اليوم»، وسيظهر وقتك هنا.",
+    pace: {
+      title: "إيقاعك",
+      lockedBody: "يقارن نكسدو الوقت الذي تستغرقه مهامك فعلًا بالوقت الذي تمنحه لها، ويضبط التقديرات الجديدة على إيقاعك.",
+      learning: (done: number, needed: number) =>
+        `أنجز ${needed} مهام خلال جلسة تركيز وسيتعلّم نكسدو إيقاعك — ${done} من ${needed} حتى الآن.`,
+      factor: (value: string) => `${value}×`,
+      slower: (value: string) => `تستغرق مهامك نحو ${value}× الوقت الذي تمنحه لها.`,
+      faster: (value: string) => `تنجز مهامك في نحو ${value}× الوقت الذي تمنحه لها.`,
+      onPace: "تنجز مهامك تقريبًا في الوقت الذي تمنحه لها.",
+      short: "مهام 30 دقيقة أو أقل",
+      long: "مهام أطول",
+      bucketOnPace: "في الوقت",
+      adjusting: "صارت الإضافة السريعة تضبط المدد المقدّرة على إيقاعك.",
+    },
   },
 
   breakdown: {
@@ -256,6 +372,8 @@ export const ar: Translations = {
     title: "المهام",
     addTask: "أضف مهمة",
     searchPlaceholder: "ابحث في المهام...",
+    yourTasks: "مهامك",
+    sortedBy: (sort: string) => `مرتبة حسب: ${sort}`,
     pendingSuffix: " قيد الانتظار",
     completedSuffix: " مكتملة",
     overdueCount: (count: number) => `${count} متأخرة`,
@@ -263,7 +381,7 @@ export const ar: Translations = {
     showingSuffix: (shown: number, total: number) => ` من أصل ${total} مهمة`,
     emptyTitle: "لا توجد مهام",
     emptyBody: "جرّب عامل تصفية آخر أو كلمة بحث مختلفة.",
-    status: { all: "الكل", pending: "قيد الانتظار", completed: "مكتملة", overdue: "متأخرة", noDeadline: "بلا موعد", archived: "مؤرشفة" },
+    status: { all: "الكل", pending: "للإنجاز", completed: "منجزة", overdue: "متأخرة", noDeadline: "بلا موعد", archived: "مؤرشفة" },
     sort: { recent: "الأحدث إضافة", dueDate: "موعد الاستحقاق", priority: "درجة الأولوية" },
     score: (score: number) => `الدرجة: ${score}`,
   },
@@ -427,6 +545,22 @@ export const ar: Translations = {
     newDeadline: (label: string) => `الموعد الجديد: ${label}`,
     addTime: "إضافة وقت",
     removeTime: "بلا وقت محدد",
+    quick: {
+      label: "اكتبها في سطر واحد",
+      placeholder: "مثال: طبيب الأسنان الجمعة 3 مساءً كل شهر",
+      help: "اكتبها كما تقولها: يُملأ لك اليوم والوقت والمدة والتكرار.",
+      readAs: "هكذا فهمها Nexdo",
+      titleMissing: "اكتب ما يجب فعله، لا موعده فقط.",
+      moreDetails: "مزيد من التفاصيل",
+      aiLocked: "ذكاء Nexdo الاصطناعي يفهم هذا — Pro",
+      aiRead: "دع ذكاء Nexdo يقرأ هذا",
+      aiReading: "جارٍ القراءة…",
+      aiNothing: "لم يُعثر على مهمة جديدة — اكتب ما يجب فعله.",
+      changeHint: "تريد تعديل مهمة موجودة؟ استخدم الميكروفون السحري في شريط التبويب.",
+      changeHintLocked: "تريد تعديل مهمة موجودة؟ الميكروفون السحري يفعل ذلك — Pro",
+      addTasks: (count: number) => `إضافة ${tasksObject(count)}`,
+      yourPace: "إيقاعك",
+    },
   },
 
   chat: {
@@ -449,10 +583,11 @@ export const ar: Translations = {
     finishing: "ألتقط كلماتك الأخيرة…",
     stopped: "متوقف",
     undo: "تراجع",
-    yourTasks: "مهامك",
-    emptyTitle: "لا توجد مهام مفتوحة",
-    emptyBody: "قل مهمة وستظهر هنا.",
-    marks: { added: "أُضيفت الآن", updated: "عُدّلت", completed: "أُنجزت" },
+    hintTitle: "قل ما تريد إضافته أو تغييره",
+    hintBody: "«الاتصال بأمي غدًا» · «تأجيل التقرير إلى الجمعة»",
+    marks: { added: "أُضيفت الآن", updated: "عُدّلت", completed: "أُنجزت", removed: "حُذفت", shown: "في قائمتك" },
+    discard: "تجاهل التغييرات",
+    discarded: "تم تجاهل تغييرات الميكروفون السحري",
     stop: "إيقاف الاستماع",
     talkAgain: "تحدّث مجددًا",
     done: "تم",
@@ -472,15 +607,15 @@ export const ar: Translations = {
     steps: {
       next: {
         title: "اليوم",
-        body: "ما هو مستحق اليوم — وما تأخّر — والمهمة الأجدر بالإنجاز في الأعلى. اسحب لرؤية البقية، أو انتقل إلى «كل المهام» لتختار أي مهمة أخرى.",
+        body: "ما هو مستحق اليوم — وما تأخّر — والمهمة الأجدر بالإنجاز في الأعلى. اسحب لرؤية البقية، أو انتقل إلى «كل المهام» لتختار أي مهمة أخرى. اضغط على + في الأعلى لإضافة مهمة يدويًا.",
       },
       tasks: {
         title: "كل مهامك",
         body: "كل ما عليك في قائمة واحدة. اضغط على مهمة لتعديلها، وعلّمها عند إنجازها.",
       },
-      add: {
-        title: "أضف مهمة",
-        body: "اضغط على + لإضافة مهمة يدويًا، من أي تبويب.",
+      calendar: {
+        title: "التقويم",
+        body: "أسبوعك يومًا بيوم — أو السنة كلها. اضغط على يوم لترى ما هو مستحق فيه.",
       },
       voice: {
         title: "الميكروفون السحري",
@@ -713,7 +848,7 @@ export const ar: Translations = {
       media: "الصور والمستندات",
       voice: "الملاحظات الصوتية",
       live: "الميكروفون السحري",
-      assist: "تقسيم المهام بالذكاء الاصطناعي",
+      assist: "قسّم المهمة",
     },
     minutes: (count: number) => `${count} د`,
     used: {
@@ -765,6 +900,17 @@ export const ar: Translations = {
     free: "مجاني",
     pro: "برو",
     unlimitedNote: "إضافة المهام يدويًا وصفحة «اليوم» والتذكيرات غير محدودة في الخطتين.",
+    extraTitle: {
+      sounds: "أصوات التركيز متاحة مع نكسدو برو.",
+      insights: "سجلّك الكامل وإيقاعك متاحان مع نكسدو برو.",
+    },
+    extraHint: "يضيف برو أصوات التركيز، وإحصاءاتك كاملة مع إيقاعك، وذكاء نكسدو الاصطناعي. المهام وصفحة «اليوم» والجلسات والتذكيرات تبقى مجانية.",
+    extras: {
+      sounds: "أصوات التركيز",
+      insights: "الإحصاءات والإيقاع",
+      insightsFree: "7 أيام",
+      insightsPro: "الكل",
+    },
     startTrial: (count: number, unit: TrialUnit) => `ابدأ تجربة مجانية لمدة ${trialLength(count, unit)}`,
     subscribe: "اشترك في نكسدو برو",
     working: "لحظة…",
@@ -852,6 +998,91 @@ export const ar: Translations = {
   profile: {
     addName: "أضف اسمك",
     editAccount: "تعديل حسابك",
+  },
+
+  /** The 2026-11 redesign: Settings, Account, Feedback, the task edit card and Postpone. */
+  redesign: {
+    accountButton: "الحساب",
+    manage: "إدارة",
+    upgrade: "ترقية",
+    freePlan: "Nexdo المجاني",
+    freeBody: "كل ميزات الذكاء الاصطناعي متاحة مع Pro.",
+    renews: (date: string) => `يتجدد في ${date}`,
+    ends: (date: string) => `ينتهي في ${date}`,
+    resetsIn: (days: number) => `يُعاد ضبطه بعد ${counted(days, "يوم", "أيام", "يومين")}`,
+    ofMinutes: (count: number) => `/ ${count} د`,
+    thisWeek: "هذا الأسبوع",
+    tasksDone: (count: number) => counted(count, "مهمة منجزة", "مهام منجزة", "مهمتان منجزتان"),
+    focused: (time: string) => `${time} من التركيز · شاهد إحصاءاتك`,
+    notifications: "الإشعارات",
+    at: "في",
+    reminders: "التذكيرات",
+    remindersBody: "في يوم الاستحقاق",
+    dailyPlan: "خطة اليوم",
+    dailyPlanBody: "كل صباح",
+    overdue: "المتأخرة",
+    alertsOn: "التنبيهات مفعّلة",
+    alertsOff: "التنبيهات متوقفة",
+    off: "متوقفة",
+    preferences: "التفضيلات",
+    language: "اللغة",
+    appTour: "جولة في التطبيق",
+    support: "المساعدة",
+    help: "المساعدة والأسئلة",
+    changePhoto: "تغيير الصورة",
+    photoHint: "JPG أو PNG، أقل من 5 ميغابايت",
+    name: "الاسم",
+    email: "البريد الإلكتروني",
+    save: "حفظ",
+    feedbackSubtitle: "نقرأ كل رسالة.",
+    feedbackPlaceholder: "ما الذي يجعل Nexdo أفضل لك؟",
+    addScreenshot: "إضافة لقطة شاشة",
+    feedbackNote: "يُرسل معها حسابك وإصدار التطبيق وطراز هاتفك، لنرد عليك ونصلح الأمور أسرع.",
+    send: "إرسال",
+    remindersLabel: "التذكيرات",
+    noDateNoReminder: "لا تاريخ، لا تذكير",
+    postpone: "تأجيل",
+    pickDay: "اختر يومًا",
+    restore: "استعادة المشتريات",
+    remindersHint: "تنبيه في يوم استحقاق المهمة",
+    dailyPlanHint: "خطة يومك، كل صباح",
+    overdueHint: "تنبيه عندما تتأخر مهمة",
+    leadTitle: "مهام لها وقت — ذكّرني",
+    leadAtStart: "عند البدء",
+    leadBefore: (offset: string) => `قبل ${offset}`,
+    dateOnlyTitle: "مهام بتاريخ فقط — ذكّرني في",
+    dailyTimeTitle: "تصل كل يوم في",
+    /** Settings → Reminders, 2026-11 screenshot: the row's line, the preview card, the lead slider. */
+    remindersPinged: "اختر متى نذكّرك",
+    previewLabel: "معاينة",
+    previewTask: "طبيب الأسنان",
+    previewIn: (task: string, offset: string) => `${task} بعد ${offset}`,
+    previewNow: (task: string) => `${task} يبدأ الآن`,
+    previewTomorrow: (task: string) => `${task} غدًا`,
+    previewStarts: (time: string) => `يبدأ الساعة ${time}`,
+    /** The slider's stops: Start, 5 m, 15 m, 30 m, 1 h, 1 day. */
+    leadStop: (minutes: number) => {
+      if (minutes === 0) return "البداية";
+      if (minutes < 60) return `${minutes} د`;
+      const hours = Math.round(minutes / 60);
+      return minutes < 1440 ? `${hours} س` : "يوم";
+    },
+    /** "15 min", "1 h", "1 day" — in "15 min before" and the preview. */
+    leadShort: (minutes: number) => {
+      if (minutes < 60) return `${minutes} دقيقة`;
+      const hours = Math.round(minutes / 60);
+      return minutes < 1440 ? `${hours} ساعة` : "يوم واحد";
+    },
+    timedTitle: "مهام لها وقت",
+    dateOnlyLabel: "مهام لها تاريخ فقط",
+    dateOnlyHint: "تذكير صباح ذلك اليوم",
+    taskNeedsDate: "أضف تاريخًا لتصلك التذكيرات",
+    remindThisTask: "ذكّرني بهذه المهمة",
+    remindersWhen: "في يوم الاستحقاق، في الوقت المحدد في الإعدادات، وقبل الوقت المحدد.",
+    remindersOffEverywhere: "التذكيرات متوقفة لكل المهام في الإعدادات.",
+    turnOnInSettings: "تفعيل في الإعدادات",
+    meterLabels: { live: "Magic mic", assist: "التقسيمات", media: "الصور" },
+    feedbackTypes: { suggestion: "فكرة", bug: "خلل", other: "أخرى" },
   },
 
   account: {
@@ -1009,6 +1240,7 @@ export const ar: Translations = {
       live: (minutes: number) => `${minutes} دقيقة من الميكروفون السحري`,
       assist: (count: number) => `${count} من تقسيمات المهام`,
     },
+    extras: ["أصوات تركيز أثناء العمل", "الإحصاءات: سجلّك الكامل وإيقاعك"],
   },
 
   auth: {
@@ -1043,5 +1275,73 @@ export const ar: Translations = {
     somethingWrong: "حدث خطأ ما. أعد المحاولة.",
     showPassword: "إظهار كلمة المرور",
     hidePassword: "إخفاء كلمة المرور",
+  },
+
+  /** The focus session page (components/NextTaskCard.tsx, Final-Focus.html). */
+  focusPage: {
+    eyebrow: "جلسة تركيز",
+    back: "رجوع",
+    /** Under the clock: "of 30 mins". */
+    ofLength: (length: string) => `من ${length}`,
+    /** Under the ring once the task is done in a session: "18 min of focus · 12 min early" (FocusClockFace). */
+    doneMinutes: (minutes: number) => `${minutes} د`,
+    doneOfFocus: "من التركيز",
+    doneEarly: (minutes: number) => `أبكر بـ ${minutes} د`,
+    doneOver: (minutes: number) => `${minutes} د إضافية`,
+    doneOnTime: "في الوقت تمامًا",
+    /** "Step 2: write the introduction". */
+    step: (index: number, label: string) => `الخطوة ${index}: ${label}`,
+    breakIntoSteps: "قسّمها إلى خطوات",
+    sound: "صوت التركيز",
+  },
+
+  /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
+  addSheet: {
+    placeholder: "اكتب مهمة…",
+    details: "التفاصيل",
+    hideDetails: "إخفاء التفاصيل",
+    date: "التاريخ",
+    duration: "المدة",
+    repeat: "التكرار",
+    priority: "الأولوية",
+    today: "اليوم",
+    anotherDay: "يوم آخر",
+    noDate: "بلا تاريخ",
+    atSetTime: "في وقت محدد",
+    hoursShort: "س",
+    minutesShort: "د",
+    ends: "ينتهي",
+    ifMissed: "إذا فاتتني واحدة",
+    keepOpen: "تبقى مفتوحة",
+    skip: "تخطّي",
+    showAs: "اعرضها كـ",
+    taskKind: "مهمة",
+    taskKindHint: "بطاقة في اليوم لها موعد نهائي. ما يفوتك يمكن أن يبقى مفتوحًا.",
+    routineKind: "روتين",
+    routineKindHint: "عادة على خط الروتين. بلا موعد نهائي، تبدأ من جديد كل مرة.",
+    noRepeat: "بلا تكرار",
+    high: "عالية",
+    medium: "متوسطة",
+    low: "منخفضة",
+    highHint: "يجب أن تتم قريبًا",
+    mediumHint: "مهمة وغير عاجلة",
+    lowHint: "متى توفر لديك الوقت",
+    priorityNote: "الأولوية من الأشياء التي يرتّب بها Nexdo قائمتك.",
+    fromPhoto: "أضف من صورة أو ملف",
+    takePhoto: "التقط صورة",
+    takePhotoHint: "سبورة، منهج دراسي، ملاحظة",
+    choosePhoto: "اختر صورة",
+    choosePhotoHint: "من معرض الصور",
+    uploadFile: "ارفع ملفًا",
+    uploadFileHint: "PDF أو مستند",
+    readBy: "قرأه Nexdo",
+    reading: "جارٍ القراءة…",
+    removeFile: "إزالة الملف",
+    addTask: "أضف المهمة",
+    preview: "معاينة المهمة الجديدة",
+    repeats: "تتكرر",
+    found: (n: number) => `وجد Nexdo ${tasksObject(n)} · المس للاحتفاظ`,
+    addTasks: (n: number) => `أضف ${tasksObject(n)}`,
+    busy: (n: number) => counted(n, "مهمة مستحقة", "مهام مستحقة", "مهمتان مستحقتان"),
   },
 };

@@ -3,21 +3,15 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { IconButton, PrimaryButton, SecondaryButton } from "@/components/Button";
-import { Chip } from "@/components/Chip";
-import { EmptyState } from "@/components/EmptyState";
-import { FormSection } from "@/components/FormSection";
-import { IconTile } from "@/components/IconTile";
+import { SheetIcon } from "@/components/addSheet/SheetParts";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { ScreenHeader } from "@/components/ScreenHeader";
-import { TextField } from "@/components/TextField";
+import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
-import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
   FEEDBACK_MESSAGE_MAX,
@@ -26,16 +20,14 @@ import {
   type FeedbackScreenshot,
   type FeedbackType,
 } from "@/lib/feedback";
+import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
-const FEEDBACK_TYPES: FeedbackType[] = ["suggestion", "bug", "general", "other"];
+const P = colors.palette;
+// Idea · Bug · Other (the 2026-11 redesign; "general" is no longer offered).
+const FEEDBACK_TYPES = ["suggestion", "bug", "other"] as const satisfies readonly FeedbackType[];
 
 // The counter only shows once the message gets near the limit.
 const COUNTER_FROM = FEEDBACK_MESSAGE_MAX - 500;
-
-const THUMB = 56;
-
-// Same raised tray as Add Task's footer.
-const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
 
 /**
  * Settings → Send feedback. The user is signed in, so nothing about who they
@@ -43,13 +35,12 @@ const FOOTER_SHADOW = { boxShadow: "0 -8px 24px -12px rgba(92, 58, 26, 0.3)" };
  * (lib/feedback.ts).
  */
 export default function Feedback() {
-  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isLoaded, isSignedIn, userId } = useAuth();
-  useStatusBarStyle("light");
+  useStatusBarStyle("dark");
   // Opened from "Report" under something the AI wrote (components/ReportAiButton.tsx):
   // that text comes along, quoted, ready for the user to say what's wrong with it.
   const { report } = useLocalSearchParams<{ report?: string }>();
@@ -110,152 +101,157 @@ export default function Feedback() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: P.paper }} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScreenHeader
-          title={report ? t.feedback.reportTitle : t.feedback.title}
-          subtitle={report ? t.feedback.reportSubtitle : t.feedback.subtitle}
-          accent
-          actions={<IconButton icon="x" variant="header" onPress={handleClose} accessibilityLabel={t.common.close} />}
-        />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Title and subtitle, the ✕ on the right. */}
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 30, lineHeight: 36, letterSpacing: -0.6, color: P.ink }, rtl]}>
+                {report ? t.feedback.reportTitle : t.feedback.title}
+              </Text>
+              <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 18, color: P.inkMuted }, rtl]}>
+                {report ? t.feedback.reportSubtitle : t.redesign.feedbackSubtitle}
+              </Text>
+            </View>
+            <AnimatedPressable
+              onPress={handleClose}
+              scaleTo={0.92}
+              accessibilityRole="button"
+              accessibilityLabel={t.common.close}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: P.chip, alignItems: "center", justifyContent: "center" }}
+            >
+              <SheetIcon name="close" size={18} color={P.ink} strokeWidth={2.2} />
+            </AnimatedPressable>
+          </View>
 
-        <View className="screen-body">
           {sent ? (
-            <View className="flex-1 justify-center px-8">
-              <EmptyState icon="check" title={t.feedback.success} body={t.feedback.successBody} />
+            <View style={{ marginTop: 40, alignItems: "center", gap: 10, paddingHorizontal: 16 }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: P.peach, alignItems: "center", justifyContent: "center" }}>
+                <SheetIcon name="check" size={24} color={P.accentInk} strokeWidth={2.6} />
+              </View>
+              <Text style={{ textAlign: "center", fontFamily: "SpaceGrotesk-Bold", fontSize: 19, color: P.ink }}>{t.feedback.success}</Text>
+              <Text style={{ textAlign: "center", fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 20, color: P.inkMuted }}>{t.feedback.successBody}</Text>
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={{ paddingBottom: 24 }}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View className="gap-2 px-3 pt-4">
-                <FormSection icon="tag" label={t.feedback.typeLabel} plain>
-                  <View className="flex-row flex-wrap gap-2">
-                    {FEEDBACK_TYPES.map((value) => (
-                      <Chip
-                        key={value}
-                        label={t.feedback.types[value]}
-                        selected={type === value}
-                        solid
-                        accessibilityRole="radio"
-                        onPress={() => setType(value)}
-                      />
-                    ))}
-                  </View>
-                </FormSection>
-
-                <FormSection icon="message-square" label={t.feedback.messageLabel} required>
-                  <TextField
-                    value={message}
-                    onChangeText={(text) => {
-                      setMessage(text);
-                      if (messageTouched) setMessageTouched(false);
-                    }}
-                    placeholder={t.feedback.messagePlaceholder}
-                    multiline
-                    maxLength={FEEDBACK_MESSAGE_MAX}
-                    error={messageTouched}
-                    inputStyle={{ minHeight: 120 }}
-                  />
-                  {messageTouched ? (
-                    <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                      {t.feedback.messageRequired}
-                    </Text>
-                  ) : null}
-                  {message.length >= COUNTER_FROM ? (
-                    <Text className="self-end font-grotesk-medium text-xs text-ink-cream-muted">
-                      {message.length}/{FEEDBACK_MESSAGE_MAX}
-                    </Text>
-                  ) : null}
-                </FormSection>
-
-                <FormSection icon="image" label={t.feedback.screenshotLabel} hint={t.feedback.optional}>
-                  {screenshot ? (
-                    <View className="card card--cream-inset flex-row items-center gap-3 py-[6px] pl-[6px] pr-1.5">
-                      <AnimatedPressable
-                        onPress={() => setViewingScreenshot(true)}
-                        scaleTo={0.94}
-                        accessibilityRole="imagebutton"
-                        accessibilityLabel={t.feedback.viewScreenshot}
-                      >
-                        <Image
-                          source={{ uri: screenshot.uri }}
-                          resizeMode="cover"
-                          style={{ width: THUMB, height: THUMB }}
-                          className="rounded-xl bg-cream-200"
-                        />
-                      </AnimatedPressable>
-                      <Text className="flex-1 font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
-                        {t.feedback.screenshotAttached}
-                      </Text>
-                      <IconButton
-                        icon="x"
-                        onPress={() => setScreenshot(null)}
-                        accessibilityLabel={t.feedback.removeScreenshot}
-                      />
-                    </View>
-                  ) : (
-                    // Laid out like Add Task's "Open AI Chat instead" row.
+            <>
+              {/* Idea · Bug · Other */}
+              <View style={{ marginTop: 22, height: 44, borderRadius: 22, padding: 4, backgroundColor: P.chip, flexDirection: "row" }} accessibilityRole="radiogroup">
+                {FEEDBACK_TYPES.map((value) => {
+                  const picked = type === value;
+                  return (
                     <AnimatedPressable
-                      onPress={handlePickScreenshot}
-                      accessibilityRole="button"
-                      scaleTo={0.98}
-                      className="card card--cream-inset flex-row items-center gap-2.5 py-[5px] pl-[6px] pr-3"
+                      key={value}
+                      onPress={() => setType(value)}
+                      scaleTo={0.97}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: picked }}
+                      style={{ flex: 1, borderRadius: 18, backgroundColor: picked ? P.ink : "transparent", alignItems: "center", justifyContent: "center" }}
                     >
-                      <IconTile icon="paperclip" size="sm" tone="neutral" />
-                      <Text className="flex-1 font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
-                        {t.feedback.addScreenshot}
-                      </Text>
-                      <Feather name="plus" size={16} color={colors.ink.creamSubtle} />
+                      <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: picked ? "#FFFFFF" : P.ink }}>{t.redesign.feedbackTypes[value]}</Text>
                     </AnimatedPressable>
-                  )}
-                  {screenshotNote ? (
-                    <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                      {screenshotNote}
-                    </Text>
-                  ) : null}
-                </FormSection>
-
-                <Text className="px-3 pt-2 text-center font-grotesk-medium text-xs text-ink-cream-muted" style={rtl}>
-                  {t.feedback.privacyNote}
-                </Text>
+                  );
+                })}
               </View>
-            </ScrollView>
-          )}
 
-          <View
-            className="gap-3 rounded-t-[28px] border-t border-white/80 bg-cream-50 px-6 pt-3"
-            style={[{ paddingBottom: insets.bottom + 21 }, FOOTER_SHADOW]}
-          >
-            {error ? (
-              <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                {error}
-              </Text>
-            ) : null}
-            {sent ? (
-              <PrimaryButton size="lg" label={t.common.done} onPress={handleClose} />
-            ) : (
-              <View className="flex-row items-center gap-3">
-                <SecondaryButton size="lg" label={t.common.cancel} onPress={handleClose} className="flex-1" />
-                <PrimaryButton
-                  icon="send"
-                  size="lg"
-                  label={sending ? t.feedback.sending : t.feedback.submit}
-                  disabled={sending}
-                  onPress={handleSubmit}
-                  className="flex-[1.5]"
+              {/* The message, and a screenshot at its foot. */}
+              <View
+                style={{
+                  marginTop: 14,
+                  minHeight: 300,
+                  borderRadius: 22,
+                  backgroundColor: P.paperCard,
+                  padding: 16,
+                  borderWidth: messageTouched ? 1.5 : 0,
+                  borderColor: P.alert,
+                  ...SOFT_SHADOW,
+                }}
+              >
+                <TextInput
+                  value={message}
+                  onChangeText={(text) => {
+                    setMessage(text);
+                    if (messageTouched) setMessageTouched(false);
+                  }}
+                  placeholder={t.redesign.feedbackPlaceholder}
+                  placeholderTextColor={P.paperFaint}
+                  multiline
+                  maxLength={FEEDBACK_MESSAGE_MAX}
+                  selectionColor={P.accent}
+                  textAlignVertical="top"
+                  style={[{ flex: 1, minHeight: 200, padding: 0, fontFamily: "SpaceGrotesk-Regular", fontSize: 17, lineHeight: 26, color: P.ink }, rtl]}
                 />
+                {message.length >= COUNTER_FROM ? (
+                  <Text style={{ alignSelf: "flex-end", fontFamily: "SpaceGrotesk-Medium", fontSize: 12, color: P.inkMuted }}>
+                    {message.length}/{FEEDBACK_MESSAGE_MAX}
+                  </Text>
+                ) : null}
+                {screenshot ? (
+                  <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <AnimatedPressable onPress={() => setViewingScreenshot(true)} scaleTo={0.94} accessibilityRole="imagebutton" accessibilityLabel={t.feedback.viewScreenshot}>
+                      <Image source={{ uri: screenshot.uri }} resizeMode="cover" style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: P.chip }} />
+                    </AnimatedPressable>
+                    <Text style={{ flex: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, color: P.inkMuted }}>{t.feedback.screenshotAttached}</Text>
+                    <AnimatedPressable onPress={() => setScreenshot(null)} scaleTo={0.9} hitSlop={8} accessibilityRole="button" accessibilityLabel={t.feedback.removeScreenshot}>
+                      <SheetIcon name="close" size={16} color={P.inkMuted} />
+                    </AnimatedPressable>
+                  </View>
+                ) : (
+                  <AnimatedPressable onPress={handlePickScreenshot} scaleTo={0.98} accessibilityRole="button" style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "flex-start" }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: P.chip, alignItems: "center", justifyContent: "center" }}>
+                      <Feather name="paperclip" size={17} color={P.ink} />
+                    </View>
+                    <Text style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, color: P.inkMuted }}>{t.redesign.addScreenshot}</Text>
+                  </AnimatedPressable>
+                )}
               </View>
-            )}
-          </View>
+              {messageTouched ? (
+                <Text style={[{ marginTop: 8, fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.alert }, rtl]}>{t.feedback.messageRequired}</Text>
+              ) : null}
+              {screenshotNote ? (
+                <Text style={[{ marginTop: 8, fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.alert }, rtl]}>{screenshotNote}</Text>
+              ) : null}
+
+              <Text style={[{ marginTop: 14, paddingHorizontal: 4, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 18.5, color: P.inkMuted }, rtl]}>
+                {t.redesign.feedbackNote}
+              </Text>
+            </>
+          )}
+        </ScrollView>
+
+        <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: insets.bottom + 16, gap: 10 }}>
+          {error ? <Text style={[{ fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.alert }, rtl]}>{error}</Text> : null}
+          <AnimatedPressable
+            onPress={sent ? handleClose : handleSubmit}
+            disabled={sending}
+            scaleTo={0.97}
+            accessibilityRole="button"
+            style={{
+              height: 54,
+              borderRadius: 27,
+              backgroundColor: P.accent,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              opacity: sending ? 0.7 : 1,
+              ...shadow("0 10px 24px rgba(242, 106, 46, 0.3)", 6, "#F26A2E"),
+            }}
+          >
+            {sent ? null : <Feather name="send" size={18} color="#FFFFFF" />}
+            <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17, color: "#FFFFFF" }}>
+              {sent ? t.common.done : sending ? t.feedback.sending : t.redesign.send}
+            </Text>
+          </AnimatedPressable>
         </View>
       </KeyboardAvoidingView>
 
-      {viewingScreenshot && screenshot ? (
-        <ImageViewerModal uri={screenshot.uri} onClose={() => setViewingScreenshot(false)} />
-      ) : null}
+      {viewingScreenshot && screenshot ? <ImageViewerModal uri={screenshot.uri} onClose={() => setViewingScreenshot(false)} /> : null}
     </SafeAreaView>
   );
 }

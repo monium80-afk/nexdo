@@ -18,8 +18,8 @@ import type { Task } from "@/types/task";
 //   only thing that ever mentions it).
 // - Date-only deadline: one reminder on the day, at the reminder time (9:00
 //   by default). The deadline has no time, so none is invented for it.
-// - Exact deadline: one reminder at the deadline itself, as Settings
-//   promises, plus any "before" offsets the user picked (15 min, 1 h, 1 day).
+// - Exact deadline: one reminder, at the deadline itself or as long before it
+//   as the user picked in Settings (5/15/30 min, 1 h, 1 day).
 //   It used to be the 9:00 one, so a task due at 18:00 added after 9:00 got
 //   no reminder at all — what made reminders look broken on the phone.
 // - High priority, if the user wants it: one more the day before.
@@ -39,7 +39,11 @@ export type ReminderPreferences = {
   deadlineReminders: boolean;
   /** "HH:MM" — when the on-the-day reminder arrives. */
   dayReminderTime: string;
-  /** Minutes before an exact deadline to remind as well (e.g. 15, 60, 1440). */
+  /**
+   * How long before a deadline with a time to remind, in minutes: empty (or
+   * 0) = at the deadline itself. One choice; only the first is used (older
+   * versions allowed several).
+   */
   beforeOffsets: number[];
   /** An extra reminder the day before, for high-priority tasks. */
   importantDayBefore: boolean;
@@ -61,8 +65,13 @@ export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = {
   dailyPlanningTime: "09:00",
 };
 
-/** The offsets Settings offers, in minutes. */
-export const REMINDER_OFFSET_OPTIONS = [15, 60, 1440] as const;
+/** The choices Settings offers for tasks with a time, in minutes before (0 = at the start). */
+export const REMINDER_LEAD_OPTIONS = [0, 5, 15, 30, 60, 1440] as const;
+
+/** How long before a timed deadline the reminder goes off, in minutes (0 = at the start). */
+export function reminderLead(prefs: Pick<ReminderPreferences, "beforeOffsets">): number {
+  return prefs.beforeOffsets.find((value) => Number.isFinite(value) && value > 0) ?? 0;
+}
 
 export type ReminderKind = "due-day" | "before" | "day-before" | "overdue" | "daily";
 
@@ -143,8 +152,11 @@ export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: D
   const candidates: Candidate[] = [];
 
   if (prefs.deadlineReminders) {
-    // On the day: at the reminder time, or at the deadline itself when it has
-    // one — unless the overdue alert already goes off then.
+    // On the day: at the reminder time when the deadline has no time. With a
+    // time: ONE reminder, as early as Settings say (2026-11-09: one choice,
+    // "at the start" or so long before) — at the start unless the overdue
+    // alert already goes off then.
+    const lead = reminderLead(prefs);
     if (!deadline.time) {
       candidates.push({
         kind: "due-day",
@@ -152,19 +164,16 @@ export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: D
         title: copy.dueTodayTitle(task.title),
         body: copy.dueTodayBody,
       });
+    } else if (lead > 0) {
+      candidates.push({
+        kind: "before",
+        fireAt: dueAt - lead * 60_000,
+        suffix: String(lead),
+        title: task.title,
+        body: copy.dueInBody(copy.offsetLabel(lead), dueTime!),
+      });
     } else if (!prefs.overdueAlerts) {
       candidates.push({ kind: "due-day", fireAt: dueAt, title: copy.dueNowTitle(task.title), body: copy.dueNowBody(dueTime!) });
-    }
-    if (deadline.time) {
-      for (const offset of [...new Set(prefs.beforeOffsets)].filter((value) => Number.isFinite(value) && value > 0)) {
-        candidates.push({
-          kind: "before",
-          fireAt: dueAt - offset * 60_000,
-          suffix: String(offset),
-          title: task.title,
-          body: copy.dueInBody(copy.offsetLabel(offset), dueTime!),
-        });
-      }
     }
     if (prefs.importantDayBefore && task.importance >= HIGH_IMPORTANCE) {
       candidates.push({

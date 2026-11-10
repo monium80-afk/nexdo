@@ -15,4 +15,5 @@ export const fonts = {
   medium: "SpaceGrotesk-Medium", // 500 — default UI chrome
   semibold: "SpaceGrotesk-SemiBold", // 600 — labels of consequence
   bold: "SpaceGrotesk-Bold", // 700 — the one or two things that must win first
+  monoBold: "SpaceMono-Bold", // the redesign's small uppercase labels and times
 } as const;

@@ -12,12 +12,18 @@ type UndoToast = {
   /** Bumped for each toast, so a newer one restarts the timer. */
   id: number;
   message: string;
+  /** A second, quieter line ("3 of 6 tasks done today"). */
+  subtitle?: string;
+  /** The gem beside the message: a task done that feeds it. */
+  gem?: boolean;
   snapshots: Snapshot[];
 };
 
 type UndoStore = {
   toast: UndoToast | null;
   show: (message: string, snapshots: Snapshot[]) => void;
+  /** Rewords the toast just shown (same undo), e.g. as "Nice! Gem glows brighter". */
+  decorate: (look: { message: string; subtitle?: string; gem?: boolean }) => void;
   /** Puts every task the action touched back as it was, and hides the toast. */
   undo: () => void;
   dismiss: () => void;
@@ -41,6 +47,10 @@ export const useUndoStore = create<UndoStore>()((set, get) => ({
     if (!toast) return;
     set({ toast: null });
     useTaskStore.getState().restoreSnapshots(toast.snapshots);
+  },
+  decorate: (look) => {
+    const toast = get().toast;
+    if (toast) set({ toast: { ...toast, ...look } });
   },
   dismiss: () => set({ toast: null }),
 }));

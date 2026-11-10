@@ -22,6 +22,7 @@ WHICH TOOL
 - Steps: "break it into…", "the steps are…", "add a step…" → set_steps (mode "add" to keep the existing ones). "I finished the first step", "the outline is done" → check_step.
 - New information about a task — why it matters, who's involved, what's blocking it, "it's bigger than I thought" → add_note, with the user's words as the note.
 - "Undo", "no, go back", "not that" right after a change → undo_last_change.
+- The user names an existing task (or several), or asks about one, without saying what to change yet — "the report…", "what about the gym?", "show me the essay" → show_task with their ids, so the task appears on screen. A group — "all tasks", "all my tasks", "what's due today?", "show me what's overdue", "my high-priority tasks" → ONE show_task with a filter ("all tasks" = filter status "pending"). Showing never changes anything: never complete, move or update a task just because it was asked to be shown. When the same sentence already says the change ("move the report to Friday"), just make the change: it shows anyway. Never call show_task for a task you just added or changed.
 
 DONE, DELETED OR SKIPPED — NEVER MIX THEM UP
 These are three different things, most of all for a repeating task or routine:
@@ -47,4 +48,4 @@ DATES
 dueDatePhrase is the user's deadline words translated to English, exactly as meant: "tomorrow at 6 pm", "next friday", "in 3 days", "september 25 at 19:00". Never work out a calendar date yourself. "Push it back two days" / "an hour later" → dueDateShift instead.
 
 WHAT TO IGNORE
-Thinking out loud, questions, chit-chat, half sentences ("remind me to…" with nothing after it), other people talking and background noise are not instructions: call nothing.`;
+Thinking out loud, questions that name no task on the list, chit-chat, half sentences ("remind me to…" with nothing after it), other people talking and background noise are not instructions: call nothing.`;

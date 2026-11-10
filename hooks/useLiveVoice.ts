@@ -23,7 +23,7 @@ const SAMPLE_RATE = 16_000;
 const MAX_TASKS = 80;
 
 /**
- * Live voice for app/live-voice.tsx: the microphone, the socket and the task
+ * Live voice for components/MagicMicOverlay.tsx: the microphone, the socket and the task
  * tools wired into lib/liveVoice.ts, which does the actual work.
  */
 export function useLiveVoice() {
@@ -104,6 +104,8 @@ export function useLiveVoice() {
       runTool: (call) => runner.run(call),
       undo: () => runner.undo(),
       undoCount: () => runner.undoCount(),
+      touchedIds: () => runner.touchedIds(),
+      shownTasks: () => runner.shownTasks(),
       onLevel: (value) => {
         // Eased between buffers, so the waves glide instead of twitching.
         level.value = withTiming(value, { duration: 120 });

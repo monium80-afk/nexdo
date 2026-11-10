@@ -120,7 +120,7 @@ function toRuleInput(recurrence: InboxRecurrence | undefined, ctx: MapContext): 
 }
 
 /** Null when a date phrase in the filter couldn't be read — better to ask than to act on too many tasks. */
-function toTaskFilter(filter: InboxFilter | null, ctx: MapContext): TaskFilter | null {
+export function toTaskFilter(filter: InboxFilter | null, ctx: Pick<MapContext, "now">): TaskFilter | null {
   if (!filter) return {};
   const result: TaskFilter = {
     status: filter.status as TaskStatusFilter | undefined,

@@ -45,3 +45,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# design reference files (mockups, not app code)
+/nexdo-design-handoff/
+/addtask-design/

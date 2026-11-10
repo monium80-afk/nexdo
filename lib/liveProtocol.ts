@@ -1,6 +1,6 @@
 import type { LiveToolCall } from "@/lib/liveVoiceTools";
 
-// Live voice (app/live-voice.tsx), the parts that don't need a phone: reading
+// Live voice (components/MagicMicOverlay.tsx), the parts that don't need a phone: reading
 // what Gemini Live sends back and packing microphone audio for the socket.
 // No React or React Native imports, so `npm test` runs all of it under Node.
 

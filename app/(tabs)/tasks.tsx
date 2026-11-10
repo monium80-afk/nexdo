@@ -1,30 +1,79 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
-import Animated from "react-native-reanimated";
+import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { ScrollView, Text, TextInput, View, type LayoutRectangle } from "react-native";
+import Animated, { Easing, Keyframe, LinearTransition, useReducedMotion } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { IconButton, PrimaryButton } from "@/components/Button";
-import { Chip } from "@/components/Chip";
+import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { EmptyState } from "@/components/EmptyState";
 import { DropdownMenu, type DropdownAnchor } from "@/components/DropdownMenu";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { AppIcon } from "@/components/icons/AppIcons";
+import { ScoreSheet, type ScoreTarget } from "@/components/ScoreSheet";
 import { useTabBarHeight } from "@/components/TabBar";
 import { TaskCard } from "@/components/TaskCard";
-import { gradients, listItemEntering, listItemExiting, listItemLayout } from "@/constants/theme";
+import { TaskEditModal } from "@/components/TaskEditCard";
+import { listItemEntering, listItemExiting } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
+import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useVisibleTasks } from "@/hooks/useVisibleTasks";
+import { measureView, nextFrame } from "@/lib/measureView";
+import { isRoutine } from "@/lib/recurrence";
+import { buildToday } from "@/lib/schedule";
 import { getDueInfo } from "@/lib/taskMeta";
 import { isListed } from "@/lib/taskOperations";
+import { openAddSheet } from "@/store/useAddSheetStore";
+import { useMagicMicStore, type ScreenRect } from "@/store/useMagicMicStore";
 import { useTaskFilterStore, type TaskSortOption, type TaskStatusFilter } from "@/store/useTaskFilterStore";
 import { useTaskStore } from "@/store/useTaskStore";
-import { withUndo } from "@/store/useUndoStore";
+import { useUndoStore, withUndo } from "@/store/useUndoStore";
 import type { Task } from "@/types/task";
 
 const SORT_VALUES: TaskSortOption[] = ["recent", "dueDate", "priority"];
+
+// Anim-TaskDone.html: the cards under a ticked one slide up into its place
+// (aRest, 38 → 50 % of 4 s), and the pills' counts roll over (aOld / aNew, 240 ms).
+const REST_SLIDE = LinearTransition.duration(480).easing(Easing.bezier(0.3, 0, 0.2, 1));
+const COUNT_IN = new Keyframe({
+  0: { opacity: 0, transform: [{ translateY: 8 }] },
+  100: { opacity: 1, transform: [{ translateY: 0 }] },
+}).duration(240);
+const COUNT_OUT = new Keyframe({
+  0: { opacity: 1, transform: [{ translateY: 0 }] },
+  100: { opacity: 0, transform: [{ translateY: -8 }] },
+}).duration(240);
+
+// A row Magic mic's card has just landed in: a short orange edge that fades
+// (Anim-MicTasks.html mzUpd / mzNew: in over 160 ms, gone over 560).
+const LANDED_EDGE = new Keyframe({
+  0: { opacity: 0 },
+  22: { opacity: 1 },
+  100: { opacity: 0 },
+}).duration(720);
+const LANDED_EDGE_MS = 760;
+
+/** A pill's count: the old number rises away as the new one comes up from below. */
+function RollingCount({ value, className }: { value: number; className: string }) {
+  const reduceMotion = useReducedMotion();
+  // Not on first showing: only when the number changes.
+  const [first] = useState(value);
+  const changed = value !== first;
+  return (
+    <View>
+      <Animated.Text
+        key={value}
+        entering={changed && !reduceMotion ? COUNT_IN : undefined}
+        exiting={reduceMotion ? undefined : COUNT_OUT}
+        className={className}
+      >
+        {value}
+      </Animated.Text>
+    </View>
+  );
+}
 
 function compareBySort(a: Task, b: Task, sort: TaskSortOption): number {
   switch (sort) {
@@ -55,18 +104,20 @@ export default function TasksListScreen() {
   const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
-  const router = useRouter();
-  const allTasks = useTaskStore((state) => state.tasks);
+  // While Magic mic is open, the list as it was when it opened.
+  const allTasks = useVisibleTasks();
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
+  // Rows whose Magic mic card is still flying in: laid out, but not shown yet.
+  const hiddenIds = useMagicMicStore((state) => state.hiddenIds);
+  const setTasksLanding = useMagicMicStore((state) => state.setTasksLanding);
   const { status, sort, search, setStatus, setSort, setSearch } = useTaskFilterStore();
   const tabBarHeight = useTabBarHeight();
-  useStatusBarStyle("light");
+  // A light page since the 2026-11 redesign: dark status bar icons.
+  useStatusBarStyle("dark");
 
   const [searchOpen, setSearchOpen] = useState(false);
-  // Where the open menu hangs from — each drops out of its own chip.
-  const [statusMenu, setStatusMenu] = useState<DropdownAnchor | null>(null);
+  // The sort menu drops out of its pill.
   const [sortMenu, setSortMenu] = useState<DropdownAnchor | null>(null);
-  const statusChipRef = useRef<ComponentRef<typeof View>>(null);
   const sortChipRef = useRef<ComponentRef<typeof View>>(null);
   const openMenu = (chip: ComponentRef<typeof View> | null, open: (anchor: DropdownAnchor) => void) => {
     chip?.measureInWindow((x, y, width, height) => open({ x, y, width, height }));
@@ -125,103 +176,204 @@ export default function TasksListScreen() {
     return sortTasks(filtered, sort);
   }, [tasks, status, sort, search, deadlineNow]);
 
-  const statusLabel = t.tasks.status[status];
+  // Where each row sits, for Magic mic's cards to land in (see
+  // components/MagicMicOverlay.tsx). Row layouts come from onLayout — the
+  // final place, even while the list is still sliding things into it.
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const listRef = useRef<ComponentRef<typeof View>>(null);
+  const rowLayouts = useRef(new Map<string, LayoutRectangle>());
+  const shownIds = useRef<string[]>([]);
+  useEffect(() => {
+    shownIds.current = filteredTasks.map((task) => task.id);
+  }, [filteredTasks]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setTasksLanding(async (taskIds) => {
+        // A row that has only just been added needs a frame or two to be laid out.
+        for (let frame = 0; frame < 8; frame++) {
+          const waiting = taskIds.some((id) => shownIds.current.includes(id) && !rowLayouts.current.has(id));
+          if (!waiting) break;
+          await nextFrame();
+        }
+        const [list, viewport] = await Promise.all([measureView(listRef.current), measureView(scrollRef.current)]);
+        const rows: Record<string, ScreenRect> = {};
+        for (const id of taskIds) {
+          const row = rowLayouts.current.get(id);
+          if (list && row && shownIds.current.includes(id)) {
+            rows[id] = { x: list.x + row.x, y: list.y + row.y, width: row.width, height: row.height };
+          }
+        }
+        return {
+          rows,
+          visibleTop: viewport?.y ?? 0,
+          // The tab bar floats over the foot of the list.
+          visibleBottom: viewport ? viewport.y + viewport.height - tabBarHeight : 0,
+        };
+      });
+      return () => setTasksLanding(null);
+    }, [setTasksLanding, tabBarHeight]),
+  );
+
   const sortLabel = t.tasks.sort[sort];
 
-  const handleOpenTask = (taskId: string) => {
-    router.push({ pathname: "/task/[id]", params: { id: taskId } });
+  // Rows Magic mic's cards have just landed in (they were hidden while the
+  // card flew), for their short orange edge.
+  const reduceMotion = useReducedMotion();
+  const [landedIds, setLandedIds] = useState<string[]>([]);
+  const [lastHidden, setLastHidden] = useState<string[]>(hiddenIds);
+  if (hiddenIds !== lastHidden) {
+    const landed = lastHidden.filter((id) => !hiddenIds.includes(id));
+    setLastHidden(hiddenIds);
+    if (landed.length > 0) setLandedIds((current) => [...current, ...landed]);
+  }
+  useEffect(() => {
+    if (landedIds.length === 0) return;
+    const timer = setTimeout(() => setLandedIds([]), LANDED_EDGE_MS);
+    return () => clearTimeout(timer);
+  }, [landedIds]);
+
+  // What the score means, for the task whose score pill was tapped.
+  const [scoreTarget, setScoreTarget] = useState<ScoreTarget | null>(null);
+  const dayKey = useToday();
+
+  // Ticking one off can be taken back; unticking is its own undo. A task that
+  // counts for today feeds the gem — the toast says so (Anim-TaskDone.html).
+  const handleToggle = (task: Task) => {
+    if (task.status !== "pending") {
+      toggleTaskStatus(task.id);
+      return;
+    }
+    withUndo(t.undoToast.done(task.title), () => toggleTaskStatus(task.id));
+    const day = buildToday(
+      useTaskStore.getState().tasks.filter((entry) => !isRoutine(entry)),
+      { now: new Date(), today: dayKey },
+    );
+    const counted = getDueInfo(task).tone === "today" || getDueInfo(task).tone === "overdue";
+    const total = day.done + day.ids.size;
+    if (counted && total > 0) {
+      useUndoStore.getState().decorate({ message: t.undoToast.gemBrighter, subtitle: t.undoToast.doneToday(day.done, total), gem: true });
+    }
   };
 
+  // The task being edited: the dark edit card opens over the page, right on
+  // the tapped task, and the page fades behind it — nothing in the list moves
+  // (components/TaskEditCard.tsx TaskEditModal).
+  const [editing, setEditing] = useState<{ id: string; anchorY?: number } | null>(null);
+  const handleOpenTask = async (taskId: string) => {
+    const row = rowLayouts.current.get(taskId);
+    const list = row ? await measureView(listRef.current) : null;
+    setEditing({ id: taskId, anchorY: list && row ? list.y + row.y : undefined });
+  };
+
+  // The filters as a row of pills (Final-Tasks.html: "To do · 5", "Done · 2"…):
+  // open and done first, then overdue (while there's any), no deadline, all.
+  const filterPills = [
+    statusOptions[1],
+    statusOptions[2],
+    ...(overdueCount > 0 || status === "overdue" ? [statusOptions[3]] : []),
+    statusOptions[4],
+    statusOptions[0],
+  ];
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.charcoal[900] }} edges={["top"]}>
-      <ScreenHeader
-        title={t.tasks.title}
-        actions={
-          // Search and Add share one height, so they read as a pair.
-          <>
-            <IconButton icon={searchOpen ? "x" : "search"} variant="header" onPress={() => setSearchOpen((open) => !open)} />
-            <PrimaryButton icon="plus" label={t.tasks.addTask} onPress={() => router.push("/add")} />
-          </>
-        }
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.palette.paper }} edges={["top"]}>
+      <ScrollView
+        ref={scrollRef}
+        // Clear of the tab bar, which floats over the foot of the page.
+        contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {searchOpen ? (
-          <View className="glass flex-row items-center gap-2 rounded-[16px] px-4 py-2.5">
-            <Feather name="search" size={16} color={colors.ink.charcoalMuted} />
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder={t.tasks.searchPlaceholder}
-              placeholderTextColor={colors.ink.charcoalMuted}
-              autoFocus
-              style={rtl}
-              className="flex-1 font-grotesk-regular text-sm text-ink-charcoal"
-            />
+        <View className="gap-[9px] px-[20px] pt-[10px]">
+          {/* How the list is sorted, and the way to change it: its menu drops out of the pill. */}
+          <View ref={sortChipRef} collapsable={false} className="self-start">
+            <AnimatedPressable
+              onPress={() => openMenu(sortChipRef.current, setSortMenu)}
+              scaleTo={0.96}
+              accessibilityRole="button"
+              className="h-[26px] flex-row items-center gap-[6px] rounded-full bg-peach px-[11px]"
+            >
+              <AppIcon name="check" size={11} strokeWidth={3} color={colors.palette.accentInk} />
+              <Text className="font-mono-bold text-[10px] tracking-[1.2px] text-accent-ink">
+                {t.tasks.sortedBy(sortLabel).toUpperCase()}
+              </Text>
+              <Feather name="chevron-down" size={11} color={colors.palette.accentInk} />
+            </AnimatedPressable>
           </View>
-        ) : (
-          // Each count in its own colour — open work warm, finished work green —
-          // split by a hairline so the pair reads as a scoreboard.
-          <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-            <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
-              <Text className="font-grotesk-bold text-orange-300">{pendingCount}</Text>
-              {t.tasks.pendingSuffix}
-            </Text>
-            <View className="h-[12px] w-px bg-white/20" />
-            <Text className="font-grotesk-medium text-sm text-ink-charcoal-muted">
-              <Text className="font-grotesk-bold text-success-300">{completedCount}</Text>
-              {t.tasks.completedSuffix}
-            </Text>
-            {/* overdue-300: the -500 red is too dark to read on the charcoal header. */}
-            {overdueCount > 0 ? (
-              <>
-                <View className="h-[12px] w-px bg-white/20" />
-                <Text className="font-grotesk-semibold text-sm text-overdue-300">
-                  {t.tasks.overdueCount(overdueCount)}
-                </Text>
-              </>
-            ) : null}
-          </View>
-        )}
-      </ScreenHeader>
 
-      <View className="screen-body">
-        <View pointerEvents="none" className="absolute inset-0" style={gradients.pageGlow} />
+          <View className="flex-row items-center justify-between gap-3">
+            <Text numberOfLines={1} className="shrink font-grotesk-bold text-[26px] leading-[30px] tracking-[-0.52px] text-ink" style={rtl}>
+              {t.tasks.yourTasks}
+            </Text>
+            <View className="flex-row items-center gap-[8px]">
+              <AnimatedPressable
+                onPress={() => setSearchOpen((open) => !open)}
+                scaleTo={0.92}
+                accessibilityRole="button"
+                accessibilityLabel={t.tasks.searchPlaceholder}
+                className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip"
+              >
+                <Feather name={searchOpen ? "x" : "search"} size={17} color={colors.palette.ink} />
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => openAddSheet()}
+                scaleTo={0.92}
+                accessibilityRole="button"
+                accessibilityLabel={t.tasks.addTask}
+                className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
+              >
+                <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+              </AnimatedPressable>
+            </View>
+          </View>
+
+          {searchOpen ? (
+            <View className="h-[42px] flex-row items-center gap-2 rounded-full border-[1.5px] border-line bg-paper-card px-[14px]">
+              <Feather name="search" size={15} color={colors.palette.inkMuted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t.tasks.searchPlaceholder}
+                placeholderTextColor={colors.palette.inkMuted}
+                autoFocus
+                style={rtl}
+                className="flex-1 font-grotesk-regular text-[13.5px] text-ink"
+              />
+            </View>
+          ) : null}
+        </View>
+
         <ScrollView
-          // Clear of the tab bar, which floats over the foot of the page.
-          contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
-          showsVerticalScrollIndicator={false}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, gap: 7 }}
+          accessibilityRole="radiogroup"
         >
-          {/* Filter on the left, sort on the right, each as wide as its label and
-              orange only once something other than the default is picked. The
-              funnel is always orange: it's the way into the list. */}
-          <View className="flex-row items-center justify-between gap-3 px-6 pt-4">
-            {/* Wrapped so each chip can be measured: its menu opens right under it. */}
-            <View ref={statusChipRef} collapsable={false} className="shrink">
-              <Chip
-                label={statusLabel}
-                selected={status !== "all"}
-                icon={() => <Ionicons name="funnel-outline" size={14} color={colors.orange[500]} />}
-                chevron
-                onPress={() => openMenu(statusChipRef.current, setStatusMenu)}
-              />
-            </View>
-            <View ref={sortChipRef} collapsable={false} className="shrink">
-              <Chip
-                label={sortLabel}
-                selected={sort !== "recent"}
-                icon={(color) => <Ionicons name="swap-vertical" size={14} color={color} />}
-                chevron
-                onPress={() => openMenu(sortChipRef.current, setSortMenu)}
-              />
-            </View>
-          </View>
+          {filterPills.map((option) => {
+            const selected = status === option.value;
+            return (
+              <AnimatedPressable
+                key={option.value}
+                onPress={() => setStatus(option.value)}
+                scaleTo={0.95}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                className={`h-[34px] justify-center rounded-full px-[14px] ${selected ? "bg-ink" : "bg-chip"}`}
+              >
+                <View className="flex-row items-center">
+                  <Text className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`}>
+                    {`${option.label} · `}
+                  </Text>
+                  <RollingCount value={option.count} className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`} />
+                </View>
+              </AnimatedPressable>
+            );
+          })}
+        </ScrollView>
 
-          <Text className="px-6 pt-3 font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-            {t.tasks.showingPrefix}
-            <Text className="font-grotesk-bold text-ink-cream">{filteredTasks.length}</Text>
-            {t.tasks.showingSuffix(filteredTasks.length, tasks.length)}
-          </Text>
-
-          <View className="gap-3.5 px-4 pt-3.5">
+        <View>
+          <View ref={listRef} collapsable={false} className="gap-[10px] px-[20px] pt-[14px]">
             {filteredTasks.length === 0 ? (
               <EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} />
             ) : (
@@ -230,35 +382,37 @@ export default function TasksListScreen() {
                   key={task.id}
                   entering={listItemEntering(index)}
                   exiting={listItemExiting()}
-                  layout={listItemLayout()}
+                  layout={REST_SLIDE}
+                  onLayout={(event) => rowLayouts.current.set(task.id, event.nativeEvent.layout)}
                 >
-                  <TaskCard
-                    task={task}
-                    onPress={() => handleOpenTask(task.id)}
-                    // Ticking one off can be taken back; unticking is its own undo.
-                    onToggle={() =>
-                      task.status === "pending"
-                        ? withUndo(t.undoToast.done(task.title), () => toggleTaskStatus(task.id))
-                        : toggleTaskStatus(task.id)
-                    }
-                  />
+                  <View className={hiddenIds.includes(task.id) ? "opacity-0" : undefined}>
+                    {landedIds.includes(task.id) && !reduceMotion ? (
+                      <Animated.View
+                        pointerEvents="none"
+                        entering={LANDED_EDGE}
+                        className="absolute inset-0 z-10 rounded-[16px] border-[1.5px] border-accent"
+                        style={{ opacity: 0 }}
+                      />
+                    ) : null}
+                    <TaskCard
+                      task={task}
+                      onPress={() => void handleOpenTask(task.id)}
+                      onToggle={() => handleToggle(task)}
+                      onScorePress={(anchor) => setScoreTarget({ task, anchor })}                    />
+                  </View>
                 </Animated.View>
               ))
             )}
           </View>
-        </ScrollView>
-      </View>
+        </View>
+      </ScrollView>
+
+      <ScoreSheet target={scoreTarget} onClose={() => setScoreTarget(null)} />
+
+      <TaskEditModal taskId={editing?.id ?? null} anchorY={editing?.anchorY} onClose={() => setEditing(null)} />
 
       <DropdownMenu
-        anchor={statusMenu}
-        options={statusOptions}
-        selected={status}
-        onSelect={setStatus}
-        onClose={() => setStatusMenu(null)}
-      />
-      <DropdownMenu
         anchor={sortMenu}
-        align="right"
         options={sortOptions}
         selected={sort}
         onSelect={setSort}

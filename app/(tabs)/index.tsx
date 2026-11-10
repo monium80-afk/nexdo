@@ -1,6 +1,5 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
@@ -14,29 +13,34 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { PrimaryButton, SecondaryButton } from "@/components/Button";
-import { Chip } from "@/components/Chip";
-import { GemLogo } from "@/components/GemLogo";
+import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { GemGlow, GemMascot, gemLevelFor } from "@/components/GemMascot";
+import { AppIcon } from "@/components/icons/AppIcons";
 import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
 import { NextTaskCardStack } from "@/components/NextTaskCardStack";
+import { TaskEditModal } from "@/components/TaskEditCard";
+import { RoutineTimeline } from "@/components/RoutineTimeline";
 import { useTabBarHeight } from "@/components/TabBar";
-import { TodayRoutines, routinesFor } from "@/components/TodayRoutines";
-import { MOTION, gradients } from "@/constants/theme";
+import { routinesFor } from "@/components/TodayRoutines";
+import { FOCUS_FINISH } from "@/constants/focusFinish";
+import { MOTION } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useColors } from "@/hooks/useTheme";
 import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useVisibleTasks } from "@/hooks/useVisibleTasks";
 import { keyToLocalDate } from "@/lib/localDate";
 import { posthog } from "@/lib/posthog";
 import { recommendTasks } from "@/lib/priority";
 import { isRoutine } from "@/lib/recurrence";
 import { buildToday } from "@/lib/schedule";
 import { playSound } from "@/lib/sounds";
+import { openAddSheet } from "@/store/useAddSheetStore";
+import { useFocusPageStore } from "@/store/useFocusPageStore";
 import { useSessionStore } from "@/store/useSessionStore";
-import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
 type FocusCardState = {
@@ -55,7 +59,8 @@ const REVEAL_CLOSE = { duration: 360, easing: Easing.bezier(0.3, 0, 0.8, 0.15) }
 const CONTENT_AT_MS = 200;
 const CONTENT_OUT_MS = 150;
 /** The circle's colour: the middle of the session's own gradient, which takes over once it's open. */
-const SESSION_BACKDROP = "#201E1C";
+// The focus page's cream (Final-Focus.html).
+const SESSION_BACKDROP = "#FAF1E4";
 
 function centerOf(bounds: CardBounds) {
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -85,15 +90,26 @@ function FocusCardTransition({
   screenWidth,
   screenHeight,
   closing,
+  finishing,
   onLanded,
   onExited,
   onCelebrated,
+  onFinishing,
   onDetails,
+  onBack,
 }: {
+  /** The page's Back: closes it, the session still running. */
+  onBack: () => void;
   focus: FocusCardState;
   screenWidth: number;
   screenHeight: number;
   closing: boolean;
+  /**
+   * Done was tapped (constants/focusFinish.ts): no circle back into the card
+   * — once its ending has played, the page fades out in place over Today.
+   */
+  finishing: boolean;
+  onFinishing: () => void;
   /** The task was finished in the session and its celebration has played: close. */
   onCelebrated: () => void;
   /** The circle starts shrinking: time to show the card again under it. */
@@ -113,6 +129,38 @@ function FocusCardTransition({
   const to = centerOf(focus.returnBounds);
   const radius = Math.max(reachFrom(from, screenWidth, screenHeight), reachFrom(to, screenWidth, screenHeight)) + 2;
   const center = closing ? to : from;
+
+  // No tab bar over a session; it comes back as the page closes — or, once
+  // the task is done, fading in with the rest of Today (ftToday).
+  const setFocusPageOpen = useFocusPageStore((store) => store.setOpen);
+  const [barBack, setBarBack] = useState(false);
+  useEffect(() => {
+    setFocusPageOpen(!closing && !barBack, barBack ? (reduceMotion ? FOCUS_FINISH.reducedMs : FOCUS_FINISH.todayInMs) : 0);
+  }, [barBack, closing, reduceMotion, setFocusPageOpen]);
+  useEffect(() => () => setFocusPageOpen(false), [setFocusPageOpen]);
+
+  // Done: hold for the page's ending, then fade it out in place — no circle,
+  // no card shape — while Today fades in under it (Next's todayOpacity).
+  const sheet = useSharedValue(1);
+  useEffect(() => {
+    if (!finishing) return;
+    const F = FOCUS_FINISH;
+    sheet.set(
+      withDelay(
+        reduceMotion ? F.reducedAt : F.sheetOutAt,
+        withTiming(0, { duration: reduceMotion ? F.reducedMs : F.sheetOutMs, easing: F.ease }, (finished) => {
+          if (finished) scheduleOnRN(onExited);
+        }),
+      ),
+    );
+    const bar = setTimeout(() => setBarBack(true), reduceMotion ? F.reducedAt : F.todayInAt);
+    return () => clearTimeout(bar);
+  }, [finishing, onExited, reduceMotion, sheet]);
+  // ftSheet: opacity 1 → 0, scale 1 → 0.97 about 50 % 40 %. A plain fade with Reduce Motion.
+  const sheetStyle = useAnimatedStyle(() => ({
+    opacity: sheet.value,
+    transform: [{ scale: reduceMotion ? 1 : 0.97 + 0.03 * sheet.value }],
+  }));
 
   useEffect(() => {
     if (closing) return;
@@ -144,13 +192,19 @@ function FocusCardTransition({
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(reveal.value, [0.75, 1], [0, 1], Extrapolation.CLAMP),
   }));
-  const contentStyle = useAnimatedStyle(() => ({ opacity: content.value }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: content.value * sheet.value,
+    transform: [{ scale: reduceMotion ? 1 : 0.97 + 0.03 * sheet.value }],
+  }));
 
   return (
     <>
       {/* Blocks the task stack while leaving the persistent tab bar outside this screen interactive. */}
       <View pointerEvents="auto" style={StyleSheet.absoluteFill} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 20, overflow: "hidden" }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { zIndex: 20, overflow: "hidden", transformOrigin: "50% 40%" }, sheetStyle]}
+      >
         <Animated.View
           style={[
             {
@@ -165,12 +219,15 @@ function FocusCardTransition({
             circleStyle,
           ]}
         />
-        <Animated.View style={[StyleSheet.absoluteFill, gradients.session, backdropStyle]} />
-      </View>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: SESSION_BACKDROP }, backdropStyle]} />
+      </Animated.View>
       {contentMounted ? (
         <Animated.View
-          pointerEvents={closing ? "none" : "auto"}
-          style={[{ position: "absolute", zIndex: 21, left: 0, top: 0, width: screenWidth, height: screenHeight }, contentStyle]}
+          pointerEvents={closing || finishing ? "none" : "auto"}
+          style={[
+            { position: "absolute", zIndex: 21, left: 0, top: 0, width: screenWidth, height: screenHeight, transformOrigin: "50% 40%" },
+            contentStyle,
+          ]}
         >
           <NextTaskCard
             task={focus.task}
@@ -179,7 +236,9 @@ function FocusCardTransition({
             onStart={() => {}}
             onComplete={() => {}}
             onCelebrated={onCelebrated}
+            onFinishing={onFinishing}
             onDetails={() => onDetails(focus.task.id)}
+            onBack={onBack}
           />
         </Animated.View>
       ) : null}
@@ -187,71 +246,68 @@ function FocusCardTransition({
   );
 }
 
-const PROGRESS_MS = 650;
 /** After the last task's own sound has had its moment (lib/sounds.ts). */
 const DAY_DONE_SOUND_DELAY_MS = 650;
-// Pressed into the card, like the setup bar (SetupProgressBar).
-const TRACK_INSET = { boxShadow: "inset 0 1px 3px rgba(92, 58, 26, 0.16)" };
 
-/**
- * Today at a glance, under the page's title: how many of today's tasks are
- * left, how many are done, and one thick bar that fills a step each time one
- * is finished. Full — and green — means nothing is left for today. No hours
- * of work left (the user's call, 2026-10-08): a guess at the day's length
- * read as a promise, and tasks without a set time made it wrong anyway.
- */
-function TodayCard({ done, left }: { done: number; left: number }) {
-  const t = useTranslation();
-  const colors = useColors();
-  const reduceMotion = useReducedMotion();
-  const total = done + left;
-  // Nothing due today at all: a clear day, shown as a full bar too.
-  const nothingDue = total === 0;
-  const fraction = nothingDue ? 1 : Math.min(1, done / total);
-  const finished = left === 0;
-  const fill = useSharedValue(fraction);
-  // The track's width, so the fill can slide in from the left as a whole pill
-  // — its rounded end stays round at any length, which scaling would squash.
-  const trackWidth = useSharedValue(0);
+// The gem's corner of the page (Final-Today.html): a 118-point band under the
+// title, the gem drawn 42 above it and running down behind the cards.
+// A size down from the mockup's 118 / 190 / -42 / 300 / -10 (the user's
+// call, 2026-11-03: everything a little smaller on the phone).
+const GEM_AREA_HEIGHT = 98;
+const GEM_WIDTH = 158;
+const GEM_TOP = -35;
+const GLOW_SIZE = 250;
+const GLOW_TOP = -8;
 
-  useEffect(() => {
-    fill.set(withTiming(fraction, { duration: reduceMotion ? 0 : PROGRESS_MS, easing: MOTION.easing.enter }));
-  }, [fill, fraction, reduceMotion]);
-
-  // A transform, not a width: it stays on the UI thread (see SetupProgressBar).
-  const fillStyle = useAnimatedStyle(() => ({
-    opacity: trackWidth.value > 0 ? 1 : 0,
-    transform: [{ translateX: (fill.value - 1) * trackWidth.value }],
-  }));
-
+/** The one action under an empty state's message: a dark pill, or orange for adding a task. */
+function EmptyStateButton({
+  icon,
+  label,
+  onPress,
+  accent = false,
+}: {
+  icon: "calendar" | "list" | "plus";
+  label: string;
+  onPress: () => void;
+  accent?: boolean;
+}) {
   return (
-    <View className="card card--cream-soft gap-3 px-4 pb-4 pt-3.5" style={gradients.card}>
-      <View className="flex-row items-center justify-between gap-3">
-        <View className="shrink flex-row items-center gap-2">
-          {finished ? <Feather name="check-circle" size={17} color={colors.success[500]} /> : null}
-          <Text className={`font-grotesk-bold text-[17px] ${finished ? "text-success-500" : "text-ink-cream"}`}>
-            {nothingDue ? t.next.nothingToday : finished ? t.next.doneForToday : t.next.tasksLeft(left)}
-          </Text>
-        </View>
-        {nothingDue ? null : (
-          <Text className="font-grotesk-semibold text-[13px] text-ink-cream-muted">{t.next.doneOfTotal(done, total)}</Text>
-        )}
-      </View>
-      <View
-        accessible
-        accessibilityRole="progressbar"
-        accessibilityLabel={t.next.todayProgress(done, total)}
-        accessibilityValue={{ min: 0, max: total, now: done }}
-        onLayout={(event) => trackWidth.set(event.nativeEvent.layout.width)}
-        className="h-[14px] overflow-hidden rounded-full bg-cream-200"
-        style={TRACK_INSET}
-      >
-        <Animated.View
-          className={`h-full w-full rounded-full ${finished ? "bg-success-500" : "bg-orange-500"}`}
-          style={[finished ? gradients.success : gradients.accent, fillStyle]}
-        />
-      </View>
-    </View>
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.97}
+      accessibilityRole="button"
+      className={`mt-[8px] h-[44px] flex-row items-center justify-center gap-2 rounded-full px-[20px] ${accent ? "bg-accent" : "bg-ink"}`}
+    >
+      <AppIcon name={icon} size={16} strokeWidth={2.2} color="#FFFFFF" />
+      <Text className="font-grotesk-bold text-[14px] text-white">{label}</Text>
+    </AnimatedPressable>
+  );
+}
+
+/** One side of the quiet Today / All switch. */
+function ViewSwitchOption({
+  label,
+  count,
+  selected,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.95}
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={`${label}, ${count}`}
+      className={`h-[21px] flex-row items-center gap-[4px] rounded-full px-[9px] ${selected ? "bg-ink" : ""}`}
+    >
+      <Text className={`font-grotesk-semibold text-[11px] ${selected ? "text-paper" : "text-ink-muted"}`}>{label}</Text>
+      <Text className={`font-mono-bold text-[9.5px] ${selected ? "text-peach-on-dark" : "text-ink-muted"}`}>{count}</Text>
+    </AnimatedPressable>
   );
 }
 
@@ -260,18 +316,27 @@ export default function Next() {
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
   const reduceMotion = useReducedMotion();
   const rootRef = useRef<ComponentRef<typeof View>>(null);
   const startingSession = useRef(false);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const tasks = useTaskStore((state) => state.tasks);
+  // While Magic mic is open over Today, the list as it was when it opened.
+  const tasks = useVisibleTasks();
   // A session runs inside its own task's card (see NextTaskCard), so the
   // stack stays swipeable while the clock ticks.
   const activeSession = useSessionStore((state) => state.session);
   const startSession = useSessionStore((state) => state.start);
   const leaveSession = useSessionStore((state) => state.leave);
+
+  // The gem and the routines' pulse only move while Today is the tab on screen.
+  const [pageFocused, setPageFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setPageFocused(true);
+      return () => setPageFocused(false);
+    }, []),
+  );
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [rootSize, setRootSize] = useState({ width: windowWidth, height: windowHeight });
@@ -283,6 +348,23 @@ export default function Next() {
   // The closing session's shell is back over its card, so the card shows again under it.
   const [focusLanded, setFocusLanded] = useState(false);
   const handleFocusLanded = useCallback(() => setFocusLanded(true), []);
+  // Done tapped in the session: the page plays its ending, then fades out
+  // while Today — already up to date, the next task on top — fades in as it
+  // is (constants/focusFinish.ts). Nothing on Today moves.
+  const [focusFinishing, setFocusFinishing] = useState(false);
+  const todayOpacity = useSharedValue(1);
+  const todayStyle = useAnimatedStyle(() => ({ opacity: todayOpacity.value }));
+  const handleFocusFinishing = useCallback(() => {
+    const F = FOCUS_FINISH;
+    setFocusFinishing(true);
+    todayOpacity.set(0);
+    todayOpacity.set(
+      withDelay(
+        reduceMotion ? F.reducedAt : F.todayInAt,
+        withTiming(1, { duration: reduceMotion ? F.reducedMs : F.todayInMs, easing: F.ease }),
+      ),
+    );
+  }, [reduceMotion, todayOpacity]);
 
   // The task on top last time, so a point or two of score drift (the clock
   // moving on) doesn't swap it for another — see recommendTasks.
@@ -370,13 +452,14 @@ export default function Next() {
   // has played (onCelebrated), before the task is marked done. This catches
   // the rest: the session ended, or the task was finished somewhere else.
   useEffect(() => {
-    if (!focusState || focusClosing) return;
+    // Done in the session: the page closes itself once its ending has played.
+    if (!focusState || focusClosing || focusFinishing) return;
     const stillFocused = activeSession?.taskIds.includes(focusState.task.id) ?? false;
     if (focusedTask?.status === "completed" || !stillFocused) {
       const timer = setTimeout(() => setFocusClosing(true), 0);
       return () => clearTimeout(timer);
     }
-  }, [activeSession, focusClosing, focusState, focusedTask?.status]);
+  }, [activeSession, focusClosing, focusFinishing, focusState, focusedTask?.status]);
 
   const handleFocusCelebrated = useCallback(() => setFocusClosing(true), []);
 
@@ -456,19 +539,26 @@ export default function Next() {
     if (task) handleStartSession(task, openRequest.plannedMinutes);
   }, [clearOpenRequest, handleStartSession, openRequest, tasks]);
 
-  const handleDetails = useCallback((taskId: string) => {
-    router.push({ pathname: "/task/[id]", params: { id: taskId } });
-  }, [router]);
+  // A task's details: the edit card, over the page (the old Task Details page is gone).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const handleDetails = useCallback((taskId: string) => setEditingId(taskId), []);
 
   const clearFocus = useCallback(() => {
     setFocusState(null);
     setFocusClosing(false);
     setFocusLanded(false);
+    setFocusFinishing(false);
   }, []);
 
+  // "Done for today" → the days ahead, on the Calendar tab.
   const openSchedule = () => {
     posthog.capture("schedule_opened", { from: "next" });
-    router.push("/schedule");
+    router.navigate("/calendar");
+  };
+
+  const openInsights = () => {
+    posthog.capture("insights_opened", { from: "today" });
+    router.push("/insights");
   };
 
   // Done against what's left of today's tasks — not a session's task from
@@ -490,158 +580,150 @@ export default function Next() {
     return () => clearTimeout(timer);
   }, [dayKey, todayLeft, today.done]);
 
-  // The page says what it is at the top: today's date over "Today", then
-  // today's progress — so it reads as today's list, not the whole backlog.
-  const header = (
-    <>
-      {/* Warm light from the top-right corner, running up under the status bar. */}
-      <View
-        pointerEvents="none"
-        className="absolute left-0 right-0"
-        style={[{ top: -insets.top, height: 420 + insets.top }, gradients.creamGlow]}
-      />
+  // The gem (Final-Today.html) is today's progress: grey and asleep with
+  // nothing done, on fire once (nearly) everything is. With nothing due
+  // today it's simply awake. Tapping it opens Insights — the way in since the
+  // progress card it replaces (2026-11-02).
+  const gemLevel = todayTotal > 0 ? gemLevelFor(today.done, todayTotal) : 3;
 
-      <View className="px-6 pb-1 pt-2">
-        <View className="flex-row items-start gap-3">
-          <View className="flex-1">
-            <View className="flex-row items-center gap-1.5">
-              <GemLogo size={16} />
-              <Text className="eyebrow text-orange-500">{dateLabel}</Text>
-            </View>
-            <Text className="mt-1 font-grotesk-bold text-[30px] leading-[36px] tracking-tight text-ink-cream" style={rtl}>
-              {t.next.today}
-            </Text>
-          </View>
-          {/* The one way into the Schedule: the week ahead, day by day. */}
-          <Chip
-            label={t.next.schedule}
-            icon={() => <Feather name="calendar" size={14} color={colors.orange[500]} />}
-            onPress={openSchedule}
-            className="mt-1"
-          />
-        </View>
-        {/* Today's list, or every open task — the same cards either way. */}
-        {rankedTasks.length > 0 ? (
-          <View className="mt-3 flex-row gap-2" accessibilityRole="radiogroup">
-            <Chip
-              label={t.next.viewToday(todayLeft)}
-              selected={!showAll}
-              solid
-              accessibilityRole="radio"
-              onPress={() => setView("today")}
-            />
-            <Chip
-              label={t.next.viewAll(rankedTasks.length)}
-              selected={showAll}
-              solid
-              accessibilityRole="radio"
-              onPress={() => {
-                if (!showAll) posthog.capture("today_all_tasks_opened");
-                setView("all");
-              }}
-            />
-          </View>
-        ) : null}
+  // The page says what it is at the top: today's date over "Today", and the
+  // + to add a task by hand (here since 2026-11-02, when Magic mic took the
+  // middle of the tab bar). The whole page scrolls as one, so the gem's
+  // light and flame can reach up behind the title as in the mockup.
+  const header = (
+    <View className="flex-row items-end justify-between gap-3 px-[20px] pt-[6px]">
+      <View className="shrink">
+        <Text numberOfLines={1} className="font-grotesk-regular text-[13px] text-ink-muted" style={rtl}>
+          {dateLabel}
+        </Text>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          className="mt-[1px] font-grotesk-bold text-[33px] leading-[37px] tracking-[-1px] text-ink"
+          style={rtl}
+        >
+          {t.next.today}
+        </Text>
       </View>
-    </>
+      <AnimatedPressable
+        onPress={() => openAddSheet()}
+        scaleTo={0.92}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={t.tasks.addTask}
+        className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
+      >
+        <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+      </AnimatedPressable>
+    </View>
   );
 
-  // Always there on Today once there's anything at all — full and green when
-  // today's tasks are done, or when none were due. It scrolls with the cards
-  // and the routines (the user's call, 2026-10-31); only the title stays put.
-  const progressCard =
-    !showAll && (todayTotal > 0 || rankedTasks.length > 0 || routines.length > 0) ? (
-      <View className="px-6 pb-[20px] pt-[14px]">
-        <TodayCard done={today.done} left={todayLeft} />
+  // The gem's band under the title — and, tucked into its left corner, the
+  // quiet switch between today's cards and every open task (the user's call,
+  // 2026-11-03: off the title row, but still there).
+  const gemArea = (
+    <View style={{ height: GEM_AREA_HEIGHT }}>
+      <View pointerEvents="none" className="absolute left-0 right-0 items-center" style={{ top: GLOW_TOP }}>
+        {/* No glow while the gem is still grey or bronze (levels 1–2, the user's call 2026-11-03). */}
+        {gemLevel >= 3 ? <GemGlow size={GLOW_SIZE} animate={pageFocused} /> : null}
       </View>
-    ) : null;
+      <AnimatedPressable
+        onPress={openInsights}
+        scaleTo={0.96}
+        accessibilityRole="button"
+        accessibilityLabel={todayTotal > 0 ? t.next.todayProgress(today.done, todayTotal) : t.next.nothingToday}
+        accessibilityHint={t.insights.open}
+        className="absolute self-center"
+        style={{ top: GEM_TOP }}
+      >
+        {/* A level-up waits until it can be seen: Today on screen, no focus page over it. */}
+        <GemMascot level={gemLevel} width={GEM_WIDTH} animate={pageFocused} holdLevelUps={!pageFocused || focusState !== null} />
+      </AnimatedPressable>
+      {rankedTasks.length > 0 || showAll ? (
+        <View
+          accessibilityRole="radiogroup"
+          className="absolute left-[20px] top-[6px] h-[26px] flex-row items-center rounded-full border-[1.5px] border-line bg-paper-card px-[1.5px]"
+        >
+          <ViewSwitchOption label={t.next.today} count={todayLeft} selected={!showAll} onPress={() => setView("today")} />
+          <ViewSwitchOption
+            label={t.next.allShort}
+            count={rankedTasks.length}
+            selected={showAll}
+            onPress={() => {
+              if (!showAll) posthog.capture("today_all_tasks_opened");
+              setView("all");
+            }}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
 
   // Under the cards, on the Today view only — "All tasks" is the cards alone.
-  const routineList = showAll ? null : <TodayRoutines routines={routines} onOpen={handleDetails} />;
+  const routineList = showAll ? null : (
+    <RoutineTimeline routines={routines} onOpen={handleDetails} onAdd={() => openAddSheet()} animate={pageFocused} />
+  );
 
-  if (!currentTask && !focusState) {
+  // Both of Today's faces sit in one tree with the focus page over them, so a
+  // session finished on the last task keeps its page (and its ending) mounted
+  // while Today turns into "Done for today" underneath.
+  const emptyState = !currentTask && (!focusState || focusFinishing);
+  let body: ReactNode;
+  if (emptyState) {
     // No card left. On Today: today's tasks are all done — or none were due
     // and the routines are all ticked — "Done for today"; none were due and
     // routines are still open — just the routines; none were due at all —
     // "Nothing due today", with the way to every other task. No open task
-    // anywhere (or the All tasks view, empty): "All caught up".
+    // anywhere (or the All tasks view, empty): "All caught up". The gem
+    // stays at the top either way: it's the day's progress.
     const hasRoutines = !showAll && routines.length > 0;
     const routinesDone = hasRoutines && routines.every((task) => task.status === "completed");
     const finishedToday = !showAll && (todayTotal > 0 || routinesDone);
     const routinesOnly = !showAll && !finishedToday && hasRoutines;
     const nothingDue = !showAll && !finishedToday && !hasRoutines && rankedTasks.length > 0;
-    if (routinesOnly) {
-      return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-          {header}
-          <ScrollView
-            contentContainerStyle={{ flexGrow: 1, paddingTop: progressCard ? 0 : 16, paddingBottom: 28 + tabBarHeight }}
-            showsVerticalScrollIndicator={false}
-          >
-            {progressCard}
-            {routineList}
-          </ScrollView>
-        </SafeAreaView>
-      );
-    }
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-        {header}
+    body = (
         <ScrollView
           contentContainerStyle={{ flexGrow: 1, paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
-          {progressCard}
-          {/* Faded in rather than cut to: it usually arrives the moment the last task is done. */}
-          <Animated.View
-            entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
-            // Centred in the page when it's all there is; at the top, with
-            // the routines under it, when there are some.
-            className={`items-center justify-center gap-3 px-6 ${hasRoutines ? "pb-6 pt-8" : "flex-1"}`}
-          >
-            <View
-              className={`tile h-[52px] w-[52px] rounded-[16px] ${finishedToday ? "tile--green" : "tile--orange"}`}
-              style={finishedToday ? gradients.tileGreen : gradients.tileOrange}
+          {header}
+          {gemArea}
+          {routinesOnly ? null : (
+            // Faded in rather than cut to: it usually arrives the moment the last task is done.
+            <Animated.View
+              entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
+              // Clear of the gem's foot, which reaches below its band.
+              className="items-center gap-[6px] px-[20px] pt-[44px]"
             >
-              <Ionicons name="checkmark-done" size={26} color={finishedToday ? colors.success[500] : colors.orange[500]} />
-            </View>
-            <Text className="text-card-title text-center text-ink-cream">
-              {finishedToday ? t.next.doneForToday : nothingDue ? t.next.nothingToday : t.next.allCaughtUp}
-            </Text>
-            {nothingDue ? null : (
-              <Text className="text-body text-center text-ink-cream-muted">
-                {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
+              <Text className="text-center font-grotesk-bold text-[19px] tracking-[-0.38px] text-ink" style={rtl}>
+                {finishedToday ? t.next.doneForToday : nothingDue ? t.next.nothingToday : t.next.allCaughtUp}
               </Text>
-            )}
-            {finishedToday ? (
-              <SecondaryButton icon="calendar" size="lg" label={t.next.openSchedule} onPress={openSchedule} className="mt-2" />
-            ) : nothingDue ? (
-              <SecondaryButton icon="list" size="lg" label={t.next.viewAll(rankedTasks.length)} onPress={() => setView("all")} className="mt-2" />
-            ) : (
-              <PrimaryButton icon="plus" size="lg" label={t.next.addATask} onPress={() => router.push("/add")} className="mt-2" />
-            )}
-          </Animated.View>
-          {routineList}
+              {nothingDue ? null : (
+                <Text className="text-center font-grotesk-regular text-[13px] leading-[19px] text-ink-muted" style={rtl}>
+                  {finishedToday ? t.next.doneForTodayBody : t.next.allCaughtUpBody}
+                </Text>
+              )}
+              {finishedToday ? (
+                <EmptyStateButton icon="calendar" label={t.next.openSchedule} onPress={openSchedule} />
+              ) : nothingDue ? (
+                <EmptyStateButton icon="list" label={t.next.viewAll(rankedTasks.length)} onPress={() => setView("all")} />
+              ) : (
+                <EmptyStateButton icon="plus" label={t.next.addATask} onPress={() => openAddSheet()} accent />
+              )}
+            </Animated.View>
+          )}
+          {routineList ? <View className={routinesOnly ? "mt-[44px]" : "mt-[24px]"}>{routineList}</View> : null}
         </ScrollView>
-      </SafeAreaView>
     );
-  }
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.cream[100] }} edges={["top"]}>
-      <View ref={rootRef} style={{ flex: 1 }} onLayout={(event) => {
-        const { width, height } = event.nativeEvent.layout;
-        setRootSize((current) => current.width === width && current.height === height ? current : { width, height });
-      }}>
-      {header}
-
-      <View className="flex-1">
+  } else {
+    body = (
         <ScrollView
           // Clear of the tab bar, which floats over the foot of the page.
-          contentContainerStyle={{ paddingTop: progressCard ? 0 : 18, paddingBottom: 28 + tabBarHeight }}
+          contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
           showsVerticalScrollIndicator={false}
         >
-          {progressCard}
+          {header}
+          {gemArea}
           {currentTask ? (
             <NextTaskCardStack
               tasks={pendingTasks}
@@ -651,24 +733,38 @@ export default function Next() {
               onDetails={handleDetails}
               focusTaskId={focusState && !focusLanded ? focusState.task.id : undefined}
               onFocusBoundsChange={handleFocusBoundsChange}
+              animateTodayCompletion={!showAll}
             />
           ) : null}
-          {routineList ? <View className="mt-7">{routineList}</View> : null}
+          {routineList ? <View className="mt-[24px]">{routineList}</View> : null}
         </ScrollView>
-      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.palette.paper }} edges={["top"]}>
+      <View ref={rootRef} style={{ flex: 1 }} onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setRootSize((current) => current.width === width && current.height === height ? current : { width, height });
+      }}>
+      <Animated.View style={[{ flex: 1 }, todayStyle]}>{body}</Animated.View>
       {focusState && focusedTask ? (
         <FocusCardTransition
           focus={{ ...focusState, task: focusedTask }}
           screenWidth={rootSize.width}
           screenHeight={rootSize.height}
           closing={focusClosing}
+          finishing={focusFinishing}
           onLanded={handleFocusLanded}
           onExited={clearFocus}
           onCelebrated={handleFocusCelebrated}
+          onFinishing={handleFocusFinishing}
           onDetails={handleDetails}
+          onBack={handleFocusCelebrated}
         />
       ) : null}
       </View>
+      <TaskEditModal taskId={editingId} onClose={() => setEditingId(null)} />
     </SafeAreaView>
   );
 }

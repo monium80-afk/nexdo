@@ -1,8 +1,13 @@
 import { ar } from "@/constants/translations/ar";
+import { bn } from "@/constants/translations/bn";
 import { de } from "@/constants/translations/de";
 import { en } from "@/constants/translations/en";
 import { es } from "@/constants/translations/es";
 import { fr } from "@/constants/translations/fr";
+import { hi } from "@/constants/translations/hi";
+import { pt } from "@/constants/translations/pt";
+import { ru } from "@/constants/translations/ru";
+import { zh } from "@/constants/translations/zh";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type { AppLanguage } from "@/types/settings";
 
@@ -10,7 +15,7 @@ export type Translations = typeof en;
 
 // Every language Settings offers has its own copy — adding one to AppLanguage
 // without a translation file is a type error here.
-const TRANSLATIONS: Record<AppLanguage, Translations> = { en, fr, es, ar, de };
+const TRANSLATIONS: Record<AppLanguage, Translations> = { en, fr, es, ar, de, zh, hi, pt, bn, ru };
 
 export const ALL_TRANSLATIONS: Translations[] = Object.values(TRANSLATIONS);
 

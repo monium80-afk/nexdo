@@ -1,29 +1,29 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+﻿import AsyncStorage from "@react-native-async-storage/async-storage";
 import { I18nManager, NativeModules, Platform } from "react-native";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { DEFAULT_REMINDER_PREFERENCES, type ReminderPreferences } from "@/lib/reminders";
-import type { AppLanguage, ThemePreference } from "@/types/settings";
+import { FOCUS_SOUND_CHOICES, type AppLanguage, type FocusSound, type ThemePreference } from "@/types/settings";
 
 // "language" drives the interface copy (see lib/i18n.ts) and the language the
 // AI replies in. "theme" is saved but not applied yet.
 type SettingsStore = {
   theme: ThemePreference;
   language: AppLanguage;
-  // Notification preferences — lib/reminders.ts turns them (and the task
+  // Notification preferences â€” lib/reminders.ts turns them (and the task
   // list) into what the phone schedules; hooks/useNotifications.ts applies it.
-  /** The daily planning note — separate from any deadline. */
+  /** The daily planning note â€” separate from any deadline. */
   dailyNudgeEnabled: boolean;
-  /** 24-hour "HH:MM" — the time of day the daily planning note arrives. */
+  /** 24-hour "HH:MM" â€” the time of day the daily planning note arrives. */
   dailyNudgeTime: string;
   /** An alert the moment a task's exact deadline passes. */
   overdueAlertsEnabled: boolean;
-  /** A reminder on the day a task is due — on by default. */
+  /** A reminder on the day a task is due â€” on by default. */
   deadlineRemindersEnabled: boolean;
-  /** 24-hour "HH:MM" — when that on-the-day reminder arrives. 9:00 by default. */
+  /** 24-hour "HH:MM" â€” when that on-the-day reminder arrives. 9:00 by default. */
   dayReminderTime: string;
-  /** Minutes before an exact deadline to remind as well. */
+  /** How long before a deadline with a time to remind: [] = at the start, or [minutes]. */
   reminderOffsets: number[];
   /** One more reminder the day before, for high-priority tasks. */
   importantExtraReminder: boolean;
@@ -31,12 +31,16 @@ type SettingsStore = {
   notificationPromptShown: boolean;
   /** Whether the first-run tour (components/AppTour.tsx) has been finished or skipped on this phone. */
   tourSeen: boolean;
+  /** The gem's evolution stage last celebrated on Today (lib/gemLevel.ts), so each new star is announced once. */
+  gemStageSeen: number;
   /**
    * Whether the user allowed Nexdo to send their own content to Google's
    * Gemini AI (lib/aiConsent.ts). Off until they say yes; "Not now" leaves it
    * off, so the question comes back the next time an AI feature is used.
    */
   aiConsent: boolean;
+  /** The sound a focus session plays while its clock runs (Pro; lib/focusSound.ts). Off by default. */
+  focusSound: FocusSound;
   setTheme: (theme: ThemePreference) => void;
   setLanguage: (language: AppLanguage) => void;
   setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
@@ -44,11 +48,14 @@ type SettingsStore = {
   setOverdueAlertsEnabled: (overdueAlertsEnabled: boolean) => void;
   setDeadlineRemindersEnabled: (deadlineRemindersEnabled: boolean) => void;
   setDayReminderTime: (dayReminderTime: string) => void;
-  toggleReminderOffset: (minutes: number) => void;
+  /** How long before a task with a time to remind (0 = at the start). One choice. */
+  setReminderLead: (minutes: number) => void;
   setImportantExtraReminder: (importantExtraReminder: boolean) => void;
   setNotificationPromptShown: (notificationPromptShown: boolean) => void;
   setTourSeen: (tourSeen: boolean) => void;
+  setGemStageSeen: (gemStageSeen: number) => void;
   setAiConsent: (aiConsent: boolean) => void;
+  setFocusSound: (focusSound: FocusSound) => void;
 };
 
 /** The settings the reminder engine reads, in its own shape. */
@@ -59,12 +66,14 @@ export function reminderPreferences(state: SettingsStore): ReminderPreferences {
     beforeOffsets: state.reminderOffsets,
     importantDayBefore: state.importantExtraReminder,
     overdueAlerts: state.overdueAlertsEnabled,
-    dailyPlanning: state.dailyNudgeEnabled,
+    // The daily plan note was taken out of Settings (2026-11-09), so it's
+    // off for everyone — no one is left with a note they can't turn off.
+    dailyPlanning: false,
     dailyPlanningTime: state.dailyNudgeTime,
   };
 }
 
-const APP_LANGUAGES: AppLanguage[] = ["en", "fr", "es", "ar", "de"];
+const APP_LANGUAGES: AppLanguage[] = ["en", "fr", "es", "ar", "de", "zh", "hi", "pt", "bn", "ru"];
 
 /** The app language for a locale ("fr-CA", "fr_CA", "ar"), or null when Nexdo doesn't have it. */
 export function languageFromLocale(locale: string | undefined | null): AppLanguage | null {
@@ -94,7 +103,7 @@ function phoneLocales(): string[] {
 }
 
 /**
- * The phone's own language, if Nexdo has it — English otherwise. Only the
+ * The phone's own language, if Nexdo has it â€” English otherwise. Only the
  * first launch uses it: once saved, the language stays what it was set to.
  * The phone's settings are asked first, then the JavaScript engine's own
  * locale (Intl), which follows the phone too.
@@ -125,7 +134,9 @@ export const useSettingsStore = create<SettingsStore>()(
       importantExtraReminder: DEFAULT_REMINDER_PREFERENCES.importantDayBefore,
       notificationPromptShown: false,
       tourSeen: false,
+      gemStageSeen: 0,
       aiConsent: false,
+      focusSound: "off",
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => set({ language }),
       setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
@@ -133,23 +144,32 @@ export const useSettingsStore = create<SettingsStore>()(
       setOverdueAlertsEnabled: (overdueAlertsEnabled) => set({ overdueAlertsEnabled }),
       setDeadlineRemindersEnabled: (deadlineRemindersEnabled) => set({ deadlineRemindersEnabled }),
       setDayReminderTime: (dayReminderTime) => set({ dayReminderTime }),
-      toggleReminderOffset: (minutes) =>
-        set((state) => ({
-          reminderOffsets: state.reminderOffsets.includes(minutes)
-            ? state.reminderOffsets.filter((value) => value !== minutes)
-            : [...state.reminderOffsets, minutes].sort((a, b) => a - b),
+      setReminderLead: (minutes) =>
+        set(() => ({
+          reminderOffsets: minutes > 0 ? [minutes] : [],
         })),
       setImportantExtraReminder: (importantExtraReminder) => set({ importantExtraReminder }),
       setNotificationPromptShown: (notificationPromptShown) => set({ notificationPromptShown }),
       setTourSeen: (tourSeen) => set({ tourSeen }),
+      setGemStageSeen: (gemStageSeen) => set({ gemStageSeen }),
       setAiConsent: (aiConsent) => set({ aiConsent }),
+      setFocusSound: (focusSound) => set({ focusSound }),
     }),
     {
       name: "nexdo-settings",
       storage: createJSONStorage(() => AsyncStorage),
+      // A focus sound the app no longer has (brown noise, removed 2026-11-09) is "off".
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<SettingsStore>;
+        const focusSound =
+          saved.focusSound && (FOCUS_SOUND_CHOICES as readonly string[]).includes(saved.focusSound)
+            ? saved.focusSound
+            : current.focusSound;
+        return { ...current, ...saved, focusSound };
+      },
       // Listing the keys also drops retired values older installs still have
       // saved ("planningStyle", "aiAutoMode" / "voiceAddButton" from before
-      // the AI chat was removed, "soundsEnabled" from before Settings →
+      // the AI chat was removed, "soundsEnabled" from before Settings â†’
       // Sounds was removed), the next time this store writes.
       partialize: (state) => ({
         theme: state.theme,
@@ -163,7 +183,9 @@ export const useSettingsStore = create<SettingsStore>()(
         importantExtraReminder: state.importantExtraReminder,
         notificationPromptShown: state.notificationPromptShown,
         tourSeen: state.tourSeen,
+        gemStageSeen: state.gemStageSeen,
         aiConsent: state.aiConsent,
+        focusSound: state.focusSound,
       }),
     },
   ),

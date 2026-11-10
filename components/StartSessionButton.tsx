@@ -1,33 +1,28 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Text, View } from "react-native";
+import { Text } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { gradients } from "@/constants/theme";
+import { AppIcon } from "@/components/icons/AppIcons";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useSessionCountdown } from "@/hooks/useSessionCountdown";
-import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatTaskLength } from "@/lib/formatDuration";
 import type { ActiveSession } from "@/store/useSessionStore";
-
-// The lift under the white play disc.
-const PLAY_SHADOW = { boxShadow: "0 3px 8px -2px rgba(150, 50, 10, 0.45)" };
 
 /** A running session's clock, small, on the Resume button — its own component so only it ticks. */
 function ResumeClock({ session }: { session: ActiveSession }) {
   const countdown = useSessionCountdown(session);
   return (
-    <Text className="font-grotesk-semibold text-[14px] text-on-accent" style={{ opacity: 0.85, fontVariant: ["tabular-nums"] }}>
+    <Text className="font-grotesk-semibold text-[13px] text-white" style={{ opacity: 0.85, fontVariant: ["tabular-nums"] }}>
       {countdown.clock}
     </Text>
   );
 }
 
 /**
- * The orange "▶ Start session" button — on a Today card, and on Task Details
- * for any task, deadline or not. While that task's session is running it
- * reads "Resume session" with the clock beside it, and takes the user back
- * into it rather than starting the clock again.
+ * The orange "▶ Start focus" pill on a Today card (the 2026-11 redesign,
+ * Final-Today.html: flat orange, 50 tall, fully round). While that task's
+ * session is running it reads "Resume session" with the clock beside it, and
+ * takes the user back into it rather than starting the clock again.
  */
 export function StartSessionButton({
   minutes,
@@ -40,29 +35,25 @@ export function StartSessionButton({
   runningSession?: ActiveSession;
   onPress: () => void;
 }) {
-  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   return (
     <AnimatedPressable
       onPress={onPress}
+      scaleTo={0.97}
       accessibilityRole="button"
       accessibilityLabel={
         runningSession
           ? t.next.resumeSession
           : minutes > 0
-            ? t.next.startSessionFor(formatTaskLength(minutes))
-            : t.next.startSessionLabel
+            ? t.next.startFocusFor(formatTaskLength(minutes))
+            : t.next.startFocus
       }
-      style={gradients.accent}
-      className="glow-accent min-h-[44px] flex-row items-center justify-center gap-3 rounded-[16px] bg-orange-500 px-4 py-1.5"
+      className="h-[44px] flex-row items-center justify-center gap-[7px] rounded-full bg-accent px-4"
     >
-      <View className="h-[28px] w-[28px] items-center justify-center rounded-full bg-white" style={PLAY_SHADOW}>
-        {/* Nudged right: a triangle's visual centre sits left of its box. */}
-        <Ionicons name="play" size={13} color={colors.orange[500]} style={{ marginLeft: 2 }} />
-      </View>
-      <Text style={rtl} className="font-grotesk-bold text-[15px] text-on-accent">
-        {runningSession ? t.next.resumeSession : t.next.startSessionLabel}
+      <AppIcon name="play" size={11} color="#FFFFFF" />
+      <Text numberOfLines={1} style={rtl} className="shrink font-grotesk-bold text-[14px] text-white">
+        {runningSession ? t.next.resumeSession : t.next.startFocus}
       </Text>
       {/* No clock for a task with no duration: its session has none. */}
       {runningSession && runningSession.plannedMinutes > 0 ? <ResumeClock session={runningSession} /> : null}

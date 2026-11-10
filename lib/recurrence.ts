@@ -322,7 +322,12 @@ export function buildRule(input: RuleInput, due: TaskDeadline | string | undefin
   draft.kind = input.kind ?? defaultRecurrenceKind(draft);
   const today = toLocalDateKey(now);
   let rule = anchorRuleOnOrAfter(draft, draft.anchorDate > today ? draft.anchorDate : today);
-  if (rule && Date.parse(slotDueDate(rule, rule.anchorDate)) < now.getTime()) {
+  // A routine keeps today even when its time has gone by: it belongs on
+  // today's timeline straight away (the user's report, 2026-11-03 — a routine
+  // added in the evening never showed on Today), and it simply passes at the
+  // end of the day if it isn't ticked. A repeating task still starts on its
+  // next slot that's yet to come.
+  if (rule && rule.kind !== "routine" && Date.parse(slotDueDate(rule, rule.anchorDate)) < now.getTime()) {
     rule = anchorRuleOnOrAfter(rule, addDaysToKey(rule.anchorDate, 1));
   }
   return rule;

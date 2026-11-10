@@ -32,9 +32,25 @@ export const en = {
   },
 
   /** The "Undo" toast after finishing or deleting a task (components/UndoToast.tsx). */
+  /** What a task's score is (components/ScoreSheet.tsx, from the Tasks page's score pill). */
+  scoreInfo: {
+    /** The compact score card (2026-11-09). */
+    compact: { headline: "Higher score, do it sooner", line: "It goes up as the deadline gets closer.", soon: "Due soon", important: "Important", long: "Long" },
+    card: { first: "Do this one first", soon: "Worth doing soon", wait: "This one can wait", means: "A high score means: do it soon.", dueSoon: "It’s due soon", important: "It’s important", takesWhile: "It takes a while" },
+    footer2: "Nexdo updates it by itself as deadlines get closer.",
+    gotIt: "Got it",
+    title: "What's the score?",
+    body: "A number from 0 to 100 that tells you what to do first. The higher it is, the sooner the task deserves your time. Nexdo works it out from three things:",
+    parts: { soon: "How soon it's due", important: "How important it is", long: "How long it takes" },
+    footer: "It updates by itself as deadlines get closer, so the list stays in the right order.",
+  },
+
   undoToast: {
     undo: "Undo",
     done: (title: string) => `Done: ${title}`,
+    /** A task done that feeds today's gem (Anim-TaskDone.html). */
+    gemBrighter: "Nice! Gem glows brighter",
+    doneToday: (done: number, total: number) => `${done} of ${total} tasks done today`,
     deleted: (title: string) => `Deleted: ${title}`,
   },
 
@@ -42,6 +58,7 @@ export const en = {
     next: "Today",
     tasks: "Tasks",
     settings: "Settings",
+    calendar: "Calendar",
   },
 
   format: {
@@ -79,6 +96,9 @@ export const en = {
     dueTodayBy: (time: string) => `Due today by ${time}`,
     dueTomorrow: "Due tomorrow",
     dueTomorrowAt: (time: string) => `Due tomorrow at ${time}`,
+    /** On a Tasks card: just the day, without "Due" (2026-11-03). */
+    todayShort: "Today",
+    tomorrowShort: "Tomorrow",
     inDays: (days: number) => `In ${days} days`,
     dueOnAt: (day: string, time: string) => `Due ${day} at ${time}`,
     /** A deadline with no set time — just its day. */
@@ -124,6 +144,8 @@ export const en = {
     /** The button in the header that opens the Schedule. */
     schedule: "Schedule",
     /** Read out for today's progress bar. */
+    gemNewStar: (days: number) => `New star! ${days} days of showing up.`,
+    gemNextStar: (days: number) => `${days} more days of finishing something for the next star`,
     todayProgress: (done: number, total: number) => `${done} of ${total} of today's tasks done`,
     /** When every task for today is done — the bar is full. */
     doneForToday: "Done for today",
@@ -144,6 +166,23 @@ export const en = {
     /** The switch under the title: today's list (late tasks included), or every open task. */
     viewToday: (count: number) => `Today · ${count}`,
     viewAll: (count: number) => `All tasks · ${count}`,
+    /** The 2026-11 redesign's Today page. The top card's pill. */
+    doThisFirst: "Do this first",
+    /** The card's Start button, and what a screen reader hears with its length. */
+    startFocus: "Start focus",
+    startFocusFor: (duration: string) => `Start focus (${duration})`,
+    /** On the card's info line, before the score. */
+    score: "Score",
+    /** The routines section: its heading, and its count as [before, the bold number, after]. */
+    routinesHeading: "Routines",
+    routinesToday: (done: number, total: number): [string, string, string] => ["", String(done), ` of ${total} today`],
+    /** Before the routines with no time of day. */
+    anytime: "Anytime today",
+    /** The quiet Today / All switch beside the +: "All" (each with its count). */
+    allShort: "All",
+    /** The routines section with none today, and its button. */
+    noRoutinesToday: "No routines today. Try “Read every day at 9pm”.",
+    addRoutine: "Add a routine",
   },
 
   /** The Schedule screen (app/schedule.tsx): the week — or the whole year — and the plan for each day. */
@@ -166,6 +205,24 @@ export const en = {
     stepOf: (step: number, total: number, label: string) => `Step ${step} of ${total}: ${label}`,
     nothingDue: "Nothing due this day",
     done: "DONE",
+    /** The redesigned page (2026-11-08): the Month view, the titles over each view. */
+    month: "Month",
+    thisWeekTitle: "This week",
+    weekOf: (date: string) => `Week of ${date}`,
+    monthTasks: (count: number) => `${count} ${plural(count, "task", "tasks")} this month`,
+    yearSubtitle: "Your year in gems",
+    /** The labels over a day's two lists (shown in capitals). */
+    tasksLabel: "Tasks",
+    routinesLabel: "Routines",
+    /** The month's key, from a quiet day to a busy one. */
+    fewerTasks: "Fewer tasks",
+    moreTasks: "More",
+    /** In the time column, for a task due on a day but at no set time. */
+    allDay: "All day",
+    /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
+    length: (hours: number, mins: number) => (hours === 0 ? `${mins} min` : mins === 0 ? `${hours} h` : `${hours} h ${mins} min`),
+    /** The year's key: a day's gem, from nothing done to everything done. */
+    gemLevels: { sleepy: "Sleepy", flicker: "Flicker", steady: "Steady", glowing: "Glowing", blazing: "Blazing" },
   },
 
   session: {
@@ -194,15 +251,86 @@ export const en = {
     complete: "Complete",
     cancelSession: "Cancel session",
     cancelTitle: "Cancel this session?",
-    cancelBody: "The timer stops and the time you've spent won't be kept. The task itself stays exactly as it is.",
+    cancelBody: "The timer stops. The time so far still counts in Insights, and the task stays exactly as it is.",
     keepGoing: "Keep going",
     endSession: "End session",
     hideAdvice: "Hide AI Advice",
     takeAdvice: "Take AI Advice",
-    stuck: "I'm stuck",
     /** A session on a task with no duration, which has no timer. */
     noTimer: "No timer for this one — tap Complete once it's done.",
     /** The session's button for a photo, document or note about the task. */
+  },
+
+  /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
+  focusSound: {
+    label: "Focus sound",
+    names: { off: "Off", rain: "Rain", waves: "Waves", thunder: "Thunderstorm", stream: "Stream", forest: "Forest", fireplace: "Fireplace", cafe: "Café" },
+  },
+
+  /** The Insights page (app/insights.tsx): focus time, tasks done, streak, and your pace (Pro). */
+  insights: {
+    /** The focus chart's big number: "18 min", "2 h 10 min". */
+    focusTotal: (hours: number, minutes: number) => (hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`),
+    tasksOf: (done: number, total: number) => `${done} of ${total} tasks done`,
+    /** "Finish 1 more and it starts to blaze." — level is the gem level reached next (2–5). */
+    nextHint: (n: number, level: number, name: string) => `Finish ${n} more and it ${["", "", "starts to flicker", "holds steady", "starts to glow", "starts to blaze"][level] ?? `turns ${name}`}.`,
+    allDone: "Everything done today. It’s blazing.",
+    nothingDue: "Nothing due today.",
+    daysSoFar: "Your days so far",
+    focusedLower: "focused",
+    doneLower: "done",
+    streakLower: "streak",
+    bestStreak: "best streak",
+    bestDay: "Best day",
+    bestWeek: "Best week",
+    thisWeekLower: "this week",
+    since: (date: string) => `since ${date}`,
+    thisWeek: "This week",
+    sessionsTitle: "Sessions",
+    sessionsSoFar: "focus sessions so far",
+    sessionsTotal: "focus sessions in total",
+    paceProgress: (done: number, n: number) => `${done} of ${n}`,
+    paceHint: (n: number) => `finish ${n} tasks in focus and Nexdo learns your pace.`,
+    title: "Insights",
+    subtitle: "Your focus and finished tasks",
+    /** Settings' row, and what tapping Today's progress card does. */
+    open: "See your Insights",
+    openBody: "Focus time, tasks done, your streak and your pace",
+    week: "Last 7 days",
+    all: "All time",
+    focused: "Focused",
+    done: "Done",
+    streak: "Streak",
+    streakDays: (count: number) => `${count} ${plural(count, "day", "days")}`,
+    focusChart: "Focus time",
+    /** Over the chart, for the bar picked: "Tue, Nov 3 · 1h 20m focused · 3 done". */
+    barSummary: (date: string, focus: string, done: number) => `${date} · ${focus} focused · ${done} done`,
+    weekOf: (date: string) => `Week of ${date}`,
+    today: "Today",
+    bestTime: {
+      morning: "You focus most in the morning.",
+      afternoon: "You focus most in the afternoon.",
+      evening: "You focus most in the evening.",
+      night: "You focus most at night.",
+    },
+    sessions: (count: number) => `${count} focus ${plural(count, "session", "sessions")} so far.`,
+    empty: "Start a focus session from Today, and your time shows up here.",
+    pace: {
+      title: "Your pace",
+      lockedBody:
+        "Nexdo compares how long your tasks really take with the time you give them, and sets new guesses to your pace.",
+      learning: (done: number, needed: number) =>
+        `Finish ${needed} tasks in a focus session and Nexdo learns your pace — ${done} of ${needed} so far.`,
+      /** "1.4×". */
+      factor: (value: string) => `${value}×`,
+      slower: (value: string) => `Your tasks take about ${value}× the time you give them.`,
+      faster: (value: string) => `You finish in about ${value}× the time you give your tasks.`,
+      onPace: "You finish tasks in about the time you give them.",
+      short: "Tasks of 30 min or less",
+      long: "Longer tasks",
+      bucketOnPace: "On time",
+      adjusting: "Quick add now sets guessed lengths to your pace.",
+    },
   },
 
   breakdown: {
@@ -234,6 +362,9 @@ export const en = {
     title: "Tasks",
     addTask: "Add Task",
     searchPlaceholder: "Search tasks...",
+    /** The 2026-11 redesign's Tasks page: its title, and the pill above it that opens the sort menu. */
+    yourTasks: "Your tasks",
+    sortedBy: (sort: string) => `Sorted by ${sort}`,
     pendingSuffix: " pending",
     completedSuffix: " completed",
     overdueCount: (count: number) => `${count} overdue`,
@@ -241,7 +372,7 @@ export const en = {
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
-    status: { all: "All", pending: "Pending", completed: "Completed", overdue: "Overdue", noDeadline: "No deadline", archived: "Archived" },
+    status: { all: "All", pending: "To do", completed: "Done", overdue: "Overdue", noDeadline: "No deadline", archived: "Archived" },
     sort: { recent: "Recently added", dueDate: "Due date", priority: "Priority score" },
     score: (score: number) => `Score: ${score}`,
   },
@@ -410,6 +541,24 @@ export const en = {
     /** A deadline is a day; a time is only added when the user wants one. */
     addTime: "Add a time",
     removeTime: "No set time",
+    /** The quick-add line at the top of Add Task (lib/quickAdd.ts). */
+    quick: {
+      label: "TYPE IT IN ONE LINE",
+      placeholder: "e.g. Dentist Friday 3pm every month",
+      help: "Write it the way you'd say it: the day, time, how long and any repeat are filled in for you.",
+      readAs: "NEXDO READ IT AS",
+      titleMissing: "Add what the task is, not just when.",
+      moreDetails: "More details",
+      aiLocked: "Nexdo AI can understand this — Pro",
+      aiRead: "Let Nexdo AI read this",
+      aiReading: "Reading…",
+      aiNothing: "No new task found in that — try saying what needs doing.",
+      changeHint: "Changing a task you already have? Use Magic mic in the tab bar.",
+      changeHintLocked: "Changing a task you already have? Magic mic can do that — Pro",
+      addTasks: (count: number) => (count === 1 ? "Add Task" : `Add ${count} Tasks`),
+      /** Beside a guessed length set to the user's pace (Pro): "45 mins · your pace". */
+      yourPace: "your pace",
+    },
   },
 
   /**
@@ -427,7 +576,7 @@ export const en = {
     voiceNoteLabel: (duration: string) => `Voice note (${duration})`,
   },
 
-  /** Magic mic — live voice (app/live-voice.tsx) — and the tab bar's mic button that opens it. */
+  /** Magic mic — live voice (components/MagicMicOverlay.tsx) — and the tab bar's mic button that opens it. */
   live: {
     open: "Talk to add or change tasks",
     /** The tab bar's mic on Free, where it wears a padlock and opens the plans. */
@@ -438,10 +587,12 @@ export const en = {
     finishing: "Catching your last words…",
     stopped: "Stopped",
     undo: "Undo",
-    yourTasks: "Your tasks",
-    emptyTitle: "No open tasks",
-    emptyBody: "Say one and it appears here.",
-    marks: { added: "Just added", updated: "Updated", completed: "Done" },
+    hintTitle: "Say what to add or change",
+    hintBody: "“Call Mom tomorrow” · “Move the report to Friday”",
+    marks: { added: "Just added", updated: "Updated", completed: "Done", removed: "Removed", shown: "On your list" },
+    /** Puts back everything Magic mic changed since it opened. */
+    discard: "Discard",
+    discarded: "Magic mic changes discarded",
     stop: "Stop listening",
     talkAgain: "Talk again",
     done: "Done",
@@ -463,15 +614,15 @@ export const en = {
     steps: {
       next: {
         title: "Today",
-        body: "What's due today — and anything late — with the task most worth doing on top. Swipe for the others, or switch to All tasks to pick any of them.",
+        body: "What's due today — and anything late — with the task most worth doing on top. Swipe for the others, or switch to All tasks to pick any of them. Tap + at the top to add a task by hand.",
       },
       tasks: {
         title: "All your tasks",
         body: "Everything on your plate, in one list. Tap a task to change it, and tick it off when it's done.",
       },
-      add: {
-        title: "Add a task",
-        body: "Tap + to add a task by hand, from any tab.",
+      calendar: {
+        title: "Calendar",
+        body: "Your week, day by day — or the whole year. Tap a day to see what's due.",
       },
       voice: {
         title: "Magic mic",
@@ -728,7 +879,7 @@ export const en = {
       media: "Photos and documents",
       voice: "Voice notes",
       live: "Magic mic",
-      assist: "AI breakdowns",
+      assist: "Break it down",
     },
     minutes: (count: number) => `${count} min`,
     used: {
@@ -787,6 +938,19 @@ export const en = {
     free: "Free",
     pro: "Pro",
     unlimitedNote: "Adding tasks by hand, the Today page and reminders are unlimited on both plans.",
+    /** Opened from a Pro extra (lib/paywall.ts ProExtra): its headline. */
+    extraTitle: {
+      sounds: "Focus sounds come with Nexdo Pro.",
+      insights: "Your full history and your pace come with Nexdo Pro.",
+    },
+    extraHint: "Pro adds focus sounds, your full Insights and pace, and Nexdo's AI. Tasks, Today, sessions and reminders stay free.",
+    /** The comparison's rows for Pro's extras. */
+    extras: {
+      sounds: "Focus sounds",
+      insights: "Insights & your pace",
+      insightsFree: "7 days",
+      insightsPro: "All",
+    },
     startTrial: (count: number, unit: TrialUnit) => `Start ${count}-${unit} free trial`,
     subscribe: "Get Nexdo Pro",
     working: "One moment…",
@@ -884,6 +1048,91 @@ export const en = {
   },
 
   /** The Account sheet — the one place profile details are edited. */
+  /** The 2026-11 redesign: Settings, Account, Feedback, the task edit card and Postpone. */
+  redesign: {
+    accountButton: "Account",
+    manage: "Manage",
+    upgrade: "Upgrade",
+    freePlan: "Nexdo Free",
+    freeBody: "Every AI feature comes with Pro.",
+    renews: (date: string) => `Renews ${date}`,
+    ends: (date: string) => `Ends ${date}`,
+    resetsIn: (days: number) => `resets in ${days} ${days === 1 ? "day" : "days"}`,
+    ofMinutes: (count: number) => `/ ${count} min`,
+    thisWeek: "THIS WEEK",
+    tasksDone: (count: number) => `${count} ${count === 1 ? "task" : "tasks"} done`,
+    focused: (time: string) => `${time} focused · see your insights`,
+    notifications: "NOTIFICATIONS",
+    at: "at",
+    reminders: "Reminders",
+    remindersBody: "On the due day",
+    dailyPlan: "Daily plan",
+    dailyPlanBody: "Every morning",
+    overdue: "Overdue",
+    alertsOn: "Alerts on",
+    alertsOff: "Alerts off",
+    off: "Off",
+    preferences: "PREFERENCES",
+    language: "Language",
+    appTour: "App tour",
+    support: "SUPPORT",
+    help: "Help & FAQ",
+    changePhoto: "Change photo",
+    photoHint: "JPG or PNG, under 5 MB",
+    name: "NAME",
+    email: "EMAIL",
+    save: "Save",
+    feedbackSubtitle: "We read every message.",
+    feedbackPlaceholder: "What would make Nexdo better for you?",
+    addScreenshot: "Add a screenshot",
+    feedbackNote: "Your account, app version and phone model are sent with it, so we can reply and fix things faster.",
+    send: "Send",
+    remindersLabel: "REMINDERS",
+    noDateNoReminder: "No date, no reminder",
+    postpone: "Postpone",
+    pickDay: "Pick a day",
+    restore: "Restore purchases",
+    remindersHint: "A ping on the day a task is due",
+    dailyPlanHint: "Your plan for the day, every morning",
+    overdueHint: "A heads-up when a task runs late",
+    leadTitle: "Tasks with a time — remind me",
+    leadAtStart: "At the start",
+    leadBefore: (offset: string) => `${offset} before`,
+    dateOnlyTitle: "Tasks with only a date — remind me at",
+    dailyTimeTitle: "Arrives every day at",
+    /** Settings → Reminders, 2026-11 screenshot: the row's line, the preview card, the lead slider. */
+    remindersPinged: "Choose when you get pinged",
+    previewLabel: "Preview",
+    previewTask: "Dentist",
+    previewIn: (task: string, offset: string) => `${task} in ${offset}`,
+    previewNow: (task: string) => `${task} starts now`,
+    previewTomorrow: (task: string) => `${task} tomorrow`,
+    previewStarts: (time: string) => `Starts at ${time}`,
+    /** The slider's stops: Start, 5 m, 15 m, 30 m, 1 h, 1 day. */
+    leadStop: (minutes: number) => {
+      if (minutes === 0) return "Start";
+      if (minutes < 60) return `${minutes} m`;
+      const hours = Math.round(minutes / 60);
+      return minutes < 1440 ? `${hours} h` : "1 day";
+    },
+    /** "15 min", "1 h", "1 day" — in "15 min before" and the preview. */
+    leadShort: (minutes: number) => {
+      if (minutes < 60) return `${minutes} min`;
+      const hours = Math.round(minutes / 60);
+      return minutes < 1440 ? `${hours} h` : "1 day";
+    },
+    timedTitle: "Tasks with a time",
+    dateOnlyLabel: "Tasks with only a date",
+    dateOnlyHint: "Pinged that morning",
+    taskNeedsDate: "Add a date to get reminders",
+    remindThisTask: "Remind me about this task",
+    remindersWhen: "On its due day, at the time set in Settings, plus before a set time.",
+    remindersOffEverywhere: "Reminders are off for every task in Settings.",
+    turnOnInSettings: "Turn on in Settings",
+    meterLabels: { live: "Magic mic", assist: "Breakdowns", media: "Photos" },
+    feedbackTypes: { suggestion: "Idea", bug: "Bug", other: "Other" },
+  },
+
   account: {
     title: "Account",
     close: "Close account settings",
@@ -1056,6 +1305,8 @@ export const en = {
       live: (minutes: number) => `${minutes} min of Magic mic`,
       assist: (count: number) => `${count} AI breakdowns`,
     },
+    /** Pro's extras, under the monthly allowances (lib/paywall.ts ProExtra). */
+    extras: ["Focus sounds while you work", "Insights: your full history and your pace"],
   },
 
   auth: {
@@ -1090,5 +1341,73 @@ export const en = {
     somethingWrong: "Something went wrong. Try again.",
     showPassword: "Show password",
     hidePassword: "Hide password",
+  },
+
+  /** The focus session page (components/NextTaskCard.tsx, Final-Focus.html). */
+  focusPage: {
+    eyebrow: "Focus session",
+    back: "Back",
+    /** Under the clock: "of 30 mins". */
+    ofLength: (length: string) => `of ${length}`,
+    /** Under the ring once the task is done in a session: "18 min of focus · 12 min early" (FocusClockFace). */
+    doneMinutes: (minutes: number) => `${minutes} min`,
+    doneOfFocus: "of focus",
+    doneEarly: (minutes: number) => `${minutes} min early`,
+    doneOver: (minutes: number) => `${minutes} min over`,
+    doneOnTime: "right on time",
+    /** "Step 2: write the introduction". */
+    step: (index: number, label: string) => `Step ${index}: ${label}`,
+    breakIntoSteps: "Break it into steps",
+    sound: "Focus sound",
+  },
+
+  /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
+  addSheet: {
+    placeholder: "Type a task…",
+    details: "Details",
+    hideDetails: "Hide details",
+    date: "Date",
+    duration: "Duration",
+    repeat: "Repeat",
+    priority: "Priority",
+    today: "Today",
+    anotherDay: "Another day",
+    noDate: "No date",
+    atSetTime: "At a set time",
+    hoursShort: "h",
+    minutesShort: "min",
+    ends: "Ends",
+    ifMissed: "If I miss one",
+    keepOpen: "Keep open",
+    skip: "Skip",
+    showAs: "Show it as",
+    taskKind: "Task",
+    taskKindHint: "A card on Today with a deadline. Missed ones can stay open.",
+    routineKind: "Routine",
+    routineKindHint: "A habit on your Routines timeline. No deadline, resets each time.",
+    noRepeat: "Don't repeat",
+    high: "High",
+    medium: "Medium",
+    low: "Low",
+    highHint: "Needs to happen soon",
+    mediumHint: "Important, not urgent",
+    lowHint: "Whenever you have time",
+    priorityNote: "Priority is one of the things Nexdo uses to sort your list.",
+    fromPhoto: "Add from a photo or file",
+    takePhoto: "Take a photo",
+    takePhotoHint: "A whiteboard, a syllabus, a note",
+    choosePhoto: "Choose a photo",
+    choosePhotoHint: "From your gallery",
+    uploadFile: "Upload a file",
+    uploadFileHint: "PDF or document",
+    readBy: "Read by Nexdo",
+    reading: "Reading…",
+    removeFile: "Remove the file",
+    addTask: "Add task",
+    preview: "Preview of the new task",
+    repeats: "Repeats",
+    found: (n: number) => (n === 1 ? `Nexdo found 1 task · tap to keep` : `Nexdo found ${n} tasks · tap to keep`),
+    addTasks: (n: number) => (n === 1 ? `Add 1 task` : `Add ${n} tasks`),
+    busy: (n: number) => (n === 1 ? `1 task due` : `${n} tasks due`),
   },
 };

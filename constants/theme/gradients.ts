@@ -79,6 +79,10 @@ export const gradients = {
    * one simple gradient.
    */
   session: fill("linear-gradient(180deg, #2C2926 0%, #201E1C 55%, #1C1A18 100%)"),
+  /** The routines timeline, filled up to now (Final-Today.html). */
+  routineLine: fill("linear-gradient(90deg, #FFB089 0%, #F26A2E 100%)"),
+  /** The page colour fading in over a sideways list's right edge, so it runs off into the page. */
+  paperFadeRight: fill("linear-gradient(90deg, rgba(250, 241, 228, 0) 0%, #FAF1E4 100%)"),
   /** The Next card's "#1 Priority" pill. */
   rankPill: fill("linear-gradient(135deg, rgba(242, 101, 42, 0.38) 0%, rgba(242, 101, 42, 0.18) 100%)"),
 } satisfies Record<string, ViewStyle>;

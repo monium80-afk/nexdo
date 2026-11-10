@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { logEndedSession } from "@/lib/focusLog";
+import { useTaskStore } from "@/store/useTaskStore";
 import type { EnergyLevel } from "@/lib/sessionPlan";
 
 /**
@@ -12,6 +14,8 @@ import type { EnergyLevel } from "@/lib/sessionPlan";
  */
 export type ActiveSession = {
   taskIds: string[];
+  /** The account that started this run, even if the app later switches accounts. */
+  userId?: string | null;
   /**
    * The countdown's full length. 0 for a task with no duration (a goal kept
    * through the day): that session has no timer, and nothing to ring at.
@@ -24,6 +28,12 @@ export type ActiveSession = {
   elapsedMs: number;
   /** Epoch ms the current running span started; null while paused. */
   runningSince: number | null;
+  /** Epoch ms the session began. Absent on sessions saved before 2026-11-02. */
+  startedAt?: number;
+  /** The task's length when the session began — what its time is measured against (lib/pace.ts). */
+  estimateMinutes?: number;
+  /** Time on the clock before it was reset ("give me the whole block again") — still time spent. */
+  resetMs?: number;
 };
 
 /**
@@ -33,6 +43,22 @@ export type ActiveSession = {
  */
 export function sessionElapsedMs(session: ActiveSession, now: number = Date.now()): number {
   return session.elapsedMs + (session.runningSince === null ? 0 : now - session.runningSince);
+}
+
+/** A session ending, however it ends: its time goes to the focus log (Insights, your pace). */
+function logEnd(session: ActiveSession | null): void {
+  if (!session || session.userId === undefined) return;
+  const endedAt = Date.now();
+  const elapsedMs = sessionElapsedMs(session, endedAt) + (session.resetMs ?? 0);
+  logEndedSession({
+    taskId: session.taskIds[session.activeIndex] ?? session.taskIds[0],
+    userId: session.userId,
+    plannedMinutes: session.plannedMinutes,
+    estimateMinutes: session.estimateMinutes ?? session.plannedMinutes,
+    startedAt: session.startedAt ?? endedAt - elapsedMs,
+    elapsedMs,
+    endedAt,
+  });
 }
 
 type SessionStore = {
@@ -60,24 +86,31 @@ type SessionStore = {
 
 export const useSessionStore = create<SessionStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       session: null,
       openRequest: null,
 
       requestOpen: (taskId, plannedMinutes) => set({ openRequest: { taskId, plannedMinutes } }),
       clearOpenRequest: () => set({ openRequest: null }),
 
-      start: ({ taskIds, plannedMinutes, energy }) =>
+      start: ({ taskIds, plannedMinutes, energy }) => {
+        // Starting one session ends any other.
+        logEnd(get().session);
+        const now = Date.now();
         set({
           session: {
             taskIds,
+            userId: useTaskStore.getState().syncUserId,
             plannedMinutes,
             energy,
             activeIndex: 0,
             elapsedMs: 0,
-            runningSince: Date.now(),
+            runningSince: now,
+            startedAt: now,
+            estimateMinutes: plannedMinutes,
           },
-        }),
+        });
+      },
 
       pause: () =>
         set((state) => {
@@ -97,10 +130,18 @@ export const useSessionStore = create<SessionStore>()(
 
       // Restarts the countdown from the full budget and leaves it running —
       // a reset mid-session means "give me the whole block again", not "stop".
+      // The time before the reset was still spent on the task: kept for the log.
       resetTimer: () =>
         set((state) =>
           state.session
-            ? { session: { ...state.session, elapsedMs: 0, runningSince: Date.now() } }
+            ? {
+                session: {
+                  ...state.session,
+                  resetMs: (state.session.resetMs ?? 0) + sessionElapsedMs(state.session),
+                  elapsedMs: 0,
+                  runningSince: Date.now(),
+                },
+              }
             : {},
         ),
 
@@ -124,7 +165,10 @@ export const useSessionStore = create<SessionStore>()(
           const dropped = session ? session.taskIds.indexOf(taskId) : -1;
           if (!session || dropped < 0) return {};
           const taskIds = session.taskIds.filter((id) => id !== taskId);
-          if (taskIds.length === 0) return { session: null };
+          if (taskIds.length === 0) {
+            logEnd(session);
+            return { session: null };
+          }
           // A task before the focused one going moves the focus down a place
           // with it; the focused one going hands it to the task after.
           const activeIndex = dropped < session.activeIndex ? session.activeIndex - 1 : session.activeIndex;
@@ -137,7 +181,10 @@ export const useSessionStore = create<SessionStore>()(
           };
         }),
 
-      leave: () => set({ session: null }),
+      leave: () => {
+        logEnd(get().session);
+        set({ session: null });
+      },
     }),
     {
       name: "nexdo-session",

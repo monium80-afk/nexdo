@@ -12,9 +12,11 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { UndoToast } from "@/components/UndoToast";
 import { colors } from "@/constants/theme";
 import { useAuthSync } from "@/hooks/useAuthSync";
+import { useFocusSound } from "@/hooks/useFocusSound";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useSessionAlarm } from "@/hooks/useSessionAlarm";
 import { publishableKey, resourceCache, tokenCache } from "@/lib/clerk";
+import { watchCompletions } from "@/lib/focusLog";
 import { configureNotifications } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
 import "../global.css";
@@ -99,6 +101,8 @@ export default function RootLayout() {
     "SpaceGrotesk-Medium": require("../assets/fonts/SpaceGrotesk-Medium.ttf"),
     "SpaceGrotesk-SemiBold": require("../assets/fonts/SpaceGrotesk-SemiBold.ttf"),
     "SpaceGrotesk-Bold": require("../assets/fonts/SpaceGrotesk-Bold.ttf"),
+    // The small uppercase labels and times of the 2026-11 redesign.
+    "SpaceMono-Bold": require("../assets/fonts/SpaceMono-Bold.ttf"),
   });
 
   const pathname = usePathname()
@@ -108,6 +112,10 @@ export default function RootLayout() {
   // Lives here so a session's timer rings from any screen, not just the one
   // the clock is on.
   useSessionAlarm();
+  // And so does its focus sound, while its clock runs.
+  useFocusSound();
+  // Finished tasks are noted for Insights, whichever way they were done.
+  useEffect(() => watchCompletions(), []);
 
   // Manual screen tracking for Expo Router
   // @see https://posthog.com/docs/libraries/react-native
@@ -168,15 +176,9 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: colors.cream[50] },
                 }}
               />
-              {/* Live voice opens over the Tasks page the same way. */}
-              <Stack.Screen
-                name="live-voice"
-                options={{
-                  presentation: "modal",
-                  contentStyle: { backgroundColor: colors.cream[50] },
-                }}
-              />
-              {/* So does Settings → Send feedback / Report a problem. */}
+              {/* So does Settings → Send feedback / Report a problem. (Magic
+                  mic isn't a screen: it's a layer over the tabs, see
+                  components/MagicMicOverlay.tsx.) */}
               <Stack.Screen
                 name="feedback"
                 options={{

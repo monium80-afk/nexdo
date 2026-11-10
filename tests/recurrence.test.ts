@@ -115,10 +115,17 @@ describe("buildRule", () => {
     assert.equal(built?.hour, 18);
   });
 
-  it("never starts on an occurrence whose time has already passed", () => {
+  it("never starts a repeating task on an occurrence whose time has already passed", () => {
+    const due = local(2026, 10, 6, 9).toISOString();
+    const built = buildRule({ frequency: "daily", kind: "task" }, due, local(2026, 10, 6, 15));
+    assert.equal(built?.anchorDate, "2026-10-07");
+  });
+
+  it("keeps a routine on today even when its time has gone by, so it shows on Today", () => {
     const due = local(2026, 10, 6, 9).toISOString();
     const built = buildRule({ frequency: "daily" }, due, local(2026, 10, 6, 15));
-    assert.equal(built?.anchorDate, "2026-10-07");
+    assert.equal(built?.kind, "routine");
+    assert.equal(built?.anchorDate, "2026-10-06");
   });
 
   it("without a due date, starts today at 18:00", () => {
@@ -136,7 +143,7 @@ describe("buildRule", () => {
   });
 
   it("starts tomorrow when the picked time has already gone by today", () => {
-    const built = buildRule({ frequency: "daily", time: "08:00" }, makeDeadline({ date: "2026-10-06" }), local(2026, 10, 6, 15));
+    const built = buildRule({ frequency: "daily", time: "08:00", kind: "task" }, makeDeadline({ date: "2026-10-06" }), local(2026, 10, 6, 15));
     assert.equal(built?.anchorDate, "2026-10-07");
     assert.equal(built?.hour, 8);
   });

@@ -522,6 +522,16 @@ export default function TaskDetail() {
             accessibilityLabel={t.tasks.score(task.priorityScore)}
           />
         </View>
+        {/* A repeating task says so up top: routine or recurring task, and how
+            often (the arrows on its card in the Tasks list point here). */}
+        {task.recurrence ? (
+          <View className="flex-row items-center gap-1.5">
+            <Feather name="repeat" size={14} color={colors.orange[300]} />
+            <Text className="shrink font-grotesk-semibold text-sm text-orange-200">
+              {`${t.recurrence.kinds[recurrenceKind(task.recurrence.rule)]} · ${describeRule(task.recurrence.rule, t, { withTime: true })}`}
+            </Text>
+          </View>
+        ) : null}
       </ScreenHeader>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>

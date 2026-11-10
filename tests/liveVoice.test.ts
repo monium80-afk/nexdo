@@ -118,30 +118,33 @@ describe("live voice session", () => {
   beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
   afterEach(() => mock.timers.reset());
 
-  it("sends the setup, then only streams audio once Google is ready", async () => {
+  it("turns the microphone on while connecting, and sends what was said once Google is ready", async () => {
     const { voice, sockets, microphone } = setup();
     await voice.start();
+    await flush();
     const socket = sockets[0];
     assert.equal(socket.url, SESSION.url);
     assert.equal(socket.binaryType, "arraybuffer");
     assert.equal(voice.getState().status, "connecting");
+    assert.equal(microphone.running, true, "the microphone doesn't wait for the connection");
+    assert.equal(voice.getState().hearing, true);
 
     socket.onopen?.();
     assert.deepEqual(socket.sent, [SESSION.setup]);
 
+    const chunk = {
+      realtimeInput: { audio: { data: Buffer.from(Int16Array.from([1, 2, 3, 4]).buffer).toString("base64"), mimeType: "audio/pcm;rate=16000" } },
+    };
     voice.sendAudio(audio());
-    assert.equal(socket.sent.length, 1, "no audio before setupComplete");
-    assert.equal(microphone.running, false);
+    assert.equal(socket.sent.length, 1, "no audio before setupComplete — it's held");
 
     socket.receive({ setupComplete: {} });
     await flush();
     assert.equal(voice.getState().status, "listening");
-    assert.equal(microphone.running, true);
+    assert.deepEqual(socket.sent[1], chunk, "the held audio goes out first");
 
     voice.sendAudio(audio());
-    assert.deepEqual(socket.sent[1], {
-      realtimeInput: { audio: { data: Buffer.from(Int16Array.from([1, 2, 3, 4]).buffer).toString("base64"), mimeType: "audio/pcm;rate=16000" } },
-    });
+    assert.deepEqual(socket.sent[2], chunk);
   });
 
   it("carries out each tool call the moment it arrives and answers it silently", async () => {

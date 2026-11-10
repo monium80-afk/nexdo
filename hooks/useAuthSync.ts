@@ -183,9 +183,13 @@ export function useAuthSync() {
       clearTimeout(retryTimer);
       appState.remove();
       unsubscribeTasks();
-      usePlanUsageStore.getState().clear();
     };
   }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks]);
+
+  // The plan's usage belongs to the account: forgotten only when the account
+  // changes. Clearing it whenever the effect above re-ran (a new getToken or
+  // clerk) made Settings' allowances vanish and come back while signed in.
+  useEffect(() => () => usePlanUsageStore.getState().clear(), [userId]);
 
   // Nexdo Pro belongs to the account, so RevenueCat knows the user by their
   // Clerk id. Sign-out resets it (resetPurchaser, from the sign-out buttons).

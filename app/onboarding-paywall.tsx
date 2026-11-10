@@ -193,13 +193,17 @@ export default function OnboardingPaywall() {
 
         {/* What a Pro month includes — the numbers lib/plan.ts enforces. */}
         <View className="mt-5 gap-3">
-          {SHOWN_METERS.map((meter) => (
-            <View key={meter} className="flex-row items-center gap-3">
+          {[
+            ...SHOWN_METERS.map((meter) => t.onboardingPaywall.features[meter](displayLimit("pro", meter))),
+            // And Pro's extras, which aren't counted (2026-11-02).
+            ...t.onboardingPaywall.extras,
+          ].map((line) => (
+            <View key={line} className="flex-row items-center gap-3">
               <View className="tile tile--orange h-[22px] w-[22px] rounded-full" style={gradients.tileOrange}>
                 <Feather name="check" size={12} color={colors.orange[600]} />
               </View>
               <Text className="flex-1 font-grotesk-semibold text-[14px] text-ink-cream" style={rtl}>
-                {t.onboardingPaywall.features[meter](displayLimit("pro", meter))}
+                {line}
               </Text>
             </View>
           ))}

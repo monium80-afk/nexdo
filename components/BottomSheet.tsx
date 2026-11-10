@@ -138,7 +138,7 @@ export function BottomSheet({
  * `active` (the sheet is up). iOS says just before the keyboard moves, so the
  * sheet moves with it; Android only once it has.
  */
-function useKeyboardHeight(active: boolean): number {
+export function useKeyboardHeight(active: boolean): number {
   const [height, setHeight] = useState(0);
   useEffect(() => {
     if (!active) return;

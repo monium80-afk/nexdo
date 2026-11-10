@@ -86,14 +86,22 @@ describe("default reminder policy", () => {
 });
 
 describe("user preferences", () => {
-  it("offsets before an exact deadline; the reminder time only moves date-only reminders", () => {
-    const prefs = { ...PREFS, dayReminderTime: "07:30", beforeOffsets: [60, 1440] };
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [
-      { kind: "before", at: "Wed Oct 14 2026 19:00" },
-      { kind: "before", at: "Thu Oct 15 2026 18:00" },
-      { kind: "due-day", at: "Thu Oct 15 2026 19:00" },
-    ]);
+  it("one reminder so long before an exact deadline, in place of the one at the start; the reminder time only moves date-only reminders", () => {
+    const prefs = { ...PREFS, dayReminderTime: "07:30", beforeOffsets: [60] };
+    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [{ kind: "before", at: "Thu Oct 15 2026 18:00" }]);
     assert.deepEqual(times(dueTask("essay", "2026-10-15"), prefs), [{ kind: "due-day", at: "Thu Oct 15 2026 07:30" }]);
+    // Several saved by an older version: only the first counts.
+    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), { ...PREFS, beforeOffsets: [15, 1440] }), [
+      { kind: "before", at: "Thu Oct 15 2026 18:45" },
+    ]);
+  });
+
+  it("an early reminder still comes with overdue alerts on: the alert keeps the deadline itself", () => {
+    const prefs = { ...PREFS, overdueAlerts: true, beforeOffsets: [30] };
+    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [
+      { kind: "before", at: "Thu Oct 15 2026 18:30" },
+      { kind: "overdue", at: "Thu Oct 15 2026 19:00" },
+    ]);
   });
 
   it("offsets only apply to deadlines with a time", () => {
@@ -127,7 +135,6 @@ describe("user preferences", () => {
     const prefs = { ...PREFS, importantDayBefore: true, beforeOffsets: [1440] };
     assert.deepEqual(times(dueTask("call", "2026-10-15", "09:03", { importance: 75 }), prefs), [
       { kind: "day-before", at: "Wed Oct 14 2026 09:00" },
-      { kind: "due-day", at: "Thu Oct 15 2026 09:03" },
     ]);
   });
 });

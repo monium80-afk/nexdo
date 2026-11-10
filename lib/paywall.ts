@@ -7,11 +7,19 @@ import { planLimitMessage } from "@/lib/planLimit";
 import { isPurchasesEnabled } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
+/** Pro features that aren't AI allowances (2026-11-02): no monthly count, just Pro. */
+export type ProExtra = "sounds" | "insights";
+export const PRO_EXTRAS: readonly ProExtra[] = ["sounds", "insights"];
+
+/** What the paywall was opened from: an AI allowance, or one of the extras. */
+export type PaywallReason = Meter | ProExtra;
+
 /**
  * Opens the Nexdo Pro paywall (app/paywall.tsx). With a `reason`, it opens
- * on the allowance that just ran out instead of its usual headline.
+ * on that feature — or the allowance that just ran out — instead of its
+ * usual headline.
  */
-export function openPaywall(reason?: Meter) {
+export function openPaywall(reason?: PaywallReason) {
   router.push(reason ? { pathname: "/paywall", params: { reason } } : "/paywall");
 }
 

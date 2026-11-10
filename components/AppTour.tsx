@@ -23,17 +23,17 @@ import { useOnboardingStore } from "@/store/useOnboardingStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 
 /** The tab bar slots the tour points at. */
-export type TourAnchor = "index" | "tasks" | "add" | "mic";
-type TourTab = "index" | "tasks" | "settings";
+export type TourAnchor = "index" | "tasks" | "mic" | "calendar";
+type TourTab = "index" | "tasks" | "calendar" | "settings";
 
 // Left to right along the bar, one sentence or two each — Settings is left
-// out on purpose: it explains itself.
+// out on purpose: it explains itself. (Today's step mentions its + button.)
 const STEPS: { anchor: TourAnchor; tab: TourTab }[] = [
   { anchor: "index", tab: "index" },
   { anchor: "tasks", tab: "tasks" },
-  // The page behind stays on Tasks: neither button opens anything during the tour.
-  { anchor: "add", tab: "tasks" },
+  // The page behind stays on Tasks: the mic doesn't open during the tour.
   { anchor: "mic", tab: "tasks" },
+  { anchor: "calendar", tab: "calendar" },
 ];
 
 // A beat for the page under it to settle and be seen first.
@@ -225,7 +225,7 @@ export function AppTour({
 }
 
 function isTourTab(tab: string | undefined): tab is TourTab {
-  return tab === "index" || tab === "tasks" || tab === "settings";
+  return tab === "index" || tab === "tasks" || tab === "calendar" || tab === "settings";
 }
 
 function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micLocked: boolean) {
@@ -234,10 +234,10 @@ function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micL
       return t.tour.steps.next;
     case "tasks":
       return t.tour.steps.tasks;
-    case "add":
-      return t.tour.steps.add;
     case "mic":
       return micLocked ? t.tour.steps.voiceLocked : t.tour.steps.voice;
+    case "calendar":
+      return t.tour.steps.calendar;
   }
 }
 

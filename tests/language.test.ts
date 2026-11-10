@@ -15,8 +15,19 @@ describe("the phone's language", () => {
     assert.equal(languageFromLocale("EN-gb"), "en");
   });
 
+  // The five added 2026-11-02, as Android and iOS write them.
+  it("finds the newer languages too", () => {
+    assert.equal(languageFromLocale("zh_CN_#Hans"), "zh");
+    assert.equal(languageFromLocale("zh-Hans-CN"), "zh");
+    assert.equal(languageFromLocale("hi-IN"), "hi");
+    assert.equal(languageFromLocale("pt-BR"), "pt");
+    assert.equal(languageFromLocale("pt_PT"), "pt");
+    assert.equal(languageFromLocale("bn-BD"), "bn");
+    assert.equal(languageFromLocale("ru-RU"), "ru");
+  });
+
   it("is passed over when Nexdo doesn't have it", () => {
-    assert.equal(languageFromLocale("pt-BR"), null);
+    assert.equal(languageFromLocale("ja-JP"), null);
     assert.equal(languageFromLocale(""), null);
     assert.equal(languageFromLocale(undefined), null);
   });

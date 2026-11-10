@@ -113,6 +113,8 @@ export function TextButton({
 const ICON_BUTTONS = {
   header: { box: "glass h-[39px] w-[39px] rounded-full", icon: 17, color: colors.ink.charcoal, hitSlop: 6 },
   primary: { box: "glow-accent h-[44px] w-[44px] rounded-full bg-orange-500", icon: 18, color: colors.onAccent, hitSlop: 4 },
+  // The orange circle at a header button's size, to pair with one (the Tasks page's +).
+  headerAccent: { box: "glow-accent h-[39px] w-[39px] rounded-full bg-orange-500", icon: 19, color: colors.onAccent, hitSlop: 6 },
   ghost: { box: "h-9 w-9", icon: 15, color: colors.ink.creamMuted, hitSlop: 4 },
 } as const;
 
@@ -142,7 +144,7 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
-      style={variant === "primary" && !idle ? gradients.accent : undefined}
+      style={(variant === "primary" && !idle) || (variant === "headerAccent" && !disabled) ? gradients.accent : undefined}
       className={`items-center justify-center ${idle ? "h-[44px] w-[44px] rounded-full bg-cream-200" : style.box} ${disabled && !idle ? "opacity-40" : ""}`}
     >
       <Feather name={icon} size={style.icon} color={idle ? colors.ink.creamSubtle : style.color} />

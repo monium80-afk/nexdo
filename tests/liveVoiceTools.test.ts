@@ -260,3 +260,50 @@ describe("live voice tools", () => {
     assert.equal(tasks().length, 1);
   });
 });
+
+// Naming a task with nothing to change yet puts its card up (the user's ask,
+// 2026-11-02: the list is behind the blur, so it's hard to change what you can't see).
+describe("show_task", () => {
+  it("records the named task and changes nothing", () => {
+    const { gym, runner } = withGym();
+    const before = tasks().find((task) => task.id === gym)!;
+    assert.deepEqual(runner.run(call("show_task", { taskIds: ["t1"] })), { ok: true, count: 1 });
+    assert.deepEqual(runner.shownTasks().map((entry) => entry.taskId), [gym]);
+    // Nothing saved, nothing to undo, nothing counted as touched.
+    assert.equal(tasks().find((task) => task.id === gym), before);
+    assert.equal(runner.undoCount(), 0);
+    assert.deepEqual(runner.touchedIds(), []);
+  });
+
+  it("refuses an id that isn't on the list", () => {
+    const { runner } = withGym();
+    assert.equal(runner.run(call("show_task", { taskIds: ["t9"] })).ok, false);
+    assert.deepEqual(runner.shownTasks(), []);
+  });
+
+  it("keeps a changed task as touched, apart from the ones only named", () => {
+    const { gym, runner } = withGym();
+    runner.run(call("add_task", { title: "Call mom", estimatedMinutes: 10 }));
+    runner.run(call("show_task", { taskIds: ["t1"] }));
+    const callMom = byTitle("Call mom")!.id;
+    assert.deepEqual(runner.touchedIds(), [callMom]);
+    assert.deepEqual(runner.shownTasks().map((entry) => entry.taskId), [gym]);
+  });
+});
+
+describe("show_task with a group", () => {
+  it("shows every open task for \"all my tasks\", and changes none of them", () => {
+    const { gym, runner } = withGym();
+    const read = useTaskStore.getState().addTask({ title: "Read", estimatedMinutes: 20, priorityLevel: "low" });
+    const before = tasks();
+    assert.deepEqual(runner.run(call("show_task", { filter: { status: "pending" } })), { ok: true, count: 2 });
+    assert.deepEqual(new Set(runner.shownTasks().map((entry) => entry.taskId)), new Set([gym, read]));
+    assert.equal(tasks(), before);
+    assert.equal(runner.undoCount(), 0);
+  });
+
+  it("says so when nothing matches", () => {
+    const { runner } = withGym();
+    assert.equal(runner.run(call("show_task", { filter: { status: "completed" } })).ok, false);
+  });
+});

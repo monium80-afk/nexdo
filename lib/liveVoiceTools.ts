@@ -1,8 +1,9 @@
 import type { InboxAction, InboxActionType, InboxFilter, InboxRecurrence } from "@/app/api/inbox+api";
-import { toStructuredAction } from "@/lib/ai/classifyIntent";
+import { toStructuredAction, toTaskFilter } from "@/lib/ai/classifyIntent";
 import { guessDuration } from "@/lib/ai/extractTasks";
 import type { StructuredAction } from "@/lib/ai/types";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
+import { matchesFilter } from "@/lib/taskOperations";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { RecurrenceKind, RecurrenceRule, StepDraft, Task } from "@/types/task";
 
@@ -112,6 +113,9 @@ function inboxAction(
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
+/** The most cards one show_task puts up ("all my tasks" on a long list). */
+const MAX_SHOWN = 50;
+
 /** A series' rule as the repeat picker would hand it back — to change just its kind. */
 function ruleInputOf(rule: RecurrenceRule, kind: RecurrenceKind): RuleInput {
   return {
@@ -179,6 +183,15 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   const toAlias = new Map([...aliases].map(([alias, id]) => [id, alias]));
   let nextNumber = aliases.size + 1;
   const undoStack: Snapshot[][] = [];
+  // Every task a change from this session added, changed or removed — kept
+  // after an undo too (the overlay compares those against how they started).
+  const touched = new Set<string>();
+  // Tasks the user only named (show_task): id → when, latest naming wins.
+  const shown = new Map<string, number>();
+  const remember = (snapshots: Snapshot[]) => {
+    for (const snapshot of snapshots) touched.add(snapshot.taskId);
+    undoStack.push(snapshots);
+  };
   // Recent calls, with the task each was about (the model's id for it).
   let recent: { key: string; at: number; taskId?: string; result: LiveToolResult }[] = [];
 
@@ -233,7 +246,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
       return { ok: false, taskId: action.taskId ?? undefined, error: result.message };
     }
     const undo = result.undo ?? (noteTarget ? [{ taskId: noteTarget.id, before: noteTarget }] : []);
-    if (undo.length > 0) undoStack.push(undo);
+    if (undo.length > 0) remember(undo);
     if (action.type.endsWith("_TASKS")) return { ok: true, count: touched };
     return { ok: true, taskId: result.taskId ? aliasFor(result.taskId) : (action.taskId ?? undefined) };
   };
@@ -242,7 +255,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   const performDirect = (alias: string, run: () => void): LiveToolResult => {
     const undo = capture(run);
     if (undo.length === 0) return { ok: false, taskId: alias, error: "Nothing changed." };
-    undoStack.push(undo);
+    remember(undo);
     return { ok: true, taskId: alias };
   };
 
@@ -405,6 +418,35 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
         if (!note) return { ok: false, error: "The note was empty." };
         return perform(inboxAction("ADD_CONTEXT", taskId, { note }));
       }
+      case "show_task": {
+        // Changes nothing: the overlay puts these tasks' cards up, so a task
+        // can be seen before it's changed (the list is behind the blur).
+        const said = Array.isArray(args.taskIds) ? args.taskIds.map(text) : [taskId];
+        const ids = said
+          .filter((alias): alias is string => !!taskFor(alias ?? null))
+          .map((alias) => realId(alias)!);
+        // A group ("all my tasks", "what's due today"): the open tasks that
+        // match, unless the filter says which status.
+        const filter = filterOf(args.filter);
+        if (filter) {
+          const now = new Date();
+          const taskFilter = toTaskFilter(filter, { now });
+          if (!taskFilter) return { ok: false, error: "Couldn't tell which dates that means — nothing shown." };
+          const matching = { ...taskFilter, status: taskFilter.status ?? "pending" };
+          for (const task of useTaskStore.getState().tasks) {
+            if (matchesFilter(task, matching, now) && !ids.includes(task.id)) ids.push(task.id);
+          }
+        }
+        if (ids.length === 0) {
+          return { ok: false, error: filter ? "No task matches that — nothing shown." : "No task with that id — nothing shown." };
+        }
+        const at = Date.now();
+        for (const id of ids.slice(0, MAX_SHOWN)) {
+          shown.delete(id);
+          shown.set(id, at);
+        }
+        return { ok: true, count: Math.min(ids.length, MAX_SHOWN) };
+      }
       case "undo_last_change":
         return undo() ? { ok: true } : { ok: false, error: "Nothing to undo." };
       default:
@@ -432,5 +474,9 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
     /** The Undo button: reverses the latest change, as "undo" said out loud does. */
     undo,
     undoCount: () => undoStack.length,
+    /** The ids of the tasks this session's changes have touched. */
+    touchedIds: (): string[] => [...touched],
+    /** The tasks the user only named (show_task), with when, oldest first. */
+    shownTasks: (): { taskId: string; at: number }[] => [...shown].map(([taskId, at]) => ({ taskId, at })),
   };
 }

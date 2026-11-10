@@ -73,6 +73,38 @@ export const colors = {
   onAccent: "#FFF9F2",
   scrim: "rgba(34, 28, 22, 0.5)",
   hairlineCharcoal: "rgba(255, 255, 255, 0.08)",
+  /**
+   * The 2026-11 redesign's tokens (nexdo-design-handoff/HANDOFF.md), the same
+   * as the paper / ink / accent / peach / alert / line utilities in
+   * global.css. Pages move to these one at a time, Today first.
+   */
+  palette: {
+    paper: "#FAF1E4",
+    paperCard: "#FCF7EF",
+    paperDim: "#E9DFD5",
+    paperFaint: "#A89A8E",
+    ink: "#221C17",
+    inkMuted: "#7A6E64",
+    accent: "#F26A2E",
+    accentInk: "#C4461A",
+    peach: "#FCE2D2",
+    peachOnDark: "#FFB089",
+    alert: "#D93A2B",
+    line: "#E2D6C8",
+    lineSoft: "#EADCCB",
+    ring: "#D9CCBD",
+    ringSoft: "#CFC4B9",
+    chip: "#EFE3D4",
+    // The Add task sheet (addtask-design/, 2026-11-08).
+    handle: "#DCCFBF",
+    tile: "#F3EADF",
+    inkFaint: "#B5A99D",
+    lineWarm: "#E7DACB",
+    onAccentSoft: "#FFE1D2",
+    menu: "#FFFFFF",
+    /** The dark veil over the blurred page behind a sheet. */
+    veil: "rgba(34, 28, 23, 0.42)",
+  },
 } as const;
 
 // Onboarding uses these values for shadow contrast. Keep the alias while the

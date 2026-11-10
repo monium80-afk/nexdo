@@ -5,10 +5,30 @@ import { AiConsentError } from "@/lib/aiConsent";
 import type { PlanStep } from "@/lib/ai/types";
 import { showPlanLimit } from "@/lib/paywall";
 import { PlanLimitError } from "@/lib/plan";
+import { useReassessStore } from "@/store/useReassessStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { StepDraft, Subtask, Task } from "@/types/task";
 
 type BreakdownStatus = "idle" | "loading" | "error";
+
+/**
+ * The task's context notes, plus one still waiting in Task Details: a photo,
+ * file or note Nexdo has already read but hasn't saved to the task yet,
+ * because the reassessment asked a question or failed (useReassessStore saves
+ * the note only with its result). The breakdown should still use it — the
+ * user showed Nexdo the task and expects the steps to fit it.
+ */
+function withWaitingNote(task: Task): Task {
+  const state = useReassessStore.getState().byTask[task.id];
+  if (!state || state.status === "done") return task;
+  const { pending } = state;
+  // A file not read yet has no text to give.
+  if (pending.file || !pending.noteText.trim()) return task;
+  const replaced = pending.submission.replacesNote;
+  const notes = task.aiContext.notes.filter((note) => note !== replaced);
+  if (notes.includes(pending.noteText)) return task;
+  return { ...task, aiContext: { ...task.aiContext, notes: [...notes, pending.noteText] } };
+}
 
 /**
  * AI Breakdown for one task in a running session: the AI's steps for the work
@@ -45,7 +65,7 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
     setBreakdownState({ taskId, status: "loading" });
     // Read fresh: what the user just showed Nexdo (BreakdownContextSheet) was
     // saved to the task a moment ago, and the steps should be built from it.
-    const current = useTaskStore.getState().tasks.find((entry) => entry.id === taskId) ?? task;
+    const current = withWaitingNote(useTaskStore.getState().tasks.find((entry) => entry.id === taskId) ?? task);
     const subtasks: Subtask[] = draft.map((step, order) => ({
       id: step.id,
       label: step.label,

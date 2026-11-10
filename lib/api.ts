@@ -46,7 +46,14 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 /** The routes that send the user's content to Google's Gemini. */
-const AI_PATHS = new Set(["/api/inbox", "/api/extract-text", "/api/next", "/api/breakdown", "/api/reassess", "/api/live-session"]);
+const AI_PATHS = new Set([
+  "/api/inbox",
+  "/api/extract-text",
+  "/api/next",
+  "/api/breakdown",
+  "/api/reassess",
+  "/api/live-session",
+]);
 
 /** Calls that use up part of the month's plan — Magic mic's usage report included. */
 const METERED_PATHS = new Set([...AI_PATHS, "/api/live-usage"]);

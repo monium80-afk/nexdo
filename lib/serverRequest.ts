@@ -96,7 +96,7 @@ export function oneOf<T extends string>(value: unknown, allowed: readonly T[]): 
 }
 
 /** Mirrors AppLanguage in types/settings.ts — an unknown value just falls back to English. */
-export const LANGUAGES = ["en", "fr", "es", "ar", "de"] as const;
+export const LANGUAGES = ["en", "fr", "es", "ar", "de", "zh", "hi", "pt", "bn", "ru"] as const;
 
 // ---------------------------------------------------------------------
 // Shared shapes — three routes accept a TaskContext, so it is validated

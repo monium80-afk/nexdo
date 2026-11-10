@@ -7,6 +7,11 @@ const LANGUAGE_NAMES: Record<AppLanguage, string> = {
   es: "Spanish",
   ar: "Arabic",
   de: "German",
+  zh: "Simplified Chinese",
+  hi: "Hindi",
+  pt: "Brazilian Portuguese",
+  bn: "Bengali",
+  ru: "Russian",
 };
 
 /** "French", "Arabic" … — for prompts, which are written in English. */
@@ -20,6 +25,11 @@ export function languageName(language: AppLanguage): string {
 const FORM_OF_ADDRESS: Partial<Record<AppLanguage, string>> = {
   es: `Address the user informally as "tú", as the rest of the app does — never "usted".`,
   de: `Address the user informally as "du", as the rest of the app does — never "Sie".`,
+  zh: `Address the user as "你", as the rest of the app does. Use Chinese punctuation (，。：「」).`,
+  hi: `Address the user as "आप", as the rest of the app does. Keep everyday English words Hindi speakers use as they are (app, AI, Pro).`,
+  pt: `Address the user as "você", as the rest of the app does, in Brazilian Portuguese.`,
+  bn: `Address the user as "আপনি", as the rest of the app does.`,
+  ru: `Address the user as "вы" (lower case), as the rest of the app does.`,
 };
 
 /**
@@ -45,6 +55,11 @@ const DATE_PHRASE_EXAMPLES: Partial<Record<AppLanguage, string>> = {
   es: `"mañana" → "tomorrow", "el próximo viernes" → "next friday", "dentro de tres días" → "in 3 days", "el 25 de septiembre a las 7 de la tarde" → "september 25 at 19:00"`,
   de: `"morgen" → "tomorrow", "nächsten Freitag" → "next friday", "in drei Tagen" → "in 3 days", "am 25. September um 19 Uhr" → "september 25 at 19:00"`,
   ar: `"غدًا" → "tomorrow", "الجمعة القادمة" → "next friday", "بعد ثلاثة أيام" → "in 3 days", "25 سبتمبر الساعة 7 مساءً" → "september 25 at 19:00"`,
+  zh: `"明天" → "tomorrow", "下周五" → "next friday", "三天后" → "in 3 days", "9月25日晚上7点" → "september 25 at 19:00"`,
+  hi: `"कल" (future) → "tomorrow", "अगले शुक्रवार" → "next friday", "तीन दिन में" → "in 3 days", "25 सितंबर शाम 7 बजे" → "september 25 at 19:00"`,
+  pt: `"amanhã" → "tomorrow", "na próxima sexta" → "next friday", "daqui a três dias" → "in 3 days", "25 de setembro às 19h" → "september 25 at 19:00"`,
+  bn: `"আগামীকাল" → "tomorrow", "সামনের শুক্রবার" → "next friday", "তিন দিন পরে" → "in 3 days", "২৫ সেপ্টেম্বর সন্ধ্যা ৭টায়" → "september 25 at 19:00"`,
+  ru: `"завтра" → "tomorrow", "в следующую пятницу" → "next friday", "через три дня" → "in 3 days", "25 сентября в 19:00" → "september 25 at 19:00"`,
 };
 
 /** Inbox only: the app's date parser reads English deadline phrases. */
@@ -66,6 +81,11 @@ const AI_UNAVAILABLE: Partial<Record<AppLanguage, string>> = {
   es: "Lo siento, ahora mismo no consigo conectar con la IA — inténtalo de nuevo en un momento.",
   de: "Entschuldige, ich erreiche die KI gerade nicht — versuch es gleich noch einmal.",
   ar: "عذرًا، أواجه صعوبة في الوصول إلى الذكاء الاصطناعي الآن — أعد المحاولة بعد قليل.",
+  zh: "抱歉，现在无法连接到 AI——请稍后再试。",
+  hi: "माफ़ कीजिए, अभी AI तक पहुँचने में दिक्कत हो रही है — थोड़ी देर में फिर कोशिश करें।",
+  pt: "Desculpe, estou com dificuldade para acessar a IA agora — tente de novo daqui a pouco.",
+  bn: "দুঃখিত, এই মুহূর্তে AI-এর সাথে যোগাযোগ করতে সমস্যা হচ্ছে — একটু পরে আবার চেষ্টা করুন।",
+  ru: "Извините, сейчас не получается связаться с ИИ — попробуйте чуть позже.",
 };
 
 export function aiUnavailableMessage(language: AppLanguage | undefined): string {

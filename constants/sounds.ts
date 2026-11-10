@@ -1,4 +1,11 @@
 import dayDone from "../assets/sounds/day-done.wav";
+import focusCafe from "../assets/sounds/focus-cafe.wav";
+import focusFireplace from "../assets/sounds/focus-fireplace.wav";
+import focusForest from "../assets/sounds/focus-forest.wav";
+import focusRain from "../assets/sounds/focus-rain.wav";
+import focusStream from "../assets/sounds/focus-stream.wav";
+import focusThunder from "../assets/sounds/focus-thunder.wav";
+import focusWaves from "../assets/sounds/focus-waves.wav";
 import sessionStart from "../assets/sounds/session-start.wav";
 import stepCheck from "../assets/sounds/step-check.wav";
 import taskComplete from "../assets/sounds/task-complete.wav";
@@ -16,4 +23,12 @@ export const sounds = {
   stepCheck,
   dayDone,
   sessionStart,
+  // Loops a focus session can play (scripts/make-focus-sounds.mjs, lib/focusSound.ts).
+  focusRain,
+  focusWaves,
+  focusThunder,
+  focusStream,
+  focusForest,
+  focusFireplace,
+  focusCafe,
 };

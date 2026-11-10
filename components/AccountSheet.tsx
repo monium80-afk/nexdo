@@ -1,16 +1,13 @@
 import { useClerk, useUser } from "@clerk/expo";
-import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRef, useState, type ComponentRef } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { BottomSheet } from "@/components/BottomSheet";
-import { PrimaryButton, SecondaryButton, TextButton } from "@/components/Button";
-import { SectionHeader } from "@/components/SectionHeader";
-import { TextField } from "@/components/TextField";
+import { SheetIcon } from "@/components/addSheet/SheetParts";
+import { PaperSheet } from "@/components/PaperSheet";
+import { colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
-import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { DeleteAccountResponseBody } from "@/app/api/delete-account+api";
 import { showAlert } from "@/lib/alert";
@@ -19,7 +16,9 @@ import { posthog } from "@/lib/posthog";
 import { resetPurchaser } from "@/lib/purchases";
 import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
+import { shadow } from "@/constants/shadow";
 
+const P = colors.palette;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** How long the keyboard takes to open, roughly — on Android the sheet only moves once it has. */
@@ -39,7 +38,6 @@ type AccountSheetProps = {
  * so they follow the account to every device it signs in on.
  */
 export function AccountSheet({ visible, onClose }: AccountSheetProps) {
-  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const { user } = useUser();
@@ -120,14 +118,14 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
 
   // The name saves when the field is left, so the sheet keeps the design's
   // clean two-field layout instead of growing a Save button.
-  const handleSaveName = async () => {
-    if (!user) return;
+  const handleSaveName = async (): Promise<boolean> => {
+    if (!user) return false;
     const trimmed = name.trim();
-    if (trimmed === (user.fullName ?? "")) return;
+    if (trimmed === (user.fullName ?? "")) return true;
     if (!trimmed) {
       setError(t.account.nameRequired);
       setName(user.fullName ?? "");
-      return;
+      return false;
     }
 
     setNameStatus("saving");
@@ -137,10 +135,12 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
       // instance, unlike the `username` attribute which must be enabled first.
       await user.update({ firstName: trimmed, lastName: "" });
       setNameStatus("saved");
+      return true;
     } catch (saveError) {
       console.warn("[AccountSheet] name update failed", saveError);
       setError(t.account.nameError);
       setNameStatus(null);
+      return false;
     }
   };
 
@@ -226,174 +226,185 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
     ]);
   };
 
+  // Save keeps the name (and a new password, when one is being set), then closes.
+  const handleSave = async () => {
+    if (!(await handleSaveName())) return;
+    if (editingPassword) {
+      await handleSavePassword();
+      return;
+    }
+    onClose();
+  };
+
+  const fieldStyle = {
+    height: 49,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#EADFD1",
+    backgroundColor: P.paperCard,
+    paddingHorizontal: 17,
+    fontFamily: "SpaceGrotesk-Regular",
+    fontSize: 16,
+    color: P.ink,
+  } as const;
+  const label = (text: string) => (
+    <Text style={{ fontFamily: "SpaceMono-Bold", fontSize: 10, letterSpacing: 2, color: P.inkMuted, marginBottom: 9 }}>{text}</Text>
+  );
+  const passwordField = (value: string, onChange: (text: string) => void, placeholder: string) => (
+    <TextInput
+      value={value}
+      onChangeText={onChange}
+      placeholder={placeholder}
+      placeholderTextColor={P.paperFaint}
+      secureTextEntry
+      autoCapitalize="none"
+      onFocus={revealPasswordFields}
+      selectionColor={P.accent}
+      style={[fieldStyle, rtl]}
+    />
+  );
+  const fullName = user?.fullName?.trim() || "";
+  const initials = (fullName.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 1).join("") + (fullName.split(/\s+/).length > 1 ? fullName.split(/\s+/).slice(-1)[0][0] : "")).toUpperCase();
+
   return (
-    <BottomSheet visible={visible} onClose={onClose} title={t.account.title} closeLabel={t.account.close}>
+    <PaperSheet visible={visible} onClose={onClose}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <Text accessibilityRole="header" style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 22, letterSpacing: -0.3, color: P.ink }}>
+          {t.account.title}
+        </Text>
+        <AnimatedPressable
+          onPress={onClose}
+          scaleTo={0.92}
+          accessibilityRole="button"
+          accessibilityLabel={t.account.close}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: P.chip, alignItems: "center", justifyContent: "center" }}
+        >
+          <SheetIcon name="close" size={16} color={P.ink} strokeWidth={2.2} />
+        </AnimatedPressable>
+      </View>
       <ScrollView
         ref={scrollRef}
-        // Shrinks so the sheet scrolls inside itself rather than growing past the screen.
         style={{ flexGrow: 0, flexShrink: 1 }}
-        contentContainerStyle={{ gap: 20, paddingTop: 4 }}
+        contentContainerStyle={{ paddingBottom: 4 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View className="flex-row items-center gap-4">
-          <AnimatedPressable
-            onPress={handleChangePhoto}
-            disabled={uploadingPhoto}
-            accessibilityRole="button"
-            accessibilityLabel={t.account.changePhoto}
-            className="h-[64px] w-[64px] overflow-hidden rounded-full border border-cream-200"
-          >
+        <AnimatedPressable
+          onPress={handleChangePhoto}
+          disabled={uploadingPhoto}
+          scaleTo={0.98}
+          accessibilityRole="button"
+          accessibilityLabel={t.account.changePhoto}
+          style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+        >
+          <View style={{ width: 64, height: 64, borderRadius: 32, overflow: "hidden", backgroundColor: P.accent, alignItems: "center", justifyContent: "center" }}>
             {user?.hasImage ? (
-              <Image source={{ uri: user.imageUrl }} className="h-full w-full rounded-full" />
+              <Image source={{ uri: user.imageUrl }} style={{ width: 64, height: 64 }} />
             ) : (
-              <View className="h-full w-full items-center justify-center rounded-full bg-cream-200">
-                <Feather name="user" size={26} color={colors.ink.creamMuted} />
-              </View>
+              <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 22, letterSpacing: -0.4, color: "#FFFFFF" }}>{initials || "?"}</Text>
             )}
             {uploadingPhoto ? (
-              <View className="scrim items-center justify-center rounded-full" style={StyleSheet.absoluteFill}>
-                <ActivityIndicator size="small" color={colors.onAccent} />
+              <View className="scrim items-center justify-center" style={StyleSheet.absoluteFill}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
               </View>
             ) : null}
-          </AnimatedPressable>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, color: P.accentInk }, rtl]}>{t.redesign.changePhoto}</Text>
+            <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 13, color: P.inkMuted }, rtl]}>{t.redesign.photoHint}</Text>
+          </View>
+        </AnimatedPressable>
 
-          <AnimatedPressable
-            onPress={handleChangePhoto}
-            disabled={uploadingPhoto}
-            className="flex-1 gap-1"
-            accessibilityRole="button"
-            accessibilityLabel={t.account.changePhoto}
-          >
-            <Text className="font-grotesk-semibold text-base text-orange-600" style={rtl}>
-              {t.account.changePhoto}
-            </Text>
-            <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-              {t.account.photoHint}
-            </Text>
-          </AnimatedPressable>
-        </View>
-
-        <View className="gap-2">
-          <SectionHeader label={t.account.name} />
-          <TextField
+        <View style={{ marginTop: 22 }}>
+          {label(t.redesign.name)}
+          <TextInput
             value={name}
             onChangeText={(value) => {
               setName(value);
               setNameStatus(null);
             }}
-            // Blur only: Done blurs a single-line field anyway, so handling
-            // submit as well sent the same update twice.
-            onBlur={handleSaveName}
             onFocus={revealNameField}
             returnKeyType="done"
             placeholder={t.account.namePlaceholder}
+            placeholderTextColor={P.paperFaint}
+            selectionColor={P.accent}
+            style={[fieldStyle, rtl]}
           />
-          {nameStatus ? (
-            <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-              {nameStatus === "saving" ? t.account.saving : t.account.saved}
-            </Text>
+          {nameStatus === "saving" ? (
+            <Text style={{ marginTop: 6, fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.inkMuted }}>{t.account.saving}</Text>
           ) : null}
         </View>
 
-        <View className="gap-2">
-          <SectionHeader label={t.account.email} />
-          {/* Read-only: changing the sign-in email needs its own
-              verification flow, which this sheet doesn't run. */}
-          <View className="input min-h-[44px] justify-center border-cream-200 px-4">
-            <Text numberOfLines={1} className="font-grotesk-regular text-sm text-ink-cream-muted" style={rtl}>
+        <View style={{ marginTop: 18 }}>
+          {label(t.redesign.email)}
+          {/* Read-only: changing the sign-in email needs its own verification flow. */}
+          <View style={[fieldStyle, { backgroundColor: "#F2E9DE", flexDirection: "row", alignItems: "center", gap: 10 }]}>
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 16, color: P.inkMuted }}>
               {user?.primaryEmailAddress?.emailAddress ?? t.account.noEmail}
             </Text>
+            <SheetIcon name="lock" size={16} color={P.inkFaint} />
           </View>
         </View>
 
         {error ? (
-          <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-            {error}
-          </Text>
+          <Text style={[{ marginTop: 12, fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.alert }, rtl]}>{error}</Text>
         ) : null}
-
-        <View className="h-px bg-cream-200" />
 
         {editingPassword ? (
-          <View className="gap-3">
-            {user?.passwordEnabled ? (
-              <TextField
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                placeholder={t.account.currentPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                onFocus={revealPasswordFields}
-              />
-            ) : null}
-            <TextField
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder={t.account.newPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              onFocus={revealPasswordFields}
-            />
-            <TextField
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder={t.account.confirmPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              onFocus={revealPasswordFields}
-            />
-
-            {passwordError ? (
-              <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-                {passwordError}
-              </Text>
-            ) : (
-              <Text className="font-grotesk-medium text-sm text-ink-cream-muted" style={rtl}>
-                {t.account.passwordHint}
-              </Text>
-            )}
-
-            <View className="flex-row items-center gap-3">
-              <SecondaryButton
-                label={t.common.cancel}
-                onPress={() => setEditingPassword(false)}
-                size="lg"
-                className="flex-1"
-              />
-              <PrimaryButton
-                label={savingPassword ? t.account.saving : t.account.savePassword}
-                onPress={handleSavePassword}
-                disabled={savingPassword}
-                size="lg"
-                className="flex-1"
-              />
-            </View>
+          <View style={{ marginTop: 18, gap: 10 }}>
+            {user?.passwordEnabled ? passwordField(currentPassword, setCurrentPassword, t.account.currentPassword) : null}
+            {passwordField(newPassword, setNewPassword, t.account.newPassword)}
+            {passwordField(confirmPassword, setConfirmPassword, t.account.confirmPassword)}
+            <Text style={[{ fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: passwordError ? P.alert : P.inkMuted }, rtl]}>
+              {passwordError ?? t.account.passwordHint}
+            </Text>
           </View>
-        ) : (
-          <SecondaryButton
-            icon="lock"
-            label={t.account.changePassword}
-            onPress={() => {
-              setPasswordStatus(null);
-              setEditingPassword(true);
-            }}
-            size="lg"
-          />
-        )}
-
-        {passwordStatus ? (
-          <Text className="text-center font-grotesk-medium text-sm text-ink-cream-muted">{passwordStatus}</Text>
         ) : null}
 
-        <TextButton
-          label={deleting ? t.account.deleting : t.account.deleteAccount}
+        <View style={{ marginTop: 22, flexDirection: "row", gap: 10 }}>
+          <AnimatedPressable
+            onPress={() => {
+              setPasswordStatus(null);
+              setPasswordError(null);
+              setEditingPassword(!editingPassword);
+            }}
+            scaleTo={0.97}
+            accessibilityRole="button"
+            style={{ flex: 1, height: 54, borderRadius: 27, backgroundColor: P.chip, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 16, color: P.ink }}>
+              {editingPassword ? t.common.cancel : t.account.changePassword}
+            </Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            onPress={handleSave}
+            disabled={savingPassword || nameStatus === "saving"}
+            scaleTo={0.97}
+            accessibilityRole="button"
+            style={{ width: 120, height: 54, borderRadius: 27, backgroundColor: P.accent, alignItems: "center", justifyContent: "center", ...shadow("0 8px 20px rgba(242, 106, 46, 0.3)", 6, "#F26A2E") }}
+          >
+            <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, color: "#FFFFFF" }}>
+              {savingPassword ? t.account.saving : t.redesign.save}
+            </Text>
+          </AnimatedPressable>
+        </View>
+
+        {passwordStatus ? (
+          <Text style={{ marginTop: 10, textAlign: "center", fontFamily: "SpaceGrotesk-Medium", fontSize: 13, color: P.inkMuted }}>{passwordStatus}</Text>
+        ) : null}
+
+        <AnimatedPressable
           onPress={handleDeleteAccount}
           disabled={deleting}
-          tone="destructive"
-          className="self-center py-1"
-        />
+          scaleTo={0.96}
+          accessibilityRole="button"
+          style={{ marginTop: 20, alignSelf: "center", paddingVertical: 6 }}
+        >
+          <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: P.alert, opacity: deleting ? 0.5 : 1 }}>
+            {deleting ? t.account.deleting : t.account.deleteAccount}
+          </Text>
+        </AnimatedPressable>
       </ScrollView>
-    </BottomSheet>
+    </PaperSheet>
   );
 }

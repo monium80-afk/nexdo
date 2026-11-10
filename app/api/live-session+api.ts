@@ -19,7 +19,7 @@ import {
 } from "@/lib/serverRequest";
 import type { AppLanguage } from "@/types/settings";
 
-// Live voice (app/live-voice.tsx): the phone streams the microphone straight
+// Live voice (components/MagicMicOverlay.tsx): the phone streams the microphone straight
 // to Gemini Live, which changes tasks by calling the tools below while the
 // user is still talking — the app carries each call out on the phone
 // (lib/liveVoiceTools.ts). This route only opens the door: it hands out a
@@ -291,6 +291,20 @@ const FUNCTIONS = [
         },
       },
       {
+        // The overlay hides the list behind a blur: naming a task brings its
+        // card up, so it can be seen before it's changed (the user's ask, 2026-11-02).
+        name: "show_task",
+        description:
+          "Put existing tasks on screen, changing nothing: the user named them or asked about them without saying what to change yet (\"the report…\", \"what about the gym?\", \"show me the essay and the dentist\"), or asked to see a group (\"all my tasks\", \"what's due today?\", \"show me what's overdue\") — then use filter instead of listing ids.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            taskIds: { type: "ARRAY", items: { type: "STRING" }, description: "The tasks named, by id." },
+            filter: FILTER,
+          },
+        },
+      },
+      {
         name: "undo_last_change",
         description: "Reverse the most recent change, when the user says undo or that it was wrong.",
         parameters: { type: "OBJECT", properties: {} },
@@ -387,6 +401,10 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  // Token creation is a Gemini API request, so wait until both account checks
+  // pass before spending project request capacity.
+  const setup = liveSetup(parseBody(raw));
+
   // The plan first: a Free account (no Magic mic at all) or one out of
   // minutes is turned away without using up one of the day's sessions.
   const session = await startLiveSession(request, auth.userId, MAX_LIVE_SECONDS);
@@ -401,7 +419,6 @@ export async function POST(request: Request) {
     return limitResponse;
   }
 
-  const setup = liveSetup(parseBody(raw));
   try {
     const { websocketUrl } = await createLiveSessionToken({
       setup,

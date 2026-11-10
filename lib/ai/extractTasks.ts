@@ -159,13 +159,22 @@ export function guessPriorityLevel(text: string): ImportanceLevel {
   return "medium";
 }
 
-function cleanTitle(fragment: string): string {
-  const stripped = fragment
-    .replace(PRIORITY_PREFIX_PATTERN, "")
+/**
+ * The words people put in front of the task itself — "remind me to", "I need
+ * to", "urgent:" — taken off. Exported for the quick-add line (lib/quickAdd.ts),
+ * which keeps a leading "Important" unless it's set off ("Important:"), as it
+ * may be the task's own name ("Important meeting prep").
+ */
+export function stripTitleScaffolding(fragment: string, { keepPriorityWords = false } = {}): string {
+  return (keepPriorityWords ? fragment : fragment.replace(PRIORITY_PREFIX_PATTERN, ""))
     .replace(COMMAND_PREFIX_PATTERN, "")
     .replace(OBLIGATION_PREFIX_PATTERN, "")
     .replace(/^(and|then|also|plus)\s+/i, "")
     .trim();
+}
+
+function cleanTitle(fragment: string): string {
+  const stripped = stripTitleScaffolding(fragment);
 
   const withoutDates = stripped.replace(DATE_PHRASE_PATTERN, " ").replace(/\s{2,}/g, " ").trim();
   // Removing the deadline can consume the whole fragment ("tomorrow") — in

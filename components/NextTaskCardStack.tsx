@@ -1,6 +1,5 @@
-import { Feather } from "@expo/vector-icons";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
     cancelAnimation,
@@ -13,27 +12,34 @@ import Animated, {
     useSharedValue,
     useReducedMotion,
     withDelay,
+    withSequence,
     withSpring,
     withTiming,
     type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { CELEBRATION_MS, NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
+import { CELEBRATION_MS, NextTaskCard, type CardBounds, type TodayDoneMotion } from "@/components/NextTaskCard";
 import { MOTION } from "@/constants/theme";
 import { useColors } from "@/hooks/useTheme";
-import { useTranslation } from "@/hooks/useTranslation";
 import { translate } from "@/lib/i18n";
 import { useTaskStore } from "@/store/useTaskStore";
 import { withUndo } from "@/store/useUndoStore";
 import type { Task } from "@/types/task";
 
-// px-6 at this app's 14dp rem — lines the stack up with the header and the
-// Previous/Next buttons.
-const SIDE_PADDING = 21;
-const CARD_RADIUS = 28;
+// The page's 20 plus the mockup's 4 (Final-Today.html). Corners a size down
+// from its 28, like the rest of the card (2026-11-03).
+const SIDE_PADDING = 24;
+const CARD_RADIUS = 24;
 const FLING_VELOCITY = 800;
+// These one-shot timings are the reference keyframes' percentages of 5 seconds.
+const TODAY_DONE_MS = 3200;
+const TODAY_DONE_CHECK_DELAY_MS = 750;
+const TODAY_DONE_RING_DELAY_MS = 900;
+const TODAY_DONE_TITLE_DELAY_MS = 1100;
+const TODAY_DONE_CARD_DELAY_MS = 2200;
+const TODAY_DONE_CARD_EXIT_DELAY_MS = 2350;
+const TODAY_DONE_NEXT_DELAY_MS = 2450;
 
 // The top card flies off the side it was swiped to, turning a little in 3D
 // and fading, while the card behind comes forward (the user's call,
@@ -66,41 +72,43 @@ const REVEAL_OUT_MS = 140;
 const REVEAL_RISE = 6;
 
 /**
- * The stack keeps four cards mounted at once — one per place in it — and a
+ * The stack keeps five cards mounted at once — one per place in it — and a
  * swipe only rotates which place each one holds. No mounted card ever swaps
  * the task it shows while that card is on screen, which is what makes the
  * hand-over invisible: the moment the stack steps on, every visible card is
  * already showing what it should show afterwards, so nothing flickers.
  */
-const SLOT_COUNT = 4;
+const SLOT_COUNT = 5;
 /**
- * Place 0 is the active card, 1 and 2 wait behind it, and -1 is the previous
- * task, flown off to the side and hidden there (where Previous brings it back
- * from).
+ * Place 0 is the active card, 1 and 2 show behind it (Final-Today.html), 3
+ * waits unseen behind those, and -1 is the previous task, flown off to the
+ * side and hidden there (where Previous brings it back from).
  */
-const DEPTHS = [0, 1, 2];
+const DEPTHS = [0, 1, 2, 3];
 /** The deepest place in the deck. */
-const BACK_DEPTH = 2;
-const DEPTH_SCALE = [1, 0.93, 0.86];
-// How far each place's bottom edge shows below the active card. At rest only
-// the card straight behind shows: a slim band under the active one.
-const DEPTH_PEEK = [0, 10, 20];
-// The third card is invisible at rest and fades in as it moves up the stack,
-// so nothing pops into view behind the card that just landed.
-const DEPTH_OPACITY = [1, 1, 0];
-// A waiting card sits under a veil of the page colour rather than being made
-// see-through, so its band reads as a card set further back — not as a grey
-// shadow — and clears as that card comes forward.
-const DEPTH_VEIL = [0, 0.2, 0.2];
+const BACK_DEPTH = 3;
+/** The deepest place that shows at rest. */
+const SHOWN_DEPTH = 2;
+// How far in from each side each place's card is drawn: the mockup's two
+// cards behind are 10 and 22 narrower on each side than the one on top.
+const DEPTH_INSET = [0, 9, 19, 26];
+// How far each place's bottom edge shows below the active card.
+const DEPTH_PEEK = [0, 8, 16, 16];
+// A waiting card is a flat band of brown, lighter the further back it sits
+// (#352A23, then #4A3C32): a veil of that lighter brown over the card's own
+// ink, clearing as the card comes forward.
+const VEIL_COLOR = "#4A3C32";
+const DEPTH_VEIL = [0, 0.46, 1, 1];
 
 // A CSS box-shadow rather than Android's elevation: elevation drew a hard grey
 // rectangle once a card was partly transparent (they fade as they move through
 // the stack) and greyed its inside through it. A box-shadow is only ever drawn
-// outside the card, so it's safe on both platforms.
-const CARD_SHADOW = { boxShadow: "0 26px 40px -18px rgba(30, 16, 6, 0.6)" };
+// outside the card, so it's safe on both platforms. The mockup's top-card shadow.
+// None since 2026-11-03 (the user's call): the stack sits flat on the page.
+const CARD_SHADOW = null;
 
 const styles = StyleSheet.create({
-  stack: { marginTop: 14, marginHorizontal: SIDE_PADDING },
+  stack: { marginHorizontal: SIDE_PADDING },
   // The shadow sits out here rather than on the card: the card clips itself to
   // the height the stack gives it, and a clipping view cuts off its own shadow.
   card: { borderRadius: CARD_RADIUS },
@@ -124,18 +132,22 @@ function easeOut(u: number) {
 /** Where a card is drawn: sideways travel, 3D turn, how deep in the deck, how visible, drawing order. */
 type Pose = { x: number; turn: number; depth: number; opacity: number; z: number };
 
-/** A card sitting in (or moving between) the deck's places. */
-function restPose(depth: number): Pose {
+/**
+ * A card sitting in (or moving between) the deck's places. Places past
+ * `shownDepth` are invisible, and a card fades in as it moves up from there —
+ * so nothing pops into view behind the card that just landed.
+ */
+function restPose(depth: number, shownDepth: number): Pose {
   "worklet";
   return {
     x: 0,
     turn: 0,
     depth,
-    opacity: interpolate(depth, DEPTHS, DEPTH_OPACITY, Extrapolation.CLAMP),
+    opacity: interpolate(depth, [shownDepth, shownDepth + 1], [1, 0], Extrapolation.CLAMP),
     // One drawing order per place, switching halfway between two — each
     // change makes Android re-sort the cards, so it shouldn't happen every
     // few frames of a move.
-    z: depth < 0.5 ? 30 : depth < 1.5 ? 20 : 10,
+    z: depth < 0.5 ? 30 : depth < 1.5 ? 20 : depth < 2.5 ? 10 : 5,
   };
 }
 
@@ -198,7 +210,15 @@ function StackSlot({
   onStart,
   onComplete,
   onDetails,
+  onNavigate,
   hidden,
+  shownDepth,
+  depthScale,
+  completionMotion,
+  todayDoneEnabled,
+  todayDoneMotion,
+  completionTaskId,
+  completionNextTaskId,
 }: {
   slot: number;
   task: Task;
@@ -206,6 +226,16 @@ function StackSlot({
   active: boolean;
   motion: StackMotion;
   cardWidth: number;
+  /** The deepest place that shows at rest: fewer bands behind when there are fewer tasks. */
+  shownDepth: number;
+  /** Each place's scale, from DEPTH_INSET and the card's width. */
+  depthScale: number[];
+  completionMotion?: TodayDoneMotion;
+  todayDoneEnabled: boolean;
+  todayDoneMotion?: TodayDoneMotion;
+  completionTaskId: string | null;
+  completionNextTaskId: string | null;
+  onNavigate: (step: 1 | -1) => void;
   onMeasure: (slot: number, height: number) => void;
   onBoundsChange?: (taskId: string, bounds: CardBounds) => void;
   onStart: (task: Task, plannedMinutes: number, bounds?: CardBounds) => void;
@@ -225,14 +255,46 @@ function StackSlot({
     if (place === -1) return flyPose(back.get(), dir.get(), 0, cardWidth);
     if (place === 0 && shuffle.get() > 0) return flyPose(shuffle.get(), dir.get(), dragX.get(), cardWidth);
     if (place === 0 && rise.get() >= 0) {
-      return dragX.get() === 0 ? restPose(0) : dragPose(dragX.get(), cardWidth);
+      return dragX.get() === 0 ? restPose(0, shownDepth) : dragPose(dragX.get(), cardWidth);
     }
-    return restPose(Math.min(Math.max(place - rise.get(), 0), BACK_DEPTH));
+    return restPose(Math.min(Math.max(place - rise.get(), 0), BACK_DEPTH), shownDepth);
   });
 
   const placeStyle = useAnimatedStyle(() => {
     const { x, turn, depth, opacity, z } = pose.get();
-    const scale = interpolate(depth, DEPTHS, DEPTH_SCALE, Extrapolation.CLAMP);
+    const slotDepth = depthOf(slot, activeSlot.get());
+    const started = completionMotion?.started.get() ?? 0;
+    if (started && slotDepth === 0 && task.id === completionTaskId) {
+      const squeeze = completionMotion?.cardSqueeze.get() ?? 0;
+      const exit = completionMotion?.cardExit.get() ?? 0;
+      return {
+        zIndex: Z_THROWN,
+        opacity: 1 - exit,
+        transform: [
+          { perspective: PERSPECTIVE },
+          { translateX: 0 },
+          { translateY: -26 * exit },
+          { rotateY: "0deg" },
+          { scale: 1 - 0.02 * squeeze + 0.09 * exit },
+        ],
+      };
+    }
+    if (started && slotDepth === 1 && task.id === completionNextTaskId) {
+      const move = completionMotion?.nextMove.get() ?? 0;
+      const nextOpacity = completionMotion?.nextOpacity.get() ?? 0;
+      return {
+        zIndex: z,
+        opacity: nextOpacity * opacity,
+        transform: [
+          { perspective: PERSPECTIVE },
+          { translateX: 0 },
+          { translateY: 16 * (1 - move) },
+          { rotateY: "0deg" },
+          { scale: 0.93 + 0.07 * move },
+        ],
+      };
+    }
+    const scale = interpolate(depth, DEPTHS, depthScale, Extrapolation.CLAMP);
     // Scaled about its centre, a card's bottom edge rises by half the height it
     // lost. Dropping it back by that much lines it up with the active card's
     // bottom edge, and the peek then sets it just below.
@@ -330,12 +392,14 @@ function StackSlot({
 
   return (
     <Animated.View
-      pointerEvents={hidden ? "none" : "auto"}
+      pointerEvents={
+        hidden || task.id === completionTaskId || task.id === completionNextTaskId ? "none" : "auto"
+      }
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
       style={[
         styles.card,
-        { backgroundColor: colors.charcoal[900] },
+        { backgroundColor: colors.palette.ink },
         active ? null : styles.waiting,
         // Every card, always: the shadow fades in and out with its card's
         // opacity. Switching it on only for the top two cards made it pop
@@ -356,8 +420,11 @@ function StackSlot({
         onStart={(plannedMinutes, bounds) => onStart(task, plannedMinutes, bounds)}
         onComplete={() => onComplete(task)}
         onDetails={() => onDetails(task.id)}
+        onNavigate={active ? onNavigate : undefined}
+        todayDoneEnabled={todayDoneEnabled}
+        todayDoneMotion={todayDoneMotion}
       />
-      <Animated.View pointerEvents="none" style={[styles.veil, { backgroundColor: colors.cream[100] }, veilStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.veil, { backgroundColor: VEIL_COLOR }, veilStyle]} />
     </Animated.View>
   );
 }
@@ -372,6 +439,7 @@ export function NextTaskCardStack({
   onDetails,
   focusTaskId,
   onFocusBoundsChange,
+  animateTodayCompletion = false,
 }: {
   tasks: Task[];
   currentIndex: number;
@@ -380,14 +448,18 @@ export function NextTaskCardStack({
   onDetails: (taskId: string) => void;
   focusTaskId?: string;
   onFocusBoundsChange?: (taskId: string, bounds: CardBounds) => void;
+  animateTodayCompletion?: boolean;
 }) {
-  const t = useTranslation();
   const colors = useColors();
   const reduceMotion = useReducedMotion();
   const { width } = useWindowDimensions();
   const total = tasks.length;
   const cardWidth = width - SIDE_PADDING * 2;
   const swipeThreshold = width * 0.25;
+  // Each place's card is a set number of points narrower on each side.
+  const depthScale = useMemo(() => DEPTH_INSET.map((inset) => (cardWidth - inset * 2) / cardWidth), [cardWidth]);
+  // Two bands behind the top card — or one, with only two tasks.
+  const shownDepth = Math.min(SHOWN_DEPTH, total - 1);
 
   const dragX = useSharedValue(0);
   const shuffle = useSharedValue(0);
@@ -400,42 +472,166 @@ export function NextTaskCardStack({
   const heights = useSharedValue(Array.from({ length: SLOT_COUNT }, () => 0));
   const stackHeight = useSharedValue(0);
   const swipeLocked = useSharedValue(false);
+  const todayDoneStarted = useSharedValue(0);
+  const todayDoneCheckScale = useSharedValue(0);
+  const todayDoneRingStarted = useSharedValue(0);
+  const todayDoneRingProgress = useSharedValue(0);
+  const todayDoneTitleProgress = useSharedValue(0);
+  const todayDoneFadeProgress = useSharedValue(0);
+  const todayDoneCardSqueeze = useSharedValue(0);
+  const todayDoneCardExit = useSharedValue(0);
+  const todayDoneNextMove = useSharedValue(0);
+  const todayDoneNextOpacity = useSharedValue(0);
+  const todayDoneMotion = useMemo<TodayDoneMotion>(
+    () => ({
+      started: todayDoneStarted,
+      checkScale: todayDoneCheckScale,
+      ringStarted: todayDoneRingStarted,
+      ringProgress: todayDoneRingProgress,
+      titleProgress: todayDoneTitleProgress,
+      fadeProgress: todayDoneFadeProgress,
+      cardSqueeze: todayDoneCardSqueeze,
+      cardExit: todayDoneCardExit,
+      nextMove: todayDoneNextMove,
+      nextOpacity: todayDoneNextOpacity,
+    }),
+    [
+      todayDoneCardExit,
+      todayDoneCardSqueeze,
+      todayDoneCheckScale,
+      todayDoneFadeProgress,
+      todayDoneNextMove,
+      todayDoneNextOpacity,
+      todayDoneRingProgress,
+      todayDoneRingStarted,
+      todayDoneStarted,
+      todayDoneTitleProgress,
+    ],
+  );
+  const [completionTaskId, setCompletionTaskId] = useState<string | null>(null);
+  const [completionNextTaskId, setCompletionNextTaskId] = useState<string | null>(null);
   // One object for every card, so the memoized cards don't re-render for it.
   const motion = useMemo<StackMotion>(
     () => ({ activeSlot, dragX, shuffle, back, rise, dir, stackHeight }),
     [activeSlot, back, dir, dragX, rise, shuffle, stackHeight],
   );
   const [activeSlotIndex, setActiveSlotIndex] = useState(0);
-  useEffect(() => {
-    swipeLocked.set(false);
-  }, [currentIndex, swipeLocked]);
 
   const completeTask = useTaskStore((state) => state.completeTask);
   // "Mark complete" is one tap from Start session, so it can be taken back.
-  const completeWithUndo = (taskId: string) => {
-    const title = useTaskStore.getState().tasks.find((task) => task.id === taskId)?.title ?? "";
-    withUndo(translate().undoToast.done(title), () => completeTask(taskId));
-  };
-  // A card finished with its Complete button: its task, and the timer holding
-  // the card still while it celebrates. Kept until the task has left the queue.
+  const completeWithUndo = useCallback(
+    (taskId: string) => {
+      const title = useTaskStore.getState().tasks.find((task) => task.id === taskId)?.title ?? "";
+      withUndo(translate().undoToast.done(title), () => completeTask(taskId));
+    },
+    [completeTask],
+  );
+  // A card finished with its Complete button stays mounted until it has left
+  // the queue, so the stack can finish its send-off before completing the task.
   const sendOff = useRef<{ taskId: string; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   useEffect(() => {
+    if (!sendOff.current) swipeLocked.set(false);
+  }, [currentIndex, swipeLocked]);
+  useEffect(() => {
     const pending = sendOff.current;
-    if (pending && !tasks.some((task) => task.id === pending.taskId)) sendOff.current = null;
-  }, [tasks]);
-
-  // `finishedTaskId`: the card that just flew off was finished, not swiped.
-  const commit = (step: 1 | -1, nextIndex: number, finishedTaskId: string | null) => {
-    setActiveSlotIndex((slot) => (slot + step + SLOT_COUNT) % SLOT_COUNT);
-    onIndexChange(nextIndex);
-    // The finished card has flown off and the next one is in place: only now
-    // is its task completed, so the queue never reshuffles under it mid-flight.
-    // Its place in the queue may not change, so the stack unlocks here.
-    if (finishedTaskId) {
-      completeWithUndo(finishedTaskId);
+    if (pending && !tasks.some((task) => task.id === pending.taskId)) {
+      if (pending.timer) clearTimeout(pending.timer);
+      sendOff.current = null;
       swipeLocked.set(false);
     }
-  };
+  }, [swipeLocked, tasks]);
+  useEffect(() => {
+    if (completionTaskId && tasks.some((task) => task.id === completionTaskId)) return;
+    todayDoneStarted.set(0);
+    todayDoneCheckScale.set(0);
+    todayDoneRingStarted.set(0);
+    todayDoneRingProgress.set(0);
+    todayDoneTitleProgress.set(0);
+    todayDoneFadeProgress.set(0);
+    todayDoneCardSqueeze.set(0);
+    todayDoneCardExit.set(0);
+    todayDoneNextMove.set(0);
+    todayDoneNextOpacity.set(0);
+  }, [
+    completionTaskId,
+    tasks,
+    todayDoneCardExit,
+    todayDoneCardSqueeze,
+    todayDoneCheckScale,
+    todayDoneFadeProgress,
+    todayDoneNextMove,
+    todayDoneNextOpacity,
+    todayDoneRingProgress,
+    todayDoneRingStarted,
+    todayDoneStarted,
+    todayDoneTitleProgress,
+  ]);
+
+  // `finishedTaskId`: the card that just flew off was finished, not swiped.
+  const commit = useCallback(
+    (step: 1 | -1, nextIndex: number, finishedTaskId: string | null) => {
+      setActiveSlotIndex((slot) => (slot + step + SLOT_COUNT) % SLOT_COUNT);
+      onIndexChange(nextIndex);
+      // The finished card has cleared and the next one is in place: only now
+      // is its task completed, so the queue never reshuffles under it mid-flight.
+      // Its place in the queue may not change, so the stack unlocks here.
+      if (finishedTaskId) {
+        completeWithUndo(finishedTaskId);
+        swipeLocked.set(false);
+      }
+    },
+    [completeWithUndo, onIndexChange, swipeLocked],
+  );
+
+  const finishTodayCompletion = useCallback(
+    (taskId: string) => {
+      if (sendOff.current?.taskId !== taskId) return;
+      sendOff.current.timer = null;
+      if (total > 1 && tasks[currentIndex]?.id === taskId) {
+        const preferredNextIndex = completionNextTaskId
+          ? tasks.findIndex((task) => task.id === completionNextTaskId)
+          : -1;
+        const nextIndex = preferredNextIndex >= 0 ? preferredNextIndex : (currentIndex + 1) % total;
+        const nextSlot = (activeSlot.get() + 1) % SLOT_COUNT;
+        activeSlot.set(nextSlot);
+        const nextHeight = heights.get()[nextSlot];
+        if (nextHeight > 0) {
+          stackHeight.set(
+            withTiming(nextHeight, {
+              duration: reduceMotion ? 0 : MOTION.duration.standard,
+              easing: MOTION.easing.standard,
+            }),
+          );
+        }
+        dragX.set(0);
+        shuffle.set(0);
+        back.set(1);
+        rise.set(0);
+        commit(1, nextIndex, taskId);
+        return;
+      }
+      sendOff.current = null;
+      swipeLocked.set(false);
+      completeWithUndo(taskId);
+    },
+    [
+      activeSlot,
+      back,
+      commit,
+      completeWithUndo,
+      completionNextTaskId,
+      currentIndex,
+      dragX,
+      heights,
+      reduceMotion,
+      rise,
+      shuffle,
+      stackHeight,
+      swipeLocked,
+      tasks,
+      total,
+    ],
+  );
 
   const settle = (step: 1 | -1, nextIndex: number, finishedTaskId: string | null) => {
     "worklet";
@@ -463,6 +659,19 @@ export function NextTaskCardStack({
   const flyTiming = { duration: reduceMotion ? 0 : FLY_MS, easing: Easing.linear };
   // Previous plays the flight backwards, so its clock slows as it lands.
   const flyBackTiming = { duration: reduceMotion ? 0 : FLY_MS, easing: Easing.out(Easing.cubic) };
+
+  const singleCardDoneStyle = useAnimatedStyle(() => {
+    if (!animateTodayCompletion || !tasks[0] || completionTaskId !== tasks[0].id) return {};
+    const squeeze = todayDoneCardSqueeze.get();
+    const exit = todayDoneCardExit.get();
+    return {
+      opacity: 1 - exit,
+      transform: [
+        { translateY: -26 * exit },
+        { scale: 1 - 0.02 * squeeze + 0.09 * exit },
+      ],
+    };
+  });
 
   // Next: the top card flies off to `swingDir`'s side.
   // The Next button and the send-off take the same move a swipe does; the
@@ -505,6 +714,10 @@ export function NextTaskCardStack({
   useEffect(() => {
     sendOffNow.current = (taskId) => {
       if (sendOff.current?.taskId !== taskId) return;
+      if (animateTodayCompletion) {
+        finishTodayCompletion(taskId);
+        return;
+      }
       // Still the card on top, with a next one to bring in: it's shuffled away
       // like a swipe, and commit completes the task once it's gone.
       if (total > 1 && !reduceMotion && tasks[currentIndex]?.id === taskId) {
@@ -518,18 +731,128 @@ export function NextTaskCardStack({
     };
   });
 
+  // A screen reader's Next / Previous on the top card (the stack had buttons
+  // for these until the 2026-11 redesign; a swipe does the same). Read
+  // through a ref so the memoized cards keep one callback.
+  const navigateNow = useRef<(step: 1 | -1) => void>(() => {});
+  useEffect(() => {
+    navigateNow.current = (step) => (step === 1 ? showNext() : showPrevious());
+  });
+  const handleNavigate = useCallback((step: 1 | -1) => navigateNow.current(step), []);
+
   const handleComplete = useCallback(
     (task: Task) => {
       if (sendOff.current) return;
-      // Held still while the card celebrates — no swiping it away mid-flood.
       swipeLocked.set(true);
+      if (animateTodayCompletion) {
+        sendOff.current = { taskId: task.id, timer: null };
+        if (reduceMotion) {
+          finishTodayCompletion(task.id);
+          return;
+        }
+
+        const nextTask = total > 1 ? tasks[(currentIndex + 1) % total] : undefined;
+        setCompletionTaskId(task.id);
+        setCompletionNextTaskId(nextTask?.id ?? null);
+        todayDoneStarted.set(1);
+        todayDoneCheckScale.set(
+          withDelay(
+            TODAY_DONE_CHECK_DELAY_MS,
+            withSequence(
+              withTiming(1.18, { duration: 250, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }),
+              withTiming(1, { duration: 200, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }),
+            ),
+          ),
+        );
+        todayDoneRingStarted.set(
+          withDelay(
+            TODAY_DONE_RING_DELAY_MS,
+            withTiming(1, { duration: 100, easing: Easing.bezier(0, 0, 0.58, 1) }),
+          ),
+        );
+        todayDoneRingProgress.set(
+          withDelay(
+            TODAY_DONE_RING_DELAY_MS + 100,
+            withTiming(1, { duration: 700, easing: Easing.bezier(0, 0, 0.58, 1) }),
+          ),
+        );
+        todayDoneTitleProgress.set(
+          withDelay(
+            TODAY_DONE_TITLE_DELAY_MS,
+            withTiming(1, { duration: 600, easing: Easing.bezier(0.42, 0, 0.58, 1) }),
+          ),
+        );
+        todayDoneFadeProgress.set(
+          withDelay(
+            TODAY_DONE_TITLE_DELAY_MS,
+            withTiming(1, { duration: 600, easing: Easing.bezier(0.42, 0, 0.58, 1) }),
+          ),
+        );
+        todayDoneCardSqueeze.set(
+          withDelay(
+            TODAY_DONE_CARD_DELAY_MS,
+            withTiming(1, { duration: 150, easing: Easing.bezier(0.5, 0, 0.3, 1) }),
+          ),
+        );
+        todayDoneCardExit.set(
+          withDelay(
+            TODAY_DONE_CARD_EXIT_DELAY_MS,
+            withTiming(1, { duration: 550, easing: Easing.bezier(0.5, 0, 0.3, 1) }),
+          ),
+        );
+        todayDoneNextMove.set(
+          withDelay(
+            TODAY_DONE_NEXT_DELAY_MS,
+            withTiming(1, { duration: 750, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }),
+          ),
+        );
+        todayDoneNextOpacity.set(
+          withDelay(
+            TODAY_DONE_NEXT_DELAY_MS,
+            withTiming(1, { duration: 300, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }),
+          ),
+        );
+        rise.set(
+          withDelay(
+            TODAY_DONE_NEXT_DELAY_MS,
+            withTiming(1, { duration: 750, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }),
+          ),
+        );
+        const timer = setTimeout(() => {
+          if (sendOff.current?.taskId !== task.id) return;
+          sendOff.current.timer = null;
+          sendOffNow.current(task.id);
+        }, TODAY_DONE_MS);
+        sendOff.current.timer = timer;
+        return;
+      }
+      // Held still while the card celebrates — no swiping it away mid-flood.
       const timer = setTimeout(() => {
         if (sendOff.current) sendOff.current.timer = null;
         sendOffNow.current(task.id);
       }, CELEBRATION_MS);
       sendOff.current = { taskId: task.id, timer };
     },
-    [swipeLocked],
+    [
+      animateTodayCompletion,
+      currentIndex,
+      reduceMotion,
+      swipeLocked,
+      tasks,
+      total,
+      todayDoneCardExit,
+      todayDoneCardSqueeze,
+      todayDoneCheckScale,
+      todayDoneFadeProgress,
+      todayDoneNextMove,
+      todayDoneNextOpacity,
+      todayDoneRingProgress,
+      todayDoneRingStarted,
+      todayDoneStarted,
+      todayDoneTitleProgress,
+      rise,
+      finishTodayCompletion,
+    ],
   );
 
   // Leaving mid-celebration still completes the task: the tap was real.
@@ -597,29 +920,37 @@ export function NextTaskCardStack({
     }
   }, [activeSlot, heights, stackHeight]);
 
+  if (completionTaskId && !tasks.some((task) => task.id === completionTaskId)) {
+    setCompletionTaskId(null);
+    setCompletionNextTaskId(null);
+  }
+
   // One task left: nothing to swipe between, so the stack stays out of the way.
   if (total <= 1) {
     const only = tasks[0];
     if (!only) return null;
     return (
-      <View
-        pointerEvents={focusTaskId === only.id ? "none" : "auto"}
+      <Animated.View
+        pointerEvents={focusTaskId === only.id || completionTaskId === only.id ? "none" : "auto"}
         style={[
           styles.stack,
           styles.card,
-          { backgroundColor: colors.charcoal[900], opacity: focusTaskId === only.id ? 0 : 1 },
+          { backgroundColor: colors.palette.ink, opacity: focusTaskId === only.id ? 0 : 1 },
           CARD_SHADOW,
+          singleCardDoneStyle,
         ]}
       >
         <NextTaskCard
           task={only}
           rank={1}
+          todayDoneEnabled={animateTodayCompletion}
+          todayDoneMotion={only.id === completionTaskId ? todayDoneMotion : undefined}
           onBoundsChange={(bounds) => onFocusBoundsChange?.(only.id, bounds)}
           onStart={(plannedMinutes, bounds) => onStart(only, plannedMinutes, bounds)}
           onComplete={() => handleComplete(only)}
           onDetails={() => onDetails(only.id)}
         />
-      </View>
+      </Animated.View>
     );
   }
 
@@ -650,32 +981,19 @@ export function NextTaskCardStack({
               onStart={onStart}
               onComplete={handleComplete}
               onDetails={onDetails}
+              onNavigate={handleNavigate}
               hidden={task.id === focusTaskId}
+              shownDepth={shownDepth}
+              depthScale={depthScale}
+              completionMotion={animateTodayCompletion ? todayDoneMotion : undefined}
+              todayDoneEnabled={animateTodayCompletion && depth === 0}
+              todayDoneMotion={animateTodayCompletion && depth === 0 && task.id === completionTaskId ? todayDoneMotion : undefined}
+              completionTaskId={completionTaskId}
+              completionNextTaskId={completionNextTaskId}
             />
           ))}
         </View>
       </GestureDetector>
-
-      {/* 30 = the card behind's 10dp peek + 20 of air. Same size and corner
-          for both; Next is the solid one because it's the way forward. */}
-      <View className="mt-[30px] flex-row items-center gap-3 px-6">
-        <AnimatedPressable
-          onPress={showPrevious}
-          accessibilityRole="button"
-          className="btn--secondary-cream min-h-[44px] flex-1 flex-row items-center justify-center gap-2 rounded-[16px] px-3"
-        >
-          <Feather name="arrow-left" size={16} color={colors.ink.cream} />
-          <Text className="font-grotesk-bold text-[14px] text-ink-cream">{t.next.previous}</Text>
-        </AnimatedPressable>
-        <AnimatedPressable
-          onPress={showNext}
-          accessibilityRole="button"
-          className="btn--charcoal-solid min-h-[44px] flex-1 flex-row items-center justify-center gap-2 rounded-[16px] px-3"
-        >
-          <Text className="font-grotesk-bold text-[14px] text-ink-charcoal">{t.next.nextCard}</Text>
-          <Feather name="arrow-right" size={16} color={colors.ink.charcoal} />
-        </AnimatedPressable>
-      </View>
     </>
   );
 }
