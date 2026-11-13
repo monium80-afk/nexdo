@@ -4,7 +4,7 @@
     "slug": "Nexdo",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/nexdo-app-icon.png",
     "scheme": "nexdo",
     "userInterfaceStyle": "light",
     "ios": {
@@ -20,7 +20,7 @@
       "versionCode": 12,
       "adaptiveIcon": {
         "backgroundColor": "#EFEBDA",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "foregroundImage": "./assets/images/nexdo-app-icon.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
