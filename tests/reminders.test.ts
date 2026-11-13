@@ -12,6 +12,7 @@ import {
   DEFAULT_REMINDER_PREFERENCES,
   diffNotifications,
   MAX_SCHEDULED,
+  nextReminderFor,
   planNotifications,
   planTaskReminders,
   type ReminderPreferences,
@@ -145,10 +146,33 @@ describe("daily planning note", () => {
     const notes = planNotifications(tasks, { ...PREFS, deadlineReminders: false, dailyPlanning: true, dailyPlanningTime: "08:00" }, NOW, en);
     assert.equal(notes.length, 6, "today's 08:00 has passed; the next six days");
     assert.ok(notes.every((note) => note.kind === "daily" && new Date(note.fireAt).getHours() === 8));
-    assert.equal(notes[0].body, '1 task due today. Start with "Essay".');
-    assert.match(notes[1].body, /^2 open tasks\./);
+    assert.equal(notes[0].title, "Start with: Essay");
+    assert.equal(notes[0].body, "One thing at a time. Tap to begin.");
     // No reminder was invented for the task without a deadline.
     assert.ok(!notes.some((note) => note.taskId === "Read"));
+  });
+
+  it("counts the others due that day, and replaces the date-only ping", () => {
+    const tasks = [
+      dueTask("Essay", "2026-09-30", undefined, { importance: 100 }),
+      dueTask("Dentist", "2026-09-30"),
+      dueTask("Bill", "2026-09-30"),
+      dueTask("Call", "2026-09-30", "15:00"),
+    ];
+    const prefs = { ...PREFS, dailyPlanning: true, dailyPlanningTime: "08:30" };
+    const notes = planNotifications(tasks, prefs, NOW, en);
+    const nudge = notes.find((note) => note.kind === "daily" && new Date(note.fireAt).getDate() === 30)!;
+    assert.match(nudge.title, /^Start with: /);
+    assert.equal(nudge.body, "+ 3 more due today");
+    // The date-only tasks get no ping of their own; the timed one keeps its reminder.
+    assert.ok(!notes.some((note) => note.kind === "due-day" && note.taskId !== "Call"));
+    assert.ok(notes.some((note) => note.taskId === "Call"));
+    // Their next reminder is that morning's nudge.
+    assert.equal(nextReminderFor(tasks[1], prefs, NOW, en), nudge.fireAt);
+  });
+
+  it("with the nudge off, the date-only ping comes back", () => {
+    assert.deepEqual(times(dueTask("Dentist", "2026-09-30")), [{ kind: "due-day", at: "Wed Sep 30 2026 09:00" }]);
   });
 
   it("nothing open, no note", () => {

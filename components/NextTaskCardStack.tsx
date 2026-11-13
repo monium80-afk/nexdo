@@ -30,7 +30,8 @@ import type { Task } from "@/types/task";
 // The page's 20 plus the mockup's 4 (Final-Today.html). Corners a size down
 // from its 28, like the rest of the card (2026-11-03).
 const SIDE_PADDING = 24;
-const CARD_RADIUS = 24;
+/** Every card in the stack, front and back, so the edges line up as clean steps. */
+const CARD_RADIUS = 28;
 const FLING_VELOCITY = 800;
 // These one-shot timings are the reference keyframes' percentages of 5 seconds.
 const TODAY_DONE_MS = 3200;
@@ -89,28 +90,29 @@ const DEPTHS = [0, 1, 2, 3];
 const BACK_DEPTH = 3;
 /** The deepest place that shows at rest. */
 const SHOWN_DEPTH = 2;
-// How far in from each side each place's card is drawn: the mockup's two
-// cards behind are 10 and 22 narrower on each side than the one on top.
-const DEPTH_INSET = [0, 9, 19, 26];
-// How far each place's bottom edge shows below the active card.
-const DEPTH_PEEK = [0, 8, 16, 16];
-// A waiting card is a flat band of brown, lighter the further back it sits
-// (#352A23, then #4A3C32): a veil of that lighter brown over the card's own
-// ink, clearing as the card comes forward.
-const VEIL_COLOR = "#4A3C32";
-const DEPTH_VEIL = [0, 0.46, 1, 1];
+// The stack (the user's spec, 2026-11-13): the cards behind are clearly
+// lighter and narrower than the front one, so it reads as a stack.
+// How far in from each side each place's card is drawn.
+const DEPTH_INSET = [0, 10, 22, 26];
+// How much lower each place's top edge is than the front card's.
+const DEPTH_TOP = [0, 10, 22, 22];
+// How far each place's bottom edge sticks out below the front card's.
+const DEPTH_OUT = [0, 10, 20, 20];
+// A waiting card is a flat band of brown, lighter the further back it sits:
+// #352A23 second, #4A3C32 third — veils of those over the card's own ink
+// (#221C17), clearing as the card comes forward. The app has one palette for
+// light and dark, so in dark mode too each card is a shade lighter than the
+// one in front of it.
+const VEIL_SECOND = "#352A23";
+const VEIL_THIRD = "#4A3C32";
+const DEPTH_VEIL_SECOND = [0, 1, 1, 1];
+const DEPTH_VEIL_THIRD = [0, 0, 1, 1];
 
-// A CSS box-shadow rather than Android's elevation: elevation drew a hard grey
-// rectangle once a card was partly transparent (they fade as they move through
-// the stack) and greyed its inside through it. A box-shadow is only ever drawn
-// outside the card, so it's safe on both platforms. The mockup's top-card shadow.
-// None since 2026-11-03 (the user's call): the stack sits flat on the page.
-const CARD_SHADOW = null;
+// No shadows under the stack (the user's call, 2026-11-13: the shadow was cut
+// off partway and looked wrong) — the steps of lighter brown carry the depth.
 
 const styles = StyleSheet.create({
   stack: { marginHorizontal: SIDE_PADDING },
-  // The shadow sits out here rather than on the card: the card clips itself to
-  // the height the stack gives it, and a clipping view cuts off its own shadow.
   card: { borderRadius: CARD_RADIUS },
   // Every card but the active one. The active one stays in flow so the block
   // keeps its height — and grows and shrinks with it as the cards change over.
@@ -294,12 +296,15 @@ function StackSlot({
         ],
       };
     }
-    const scale = interpolate(depth, DEPTHS, depthScale, Extrapolation.CLAMP);
-    // Scaled about its centre, a card's bottom edge rises by half the height it
-    // lost. Dropping it back by that much lines it up with the active card's
-    // bottom edge, and the peek then sets it just below.
-    const translateY =
-      (stackHeight.get() * (1 - scale)) / 2 + interpolate(depth, DEPTHS, DEPTH_PEEK, Extrapolation.CLAMP);
+    // Narrower by DEPTH_INSET on each side; its top DEPTH_TOP lower and its
+    // bottom DEPTH_OUT below the front card's — the height is set by scaling
+    // about the card's centre, then moving it down into place.
+    const scaleX = interpolate(depth, DEPTHS, depthScale, Extrapolation.CLAMP);
+    const height = stackHeight.get();
+    const top = interpolate(depth, DEPTHS, DEPTH_TOP, Extrapolation.CLAMP);
+    const out = interpolate(depth, DEPTHS, DEPTH_OUT, Extrapolation.CLAMP);
+    const scaleY = height > 0 ? (height + out - top) / height : 1;
+    const translateY = top + (height * (scaleY - 1)) / 2;
 
     return {
       zIndex: z,
@@ -309,14 +314,19 @@ function StackSlot({
         { translateX: x },
         { translateY },
         { rotateY: `${turn}deg` },
-        { scale },
+        { scaleX },
+        { scaleY },
       ],
     };
   });
 
-  const veilStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(pose.get().depth, DEPTHS, DEPTH_VEIL, Extrapolation.CLAMP),
+  const veilSecondStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pose.get().depth, DEPTHS, DEPTH_VEIL_SECOND, Extrapolation.CLAMP),
   }));
+  const veilThirdStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pose.get().depth, DEPTHS, DEPTH_VEIL_THIRD, Extrapolation.CLAMP),
+  }));
+
 
   // 1 once this card's content has faded in; 0 while it waits. The fade
   // starts the moment the card begins moving up from its place behind the top
@@ -401,11 +411,6 @@ function StackSlot({
         styles.card,
         { backgroundColor: colors.palette.ink },
         active ? null : styles.waiting,
-        // Every card, always: the shadow fades in and out with its card's
-        // opacity. Switching it on only for the top two cards made it pop
-        // on and off each time the deck stepped. The cards that aren't
-        // showing are fully transparent, which Android doesn't draw at all.
-        CARD_SHADOW,
         placeStyle,
       ]}
     >
@@ -424,7 +429,8 @@ function StackSlot({
         todayDoneEnabled={todayDoneEnabled}
         todayDoneMotion={todayDoneMotion}
       />
-      <Animated.View pointerEvents="none" style={[styles.veil, { backgroundColor: VEIL_COLOR }, veilStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.veil, { backgroundColor: VEIL_SECOND }, veilSecondStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.veil, { backgroundColor: VEIL_THIRD }, veilThirdStyle]} />
     </Animated.View>
   );
 }
@@ -610,6 +616,9 @@ export function NextTaskCardStack({
         commit(1, nextIndex, taskId);
         return;
       }
+      // The card wasn't on top any more: the deck goes back to rest rather
+      // than staying risen, with the card behind drawn over the top one.
+      rise.set(0);
       sendOff.current = null;
       swipeLocked.set(false);
       completeWithUndo(taskId);
@@ -660,12 +669,21 @@ export function NextTaskCardStack({
   // Previous plays the flight backwards, so its clock slows as it lands.
   const flyBackTiming = { duration: reduceMotion ? 0 : FLY_MS, easing: Easing.out(Easing.cubic) };
 
+  // Always the full set of values, back at rest when nothing is being
+  // completed. Returning {} left the faded-out card's last values on the view:
+  // when the one card left was done and another task took its place in the
+  // same view (a repeating task's next one, a task coming in), that card
+  // showed up invisible.
   const singleCardDoneStyle = useAnimatedStyle(() => {
-    if (!animateTodayCompletion || !tasks[0] || completionTaskId !== tasks[0].id) return {};
+    // Hidden while its focus session opens out of it.
+    const shown = tasks[0] && focusTaskId === tasks[0].id ? 0 : 1;
+    if (!animateTodayCompletion || !tasks[0] || completionTaskId !== tasks[0].id) {
+      return { opacity: shown, transform: [{ translateY: 0 }, { scale: 1 }] };
+    }
     const squeeze = todayDoneCardSqueeze.get();
     const exit = todayDoneCardExit.get();
     return {
-      opacity: 1 - exit,
+      opacity: shown * (1 - exit),
       transform: [
         { translateY: -26 * exit },
         { scale: 1 - 0.02 * squeeze + 0.09 * exit },
@@ -743,6 +761,9 @@ export function NextTaskCardStack({
   const handleComplete = useCallback(
     (task: Task) => {
       if (sendOff.current) return;
+      // A tap that lands while a card is still flying (a lagging swipe) would
+      // celebrate a card that's no longer the one on top.
+      if (shuffle.get() > 0 || back.get() < 1) return;
       swipeLocked.set(true);
       if (animateTodayCompletion) {
         sendOff.current = { taskId: task.id, timer: null };
@@ -851,6 +872,8 @@ export function NextTaskCardStack({
       todayDoneStarted,
       todayDoneTitleProgress,
       rise,
+      shuffle,
+      back,
       finishTodayCompletion,
     ],
   );
@@ -935,8 +958,8 @@ export function NextTaskCardStack({
         style={[
           styles.stack,
           styles.card,
-          { backgroundColor: colors.palette.ink, opacity: focusTaskId === only.id ? 0 : 1 },
-          CARD_SHADOW,
+          // Its opacity, focus session included, is singleCardDoneStyle's.
+          { backgroundColor: colors.palette.ink },
           singleCardDoneStyle,
         ]}
       >

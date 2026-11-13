@@ -49,3 +49,9 @@ app-example
 # design reference files (mockups, not app code)
 /nexdo-design-handoff/
 /addtask-design/
+
+# Local tools and design hand-offs (not part of the app)
+graphify-out/
+design/
+nexdo-design-handoff/
+addtask-design/

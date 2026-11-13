@@ -302,6 +302,14 @@ describe("live voice session", () => {
     assert.equal(socket.closed, true);
   });
 
+  it("keeps listening through silence when stopOnSilence is false (onboarding's brain dump)", async () => {
+    const { voice } = await listening({ stopOnSilence: false });
+    mock.timers.tick(SILENCE_STOP_SECONDS * 1000 * 4);
+    assert.equal(voice.getState().status, "listening");
+    void voice.stop();
+    assert.notEqual(voice.getState().status, "listening");
+  });
+
   it("never stops for silence while someone is talking, and counts it from when they stop", async () => {
     const { voice, socket } = await listening();
     mock.timers.tick(SILENCE_STOP_SECONDS * 1000 - 1000);

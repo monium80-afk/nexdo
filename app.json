@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nexdo",
     "slug": "Nexdo",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "scheme": "nexdo",
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "backgroundColor": "#EFEBDA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,7 +50,8 @@
             "./assets/fonts/SpaceGrotesk-Medium.ttf",
             "./assets/fonts/SpaceGrotesk-SemiBold.ttf",
             "./assets/fonts/SpaceGrotesk-Bold.ttf",
-            "./assets/fonts/SpaceMono-Bold.ttf"
+            "./assets/fonts/SpaceMono-Bold.ttf",
+            "./assets/fonts/Caveat-SemiBold.ttf"
           ]
         }
       ],

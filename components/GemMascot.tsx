@@ -14,7 +14,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, ClipPath, Defs, Ellipse, G, LinearGradient, Mask, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import flameFrames from "@/data/gemFlameFrames.json";
 import type { GemLevel } from "@/lib/gemLevel";
@@ -479,11 +479,27 @@ function ShootGlow({ size }: { size: number }) {
 }
 
 /**
+ * One level of the gem standing still on the page: no bob, no level-up —
+ * the paywall's Blazing gem. Its flame, glow and core still move (not with
+ * Reduce Motion). With `fadeBottom` its foot fades out, as the paywall's
+ * mask does: opaque down to 62 % of the drawing, gone by 92 %.
+ */
+export function GemStill({ level, width, fadeBottom = false, still = false }: { level: GemLevel; width: number; fadeBottom?: boolean; /** Hold its own life (blink, flame) — e.g. while its screen is out of sight. */ still?: boolean }) {
+  const reduceMotion = useReducedMotion();
+  return <GemArt level={level} width={width} moving={!reduceMotion && !still} fadeBottom={fadeBottom} />;
+}
+
+// The fade's top and foot in the drawing's units: 62 % and 92 % of the
+// 220-unit box the paywall shows (its viewBox starts at y 8).
+const FADE_FROM_Y = 8 + 0.62 * VIEW_H;
+const FADE_TO_Y = 8 + 0.92 * VIEW_H;
+
+/**
  * The gem at one level, with that level's own life — blinking, the glow and
  * core pulsing, the flame flickering, the sleepy z's — but no bob (that's
  * GemMascot's, so a level-up rides on it).
  */
-function GemArt({ level, width, moving }: { level: GemLevel; width: number; moving: boolean }) {
+function GemArt({ level, width, moving, fadeBottom = false }: { level: GemLevel; width: number; moving: boolean; fadeBottom?: boolean }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, "");
   const facets = level === 1 ? GREY : level === 2 ? BRONZE : ORANGE;
   const height = (width * VIEW_H) / VIEW_W;
@@ -574,8 +590,21 @@ function GemArt({ level, width, moving }: { level: GemLevel; width: number; movi
             <Stop offset={0} stopColor="#140A06" stopOpacity={0.85} />
             <Stop offset={1} stopColor="#140A06" stopOpacity={0} />
           </RadialGradient>
+          {fadeBottom ? (
+            <>
+              <LinearGradient id={g("MF")} gradientUnits="userSpaceOnUse" x1={0} y1={FADE_FROM_Y} x2={0} y2={FADE_TO_Y}>
+                <Stop offset={0} stopColor="#FFFFFF" />
+                <Stop offset={1} stopColor="#000000" />
+              </LinearGradient>
+              <Mask id={g("M")} maskUnits="userSpaceOnUse" x={-40} y={-40} width={VIEW_W + 80} height={VIEW_H + 80}>
+                <Rect x={-40} y={-40} width={VIEW_W + 80} height={VIEW_H + 80} fill={`url(#${g("MF")})`} />
+              </Mask>
+            </>
+          ) : null}
         </Defs>
 
+        {/* Everything goes through the fade's mask when there is one. */}
+        <G mask={fadeBottom ? `url(#${g("M")})` : undefined}>
         {/* Level 5: the flame on top, a 30-frame loop (flame-frames.json). */}
         {level === 5 ? (
           <G transform="translate(0 -7)">
@@ -606,6 +635,7 @@ function GemArt({ level, width, moving }: { level: GemLevel; width: number; movi
             <AnimatedEllipse cx={114} cy={eyeY} rx={eyeRx} ry={eyeRy} fill="#FFFFFF" animatedProps={rightEyeProps} />
           </>
         )}
+        </G>
       </Svg>
       {/* Asleep: z z z drifting up from its top-right corner. */}
       {level === 1 ? ZS.map((z) => <SleepZ key={z.delay} {...z} scale={scale} animate={moving} />) : null}

@@ -51,7 +51,7 @@ const MINUTE = 60;
  */
 export const PLAN_LIMITS: Record<Plan, Record<Meter, number>> = {
   free: { chat: 0, media: 0, voice: 0, live: 0, assist: 0 },
-  pro: { chat: 400, media: 50, voice: 50 * MINUTE, live: 90 * MINUTE, assist: 100 },
+  pro: { chat: 100, media: 50, voice: 50 * MINUTE, live: 90 * MINUTE, assist: 100 },
 };
 
 /** Whether a plan includes a meter at all (Free includes none of them). */

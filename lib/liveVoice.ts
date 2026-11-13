@@ -92,6 +92,13 @@ export type LiveVoiceDeps = {
   onListened?: (seconds: number, sessionId: string | undefined) => void;
   /** Development only: what was heard and done, for checking it in the terminal. */
   log?: (message: string) => void;
+  /**
+   * false: don't stop after SILENCE_STOP_SECONDS of quiet — the session runs
+   * until stopped or out of time. Onboarding's brain dump (07) has no mic
+   * button to start again after a pause, and its server session is capped at
+   * 60 s anyway. Defaults to true.
+   */
+  stopOnSilence?: boolean;
 };
 
 export type LiveVoice = ReturnType<typeof createLiveVoice>;
@@ -217,7 +224,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   // (Re)starts the silence countdown; speech starting cancels it.
   const waitForSpeech = () => {
     clearTimeout(silenceTimer);
-    if (state.status !== "listening") return;
+    if (state.status !== "listening" || deps.stopOnSilence === false) return;
     const current = session;
     silenceTimer = setTimeout(() => {
       if (current === session) stop("silence");

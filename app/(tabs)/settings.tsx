@@ -46,7 +46,7 @@ import type { AppLanguage } from "@/types/settings";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
 const P = colors.palette;
-const APP_VERSION = Constants.expoConfig?.version ?? "1.0.0";
+const APP_VERSION = Constants.expoConfig?.version ?? "2.0.0";
 const TIGHT = { includeFontPadding: false } as const;
 const CARD_SHADOW = SOFT_SHADOW;
 const RULE = "#EADFD1";
@@ -128,6 +128,7 @@ function RowList({ rows }: { rows: { key: string; label: string; value?: string;
 /** The icon tiles' tints in the notifications card. */
 const REMINDER_TINT = { bg: "#FCE3D3", fg: "#D9561C" };
 const OVERDUE_TINT = { bg: "#F7DCD6", fg: "#D4402A" };
+const MORNING_TINT = { bg: "#FBE7C6", fg: "#B8640F" };
 
 /** The orange switch (the screenshot's 48 × 28); `size` "small" inside the open Reminders. */
 function MiniSwitch({ value, onChange, label, size = "large" }: { value: boolean; onChange: (next: boolean) => unknown; label: string; size?: "large" | "small" }) {
@@ -338,6 +339,10 @@ export default function Settings() {
   const setOverdueAlertsEnabled = useSettingsStore((state) => state.setOverdueAlertsEnabled);
   const deadlineRemindersEnabled = useSettingsStore((state) => state.deadlineRemindersEnabled);
   const setDeadlineRemindersEnabled = useSettingsStore((state) => state.setDeadlineRemindersEnabled);
+  const morningNudgeEnabled = useSettingsStore((state) => state.dailyNudgeEnabled);
+  const setMorningNudgeEnabled = useSettingsStore((state) => state.setDailyNudgeEnabled);
+  const morningNudgeTime = useSettingsStore((state) => state.dailyNudgeTime);
+  const setMorningNudgeTime = useSettingsStore((state) => state.setDailyNudgeTime);
   // Unmarking the tour is all it takes: the tab bar starts it again (components/AppTour.tsx).
   const setTourSeen = useSettingsStore((state) => state.setTourSeen);
   const pro = useSubscriptionStore((state) => state.pro);
@@ -350,8 +355,9 @@ export default function Settings() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [timePicker, setTimePicker] = useState<"day" | null>(null);
+  const [timePicker, setTimePicker] = useState<"day" | "morning" | null>(null);
   const [remindersOpen, setRemindersOpen] = useState(false);
+  const [morningOpen, setMorningOpen] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>("undetermined");
 
   // Checked again whenever Settings comes into view — the user may have just
@@ -392,6 +398,7 @@ export default function Settings() {
   const firstName = name.split(/\s+/)[0] ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const dayTimeLabel = timeToDate(dayReminderTime).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
+  const morningTimeLabel = timeToDate(morningNudgeTime).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
   // The preview's made-up task starts at 3 PM, written the phone's way.
   const previewTime = timeToDate("15:00").toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
   const languageName = LANGUAGE_OPTIONS.find((option) => option.value === language)?.label ?? "";
@@ -401,13 +408,13 @@ export default function Settings() {
     posthog.capture("language_changed", { language: value });
   };
 
-  // The time for reminders on tasks with only a date (the daily plan's own
-  // time went with it from Settings, 2026-11-09).
+  // The time for reminders on tasks with only a date, or the morning nudge's own time.
   const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
     const target = timePicker;
     if (Platform.OS === "android") setTimePicker(null);
     if (event.type === "dismissed" || !selected) return;
     if (target === "day") setDayReminderTime(dateToTime(selected));
+    if (target === "morning") setMorningNudgeTime(dateToTime(selected));
   };
 
   // A tile turns on the moment it's tapped (waiting on the phone's answer
@@ -537,8 +544,10 @@ export default function Settings() {
         {isPurchasesEnabled ? (
           <View style={{ marginTop: 14, borderRadius: 24, backgroundColor: P.ink, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, ...shadow("0 10px 24px rgba(34, 28, 23, 0.22)", 8) }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <View style={{ width: 44, alignItems: "center" }}>
-                <GemMascot level={4} width={44} animate={false} />
+              {/* Pro shows the blazing gem. The plain gem sits low in its drawing (room
+                  is kept above it for the flame), so it's lifted to the row's middle. */}
+              <View style={{ width: 44, alignItems: "center", transform: [{ translateY: pro ? -1 : -7 }] }}>
+                <GemMascot level={pro ? 5 : 4} width={44} animate={false} />
               </View>
               <View style={{ flex: 1, gap: 3 }}>
                 <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17.5, color: "#FFFFFF" }, TIGHT]}>{pro ? "Nexdo Pro" : t.redesign.freePlan}</Text>
@@ -631,6 +640,38 @@ export default function Settings() {
             ring under its name — tapping the row opens the timing (and the
             daily plan) — then Overdue. */}
         <View style={[{ marginTop: 12, borderRadius: 24, backgroundColor: P.paperCard, paddingHorizontal: 16 }, CARD_SHADOW]}>
+          {/* The morning nudge (2026-11-12): once a day, the task to start
+              with. Open: what it looks like, and its time. */}
+          <NotificationRow
+            icon="sunrise"
+            tint={MORNING_TINT}
+            title={t.redesign.morningNudge}
+            subtitle={morningNudgeEnabled ? t.redesign.morningAt(morningTimeLabel) : t.redesign.dailyPlanHint}
+            expanded={morningNudgeEnabled ? morningOpen : undefined}
+            onPress={morningNudgeEnabled ? () => setMorningOpen((open) => !open) : undefined}
+            value={morningNudgeEnabled}
+            onChange={switchWith((on) => {
+              setMorningNudgeEnabled(on);
+              // Opens on its own when turned on, so the time is seen, not hidden behind the chevron.
+              setMorningOpen(on);
+            })}
+          />
+          {morningNudgeEnabled && morningOpen ? (
+            <View style={{ marginBottom: 4 }}>
+              <ReminderPreview
+                label={t.redesign.previewLabel}
+                title={t.notifications.dailyTitle(t.redesign.previewMorningTask)}
+                body={t.notifications.dailyDueBody(2)}
+              />
+              <SettingLine title={t.redesign.dailyTimeTitle} hint={t.redesign.dailyPlanHint}>
+                <TimeChip label={t.redesign.dailyTimeTitle} value={morningTimeLabel} onPress={() => setTimePicker((open) => (open === "morning" ? null : "morning"))} />
+              </SettingLine>
+              {timePicker === "morning" ? (
+                <DateTimePicker value={timeToDate(morningNudgeTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} onChange={handleTimeChange} />
+              ) : null}
+            </View>
+          ) : null}
+          <View style={{ height: 1, backgroundColor: RULE }} />
           <NotificationRow
             icon="bell"
             tint={REMINDER_TINT}
@@ -639,7 +680,11 @@ export default function Settings() {
             expanded={deadlineRemindersEnabled ? remindersOpen : undefined}
             onPress={deadlineRemindersEnabled ? () => setRemindersOpen((open) => !open) : undefined}
             value={deadlineRemindersEnabled}
-            onChange={switchWith(setDeadlineRemindersEnabled)}
+            onChange={switchWith((on) => {
+              setDeadlineRemindersEnabled(on);
+              // Opens on its own when turned on, so the timing choices are seen, not hidden behind the chevron.
+              setRemindersOpen(on);
+            })}
           />
           {/* Open (the 2026-11 screenshot): a preview of the reminder, the
               lead as stops on a line, then the date-only time — and the
@@ -669,10 +714,13 @@ export default function Settings() {
               </View>
 
               <View style={{ height: 1, backgroundColor: RULE }} />
-              <SettingLine title={t.redesign.dateOnlyLabel} hint={t.redesign.dateOnlyHint}>
-                <TimeChip label={t.redesign.dateOnlyLabel} value={dayTimeLabel} onPress={() => setTimePicker((open) => (open === "day" ? null : "day"))} />
+              {/* With the morning nudge on, date-only tasks are counted in it instead. */}
+              <SettingLine title={t.redesign.dateOnlyLabel} hint={morningNudgeEnabled ? t.redesign.inMorningNudge : t.redesign.dateOnlyHint}>
+                {morningNudgeEnabled ? null : (
+                  <TimeChip label={t.redesign.dateOnlyLabel} value={dayTimeLabel} onPress={() => setTimePicker((open) => (open === "day" ? null : "day"))} />
+                )}
               </SettingLine>
-              {timePicker === "day" ? (
+              {timePicker === "day" && !morningNudgeEnabled ? (
                 <DateTimePicker value={timeToDate(dayReminderTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} onChange={handleTimeChange} />
               ) : null}
             </View>

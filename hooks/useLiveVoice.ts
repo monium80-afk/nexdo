@@ -1,6 +1,6 @@
 import { getClerkInstance } from "@clerk/expo";
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync, useAudioStream } from "expo-audio";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useSharedValue, withTiming } from "react-native-reanimated";
 
@@ -34,7 +34,9 @@ export function useLiveVoice() {
   // Android shows its permission question as a separate screen, and React
   // Native reports the app as gone to the background while it's up — which
   // used to end the session it was asking for, every time (build 3).
-  const askingPermission = useRef(false);
+  // A plain object kept for the hook's life (not a ref): the session below is
+  // built during the first render and only reads it later, in callbacks.
+  const [askingPermission] = useState(() => ({ current: false }));
 
   const { stream } = useAudioStream({
     sampleRate: SAMPLE_RATE,

@@ -31,9 +31,7 @@ import { getDueInfo } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
 import { SOFT_SHADOW } from "@/constants/shadow";
 
-const SCORE_HIGHLIGHT = { backgroundColor: "#FFFFFF", borderWidth: 3, borderColor: "#FFE1D0" } as const;
-
-export type ScoreAnchor ={ pill: ScreenRect | null; row: ScreenRect | null };
+export type ScoreAnchor = { pill: ScreenRect | null; row: ScreenRect | null };
 
 // The mockup's soft lift under an open card.
 const CARD_SHADOW = SOFT_SHADOW;
@@ -150,11 +148,9 @@ type TaskCardProps = {
   /** Tapping the score pill: what the score means. */
   /** Where the score pill and the whole row are on screen, for the score card to point at. */
   onScorePress?: (anchor: ScoreAnchor) => void;
-  /** Its score card is open (components/ScoreSheet.tsx). */
-  scoreHighlighted?: boolean;
 };
 
-export function TaskCard({ task, onPress, onToggle, onScorePress, scoreHighlighted = false }: TaskCardProps) {
+export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProps) {
   const t = useTranslation();
   const rtl = useRtlText();
   const { fontScale } = useWindowDimensions();
@@ -485,12 +481,12 @@ export function TaskCard({ task, onPress, onToggle, onScorePress, scoreHighlight
             accessibilityRole="button"
             accessibilityLabel={t.tasks.score(task.priorityScore)}
           >
-            {/* Its score card open: the pill itself lights up, white with a peach ring. */}
+            {/* Measured for the score card, which draws its own lit copy of this pill. */}
             <Animated.View
               ref={pillRef}
               collapsable={false}
               className="h-[24px] flex-row items-center gap-[6px] rounded-full px-[9px]"
-              style={[pillStyle, scoreHighlighted ? SCORE_HIGHLIGHT : null]}
+              style={pillStyle}
             >
               <Animated.View className="h-[7px] w-[7px] rounded-[2px]" style={[DIAMOND, diamondStyle]} />
               <Animated.Text className="font-grotesk-bold text-[11.5px]" style={pillTextStyle}>

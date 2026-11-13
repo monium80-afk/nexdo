@@ -20,7 +20,7 @@ type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
 const shiftUnit = (size: number, unit: ShiftUnit) =>
   ({
     minutes: "मिनट",
-    hours: "घंटे",
+    hours: "घं",
     days: "दिन",
     weeks: plural(size, "हफ़्ता", "हफ़्ते"),
     months: plural(size, "महीना", "महीने"),
@@ -81,10 +81,10 @@ export const hi: Translations = {
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} मिनट`;
-      const hoursLabel = `${hours} घंटे`;
+      const hoursLabel = `${hours} घं`;
       if (hours === 0) return minsLabel;
-      if (mins === 0) return hours === 1 ? "1 घंटा" : hoursLabel;
-      return `${hours === 1 ? "1 घंटा" : hoursLabel} ${minsLabel}`;
+      if (mins === 0) return hoursLabel;
+      return `${hoursLabel} ${minsLabel}`;
     },
     budget: (hours: number, mins: number) => {
       if (hours === 0) return `${mins} मि`;
@@ -247,7 +247,7 @@ export const hi: Translations = {
   /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
   focusSound: {
     label: "फ़ोकस साउंड",
-    names: { off: "बंद", rain: "बारिश", waves: "लहरें", thunder: "आँधी-तूफ़ान", stream: "बहती धारा", forest: "जंगल", fireplace: "अलाव", cafe: "कैफ़े" },
+    names: { off: "बंद", rain: "बारिश", waves: "लहरें", thunder: "आँधी-तूफ़ान", stream: "बहती धारा", forest: "जंगल", fireplace: "अलाव" },
   },
 
   insights: {
@@ -334,6 +334,15 @@ export const hi: Translations = {
     stepPlaceholder: "कदम बताएँ…",
     addStep: "कदम जोड़ें",
     confirm: "ये कदम पक्के करें",
+    contextPlaceholder: "क्या Nexdo को कुछ जानना चाहिए? निर्देश पेस्ट करें या एक फ़ोटो जोड़ें।",
+    send: "भेजें और काम को तोड़ें",
+    skipAndBreak: "छोड़ें और काम को तोड़ें",
+    planEyebrow: "आपकी योजना",
+    smallSteps: (count: number) => (count === 1 ? "1 छोटा कदम" : `${count} छोटे कदम`),
+    startStep: (index: number) => `कदम ${index} शुरू करें`,
+    editStep: (label: string) => `"${label}" बदलें`,
+    saveStep: "कदम सेव करें",
+    addAStep: "एक कदम जोड़ें",
   },
 
   tasks: {
@@ -780,7 +789,7 @@ export const hi: Translations = {
     reminderTime: "रिमाइंडर का समय",
     beforeDeadline: "तय समय से पहले भी",
     offsetChip: (minutes: number) =>
-      minutes < 60 ? `${minutes} मिनट` : minutes < 1440 ? plural(minutes / 60, "1 घंटा", `${minutes / 60} घंटे`) : `${minutes / 1440} दिन`,
+      minutes < 60 ? `${minutes} मिनट` : minutes < 1440 ? `${minutes / 60} घं` : `${minutes / 1440} दिन`,
     importantReminder: "ऊँची प्राथमिकता के लिए एक और रिमाइंडर",
     importantReminderBody: "एक दिन पहले, रिमाइंडर के समय पर।",
     notificationsDenied: "फ़ोन की सेटिंग्स में Nexdo के नोटिफ़िकेशन बंद हैं, इसलिए कोई रिमाइंडर नहीं आ सकता।",
@@ -858,10 +867,10 @@ export const hi: Translations = {
     pro: "Pro",
     unlimitedNote: "हाथ से काम जोड़ना, आज वाला पेज और रिमाइंडर दोनों प्लान में असीमित हैं।",
     extraTitle: {
-      sounds: "फ़ोकस साउंड Nexdo Pro के साथ आते हैं।",
+      sounds: "सभी फ़ोकस साउंड Nexdo Pro के साथ आते हैं।",
       insights: "आपका पूरा इतिहास और रफ़्तार Nexdo Pro के साथ आते हैं।",
     },
-    extraHint: "Pro में फ़ोकस साउंड, पूरी इनसाइट्स और रफ़्तार, और Nexdo का AI जुड़ता है। काम, आज, सेशन और रिमाइंडर फ़्री रहते हैं।",
+    extraHint: "Pro में सभी फ़ोकस साउंड, पूरी इनसाइट्स और रफ़्तार, और Nexdo का AI जुड़ता है। काम, आज, सेशन, रिमाइंडर और बारिश की आवाज़ फ़्री रहते हैं।",
     extras: {
       sounds: "फ़ोकस साउंड",
       insights: "इनसाइट्स और आपकी रफ़्तार",
@@ -875,6 +884,24 @@ export const hi: Translations = {
       `${trialLength(count, unit)} फ़्री, फिर ${price} प्रति ${yearly ? "साल" : "महीना"}। कभी भी रद्द करें।`,
     terms: (price: string, yearly: boolean) => `${price} प्रति ${yearly ? "साल" : "महीना"}, रद्द करने तक रिन्यू होता रहेगा।`,
     continueFree: "फ़्री के साथ जारी रखें",
+    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
+    kicker: "NEXDO PRO",
+    headlineTop: "कम सोचें।",
+    headlineBottom: "ज़्यादा करें।",
+    whatYouGet: "आपको क्या मिलता है",
+    rows: {
+      basics: "टास्क, कैलेंडर, रिमाइंडर",
+      focusTimer: "फ़ोकस टाइमर",
+      media: "फ़ोटो और फ़ाइलें",
+      chat: "संदर्भ नोट्स",
+      allSounds: (count: number) => `सभी ${count}`,
+      allTime: "पूरा इतिहास",
+    },
+    seconds: (amount: string) => `${amount} सेकंड`,
+    perMo: "/ महीना",
+    billedYearly: (price: string) => `${price} सालाना`,
+    billedMonthly: "हर महीने बिल",
+    restoreShort: "रीस्टोर",
     restore: "खरीदारी वापस लाएँ",
     termsLink: "शर्तें",
     privacyLink: "प्राइवेसी",
@@ -923,7 +950,7 @@ export const hi: Translations = {
     overdueBody: "इसकी डेडलाइन अभी निकल गई। पूरा करने या नया समय चुनने के लिए टैप करें।",
     overdueChannel: "देर वाले काम",
     remindersChannel: "काम के रिमाइंडर",
-    planningChannel: "रोज़ की प्लानिंग",
+    planningChannel: "सुबह की याद",
     completeAction: "पूरा मार्क करें",
     dueTodayTitle: (title: string) => `आज तक: ${title}`,
     dueTodayBody: "कोई तय समय नहीं — आज कभी भी चलेगा।",
@@ -934,14 +961,15 @@ export const hi: Translations = {
       minutes < 60
         ? `${minutes} मिनट`
         : minutes < 1440
-          ? `${Math.round(minutes / 60)} ${plural(Math.round(minutes / 60), "घंटा", "घंटे")}`
+          ? `${Math.round(minutes / 60)} घं`
           : `${Math.round(minutes / 1440)} दिन`,
     dueTomorrowTitle: (title: string) => `कल तक: ${title}`,
     dueTomorrowBody: "कल, कोई तय समय नहीं।",
     dueTomorrowAtBody: (time: string) => `कल ${time} बजे तक।`,
-    dailyTitle: "अपना दिन प्लान करें",
-    dailyDueBody: (count: number, top: string) => `आज ${tasks(count)} की डेडलाइन है।${top ? ` "${top}" से शुरू करें।` : ""}`,
-    dailyOpenBody: (count: number, top: string) => `${tasks(count)} बाकी।${top ? ` "${top}" से शुरू करें।` : ""}`,
+    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
+    dailyTitle: (top: string) => `इससे शुरू करें: ${top}`,
+    dailyDueBody: (count: number) => `+ आज ${count} और की डेडलाइन`,
+    dailyOpenBody: "एक बार में एक काम। शुरू करने के लिए टैप करें।",
     trialEndingTitle: "आपका फ़्री ट्रायल 2 दिन में खत्म होगा",
     trialEndingBody: (date: string) =>
       `Nexdo Pro ${date} को शुरू होगा। नहीं चाहिए? यहाँ टैप करें, फिर सब्सक्रिप्शन मैनेज करें में जाकर उससे पहले रद्द करें।`,
@@ -1000,7 +1028,7 @@ export const hi: Translations = {
     pickDay: "दिन चुनें",
     restore: "ख़रीदारी बहाल करें",
     remindersHint: "काम की नियत तारीख़ पर एक सूचना",
-    dailyPlanHint: "हर सुबह, आपके दिन की योजना",
+    dailyPlanHint: "हर सुबह, वह काम जिससे शुरू करना है",
     overdueHint: "काम में देर होने पर एक सूचना",
     leadTitle: "समय वाले काम — याद दिलाएँ",
     leadAtStart: "शुरू होने पर",
@@ -1026,11 +1054,16 @@ export const hi: Translations = {
     leadShort: (minutes: number) => {
       if (minutes < 60) return `${minutes} मिनट`;
       const hours = Math.round(minutes / 60);
-      return minutes < 1440 ? `${hours} ${plural(hours, "घंटा", "घंटे")}` : "1 दिन";
+      return minutes < 1440 ? `${hours} घं` : "1 दिन";
     },
     timedTitle: "समय वाले काम",
     dateOnlyLabel: "सिर्फ़ तारीख वाले काम",
     dateOnlyHint: "उसी सुबह याद दिलाएँगे",
+    /** Settings → Notifications: the morning nudge row (2026-11-12). */
+    morningNudge: "सुबह की याद",
+    morningAt: (time: string) => `हर दिन ${time} बजे`,
+    inMorningNudge: "सुबह की याद में शामिल",
+    previewMorningTask: "रिपोर्ट पूरी करें",
     taskNeedsDate: "रिमाइंडर के लिए तारीख़ जोड़ें",
     remindThisTask: "इस काम की याद दिलाएँ",
     remindersWhen: "नियत दिन पर, सेटिंग्स में चुने समय पर, और तय समय से पहले।",
@@ -1075,26 +1108,7 @@ export const hi: Translations = {
     deletePartialError: "आपका अकाउंट पूरी तरह नहीं हट पाया — आपका कुछ डेटा हट चुका है, पर अकाउंट अभी बाकी है। पूरा करने के लिए फिर कोशिश करें।",
   },
 
-  onboarding: {
-    next: "अगला कदम",
-    getStarted: "शुरू करें",
-    haveAccount: "मेरा पहले से अकाउंट है",
-    stickyNotes: ["डेंटिस्ट?", "अगले हफ़्ते परीक्षा", "राशन", "ईमेल का जवाब"],
-    headline: "अब क्या करें, यह सोचना बंद करें।",
-    body: "दिमाग में जो कुछ है, सब लिख डालें। Nexdo उसे व्यवस्थित करता है, डेडलाइन पहचानता है, और बताता है कि किस पर ध्यान देना है।",
-    nextUp: "अगला",
-    sampleTask: "केमिस्ट्री लैब रिपोर्ट पूरी करें",
-    dueTomorrow: "कल तक",
-  },
 
-  onboardingSort: {
-    headline: "आपके दिमाग में सब कुछ।\nखींचकर क्रम में लगाएँ।",
-    body: "लाइन नीचे खींचें — देखें कैसे बिखरी बातें एक प्लान बन जाती हैं।",
-    head: "आपके दिमाग में",
-    plan: "आपके प्लान में",
-    priority: { high: "ऊँची", medium: "मध्यम", low: "कम" },
-    dragHandle: "अपने कामों को क्रम में लगाने के लिए खींचें",
-  },
 
   onboardingGoals: {
     headline: "सच बताइए — इनमें से कौन-सी बातें आप पर लागू होती हैं?",
@@ -1110,39 +1124,9 @@ export const hi: Translations = {
     continue: "आगे बढ़ें",
   },
 
-  onboardingDump: {
-    eyebrow: "मैजिक माइक आज़माएँ",
-    headline: "बस बताइए कि आपको क्या-क्या करना है।",
-    body: "**माइक पर टैप करें और अपने हफ़्ते के बारे में बोलें** — उलझा हुआ भी चलेगा। Nexdo उसे कामों में बदल देता है। लिखना पसंद है? बॉक्स इस्तेमाल करें।",
-    placeholder: "शुक्रवार तक गणित का होमवर्क\nप्रोफ़ेसर को ईमेल\nआज रात राशन लाना…",
-    startRecording: "मैजिक माइक शुरू करें",
-    stopRecording: "रोकें और व्यवस्थित करें",
-    transcribing: "लिख रहा है…",
-    organize: "Nexdo से व्यवस्थित करें",
-    trialUsedHeadline: "आप Nexdo का AI पहले ही आज़मा चुके हैं",
-    trialUsedBody: "फ़्री प्रीव्यू **हर डिवाइस पर एक बार** है। अपने काम सेव करने और AI से व्यवस्थित करते रहने के लिए अकाउंट बनाएँ।",
-    trialUsedCta: "आगे बढ़ें",
-  },
 
-  onboardingAnalyzing: {
-    headline: "इसे प्लान में बदल रहे हैं…",
-    body: "Nexdo तारीखें, अवधि, आपसी निर्भरता और दिमागी बोझ का विश्लेषण कर रहा है।",
-    steps: [
-      "लिखे हुए में अलग-अलग काम ढूँढ रहा है",
-      "डेडलाइन और समय पहचान रहा है",
-      "असली मेहनत का अनुमान लगा रहा है",
-      "प्राथमिकता और अगला कदम तय कर रहा है",
-    ],
-  },
 
-  onboardingPlan: {
-    extracted: (count: number) => `${count} काम निकाले गए`,
-    headline: "आपका दिमाग थोड़ा हल्का लग रहा है।",
-    body: "Nexdo ने खास काम निकाले, डेडलाइन पहचानीं, और अवधि का हिसाब लगाया।",
-    nothingFound: "Nexdo को इसमें करने लायक कुछ नहीं मिला। सेटअप के बाद आप खुद काम जोड़ सकते हैं।",
-    score: (value: number) => `स्कोर ${value}`,
-    next: "मुझे पहले क्या करना चाहिए?",
-  },
+
 
   onboardingFocus: {
     eyebrow: "फ़ैसला करने वाला इंजन",
@@ -1156,73 +1140,17 @@ export const hi: Translations = {
     next: "समझ आया",
   },
 
-  onboardingNotify: {
-    headline: "एक याद, बिल्कुल सही समय पर।",
-    body: "हर सुबह, शुरू करने के लिए एक काम। और जब कुछ बाकी हो तो एक सूचना।",
-    morningPlan: "सुबह का प्लान",
-    sampleTime: "अभी",
-    sampleBody: "आपका केमिस्ट्री असाइनमेंट कल तक है। अभी शुरू करें?",
-    allow: "नोटिफ़िकेशन की अनुमति दें",
-    notNow: "अभी नहीं",
-  },
 
-  onboardingTrial: {
-    headline: "क्या होगा, बिल्कुल साफ़-साफ़।",
-    body: "कोई सरप्राइज़ नहीं। यह अंदाज़ा नहीं लगाना कि पैसे कब कटेंगे।",
-    today: "आज",
-    day: (day: number) => `दिन ${day}`,
-    anytime: "कभी भी",
-    startTitle: "अपना फ़्री ट्रायल शुरू करें",
-    startBody: "Nexdo Pro का पूरा एक्सेस। कोई पैसा नहीं कटेगा।",
-    remindTitle: "हम याद दिलाएँगे",
-    remindBody: "ट्रायल खत्म होने से 2 दिन पहले सूचना — फ़ैसला करने के लिए काफ़ी समय।",
-    endTitle: "ट्रायल खत्म",
-    endBody: (price: string, yearly: boolean) =>
-      `${price}/${yearly ? "साल" : "महीना"} लगेगा — या उससे पहले कभी भी रद्द करें और कुछ न दें।`,
-    cancelTitle: "कभी भी रद्द करें",
-    cancelBody: "सेटिंग्स → सब्सक्रिप्शन मैनेज करें में, या अपने App Store या Google Play सब्सक्रिप्शन में। न कॉल, न फ़ॉर्म।",
-    next: "आगे बढ़ें",
-  },
 
-  onboardingPaywall: {
-    headline: "इसमें यह सब शामिल है।",
-    body: "फ़्री यानी हाथ से Nexdo — अपने काम जोड़ना, प्लान करना और उन पर फ़ोकस करना। Pro में हर महीने Nexdo का AI जुड़ता है:",
-    bestValue: (percent: number) => `सबसे फ़ायदेमंद · ${percent}% बचाएँ`,
-    features: {
-      chat: (count: number) => `AI के लिए ${count} जानकारी वाले नोट`,
-      media: (count: number) => `${count} फ़ोटो और डॉक्यूमेंट`,
-      voice: (minutes: number) => `${minutes} मिनट वॉइस नोट`,
-      live: (minutes: number) => `${minutes} मिनट मैजिक माइक`,
-      assist: (count: number) => `${count} AI बँटवारे`,
-    },
-    extras: ["काम करते समय फ़ोकस साउंड", "इनसाइट्स: आपका पूरा इतिहास और रफ़्तार"],
-  },
 
   auth: {
-    welcomeBack: "फिर से स्वागत है।",
-    signInSubtitle: "जहाँ छोड़ा था, वहीं से जारी रखने के लिए लॉग इन करें।",
     email: "ईमेल",
     password: "पासवर्ड",
     logIn: "लॉग इन करें",
     continue: "आगे बढ़ें",
     useCode: "ईमेल कोड इस्तेमाल करें",
-    continueWithEmail: "या ईमेल से जारी रखें",
-    noAccount: "अकाउंट नहीं है?",
-    signUp: "साइन अप करें",
-    signUpButton: "साइन अप",
-    haveAccount: "पहले से अकाउंट है?",
-    terms: "जारी रखकर आप Nexdo की शर्तों और प्राइवेसी पॉलिसी से सहमत होते हैं।",
     invalidCode: "गलत कोड। फिर कोशिश करें।",
     sendCodeError: "वेरिफ़िकेशन कोड नहीं भेजा जा सका। फिर कोशिश करें।",
-    signUpTitle: "अपना प्लान मत खोइए।",
-    signUpSubtitle: (count: number) =>
-      count === 1
-        ? "आपका काम व्यवस्थित और तैयार है। इसे सेव करने और आगे बढ़ने के लिए अकाउंट बनाएँ।"
-        : `${count} काम व्यवस्थित और तैयार हैं। इन्हें सेव करने और आगे बढ़ने के लिए अकाउंट बनाएँ।`,
-    signUpTitleNoPlan: "अपना अकाउंट बनाएँ।",
-    signUpSubtitleNoPlan: "अपने सारे काम एक जगह रखें, और Nexdo को बताने दें कि पहले क्या करना है।",
-    continueWithGoogle: "Google के साथ जारी रखें",
-    continueWithApple: "Apple के साथ जारी रखें",
     checkEmail: "अपना ईमेल देखें",
     codeSentTo: "हमने 6 अंकों का कोड भेजा है",
     somethingWrong: "कुछ गड़बड़ हो गई। फिर कोशिश करें।",
@@ -1246,6 +1174,8 @@ export const hi: Translations = {
     step: (index: number, label: string) => `चरण ${index}: ${label}`,
     breakIntoSteps: "चरणों में बाँटें",
     sound: "फ़ोकस ध्वनि",
+    stepDone: "कदम पूरा",
+    stepOf: (index: number, total: number, label: string) => `कदम ${index} / ${total}: ${label}`,
   },
 
   /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
@@ -1296,5 +1226,197 @@ export const hi: Translations = {
     found: (n: number) => (n === 1 ? `Nexdo को 1 काम मिला · रखने के लिए टैप करें` : `Nexdo को ${n} काम मिले · रखने के लिए टैप करें`),
     addTasks: (n: number) => (n === 1 ? `1 काम जोड़ें` : `${n} काम जोड़ें`),
     busy: (n: number) => (n === 1 ? `1 काम बाकी` : `${n} काम बाकी`),
+  },
+
+  /** The onboarding (app/onboarding/, 2026-11-12). */
+  onboardingFlow: {
+    back: "वापस",
+    progress: "प्रगति",
+    continue: "जारी रखें",
+    today: "आज",
+    tomorrow: "कल",
+    noDate: "कोई तारीख़ नहीं",
+    hook: {
+      eyebrow: "आपका दिमाग़, अभी",
+      thoughts: ["माँ का बर्थडे गिफ़्ट", "लैब रिपोर्ट!!", "सैम को जवाब", "प्रोफ़ को ईमेल…", "डेंटिस्ट???", "जिम?", "फ़ोन बिल"],
+      tasks: ["लैब रिपोर्ट पूरी करें", "सैम को जवाब दें", "डेंटिस्ट का अपॉइंटमेंट लें", "6 बजे जिम", "फ़ोन बिल भरें"],
+      doThisFirst: "पहले यह करें",
+      headlineTop: "टास्क मैनेज करना छोड़ें।",
+      headlineBottom: "बस अगला वाला करें।",
+      getStarted: "शुरू करें",
+      haveAccount: "मेरा अकाउंट पहले से है",
+    },
+    problem: {
+      headline: "आपकी लिस्ट समस्या नहीं है। ",
+      highlight: "समस्या है यह चुनना कि पहले क्या करें।",
+      tasks: [
+        ["लैब रिपोर्ट पूरी करें", "कल"],
+        ["सैम को जवाब दें", "आज"],
+        ["डेंटिस्ट का अपॉइंटमेंट", "इस हफ़्ते"],
+        ["परीक्षा की पढ़ाई", "शुक्रवार"],
+        ["राशन ख़रीदें", "आज रात"],
+        ["माँ को फ़ोन करें", "रविवार"],
+        ["जिम", "शाम 6 बजे"],
+        ["फ़ोन बिल भरें", "15 तारीख़"],
+        ["अध्याय 4 पढ़ें", "गुरुवार"],
+        ["कमरा साफ़ करें", "वीकेंड"],
+        ["प्रोफ़ को ईमेल", "आज"],
+        ["साइकिल ठीक करें", "कोई तारीख़ नहीं"],
+      ] as [string, string][],
+    },
+    picks: {
+      headline: "Nexdo चुनता है ",
+      highlight: "कि पहले क्या करना है।",
+      body: "यह हर टास्क को तौलता है: कब तक करना है, कितना समय लगेगा, कितना ज़रूरी है।",
+      gym: ["जिम", "आज, शाम 6 बजे"] as [string, string],
+      reply: ["सैम को जवाब दें", "आज"] as [string, string],
+      lab: ["लैब रिपोर्ट पूरी करें", "कल"] as [string, string],
+      dentist: ["डेंटिस्ट का अपॉइंटमेंट लें", "इस हफ़्ते"] as [string, string],
+      minutes: (count: number) => `${count} मिनट`,
+    },
+    pains: {
+      headline: "आप यहाँ क्यों आए?",
+      options: {
+        overwhelmed: "मेरी लिस्ट मुझ पर भारी पड़ती है",
+        procrastinate: "मुझसे काम टलते रहते हैं",
+        forget: "मुझसे चीज़ें छूट जाती हैं",
+        juggling: "पढ़ाई, काम और ज़िंदगी सब साथ संभालना पड़ता है",
+        focus: "मुझे बेहतर ध्यान लगाना है",
+        finish: "शुरू बहुत होता है, ख़त्म कम",
+      },
+    },
+    load: {
+      headline: "अभी आपके दिमाग़ में कितना कुछ है?",
+      body: "मोटा अंदाज़ा लगाने के लिए खिसकाएँ।",
+      stops: {
+        few: "1–5",
+        some: "5–10",
+        many: "10–20",
+        lots: "20+",
+      },
+      slider: "दिमाग़ में कितना है",
+    },
+    mic: {
+      headline: "Nexdo को वह सब बताएँ जो आपके दिमाग़ में है।",
+      title: "Nexdo को सुनने दें",
+      body: "ताकि आप टाइप करने के बजाय अपने टास्क बोल सकें। ऑडियो का इस्तेमाल सिर्फ़ आपके टास्क बनाने के लिए होता है। हम रिकॉर्डिंग कभी नहीं रखते।",
+      allow: "माइक्रोफ़ोन की अनुमति दें",
+      type: "टाइप करना बेहतर है",
+      deniedTitle: "माइक्रोफ़ोन बंद है",
+      deniedBody: "आप इसे फ़ोन की सेटिंग में चालू कर सकते हैं, या अपने टास्क टाइप कर सकते हैं।",
+    },
+    dump: {
+      headline: "जो भी दिमाग़ में है, सब बोल दें।",
+      body: "आप बोलते रहें, Nexdo उसे टास्क में बदलता जाएगा।",
+      heard: "आपकी बातों से",
+      count: (count: number) => `${count} टास्क`,
+      listening: (time: string) => `सुन रहा है · ${time}`,
+      connecting: "कनेक्ट हो रहा है…",
+      done: "हो गया",
+      typeInstead: "टाइप करें",
+      talkInstead: "बोलकर बताएँ",
+      typeHeadline: "जो भी दिमाग़ में है, सब लिख दें।",
+      typeBody: "सब एक साथ लिखना भी ठीक है। Nexdo उसे टास्क में बदल देगा।",
+      placeholder: "कल रिपोर्ट पूरी करनी है, सैम को जवाब देना है, डेंटिस्ट का अपॉइंटमेंट…",
+      organize: "टास्क बनाएँ",
+      organizing: "छाँट रहा है…",
+      timeUp: "एक मिनट पूरा हुआ। Nexdo ने यह सुना।",
+      nothingYet: "अभी तक कुछ नहीं आया। फिर से कोशिश करें, या टाइप करें।",
+      couldntStart: "सुनना शुरू नहीं हो सका। फिर से कोशिश करें, या टाइप करें।",
+      trialUsed: "इस फ़ोन पर मुफ़्त ट्रायल पहले ही इस्तेमाल हो चुका है। अपने टास्क टाइप करें।",
+      skip: "अभी छोड़ें",
+    },
+    founder: {
+      title: "फ़ाउंडर की ओर से एक नोट",
+      place: "मॉन्ट्रियल",
+      initials: "MB",
+      quote: "मैंने Nexdo इसलिए बनाया क्योंकि मेरा दिमाग़ कभी साफ़ नहीं रहता था। मुझे पता था कि बहुत कुछ करना है, पर सब कुछ दिमाग़ में उलझा हुआ था। मैं एक बहुत आसान जगह चाहता था जहाँ सब कुछ डाल दूँ, और फिर बस देख लूँ कि मुझे क्या करना है। उम्मीद है यह आपको भी वही साफ़ नज़र दे।",
+      signature: "— Benmouna Mohammed",
+    },
+    expect: {
+      headline: "क्या उम्मीद करें।",
+      body: "Nexdo उलझन को रोशन करके उसे क्रम में लगाता है।",
+      tasks: ["लैब रिपोर्ट", "सैम को जवाब", "डेंटिस्ट", "जिम"],
+      outcomes: ["साफ़ दिमाग़", "व्यवस्थित", "ज़्यादा काम पूरे"],
+    },
+    nudge: {
+      before: "रोज़ ",
+      after: " पर एक याद।",
+      body: "एक समय चुनें। हर सुबह Nexdo आपको बताएगा कि किस टास्क से शुरू करें।",
+      changeTime: (time: string) => `समय बदलें, ${time}`,
+      app: "Nexdo",
+      now: "अभी",
+      sampleTask: "लैब रिपोर्ट पूरी करें",
+      turnOn: "रिमाइंडर चालू करें",
+      notNow: "अभी नहीं",
+    },
+    promise: {
+      headline: "इसे एक वादा बनाएँ।",
+      sentence: (first: string, second: string) => `इस हफ़्ते मेरा वादा: ${first} और ${second}।`,
+      phrases: {
+        overwhelmed: "दिमाग़ हल्का करना",
+        procrastinate: "काम टालना बंद करना",
+        forget: "कुछ भी न छूटने देना",
+        juggling: "पढ़ाई, काम और ज़िंदगी को व्यवस्थित रखना",
+        focus: "एक समय में एक काम करना",
+        finish: "जो शुरू करूँ, उसे पूरा करना",
+      },
+      moreDone: "ज़्यादा काम पूरे करना",
+      hold: "वादा करने के लिए दबाकर रखें",
+      committed: "वादा पक्का",
+      holdLabel: "वादा करने के लिए दबाकर रखें",
+    },
+    paywall: {
+      close: "बंद करें",
+      restore: "रीस्टोर",
+      free: "फ़्री",
+      pro: "Pro",
+      freeTitle: "Nexdo फ़्री",
+      freeBody: "अपने टास्क और दिन खुद व्यवस्थित करें।",
+      proTitle: "Nexdo Pro",
+      proBody: "फ़्री का सब कुछ, और भारी काम Nexdo करता है।",
+      rows: {
+        live: "Magic mic",
+        assist: "बाँटें",
+        media: "फ़ोटो और डॉक्यूमेंट",
+        voice: "वॉइस नोट्स",
+        chat: "संदर्भ नोट",
+        sounds: "फ़ोकस साउंड",
+        insights: "इनसाइट्स",
+      },
+      allSounds: (count: number) => `सभी ${count}`,
+      insightsFree: "7 दिन",
+      insightsPro: "पूरा समय",
+      locked: "Pro",
+      yearly: "सालाना",
+      monthly: "मासिक",
+      perMonth: "/ महीना",
+      aYear: (price: string) => `${price} सालाना`,
+      billedMonthly: "हर महीने बिल",
+      discount: (percent: number) => `−${percent}%`,
+      cancelAnytime: "कभी भी रद्द करें",
+      continueFree: "फ़्री के साथ जारी रखें",
+      subscribe: "सब्सक्राइब करें",
+    },
+    save: {
+      headline: "अपने टास्क सेव करें।",
+      body: "एक फ़्री अकाउंट बनाएँ ताकि वे सुरक्षित रहें और आपके सभी डिवाइस पर मिलें।",
+      notSaved: "अभी सेव नहीं हुए",
+      google: "Google से जारी रखें",
+      apple: "Apple से जारी रखें",
+      email: "ईमेल से जारी रखें",
+      haveAccount: "पहले से अकाउंट है?",
+      logIn: "लॉग इन करें",
+      createAccount: "अकाउंट बनाएँ",
+    },
+    logIn: {
+      headline: "फिर से स्वागत है।",
+      body: "लॉग इन करें और वहीं से शुरू करें जहाँ छोड़ा था।",
+      google: "Google से लॉग इन करें",
+      apple: "Apple से लॉग इन करें",
+      email: "ईमेल से लॉग इन करें",
+      newHere: "Nexdo पर नए हैं?",
+      createAccount: "अकाउंट बनाएँ",
+    },
   },
 };

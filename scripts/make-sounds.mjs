@@ -6,6 +6,7 @@
 // bell- or marimba-like, never a beep — and everything is kept quiet (peaks at
 // about a quarter of full scale), so a sound sits under the moment instead of
 // on top of it.
+import { Buffer } from "node:buffer";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

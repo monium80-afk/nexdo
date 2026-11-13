@@ -29,7 +29,7 @@ const shiftLength = (amount: number, unit: ShiftUnit) => {
   const size = Math.abs(amount);
   const label = {
     minutes: counted(size, "دقيقة", "دقائق", "دقيقتين"),
-    hours: counted(size, "ساعة", "ساعات", "ساعتين"),
+    hours: `${size} س`,
     days: counted(size, "يوم", "أيام", "يومين"),
     weeks: counted(size, "أسبوع", "أسابيع", "أسبوعين"),
     months: counted(size, "شهر", "أشهر", "شهرين"),
@@ -109,7 +109,7 @@ export const ar: Translations = {
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} دقيقة`;
-      const hoursLabel = counted(hours, "ساعة", "ساعات", "ساعتان");
+      const hoursLabel = `${hours} س`;
       if (hours === 0) return minsLabel;
       if (mins === 0) return hoursLabel;
       return `${hoursLabel} و${minsLabel}`;
@@ -279,7 +279,7 @@ export const ar: Translations = {
   /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
   focusSound: {
     label: "صوت التركيز",
-    names: { off: "بلا صوت", rain: "مطر", waves: "أمواج", thunder: "عاصفة رعدية", stream: "جدول ماء", forest: "غابة", fireplace: "مدفأة", cafe: "مقهى" },
+    names: { off: "بلا صوت", rain: "مطر", waves: "أمواج", thunder: "عاصفة رعدية", stream: "جدول ماء", forest: "غابة", fireplace: "مدفأة" },
   },
 
   insights: {
@@ -366,6 +366,15 @@ export const ar: Translations = {
     stepPlaceholder: "اكتب وصف الخطوة…",
     addStep: "أضف خطوة",
     confirm: "تأكيد هذه الخطوات",
+    contextPlaceholder: "هل هناك ما يجب أن يعرفه نكسدو؟ الصق التعليمات أو أضف صورة.",
+    send: "أرسل وقسّم المهمة",
+    skipAndBreak: "تخطَّ وقسّم المهمة",
+    planEyebrow: "خطتك",
+    smallSteps: (count: number) => (count === 1 ? "خطوة صغيرة واحدة" : `${count} خطوات صغيرة`),
+    startStep: (index: number) => `ابدأ الخطوة ${index}`,
+    editStep: (label: string) => `عدّل «${label}»`,
+    saveStep: "احفظ الخطوة",
+    addAStep: "أضف خطوة",
   },
 
   tasks: {
@@ -532,10 +541,10 @@ export const ar: Translations = {
       15: "15 د",
       30: "30 د",
       45: "45 د",
-      60: "ساعة",
-      90: "ساعة ونصف",
-      120: "ساعتان",
-      180: "3 ساعات+",
+      60: "1 س",
+      90: "1.5 س",
+      120: "2 س",
+      180: "3 س+",
       0: "بلا مدة",
     },
     editEyebrow: "تعديل المهمة",
@@ -823,7 +832,7 @@ export const ar: Translations = {
     reminderTime: "وقت التذكير",
     beforeDeadline: "وأيضًا قبل وقت محدد",
     offsetChip: (minutes: number) =>
-      minutes < 60 ? `${minutes} د` : minutes < 1440 ? counted(minutes / 60, "ساعة", "ساعات", "ساعتان") : counted(minutes / 1440, "يوم", "أيام", "يومان"),
+      minutes < 60 ? `${minutes} د` : minutes < 1440 ? `${minutes / 60} س` : counted(minutes / 1440, "يوم", "أيام", "يومان"),
     importantReminder: "تذكير إضافي للأولوية العالية",
     importantReminderBody: "في اليوم السابق، في وقت التذكير.",
     notificationsDenied: "إشعارات Nexdo متوقفة في إعدادات الهاتف، لذلك لا يمكن أن يصل أي تذكير.",
@@ -901,10 +910,10 @@ export const ar: Translations = {
     pro: "برو",
     unlimitedNote: "إضافة المهام يدويًا وصفحة «اليوم» والتذكيرات غير محدودة في الخطتين.",
     extraTitle: {
-      sounds: "أصوات التركيز متاحة مع نكسدو برو.",
+      sounds: "جميع أصوات التركيز متاحة مع نكسدو برو.",
       insights: "سجلّك الكامل وإيقاعك متاحان مع نكسدو برو.",
     },
-    extraHint: "يضيف برو أصوات التركيز، وإحصاءاتك كاملة مع إيقاعك، وذكاء نكسدو الاصطناعي. المهام وصفحة «اليوم» والجلسات والتذكيرات تبقى مجانية.",
+    extraHint: "يضيف برو كل أصوات التركيز، وإحصاءاتك كاملة مع إيقاعك، وذكاء نكسدو الاصطناعي. المهام وصفحة «اليوم» والجلسات والتذكيرات وصوت المطر تبقى مجانية.",
     extras: {
       sounds: "أصوات التركيز",
       insights: "الإحصاءات والإيقاع",
@@ -918,6 +927,24 @@ export const ar: Translations = {
       `مجانًا لمدة ${trialLength(count, unit)}، ثم ${price} ${yearly ? "سنويًا" : "شهريًا"}. يمكنك الإلغاء في أي وقت.`,
     terms: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}، ويتجدّد حتى تلغيه.`,
     continueFree: "المتابعة بالخطة المجانية",
+    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
+    kicker: "NEXDO PRO",
+    headlineTop: "تفكير أقل.",
+    headlineBottom: "إنجاز أكثر.",
+    whatYouGet: "ما ستحصل عليه",
+    rows: {
+      basics: "المهام والتقويم والتذكيرات",
+      focusTimer: "مؤقت التركيز",
+      media: "الصور والملفات",
+      chat: "ملاحظات السياق",
+      allSounds: (count: number) => `كل الـ ${count}`,
+      allTime: "كل السجل",
+    },
+    seconds: (amount: string) => `${amount} ث`,
+    perMo: "/ شهر",
+    billedYearly: (price: string) => `${price} تُدفع سنويًا`,
+    billedMonthly: "تُدفع شهريًا",
+    restoreShort: "استعادة",
     restore: "استعادة المشتريات",
     termsLink: "الشروط",
     privacyLink: "الخصوصية",
@@ -966,7 +993,7 @@ export const ar: Translations = {
     overdueBody: "انتهى موعدها النهائي للتو. اضغط لإنجازها أو لاختيار موعد جديد.",
     overdueChannel: "المهام المتأخرة",
     remindersChannel: "تذكيرات المهام",
-    planningChannel: "تخطيط اليوم",
+    planningChannel: "تنبيه الصباح",
     completeAction: "تعليم كمنجزة",
     dueTodayTitle: (title: string) => `مستحقة اليوم: ${title}`,
     dueTodayBody: "بلا وقت محدد — أي وقت اليوم يناسب.",
@@ -977,16 +1004,15 @@ export const ar: Translations = {
       minutes < 60
         ? counted(minutes, "دقيقة", "دقائق", "دقيقتين")
         : minutes < 1440
-          ? counted(Math.round(minutes / 60), "ساعة", "ساعات", "ساعتين")
+          ? `${Math.round(minutes / 60)} س`
           : counted(Math.round(minutes / 1440), "يوم", "أيام", "يومين"),
     dueTomorrowTitle: (title: string) => `مستحقة غدًا: ${title}`,
     dueTomorrowBody: "غدًا، بلا وقت محدد.",
     dueTomorrowAtBody: (time: string) => `مستحقة غدًا عند ${time}.`,
-    dailyTitle: "خطّط ليومك",
-    dailyDueBody: (count: number, top: string) =>
-      `${tasksSubject(count)} مستحقة اليوم.${top ? ` ابدأ بـ«${top}».` : ""}`,
-    dailyOpenBody: (count: number, top: string) =>
-      `${tasksSubject(count)} مفتوحة.${top ? ` ابدأ بـ«${top}».` : ""}`,
+    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
+    dailyTitle: (top: string) => `ابدأ بـ: ${top}`,
+    dailyDueBody: (count: number) => `+ ${count} أخرى مستحقة اليوم`,
+    dailyOpenBody: "شيء واحد في كل مرة. اضغط للبدء.",
     trialEndingTitle: "تنتهي تجربتك المجانية بعد يومين",
     trialEndingBody: (date: string) =>
       `يبدأ نكسدو برو يوم ${date}. لا تريده؟ اضغط هنا ثم «إدارة الاشتراك» لإلغائه قبل ذلك.`,
@@ -1045,7 +1071,7 @@ export const ar: Translations = {
     pickDay: "اختر يومًا",
     restore: "استعادة المشتريات",
     remindersHint: "تنبيه في يوم استحقاق المهمة",
-    dailyPlanHint: "خطة يومك، كل صباح",
+    dailyPlanHint: "المهمة التي تبدأ بها، كل صباح",
     overdueHint: "تنبيه عندما تتأخر مهمة",
     leadTitle: "مهام لها وقت — ذكّرني",
     leadAtStart: "عند البدء",
@@ -1076,6 +1102,11 @@ export const ar: Translations = {
     timedTitle: "مهام لها وقت",
     dateOnlyLabel: "مهام لها تاريخ فقط",
     dateOnlyHint: "تذكير صباح ذلك اليوم",
+    /** Settings → Notifications: the morning nudge row (2026-11-12). */
+    morningNudge: "تنبيه الصباح",
+    morningAt: (time: string) => `كل يوم في ${time}`,
+    inMorningNudge: "ضمن تنبيه الصباح",
+    previewMorningTask: "إنهاء التقرير",
     taskNeedsDate: "أضف تاريخًا لتصلك التذكيرات",
     remindThisTask: "ذكّرني بهذه المهمة",
     remindersWhen: "في يوم الاستحقاق، في الوقت المحدد في الإعدادات، وقبل الوقت المحدد.",
@@ -1120,26 +1151,7 @@ export const ar: Translations = {
     deletePartialError: "تعذّر إكمال حذف حسابك — حُذف جزء من بياناتك بالفعل، لكن الحساب ما زال موجودًا. أعد المحاولة لإكمال الحذف.",
   },
 
-  onboarding: {
-    next: "الخطوة التالية",
-    getStarted: "لنبدأ",
-    haveAccount: "لدي حساب بالفعل",
-    stickyNotes: ["موعد طبيب الأسنان؟", "امتحان الأسبوع القادم", "التسوّق", "الرد على البريد"],
-    headline: "كفى حيرة بشأن ما تفعله تاليًا.",
-    body: "أفرغ كل ما يشغل بالك. ينظّمه نكسدو ويكتشف المواعيد النهائية ويخبرك بما يستحق انتباهك.",
-    nextUp: "التالي",
-    sampleTask: "إنهاء تقرير مختبر الكيمياء",
-    dueTomorrow: "مستحقة غدًا",
-  },
 
-  onboardingSort: {
-    headline: "كل ما يدور في رأسك.\nاسحبه ليصبح مرتّبًا.",
-    body: "اسحب الخط إلى الأسفل — وشاهد الفوضى ترتّب نفسها في خطة.",
-    head: "في رأسك",
-    plan: "في خطتك",
-    priority: { high: "عالية", medium: "متوسطة", low: "منخفضة" },
-    dragHandle: "اسحب لترتيب مهامك",
-  },
 
   onboardingGoals: {
     headline: "بصراحة، أيٌّ من هذه يشبهك؟",
@@ -1155,39 +1167,9 @@ export const ar: Translations = {
     continue: "متابعة",
   },
 
-  onboardingDump: {
-    eyebrow: "جرّب الميكروفون السحري",
-    headline: "فقط قل ما عليك إنجازه.",
-    body: "**اضغط على الميكروفون وتحدّث عن أسبوعك**، ولو بلا ترتيب. يحوّله نكسدو إلى مهام. تفضّل الكتابة؟ استخدم المربّع.",
-    placeholder: "إنهاء واجب الرياضيات قبل الجمعة\nمراسلة الأستاذ\nالتسوّق الليلة…",
-    startRecording: "شغّل الميكروفون السحري",
-    stopRecording: "أوقف ونظّم",
-    transcribing: "جارٍ التفريغ…",
-    organize: "نظّمها مع نكسدو",
-    trialUsedHeadline: "لقد جرّبت الذكاء الاصطناعي في نكسدو من قبل",
-    trialUsedBody: "التجربة المجانية **مرة واحدة لكل جهاز**. أنشئ حسابك لتحتفظ بمهامك وتواصل التنظيم بالذكاء الاصطناعي.",
-    trialUsedCta: "متابعة",
-  },
 
-  onboardingAnalyzing: {
-    headline: "نحوّل ذلك إلى خطة…",
-    body: "يحلّل نكسدو التواريخ والمدد والترابطات والجهد الذهني.",
-    steps: [
-      "تحديد المهام المنفصلة في النص",
-      "كشف المواعيد والنوافذ الزمنية",
-      "تقدير الجهد الواقعي",
-      "حساب درجات الأولوية والخطوة التالية",
-    ],
-  },
 
-  onboardingPlan: {
-    extracted: (count: number) => `${counted(count, "مهمة مستخرجة", "مهام مستخرجة", "مهمتان مستخرجتان")}`,
-    headline: "ذهنك أصبح أوضح قليلًا.",
-    body: "استخرج نكسدو مهامّ محدّدة، وحدّد المواعيد، وحسب المدد.",
-    nothingFound: "لم يجد نكسدو ما يمكن فعله في ذلك. يمكنك إضافة المهام بنفسك بعد الإعداد.",
-    score: (value: number) => `الدرجة ${value}`,
-    next: "بماذا أبدأ؟",
-  },
+
 
   onboardingFocus: {
     eyebrow: "محرّك القرار",
@@ -1201,75 +1183,17 @@ export const ar: Translations = {
     next: "منطقي",
   },
 
-  onboardingNotify: {
-    headline: "تذكير واحد، في الوقت المناسب تمامًا.",
-    body: "كل صباح، الشيء الوحيد الذي تبدأ به. وتنبيه حين يحين موعد مهمة.",
-    morningPlan: "خطة الصباح",
-    sampleTime: "الآن",
-    sampleBody: "واجب الكيمياء مطلوب غدًا. هل تريد أن تبدأ الآن؟",
-    allow: "السماح بالإشعارات",
-    notNow: "ليس الآن",
-  },
 
-  onboardingTrial: {
-    headline: "إليك ما سيحدث بالضبط.",
-    body: "بلا مفاجآت، وبلا تخمين لموعد الدفع.",
-    today: "اليوم",
-    day: (day: number) => `اليوم ${day}`,
-    anytime: "في أي وقت",
-    startTitle: "ابدأ تجربتك المجانية",
-    startBody: "وصول كامل إلى نكسدو برو، دون أي رسوم.",
-    remindTitle: "سنذكّرك",
-    remindBody: "تنبيه قبل انتهاء التجربة بيومين — وقت كافٍ لتقرّر.",
-    endTitle: "تنتهي التجربة",
-    endBody: (price: string, yearly: boolean) =>
-      `يُخصم ${price} ${yearly ? "سنويًا" : "شهريًا"} — أو ألغِ قبل ذلك ولن تدفع شيئًا.`,
-    cancelTitle: "ألغِ في أي وقت",
-    cancelBody: "من الإعدادات ← إدارة الاشتراك، أو من اشتراكاتك في App Store أو Google Play، بلا مكالمات ولا نماذج.",
-    next: "متابعة",
-  },
 
-  onboardingPaywall: {
-    headline: "إليك ما يتضمّنه الاشتراك.",
-    body: "الخطة المجانية هي نكسدو يدويًا — إضافة مهامك وتخطيطها وإنجازها. أما برو فيضيف ذكاء نكسدو، كل شهر:",
-    bestValue: (percent: number) => `القيمة الأفضل · وفّر ${percent}%`,
-    features: {
-      chat: (count: number) => `${count} من ملاحظات السياق للذكاء الاصطناعي`,
-      media: (count: number) => `${count} من الصور والمستندات`,
-      voice: (minutes: number) => `${minutes} دقيقة من الملاحظات الصوتية`,
-      live: (minutes: number) => `${minutes} دقيقة من الميكروفون السحري`,
-      assist: (count: number) => `${count} من تقسيمات المهام`,
-    },
-    extras: ["أصوات تركيز أثناء العمل", "الإحصاءات: سجلّك الكامل وإيقاعك"],
-  },
 
   auth: {
-    welcomeBack: "أهلاً بعودتك.",
-    signInSubtitle: "سجّل الدخول لتكمل من حيث توقفت.",
     email: "البريد الإلكتروني",
     password: "كلمة المرور",
     logIn: "تسجيل الدخول",
     continue: "متابعة",
     useCode: "استخدم رمز البريد الإلكتروني بدلاً من ذلك",
-    continueWithEmail: "أو تابع بالبريد الإلكتروني",
-    noAccount: "ليس لديك حساب؟",
-    signUp: "إنشاء حساب",
-    signUpButton: "إنشاء حساب",
-    haveAccount: "لديك حساب بالفعل؟",
-    terms: "بالمتابعة فإنك توافق على شروط نكسدو وسياسة الخصوصية.",
     invalidCode: "رمز غير صالح. أعد المحاولة.",
     sendCodeError: "تعذّر إرسال رمز التحقق. أعد المحاولة.",
-    signUpTitle: "لا تفقد خطتك.",
-    // Two takes the dual all the way through; every other count agrees in the
-    // feminine singular, as non-human plurals do.
-    signUpSubtitle: (count: number) =>
-      count === 2
-        ? "مهمتان مرتبتان وجاهزتان. أنشئ حسابًا لحفظهما والمتابعة."
-        : `${counted(count, "مهمة", "مهام", "مهمتان")} مرتبة وجاهزة. أنشئ حسابًا لحفظها والمتابعة.`,
-    signUpTitleNoPlan: "أنشئ حسابك.",
-    signUpSubtitleNoPlan: "اجمع كل ما عليك فعله في مكان واحد، ودع نكسدو يخبرك بماذا تبدأ.",
-    continueWithGoogle: "تابع باستخدام Google",
-    continueWithApple: "تابع باستخدام Apple",
     checkEmail: "تحقق من بريدك الإلكتروني",
     codeSentTo: "أرسلنا رمزًا من 6 أرقام إلى",
     somethingWrong: "حدث خطأ ما. أعد المحاولة.",
@@ -1293,6 +1217,8 @@ export const ar: Translations = {
     step: (index: number, label: string) => `الخطوة ${index}: ${label}`,
     breakIntoSteps: "قسّمها إلى خطوات",
     sound: "صوت التركيز",
+    stepDone: "تمّت الخطوة",
+    stepOf: (index: number, total: number, label: string) => `الخطوة ${index} من ${total}: ${label}`,
   },
 
   /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
@@ -1343,5 +1269,198 @@ export const ar: Translations = {
     found: (n: number) => `وجد Nexdo ${tasksObject(n)} · المس للاحتفاظ`,
     addTasks: (n: number) => `أضف ${tasksObject(n)}`,
     busy: (n: number) => counted(n, "مهمة مستحقة", "مهام مستحقة", "مهمتان مستحقتان"),
+  },
+
+  /** The onboarding (app/onboarding/, 2026-11-12). */
+  onboardingFlow: {
+    back: "رجوع",
+    progress: "التقدم",
+    continue: "متابعة",
+    today: "اليوم",
+    tomorrow: "غدًا",
+    noDate: "بلا تاريخ",
+    hook: {
+      eyebrow: "رأسك الآن",
+      thoughts: ["هدية عيد ميلاد أمي", "تقرير المختبر!!", "الرد على سام", "مراسلة الأستاذ…", "طبيب الأسنان؟؟؟", "النادي؟", "فاتورة الهاتف"],
+      tasks: ["إنهاء تقرير المختبر", "الرد على سام", "حجز موعد طبيب الأسنان", "النادي الساعة 6", "دفع فاتورة الهاتف"],
+      doThisFirst: "ابدأ بهذا",
+      headlineTop: "توقّف عن إدارة المهام.",
+      headlineBottom: "فقط أنجز التالية.",
+      getStarted: "لنبدأ",
+      haveAccount: "لديّ حساب بالفعل",
+    },
+    problem: {
+      headline: "قائمتك ليست المشكلة. ",
+      highlight: "المشكلة في اختيار ما يأتي أولًا.",
+      tasks: [
+        ["إنهاء تقرير المختبر", "غدًا"],
+        ["الرد على سام", "اليوم"],
+        ["حجز طبيب الأسنان", "هذا الأسبوع"],
+        ["المذاكرة للامتحان", "الجمعة"],
+        ["شراء البقالة", "الليلة"],
+        ["الاتصال بأمي", "الأحد"],
+        ["النادي", "6 مساءً"],
+        ["دفع فاتورة الهاتف", "يوم 15"],
+        ["قراءة الفصل 4", "الخميس"],
+        ["ترتيب الغرفة", "نهاية الأسبوع"],
+        ["مراسلة الأستاذ", "اليوم"],
+        ["إصلاح الدراجة", "بلا تاريخ"],
+      ] as [string, string][],
+    },
+    picks: {
+      headline: "نكسدو يختار ",
+      highlight: "ما يأتي أولًا.",
+      body: "يزن كل مهمة: متى تستحق، وكم تستغرق، وما مدى أهميتها.",
+      gym: ["النادي", "اليوم، 6 مساءً"] as [string, string],
+      reply: ["الرد على سام", "اليوم"] as [string, string],
+      lab: ["إنهاء تقرير المختبر", "غدًا"] as [string, string],
+      dentist: ["حجز طبيب الأسنان", "هذا الأسبوع"] as [string, string],
+      minutes: (count: number) => `${count} دقيقة`,
+    },
+    pains: {
+      headline: "ما الذي جاء بك؟",
+      options: {
+        overwhelmed: "قائمتي تُثقلني",
+        procrastinate: "أؤجّل الأمور",
+        forget: "أنسى الأشياء",
+        juggling: "أوفّق بين الدراسة والعمل والحياة",
+        focus: "أريد تركيزًا أفضل",
+        finish: "أبدأ كثيرًا وأُنهي قليلًا",
+      },
+    },
+    load: {
+      headline: "كم شيئًا في رأسك الآن؟",
+      body: "حرّك المؤشر لتقدير تقريبي.",
+      stops: {
+        few: "1–5",
+        some: "5–10",
+        many: "10–20",
+        lots: "20+",
+      },
+      slider: "كم في رأسك",
+    },
+    mic: {
+      headline: "أخبر نكسدو بكل ما في رأسك.",
+      title: "دع نكسدو يسمعك",
+      body: "لتقول مهامك بدل كتابتها. يُستخدم الصوت فقط لإنشاء مهامك. لا نحتفظ بالتسجيل أبدًا.",
+      allow: "السماح بالميكروفون",
+      type: "أفضّل الكتابة",
+      deniedTitle: "الميكروفون مغلق",
+      deniedBody: "يمكنك تشغيله من إعدادات الهاتف، أو كتابة مهامك.",
+    },
+    dump: {
+      headline: "قل كل ما في رأسك.",
+      body: "يحوّل نكسدو كلامك إلى مهام وأنت تتحدث.",
+      heard: "مما قلته",
+      count: (count: number) =>
+        count === 1 ? "مهمة واحدة" : count === 2 ? "مهمتان" : count >= 3 && count <= 10 ? `${count} مهام` : `${count} مهمة`,
+      listening: (time: string) => `يستمع · ${time}`,
+      connecting: "جارٍ الاتصال…",
+      done: "انتهيت",
+      typeInstead: "الكتابة بدلًا من ذلك",
+      talkInstead: "التحدث بدلًا من ذلك",
+      typeHeadline: "اكتب كل ما في رأسك.",
+      typeBody: "لا بأس أن تكتب كل شيء دفعة واحدة. سيحوّله نكسدو إلى مهام.",
+      placeholder: "إنهاء التقرير غدًا، الرد على سام، حجز طبيب الأسنان…",
+      organize: "حوّلها إلى مهام",
+      organizing: "جارٍ الترتيب…",
+      timeUp: "انتهت الدقيقة. هذا ما سمعه نكسدو.",
+      nothingYet: "لم يصل شيء بعد. حاول مرة أخرى، أو اكتب بدلًا من ذلك.",
+      couldntStart: "تعذّر بدء الاستماع. حاول مرة أخرى، أو اكتب بدلًا من ذلك.",
+      trialUsed: "استُخدمت التجربة المجانية على هذا الهاتف. اكتب مهامك بدلًا من ذلك.",
+      skip: "تخطَّ الآن",
+    },
+    founder: {
+      title: "كلمة من المؤسس",
+      place: "مونتريال",
+      initials: "MB",
+      quote: "صنعت نكسدو لأن ذهني لم يكن صافيًا أبدًا. كنت أعرف أن لديّ الكثير لأفعله، لكن كل شيء كان متشابكًا في رأسي. أردت مكانًا سهلًا جدًا أفرغ فيه كل شيء، ثم أرى ببساطة ما عليّ فعله. أتمنى أن يمنحك هذا الصفاء أنت أيضًا.",
+      signature: "— Benmouna Mohammed",
+    },
+    expect: {
+      headline: "ما الذي ينتظرك.",
+      body: "ينير نكسدو الفوضى ويرتّبها.",
+      tasks: ["تقرير المختبر", "الرد على سام", "طبيب الأسنان", "النادي"],
+      outcomes: ["ذهن صافٍ", "منظَّم", "إنجاز أكثر"],
+    },
+    nudge: {
+      before: "تذكير الساعة ",
+      after: "، كل يوم.",
+      body: "اختر وقتًا. كل صباح، يخبرك نكسدو بالمهمة التي تبدأ بها.",
+      changeTime: (time: string) => `تغيير الوقت، ${time}`,
+      app: "Nexdo",
+      now: "الآن",
+      sampleTask: "إنهاء تقرير المختبر",
+      turnOn: "تشغيل التذكيرات",
+      notNow: "ليس الآن",
+    },
+    promise: {
+      headline: "اجعلها وعدًا.",
+      sentence: (first: string, second: string) => `هذا الأسبوع، سوف ${first} و${second}.`,
+      phrases: {
+        overwhelmed: "أصفّي ذهني",
+        procrastinate: "أتوقف عن التأجيل",
+        forget: "أحرص ألّا يفوتني شيء",
+        juggling: "أرتّب دراستي وعملي وحياتي",
+        focus: "أركّز على شيء واحد في كل مرة",
+        finish: "أُنهي ما أبدأه",
+      },
+      moreDone: "أُنجز أكثر",
+      hold: "اضغط مطوّلًا للالتزام",
+      committed: "تم الالتزام",
+      holdLabel: "اضغط مطوّلًا للالتزام",
+    },
+    paywall: {
+      close: "إغلاق",
+      restore: "استعادة",
+      free: "مجاني",
+      pro: "Pro",
+      freeTitle: "نكسدو المجاني",
+      freeBody: "نظّم مهامك وأيامك بنفسك.",
+      proTitle: "نكسدو برو",
+      proBody: "كل ما في المجاني، ونكسدو يتولى العمل الشاق.",
+      rows: {
+        live: "Magic mic",
+        assist: "تقسيم",
+        media: "الصور والمستندات",
+        voice: "ملاحظات صوتية",
+        chat: "ملاحظات السياق",
+        sounds: "أصوات التركيز",
+        insights: "الإحصاءات",
+      },
+      allSounds: (count: number) => `الكل (${count})`,
+      insightsFree: "7 أيام",
+      insightsPro: "كل الوقت",
+      locked: "Pro",
+      yearly: "سنوي",
+      monthly: "شهري",
+      perMonth: "/ شهر",
+      aYear: (price: string) => `${price} سنويًا`,
+      billedMonthly: "يُدفع شهريًا",
+      discount: (percent: number) => `−${percent}%`,
+      cancelAnytime: "ألغِ في أي وقت",
+      continueFree: "المتابعة بالمجاني",
+      subscribe: "اشترك",
+    },
+    save: {
+      headline: "احفظ مهامك.",
+      body: "أنشئ حسابًا مجانيًا لتبقى آمنة وعلى كل أجهزتك.",
+      notSaved: "لم تُحفظ بعد",
+      google: "المتابعة باستخدام Google",
+      apple: "المتابعة باستخدام Apple",
+      email: "المتابعة بالبريد الإلكتروني",
+      haveAccount: "لديك حساب؟",
+      logIn: "سجّل الدخول",
+      createAccount: "إنشاء الحساب",
+    },
+    logIn: {
+      headline: "أهلًا بعودتك.",
+      body: "سجّل الدخول لتكمل من حيث توقفت.",
+      google: "تسجيل الدخول باستخدام Google",
+      apple: "تسجيل الدخول باستخدام Apple",
+      email: "تسجيل الدخول بالبريد الإلكتروني",
+      newHere: "جديد على نكسدو؟",
+      createAccount: "أنشئ حسابًا",
+    },
   },
 };

@@ -1,15 +1,15 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { BottomSheet } from "@/components/BottomSheet";
+import { BreakdownSheetHeader } from "@/components/BreakdownSheetHeader";
 import type { FeatherIconName } from "@/components/Button";
-import { IconTile } from "@/components/IconTile";
-import { MOTION } from "@/constants/theme";
+import { PaperSheet } from "@/components/PaperSheet";
+import { shadow } from "@/constants/shadow";
+import { MOTION, colors } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
-import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { extractAttachmentText } from "@/lib/ai/media";
 import { AiConsentError } from "@/lib/aiConsent";
@@ -29,53 +29,19 @@ type Phase =
   | { kind: "reading"; what: "photo" | "document" | "voice" }
   | { kind: "error"; message: string };
 
-/** One way to show Nexdo the task: a tile, what it is, and a line on what it's for. */
-function OptionRow({
-  icon,
-  label,
-  hint,
-  onPress,
-  disabled,
-}: {
-  icon: FeatherIconName;
-  label: string;
-  hint?: string;
-  onPress: () => void;
-  disabled: boolean;
-}) {
-  const colors = useColors();
-  const rtl = useRtlText();
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      disabled={disabled}
-      scaleTo={0.98}
-      accessibilityRole="button"
-      className={`card card--cream-inset min-h-[56px] flex-row items-center gap-3 px-3 py-2.5 ${disabled ? "opacity-40" : ""}`}
-    >
-      <IconTile icon={icon} />
-      <View className="flex-1 gap-0.5">
-        <Text className="font-grotesk-semibold text-[15px] text-ink-cream" style={rtl}>
-          {label}
-        </Text>
-        {hint ? (
-          <Text className="font-grotesk-medium text-[13px] leading-[18px] text-ink-cream-muted" style={rtl}>
-            {hint}
-          </Text>
-        ) : null}
-      </View>
-      <Feather name="chevron-right" size={16} color={colors.ink.creamSubtle} />
-    </AnimatedPressable>
-  );
-}
+const P = colors.palette;
+const CARD_SHADOW = shadow("0 6px 20px rgba(34, 28, 23, 0.07)", 3);
+const SEND_SHADOW = shadow("0 6px 14px rgba(242, 106, 46, 0.35)", 5, "#F26A2E");
 
 /**
  * Before a breakdown, the one thing that makes it worth having: what the task
  * really is (the user's point, 2026-10-28 — "finish the math homework" alone
- * gets generic steps). A photo of the sheet, a file, or a sentence said out
- * loud is read once and kept as one of the task's context notes, so this
- * breakdown — and every later one — works from it. Or skip, and the steps come
- * from what the task already says.
+ * gets generic steps). Typed or pasted, a photo of the sheet, a file, or a
+ * sentence said out loud — read once and kept as one of the task's context
+ * notes, so this breakdown and every later one works from it. Or skip, and
+ * the steps come from what the task already says. The look is the user's
+ * screenshot (2026-11-10): the page blurred behind, one note card with round
+ * buttons under it.
  *
  * `onContinue` is called once there's nothing more to add: the caller closes
  * this and opens AI Breakdown, which drafts the steps straight away.
@@ -91,11 +57,11 @@ export function BreakdownContextSheet({
   onClose: () => void;
   onContinue: () => void;
 }) {
-  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
   const [phase, setPhase] = useState<Phase>({ kind: "choose" });
+  const [note, setNote] = useState("");
   // Bumped when the sheet closes, so a reading still on its way is dropped.
   const run = useRef(0);
 
@@ -227,89 +193,149 @@ export function BreakdownContextSheet({
           : t.breakdown.writingItDown
       : "";
 
-  return (
-    <BottomSheet
-      visible={visible}
-      onClose={handleClose}
-      title={t.breakdown.contextTitle}
-      titleIcon={<Ionicons name="sparkles" size={14} color={colors.orange[500]} />}
-      closeLabel={t.breakdown.close}
-    >
-      <View className="gap-3">
-        <View className="gap-1">
-          <Text className="font-grotesk-bold text-[19px] leading-[24px] text-ink-cream" style={rtl}>
-            {t.breakdown.contextHeadline}
-          </Text>
-          <Text className="text-body text-ink-cream-muted" style={rtl}>
-            {t.breakdown.contextBody}
-          </Text>
-        </View>
+  const recording = phase.kind === "recording";
+  const reading = phase.kind === "reading";
 
-        {phase.kind === "reading" ? (
-          <View className="card card--cream-inset flex-row items-center gap-3 px-4 py-4" accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={colors.orange[500]} />
-            <Text className="flex-1 font-grotesk-semibold text-sm text-ink-cream" style={rtl}>
-              {readingLabel}
-            </Text>
+  // The orange arrow: what was typed is kept as the task's context, then on
+  // to the steps. With nothing typed it simply goes on.
+  const handleSend = () => {
+    if (recording) {
+      void stopAndRead();
+      return;
+    }
+    const typed = note.trim();
+    run.current += 1;
+    if (typed) keepAndContinue(typed);
+    else onContinue();
+  };
+
+  return (
+    <PaperSheet visible={visible} onClose={handleClose} blur>
+      <BreakdownSheetHeader eyebrow={t.breakdown.contextTitle} title={task.title} closeLabel={t.breakdown.close} onClose={handleClose} />
+
+      {/* The note: typed, pasted — or a photo, a file, a voice note. */}
+      <View
+        style={[
+          { marginTop: 18, borderRadius: 26, backgroundColor: P.paperCard, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 14 },
+          CARD_SHADOW,
+        ]}
+      >
+        {reading ? (
+          <View style={{ minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12 }} accessibilityLiveRegion="polite">
+            <ActivityIndicator size="small" color={P.accent} />
+            <Text style={[{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 16, color: P.ink }, rtl]}>{readingLabel}</Text>
           </View>
-        ) : phase.kind === "recording" ? (
-          // Listening: the one thing to do is stop, which reads what was said.
+        ) : recording ? (
+          // Listening: stopping reads what was said.
           <AnimatedPressable
             onPress={() => void stopAndRead()}
             scaleTo={0.98}
             accessibilityRole="button"
             accessibilityLabel={t.breakdown.stopListening}
-            className="min-h-[56px] flex-row items-center gap-3 rounded-[16px] border border-orange-500 bg-orange-100 px-4 py-3"
+            style={{ minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12 }}
           >
-            <View className="h-[12px] w-[12px] rounded-full bg-overdue-500" />
-            <Text className="flex-1 font-grotesk-semibold text-[15px] text-orange-600" style={rtl}>
-              {t.breakdown.listening}
-            </Text>
-            <Feather name="square" size={16} color={colors.orange[600]} />
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: P.alert }} />
+            <Text style={[{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 16, color: P.accentInk }, rtl]}>{t.breakdown.listening}</Text>
           </AnimatedPressable>
         ) : (
-          <View className="gap-2">
-            <OptionRow
-              icon="camera"
-              label={t.taskDetail.attach.takePhoto}
-              hint={t.breakdown.photoHint}
-              onPress={() => void handlePick(takeContextPhoto)}
-              disabled={busy}
-            />
-            <OptionRow icon="image" label={t.taskDetail.attach.addPhoto} onPress={() => void handlePick(pickContextPhoto)} disabled={busy} />
-            <OptionRow
-              icon="paperclip"
-              label={t.taskDetail.attach.addDocument}
-              hint={t.breakdown.fileHint}
-              onPress={() => void handlePick(pickContextDocument)}
-              disabled={busy}
-            />
-            <OptionRow icon="mic" label={t.breakdown.sayIt} hint={t.breakdown.sayItHint} onPress={() => void startRecording()} disabled={busy} />
-          </View>
+          <TextInput
+            value={note}
+            onChangeText={setNote}
+            multiline
+            placeholder={t.breakdown.contextPlaceholder}
+            placeholderTextColor={P.paperFaint}
+            accessibilityLabel={t.breakdown.contextPlaceholder}
+            style={[
+              { minHeight: 64, maxHeight: 160, padding: 0, fontFamily: "SpaceGrotesk-Regular", fontSize: 16, lineHeight: 24, color: P.ink, textAlignVertical: "top" },
+              rtl,
+            ]}
+          />
         )}
 
-        {phase.kind === "error" ? (
-          <Text className="font-grotesk-medium text-sm text-overdue-500" style={rtl}>
-            {phase.message}
-          </Text>
-        ) : null}
-
-        {/* Straight to the steps, from what the task already says. */}
-        <AnimatedPressable
-          onPress={() => {
-            run.current += 1;
-            stopRecorder();
-            onContinue();
-          }}
-          disabled={phase.kind === "reading"}
-          hitSlop={8}
-          accessibilityRole="button"
-          className={`flex-row items-center justify-center gap-1.5 self-center py-2 ${phase.kind === "reading" ? "opacity-40" : ""}`}
-        >
-          <Text className="font-grotesk-bold text-[15px] text-orange-600">{t.breakdown.skipContext}</Text>
-          <Feather name="arrow-right" size={15} color={colors.orange[600]} />
-        </AnimatedPressable>
+        <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <RoundTool icon="camera" label={t.taskDetail.attach.takePhoto} onPress={() => void handlePick(takeContextPhoto)} disabled={busy} />
+          <RoundTool icon="image" label={t.taskDetail.attach.addPhoto} onPress={() => void handlePick(pickContextPhoto)} disabled={busy} />
+          <RoundTool icon="paperclip" label={t.taskDetail.attach.addDocument} onPress={() => void handlePick(pickContextDocument)} disabled={busy} />
+          <RoundTool
+            icon={recording ? "square" : "mic"}
+            label={recording ? t.breakdown.stopListening : t.breakdown.sayIt}
+            onPress={recording ? () => void stopAndRead() : () => void startRecording()}
+            disabled={reading}
+            active={recording}
+          />
+          <View style={{ flex: 1 }} />
+          <AnimatedPressable
+            onPress={handleSend}
+            disabled={reading}
+            scaleTo={0.92}
+            accessibilityRole="button"
+            accessibilityLabel={t.breakdown.send}
+            style={[
+              { width: 48, height: 48, borderRadius: 24, backgroundColor: P.accent, alignItems: "center", justifyContent: "center", opacity: reading ? 0.5 : 1 },
+              SEND_SHADOW,
+            ]}
+          >
+            <Feather name="arrow-up" size={22} color="#FFFFFF" />
+          </AnimatedPressable>
+        </View>
       </View>
-    </BottomSheet>
+
+      {phase.kind === "error" ? (
+        <Text style={[{ marginTop: 10, fontFamily: "SpaceGrotesk-Medium", fontSize: 14, color: P.alert }, rtl]}>{phase.message}</Text>
+      ) : null}
+
+      {/* Straight to the steps, from what the task already says. */}
+      <AnimatedPressable
+        onPress={() => {
+          run.current += 1;
+          stopRecorder();
+          onContinue();
+        }}
+        disabled={reading}
+        hitSlop={8}
+        scaleTo={0.97}
+        accessibilityRole="button"
+        style={{ alignSelf: "center", marginTop: 18, paddingVertical: 8, opacity: reading ? 0.4 : 1 }}
+      >
+        <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: P.inkMuted }}>{t.breakdown.skipAndBreak}</Text>
+      </AnimatedPressable>
+    </PaperSheet>
+  );
+}
+
+/** One of the note's round buttons: camera, photo, file, mic. */
+function RoundTool({
+  icon,
+  label,
+  onPress,
+  disabled,
+  active = false,
+}: {
+  icon: FeatherIconName;
+  label: string;
+  onPress: () => void;
+  disabled: boolean;
+  /** The mic while it listens. */
+  active?: boolean;
+}) {
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      disabled={disabled}
+      scaleTo={0.92}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: active ? P.accent : P.chip,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      <Feather name={icon} size={active ? 16 : 19} color={active ? "#FFFFFF" : P.ink} />
+    </AnimatedPressable>
   );
 }

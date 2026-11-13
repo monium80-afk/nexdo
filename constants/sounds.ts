@@ -1,11 +1,10 @@
 import dayDone from "../assets/sounds/day-done.wav";
-import focusCafe from "../assets/sounds/focus-cafe.wav";
-import focusFireplace from "../assets/sounds/focus-fireplace.wav";
-import focusForest from "../assets/sounds/focus-forest.wav";
-import focusRain from "../assets/sounds/focus-rain.wav";
-import focusStream from "../assets/sounds/focus-stream.wav";
-import focusThunder from "../assets/sounds/focus-thunder.wav";
-import focusWaves from "../assets/sounds/focus-waves.wav";
+import focusFireplace from "../assets/sounds/focus-fireplace.m4a";
+import focusForest from "../assets/sounds/focus-forest.m4a";
+import focusRain from "../assets/sounds/focus-rain.m4a";
+import focusStream from "../assets/sounds/focus-stream.m4a";
+import focusThunder from "../assets/sounds/focus-thunder.m4a";
+import focusWaves from "../assets/sounds/focus-waves.m4a";
 import sessionStart from "../assets/sounds/session-start.wav";
 import stepCheck from "../assets/sounds/step-check.wav";
 import taskComplete from "../assets/sounds/task-complete.wav";
@@ -30,5 +29,4 @@ export const sounds = {
   focusStream,
   focusForest,
   focusFireplace,
-  focusCafe,
 };

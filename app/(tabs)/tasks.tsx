@@ -398,7 +398,8 @@ export default function TasksListScreen() {
                       task={task}
                       onPress={() => void handleOpenTask(task.id)}
                       onToggle={() => handleToggle(task)}
-                      onScorePress={(anchor) => setScoreTarget({ task, anchor })}                    />
+                      onScorePress={(anchor) => setScoreTarget({ task, anchor })}
+                    />
                   </View>
                 </Animated.View>
               ))

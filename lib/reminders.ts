@@ -18,6 +18,9 @@ import type { Task } from "@/types/task";
 //   only thing that ever mentions it).
 // - Date-only deadline: one reminder on the day, at the reminder time (9:00
 //   by default). The deadline has no time, so none is invented for it.
+//   With the morning nudge on, it's counted in that day's nudge instead.
+// - Morning nudge (optional): once a day at its own time, "Start with: X"
+//   and how many more are due that day.
 // - Exact deadline: one reminder, at the deadline itself or as long before it
 //   as the user picked in Settings (5/15/30 min, 1 h, 1 day).
 //   It used to be the 9:00 one, so a task due at 18:00 added after 9:00 got
@@ -158,12 +161,17 @@ export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: D
     // alert already goes off then.
     const lead = reminderLead(prefs);
     if (!deadline.time) {
-      candidates.push({
-        kind: "due-day",
-        fireAt: atLocalTime(deadline.date, prefs.dayReminderTime),
-        title: copy.dueTodayTitle(task.title),
-        body: copy.dueTodayBody,
-      });
+      // With the morning nudge on, a date-only task is counted in that
+      // morning's nudge instead ("+ 2 more due today") — two morning
+      // notifications would be one too many (2026-11-12).
+      if (!prefs.dailyPlanning) {
+        candidates.push({
+          kind: "due-day",
+          fireAt: atLocalTime(deadline.date, prefs.dayReminderTime),
+          title: copy.dueTodayTitle(task.title),
+          body: copy.dueTodayBody,
+        });
+      }
     } else if (lead > 0) {
       candidates.push({
         kind: "before",
@@ -218,9 +226,10 @@ export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: D
 }
 
 /**
- * The daily planning note for the coming week: how many tasks are due that
- * day, and the task Nexdo would start with. No open tasks, no note — Nexdo
- * doesn't nudge about nothing.
+ * The morning nudge for the coming week: the task Nexdo would start with as
+ * the title, and how many others are due that day. No open tasks, no note —
+ * Nexdo doesn't nudge about nothing. Planned again on every task change and
+ * app launch, so the task it names stays current.
  */
 function planDailyNotes(tasks: Task[], prefs: ReminderPreferences, now: Date, t: Translations): PlannedNotification[] {
   if (!prefs.dailyPlanning) return [];
@@ -232,10 +241,12 @@ function planDailyNotes(tasks: Task[], prefs: ReminderPreferences, now: Date, t:
     const date = addDaysToKey(today, offset);
     const fireAt = atLocalTime(date, prefs.dailyPlanningTime);
     if (fireAt <= now.getTime() + MIN_LEAD_MS) continue;
-    const dueThatDay = open.filter((task) => task.deadline?.date === date).length;
-    const top = recommendTasks(open, { now: new Date(fireAt) })[0]?.task.title ?? "";
-    const title = t.notifications.dailyTitle;
-    const body = dueThatDay > 0 ? t.notifications.dailyDueBody(dueThatDay, top) : t.notifications.dailyOpenBody(open.length, top);
+    const top = recommendTasks(open, { now: new Date(fireAt) })[0]?.task;
+    if (!top) continue;
+    // The others due that day — the date-only ones get no ping of their own while the nudge is on.
+    const moreDue = open.filter((task) => task.id !== top.id && task.deadline?.date === date).length;
+    const title = t.notifications.dailyTitle(top.title);
+    const body = moreDue > 0 ? t.notifications.dailyDueBody(moreDue) : t.notifications.dailyOpenBody;
     notes.push({
       id: `${NOTIFICATION_ID_PREFIX}daily-${date}`,
       kind: "daily",
@@ -291,5 +302,11 @@ export function diffNotifications(
 /** When the task's next reminder is, for Task Details to show — or null when it has none coming. */
 export function nextReminderFor(task: Task, prefs: ReminderPreferences, now: Date, t: Translations): number | null {
   const first = planTaskReminders(task, prefs, now, t).find((entry) => entry.kind !== "overdue");
-  return first?.fireAt ?? null;
+  if (first) return first.fireAt;
+  // A date-only task is in that morning's nudge instead of a ping of its own.
+  if (prefs.dailyPlanning && wantsReminders(task) && !task.deadline!.time && isLocalDateKey(task.deadline!.date)) {
+    const nudgeAt = atLocalTime(task.deadline!.date, prefs.dailyPlanningTime);
+    if (nudgeAt > now.getTime() + MIN_LEAD_MS) return nudgeAt;
+  }
+  return null;
 }

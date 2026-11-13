@@ -1,6 +1,5 @@
 import type { PurchasesEntitlementInfo } from "react-native-purchases";
 
-import type { FreeTrial } from "@/lib/freeTrial";
 
 // The heads-up onboarding's trial timeline promises: a notification this many
 // days before a free trial turns into a paid plan.
@@ -25,23 +24,4 @@ export function trialReminderTime(
   if (Number.isNaN(endsAt)) return null;
   const fireAt = endsAt - TRIAL_REMINDER_LEAD_DAYS * DAY_MS;
   return fireAt > now + MIN_LEAD_MS ? fireAt : null;
-}
-
-/** How many days a free trial runs from `start` — the day it ends on the onboarding timeline. */
-export function trialLengthInDays(trial: FreeTrial, start: Date): number {
-  if (trial.unit === "day") return trial.count;
-  if (trial.unit === "week") return trial.count * 7;
-  const end = new Date(start);
-  if (trial.unit === "month") end.setMonth(end.getMonth() + trial.count);
-  else end.setFullYear(end.getFullYear() + trial.count);
-  return Math.round((end.getTime() - start.getTime()) / DAY_MS);
-}
-
-/**
- * The day of the trial the reminder arrives on, counting today as day 0 — or
- * null when the trial is too short to remind before it ends.
- */
-export function trialReminderDay(trialDays: number): number | null {
-  const day = trialDays - TRIAL_REMINDER_LEAD_DAYS;
-  return day >= 1 ? day : null;
 }

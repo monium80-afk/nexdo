@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { ScrollView, Text, View, type TextLayoutEvent, type ViewProps } from "react-native";
 import Animated, {
   Easing,
@@ -25,6 +25,7 @@ import { BreakdownContextSheet } from "@/components/BreakdownContextSheet";
 import { BreakdownSheet } from "@/components/BreakdownSheet";
 import { CompletedOverlay, type OverlayOrigin } from "@/components/CompletedOverlay";
 import { FocusSoundPicker } from "@/components/FocusSoundPicker";
+import { FocusSteps } from "@/components/FocusSteps";
 import { GemLogo } from "@/components/GemLogo";
 import { AppIcon } from "@/components/icons/AppIcons";
 import { StartSessionButton } from "@/components/StartSessionButton";
@@ -342,6 +343,8 @@ type SessionPanelProps = {
   finish?: FocusFinish | null;
   /** Pause and Done going down and out once the task is done (ftBtnOut). */
   controlsStyle?: AnimatedProps<ViewProps>["style"];
+  /** The task's steps (FocusSteps), between the clock and the buttons. */
+  steps?: ReactNode;
 };
 
 function SessionPanel(props: SessionPanelProps) {
@@ -349,7 +352,7 @@ function SessionPanel(props: SessionPanelProps) {
 }
 
 /** A session on a task with no duration: no timer, just finishing it — or leaving. */
-function UntimedSessionPanel({ onComplete, finish, controlsStyle }: SessionPanelProps) {
+function UntimedSessionPanel({ onComplete, finish, controlsStyle, steps }: SessionPanelProps) {
   const t = useTranslation();
   const rtl = useRtlText();
   return (
@@ -360,6 +363,7 @@ function UntimedSessionPanel({ onComplete, finish, controlsStyle }: SessionPanel
       <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, lineHeight: 21, color: "#7A6E64", textAlign: "center" }, rtl]}>
         {t.session.noTimer}
       </Text>
+      {steps ? <View style={{ alignSelf: "stretch", marginTop: 8, marginBottom: 10 }}>{steps}</View> : null}
       <View style={{ alignSelf: "stretch", flexDirection: "row" }}>
         <DonePill onPress={onComplete} flex={1} />
       </View>
@@ -368,7 +372,7 @@ function UntimedSessionPanel({ onComplete, finish, controlsStyle }: SessionPanel
 }
 
 /** The running clock of a session with a length: the ring and gem, then Pause · Done. */
-function TimedSessionPanel({ session, caption, onComplete, finish, controlsStyle }: SessionPanelProps) {
+function TimedSessionPanel({ session, caption, onComplete, finish, controlsStyle, steps }: SessionPanelProps) {
   const t = useTranslation();
   const countdown = useSessionCountdown(session);
   const pause = useSessionStore((state) => state.pause);
@@ -386,9 +390,15 @@ function TimedSessionPanel({ session, caption, onComplete, finish, controlsStyle
         finish={finish}
       />
 
+      {steps ? (
+        <Animated.View pointerEvents={finish ? "none" : "auto"} style={[{ alignSelf: "stretch", marginTop: 14 }, controlsStyle]}>
+          {steps}
+        </Animated.View>
+      ) : null}
+
       <Animated.View
         pointerEvents={finish ? "none" : "auto"}
-        style={[{ alignSelf: "stretch", flexDirection: "row", gap: 10, marginTop: 4 }, controlsStyle]}
+        style={[{ alignSelf: "stretch", flexDirection: "row", gap: 10, marginTop: steps ? 16 : 4 }, controlsStyle]}
       >
         <AnimatedPressable
           onPress={countdown.isRunning ? pause : resume}
@@ -478,6 +488,9 @@ export function NextTaskCard({
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();
   const [todayTitleLines, setTodayTitleLines] = useState<TodayTitleLine[]>([]);
+  // Always attached, back at 1 with no completion running: a style taken off
+  // mid-fade keeps its last value on the view (Reanimated), and the stack
+  // reuses this card for the next task.
   const todayTitleStyle = useAnimatedStyle(() => ({
     opacity: 1 - 0.5 * (todayDoneMotion?.titleProgress.get() ?? 0),
   }));
@@ -581,14 +594,10 @@ export function NextTaskCard({
   // (the session is saved, the full-screen view isn't).
   const runningSession = focusMode ? (liveSession ?? (celebrating ? heldSession : undefined)) : undefined;
 
-  // Under the focus clock: "of 30 mins · Step 2: write the introduction" — the
-  // first step not yet done, when the task has steps.
+  // Under the focus clock: "of 30 mins". A task's steps have their own row
+  // under it (FocusSteps).
   const insets = useSafeAreaInsets();
-  const orderedSteps = (task.subtasks ?? []).slice().sort((a, b) => a.order - b.order);
-  const openStepIndex = orderedSteps.findIndex((step) => step.status !== "completed");
-  const focusCaption =
-    t.focusPage.ofLength(formatTaskLength(runningSession?.plannedMinutes ?? plannedMinutes)) +
-    (openStepIndex >= 0 ? ` · ${t.focusPage.step(openStepIndex + 1, orderedSteps[openStepIndex].label)}` : "");
+  const focusCaption = t.focusPage.ofLength(formatTaskLength(runningSession?.plannedMinutes ?? plannedMinutes));
 
   useEffect(() => () => {
     if (breakdownCloseTimer.current) clearTimeout(breakdownCloseTimer.current);
@@ -868,7 +877,7 @@ export function NextTaskCard({
     <Animated.View
       ref={cardRef}
       pointerEvents={preview ? "none" : "auto"}
-      className={focusMode ? "flex-1" : "overflow-hidden rounded-[24px] bg-ink"}
+      className={focusMode ? "flex-1" : "overflow-hidden rounded-[28px] bg-ink"}
       style={[style, focusMode ? { flex: 1 } : null]}
     >
       {/* Dimming and sizing a waiting card is the parent's job, so both can
@@ -905,7 +914,7 @@ export function NextTaskCard({
                     scaleTo={0.94}
                     accessibilityRole="button"
                     accessibilityLabel={t.focusPage.back}
-                    style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, borderColor: "#E2D6C8", backgroundColor: "#FCF7EF", alignItems: "center", justifyContent: "center" }}
+                    style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: "#E2D6C8", backgroundColor: "#FCF7EF", alignItems: "center", justifyContent: "center" }}
                   >
                     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#221C17" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                       <Path d="M15 5l-7 7 7 7" />
@@ -954,10 +963,15 @@ export function NextTaskCard({
                     onComplete={handleComplete}
                     finish={finish}
                     controlsStyle={finishControlsStyle}
+                    steps={hasSteps ? <FocusSteps task={task} onToggleStep={handleToggleStep} locked={celebrating || finish !== null} /> : undefined}
                   />
                 </Animated.View>
 
-                <Animated.View entering={sessionEnter(2, reduceMotion)} style={{ alignSelf: "stretch", marginTop: 22 }}>
+                {/* A task with steps: the steps, Pause and Done (the user's
+                    screenshot, 2026-11-10). Without them: the way to get some
+                    too. Either way, the quiet way out — without it a session
+                    on a task with steps could only end by finishing it. */}
+                <Animated.View entering={sessionEnter(2, reduceMotion)} style={{ alignSelf: "stretch", marginTop: hasSteps ? 12 : 22 }}>
                 <Animated.View
                   pointerEvents={finish ? "none" : "auto"}
                   style={[{ alignSelf: "stretch", alignItems: "center", gap: 4 }, finishControlsStyle]}
@@ -967,6 +981,8 @@ export function NextTaskCard({
                       the steps. The only AI button in a session ("I'm stuck" was
                       removed 2026-11-09: the app knows too little about a task
                       to pick one next action from its title alone). */}
+                  {hasSteps ? null : (
+                  <>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
                     <AnimatedPressable
                       onPress={aiLocked ? () => openPaywall("assist") : handleOpenBreakdownContext}
@@ -981,13 +997,8 @@ export function NextTaskCard({
                   </View>
 
                   {aiLocked ? null : <AllowanceNote meter="assist" />}
-
-                  {/* The task's steps, each tickable, on the same dark card. */}
-                  {hasSteps ? (
-                    <View style={{ alignSelf: "stretch", borderRadius: 24, backgroundColor: "#221C17", padding: 6 }}>
-                      <MicroStepsChecklist task={task} onToggleStep={handleToggleStep} locked={celebrating} />
-                    </View>
-                  ) : null}
+                  </>
+                  )}
 
                   {/* The way out without finishing: quieter than everything above it. */}
                   {runningSession.plannedMinutes > 0 ? (
@@ -1100,7 +1111,7 @@ export function NextTaskCard({
                   the top task, its place in the queue for the rest. No XP pile
                   top-right yet — there's no XP system — so the title runs the
                   card's full width. */}
-              <Animated.View style={todayDoneMotion ? todayFadeStyle : undefined} className="flex-row items-center">
+              <Animated.View style={todayFadeStyle} className="flex-row items-center">
                 <View className="h-[24px] flex-row items-center gap-[5px] rounded-[12px] bg-accent/16 pl-[8px] pr-[10px]">
                   {task.pinnedAt ? (
                     <Ionicons name="bookmark" size={11} color={colors.palette.peachOnDark} />
@@ -1115,7 +1126,7 @@ export function NextTaskCard({
 
               {/* The title opens the task. A screen reader gets the stack's
                   Next / Previous here too, in place of a swipe. */}
-              <Animated.View style={todayDoneMotion ? todayTitleStyle : undefined}>
+              <Animated.View style={todayTitleStyle}>
                 <AnimatedPressable
                   onPress={onDetails}
                   scaleTo={0.99}
@@ -1155,7 +1166,7 @@ export function NextTaskCard({
 
               {/* Due │ length │ score, on one line. A long due label gives way
                   (…) so the line never wraps. Red is for "Overdue" only. */}
-              <Animated.View style={todayDoneMotion ? todayFadeStyle : undefined} className="mt-[11px] flex-row items-center gap-[8px]">
+              <Animated.View style={todayFadeStyle} className="mt-[11px] flex-row items-center gap-[8px]">
                 {isOverdue ? (
                   <View className="h-[21px] shrink flex-row items-center gap-[4px] rounded-[11px] bg-alert px-[7px]">
                     <AppIcon name="calendar" size={12} strokeWidth={2} color="#FFFFFF" />
@@ -1255,7 +1266,7 @@ export function NextTaskCard({
               <Animated.View
                 ref={startButtonRef}
                 collapsable={false}
-                style={todayDoneMotion ? todayFadeStyle : undefined}
+                style={todayFadeStyle}
                 className="flex-1"
               >
                 <StartSessionButton minutes={plannedMinutes} runningSession={liveSession} onPress={handleStart} />

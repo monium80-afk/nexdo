@@ -3,8 +3,9 @@ import type { TaskContext } from "@/lib/ai/context";
 import { createLiveSessionToken } from "@/lib/ai/gemini";
 import { languageName } from "@/lib/ai/language";
 import { claimUserCall } from "@/lib/aiUsageLimit";
+import { claimTrialCall } from "@/lib/anonymousTrial";
 import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
-import { authenticate, unauthorized } from "@/lib/serverAuth";
+import { authenticate } from "@/lib/serverAuth";
 import { settleLiveSession, startLiveSession } from "@/lib/serverPlan";
 import {
     asObject,
@@ -313,6 +314,21 @@ const FUNCTIONS = [
 
 const TOOLS = [{ functionDeclarations: FUNCTIONS.map((declaration) => ({ ...declaration, behavior: "NON_BLOCKING" })) }];
 
+// Onboarding's brain dump (app/onboarding/dump.tsx), before any account
+// exists: the list is empty and there is nothing to change yet, so the
+// session can only add tasks — and only for a minute.
+const ONBOARDING_TOOLS = [
+  {
+    functionDeclarations: FUNCTIONS.filter((declaration) => declaration.name === "add_task").map((declaration) => ({
+      ...declaration,
+      behavior: "NON_BLOCKING",
+    })),
+  },
+];
+export const ONBOARDING_LIVE_SECONDS = 60;
+const ONBOARDING_NOTE =
+  "SETUP\nThis is the user's first brain dump while setting up Nexdo: they are listing everything on their mind. Their list starts empty. Call add_task once for each separate thing they mention, as soon as they finish saying it. add_task is the only tool here.";
+
 /** One line per task: "t3 | Call the bank | open, Due tomorrow at 6:00 PM, 30 min, high priority". */
 function taskLine(task: TaskContext): string {
   const details = [
@@ -327,10 +343,11 @@ function taskLine(task: TaskContext): string {
 }
 
 /** The session every token is locked to. Exported so a live check can open the very same session without Clerk. */
-export function liveSetup(body: LiveSessionRequestBody): Record<string, unknown> {
+export function liveSetup(body: LiveSessionRequestBody, onboarding = false): Record<string, unknown> {
   const language = body.language && body.language !== "en" ? languageName(body.language) : null;
   const instruction = [
     LIVE_VOICE_SYSTEM_PROMPT,
+    onboarding ? ONBOARDING_NOTE : "",
     language
       ? `LANGUAGE\nThe app is set to ${language}: write titles and notes in ${language}, unless the user is clearly speaking another language — then use theirs. dueDatePhrase is still always English.`
       : "",
@@ -355,7 +372,7 @@ export function liveSetup(body: LiveSessionRequestBody): Record<string, unknown>
     // (thinkingLevel is refused by this model; thinkingBudget works.)
     generationConfig: { responseModalities: ["AUDIO"], temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
     systemInstruction: { parts: [{ text: instruction }] },
-    tools: TOOLS,
+    tools: onboarding ? ONBOARDING_TOOLS : TOOLS,
     realtimeInputConfig: {
       // A short pause is enough to end a turn, so each instruction is acted
       // on as soon as the user draws breath rather than when they stop. This
@@ -382,16 +399,34 @@ export function parseBody(raw: unknown): LiveSessionRequestBody {
   };
 }
 
-// Signed-in only. The one AI run a signed-out install gets (onboarding) never
-// streams audio, and a live session is billed by the minute. It is also part
-// of Pro only (lib/plan.ts), counted in minutes of listening: this route
-// takes the session's time from the month up front, and the app reports what
-// it really used once it's over (app/api/live-usage+api.ts), which gives the
-// rest back.
+/**
+ * Onboarding's brain dump, signed out (2026-11-12, the user's call): one
+ * 60-second session that can only add tasks, counted against the install's
+ * free onboarding run and the server's per-IP and per-day ceilings
+ * (lib/anonymousTrial.ts). About half a cent of audio at most.
+ */
+async function startOnboardingSession(request: Request, raw: unknown): Promise<Response> {
+  const body = parseBody(raw);
+  // Nothing to change before an account exists: never a task list.
+  const setup = liveSetup({ ...body, tasks: [] }, true);
+  const trialResponse = await claimTrialCall(request, "live-session");
+  if (trialResponse) return trialResponse;
+  try {
+    const { websocketUrl } = await createLiveSessionToken({ setup, sessionSeconds: ONBOARDING_LIVE_SECONDS + TOKEN_GRACE_SECONDS });
+    return Response.json({ url: websocketUrl, setup: { setup }, maxSeconds: ONBOARDING_LIVE_SECONDS } satisfies LiveSessionResponseBody);
+  } catch (error) {
+    console.error("[api/live-session] onboarding", error instanceof Error ? error.message : error);
+    return Response.json({ error: "live_unavailable" }, { status: 502 });
+  }
+}
+
+// Signed in: part of Pro only (lib/plan.ts), counted in minutes of listening.
+// This route takes the session's time from the month up front, and the app
+// reports what it really used once it's over (app/api/live-usage+api.ts),
+// which gives the rest back. Signed out: onboarding's one short session above.
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
-  if (!auth.userId) return unauthorized();
 
   let raw: unknown;
   try {
@@ -400,6 +435,8 @@ export async function POST(request: Request) {
     if (error instanceof BadRequestError) return badRequest();
     throw error;
   }
+
+  if (!auth.userId) return startOnboardingSession(request, raw);
 
   // Token creation is a Gemini API request, so wait until both account checks
   // pass before spending project request capacity.

@@ -29,7 +29,7 @@ type ShiftUnit = "minutes" | "hours" | "days" | "weeks" | "months";
 const shiftUnit = (size: number, unit: ShiftUnit) =>
   ({
     minutes: plural(size, "минуту", "минуты", "минут"),
-    hours: plural(size, "час", "часа", "часов"),
+    hours: "ч",
     days: plural(size, "день", "дня", "дней"),
     weeks: plural(size, "неделю", "недели", "недель"),
     months: plural(size, "месяц", "месяца", "месяцев"),
@@ -38,7 +38,6 @@ const shiftUnit = (size: number, unit: ShiftUnit) =>
 const tasks = (n: number) => `${n} ${plural(n, "задача", "задачи", "задач")}`;
 /** The accusative, after a verb: "отметить 1 задачу". */
 const tasksAcc = (n: number) => `${n} ${plural(n, "задачу", "задачи", "задач")}`;
-const hoursWord = (n: number) => plural(n, "час", "часа", "часов");
 const daysWord = (n: number) => plural(n, "день", "дня", "дней");
 
 export const ru: Translations = {
@@ -94,7 +93,7 @@ export const ru: Translations = {
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} мин`;
-      const hoursLabel = `${hours} ${hoursWord(hours)}`;
+      const hoursLabel = `${hours} ч`;
       if (hours === 0) return minsLabel;
       if (mins === 0) return hoursLabel;
       return `${hoursLabel} ${minsLabel}`;
@@ -265,7 +264,7 @@ export const ru: Translations = {
   /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
   focusSound: {
     label: "Звук фокуса",
-    names: { off: "Выкл.", rain: "Дождь", waves: "Волны", thunder: "Гроза", stream: "Ручей", forest: "Лес", fireplace: "Камин", cafe: "Кафе" },
+    names: { off: "Выкл.", rain: "Дождь", waves: "Волны", thunder: "Гроза", stream: "Ручей", forest: "Лес", fireplace: "Камин" },
   },
 
   insights: {
@@ -353,6 +352,16 @@ export const ru: Translations = {
     stepPlaceholder: "Опишите шаг…",
     addStep: "Добавить шаг",
     confirm: "Подтвердить шаги",
+    contextPlaceholder: "Что Nexdo стоит знать? Вставьте инструкции или добавьте фото.",
+    send: "Отправить и разбить",
+    skipAndBreak: "Пропустить и разбить задачу",
+    planEyebrow: "Ваш план",
+    smallSteps: (count: number) =>
+      `${count} ${count % 10 === 1 && count % 100 !== 11 ? "маленький шаг" : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "маленьких шага" : "маленьких шагов"}`,
+    startStep: (index: number) => `Начать шаг ${index}`,
+    editStep: (label: string) => `Изменить «${label}»`,
+    saveStep: "Сохранить шаг",
+    addAStep: "Добавить шаг",
   },
 
   tasks: {
@@ -805,7 +814,7 @@ export const ru: Translations = {
       minutes < 60
         ? `${minutes} мин`
         : minutes < 1440
-          ? `${minutes / 60} ${hoursWord(minutes / 60)}`
+          ? `${minutes / 60} ч`
           : `${minutes / 1440} ${daysWord(minutes / 1440)}`,
     importantReminder: "Доп. напоминание для высокого приоритета",
     importantReminderBody: "Накануне, во время напоминания.",
@@ -884,10 +893,10 @@ export const ru: Translations = {
     pro: "Pro",
     unlimitedNote: "Добавление задач вручную, экран «Сегодня» и напоминания без ограничений на обоих тарифах.",
     extraTitle: {
-      sounds: "Звуки фокуса входят в Nexdo Pro.",
+      sounds: "Все звуки фокуса входят в Nexdo Pro.",
       insights: "Полная история и ваш темп входят в Nexdo Pro.",
     },
-    extraHint: "Pro добавляет звуки фокуса, полную статистику и темп, а также ИИ Nexdo. Задачи, «Сегодня», сессии и напоминания остаются бесплатными.",
+    extraHint: "Pro добавляет все звуки фокуса, полную статистику и темп, а также ИИ Nexdo. Задачи, «Сегодня», сессии, напоминания и звук дождя остаются бесплатными.",
     extras: {
       sounds: "Звуки фокуса",
       insights: "Статистика и ваш темп",
@@ -901,6 +910,24 @@ export const ru: Translations = {
       `Бесплатно ${trialLength(count, unit)}, затем ${price} в ${yearly ? "год" : "месяц"}. Отменить можно в любой момент.`,
     terms: (price: string, yearly: boolean) => `${price} в ${yearly ? "год" : "месяц"}, продлевается, пока вы не отмените.`,
     continueFree: "Продолжить бесплатно",
+    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
+    kicker: "NEXDO PRO",
+    headlineTop: "Меньше думать.",
+    headlineBottom: "Больше делать.",
+    whatYouGet: "ЧТО ВЫ ПОЛУЧАЕТЕ",
+    rows: {
+      basics: "Задачи, календарь, напоминания",
+      focusTimer: "Таймер фокуса",
+      media: "Фото и файлы",
+      chat: "Заметки-контекст",
+      allSounds: (count: number) => `Все ${count}`,
+      allTime: "Вся история",
+    },
+    seconds: (amount: string) => `${amount} сек`,
+    perMo: "/ мес",
+    billedYearly: (price: string) => `${price} в год`,
+    billedMonthly: "оплата раз в месяц",
+    restoreShort: "Восстановить",
     restore: "Восстановить покупки",
     termsLink: "Условия",
     privacyLink: "Конфиденциальность",
@@ -949,7 +976,7 @@ export const ru: Translations = {
     overdueBody: "Срок только что прошёл. Нажмите, чтобы завершить или выбрать новое время.",
     overdueChannel: "Просроченные задачи",
     remindersChannel: "Напоминания о задачах",
-    planningChannel: "План на день",
+    planningChannel: "Утреннее напоминание",
     completeAction: "Отметить выполненной",
     dueTodayTitle: (title: string) => `Срок сегодня: ${title}`,
     dueTodayBody: "Без точного времени — подойдёт любое время сегодня.",
@@ -960,16 +987,15 @@ export const ru: Translations = {
       minutes < 60
         ? `${minutes} ${plural(minutes, "минуту", "минуты", "минут")}`
         : minutes < 1440
-          ? `${Math.round(minutes / 60)} ${hoursWord(Math.round(minutes / 60))}`
+          ? `${Math.round(minutes / 60)} ч`
           : `${Math.round(minutes / 1440)} ${daysWord(Math.round(minutes / 1440))}`,
     dueTomorrowTitle: (title: string) => `Срок завтра: ${title}`,
     dueTomorrowBody: "Завтра, без точного времени.",
     dueTomorrowAtBody: (time: string) => `Срок завтра в ${time}.`,
-    dailyTitle: "Спланируйте день",
-    dailyDueBody: (count: number, top: string) =>
-      `Сроки сегодня: ${tasks(count)}.${top ? ` Начните с «${top}».` : ""}`,
-    dailyOpenBody: (count: number, top: string) =>
-      `Открыто: ${tasks(count)}.${top ? ` Начните с «${top}».` : ""}`,
+    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
+    dailyTitle: (top: string) => `Начните с: ${top}`,
+    dailyDueBody: (count: number) => `+ ещё ${count} на сегодня`,
+    dailyOpenBody: "По одному делу. Нажмите, чтобы начать.",
     trialEndingTitle: "Пробный период закончится через 2 дня",
     trialEndingBody: (date: string) =>
       `Nexdo Pro начнётся ${date}. Не нужен? Нажмите здесь, затем «Управлять подпиской», чтобы отменить до этого.`,
@@ -1028,7 +1054,7 @@ export const ru: Translations = {
     pickDay: "Выбрать день",
     restore: "Восстановить покупки",
     remindersHint: "Напоминание в день срока задачи",
-    dailyPlanHint: "План на день, каждое утро",
+    dailyPlanHint: "Задача, с которой начать, каждое утро",
     overdueHint: "Оповещение, когда задача просрочена",
     leadTitle: "Задачи со временем — напомнить",
     leadAtStart: "В начале",
@@ -1059,6 +1085,11 @@ export const ru: Translations = {
     timedTitle: "Задачи со временем",
     dateOnlyLabel: "Задачи только с датой",
     dateOnlyHint: "Напомним в то утро",
+    /** Settings → Notifications: the morning nudge row (2026-11-12). */
+    morningNudge: "Утреннее напоминание",
+    morningAt: (time: string) => `Каждый день в ${time}`,
+    inMorningNudge: "Входит в утреннее напоминание",
+    previewMorningTask: "Дописать отчёт",
     taskNeedsDate: "Добавьте дату, чтобы получать напоминания",
     remindThisTask: "Напоминать об этой задаче",
     remindersWhen: "В день срока, во время из настроек, и заранее, если задано время.",
@@ -1103,26 +1134,7 @@ export const ru: Translations = {
     deletePartialError: "Не удалось до конца удалить аккаунт — часть данных уже удалена, но сам аккаунт остался. Попробуйте снова, чтобы завершить.",
   },
 
-  onboarding: {
-    next: "Следующий шаг",
-    getStarted: "Начать",
-    haveAccount: "У меня уже есть аккаунт",
-    stickyNotes: ["к стоматологу?", "экзамен на неделе", "продукты", "ответить на письмо"],
-    headline: "Хватит гадать, что делать дальше.",
-    body: "Выгрузите всё, что у вас в голове. Nexdo упорядочит, найдёт сроки и подскажет, что заслуживает внимания.",
-    nextUp: "ДАЛЕЕ",
-    sampleTask: "Дописать отчёт по химии",
-    dueTomorrow: "Срок завтра",
-  },
 
-  onboardingSort: {
-    headline: "Всё, что у вас в голове.\nРасставьте по порядку.",
-    body: "Потяните линию вниз — и хаос превратится в план.",
-    head: "В ГОЛОВЕ",
-    plan: "В ПЛАНЕ",
-    priority: { high: "ВЫС", medium: "СРЕД", low: "НИЗ" },
-    dragHandle: "Потяните, чтобы упорядочить задачи",
-  },
 
   onboardingGoals: {
     headline: "Честно — что из этого про вас?",
@@ -1138,39 +1150,9 @@ export const ru: Translations = {
     continue: "Продолжить",
   },
 
-  onboardingDump: {
-    eyebrow: "ПОПРОБУЙТЕ ВОЛШЕБНЫЙ МИКРОФОН",
-    headline: "Просто скажите, что у вас в планах.",
-    body: "**Нажмите на микрофон и расскажите о своей неделе** — можно сумбурно. Nexdo превратит это в задачи. Удобнее писать? Используйте поле.",
-    placeholder: "Доделать домашку по математике к пятнице\nНаписать преподавателю\nКупить продукты вечером…",
-    startRecording: "Включить Волшебный микрофон",
-    stopRecording: "Остановить и упорядочить",
-    transcribing: "Записываю…",
-    organize: "Упорядочить с Nexdo",
-    trialUsedHeadline: "Вы уже пробовали ИИ Nexdo",
-    trialUsedBody: "Бесплатная проба — **один раз на устройство**. Создайте аккаунт, чтобы сохранить задачи и продолжать упорядочивать их с ИИ.",
-    trialUsedCta: "Продолжить",
-  },
 
-  onboardingAnalyzing: {
-    headline: "Превращаю это в план…",
-    body: "Nexdo анализирует даты, длительность, зависимости и нагрузку.",
-    steps: [
-      "Нахожу отдельные задачи в тексте",
-      "Определяю сроки и временные рамки",
-      "Оцениваю реальные усилия",
-      "Считаю приоритеты и следующее действие",
-    ],
-  },
 
-  onboardingPlan: {
-    extracted: (count: number) => `${plural(count, "НАЙДЕНА", "НАЙДЕНО", "НАЙДЕНО")} ${count} ${plural(count, "ЗАДАЧА", "ЗАДАЧИ", "ЗАДАЧ")}`,
-    headline: "В голове стало чуть яснее.",
-    body: "Nexdo выделил конкретные задачи, нашёл сроки и рассчитал длительность.",
-    nothingFound: "Nexdo не нашёл здесь дел. Задачи можно будет добавить самостоятельно после настройки.",
-    score: (value: number) => `Оценка ${value}`,
-    next: "С чего мне начать?",
-  },
+
 
   onboardingFocus: {
     eyebrow: "ДВИЖОК РЕШЕНИЙ",
@@ -1184,73 +1166,17 @@ export const ru: Translations = {
     next: "Понятно",
   },
 
-  onboardingNotify: {
-    headline: "Одно напоминание — точно вовремя.",
-    body: "Каждое утро — одно дело, с которого начать. И предупреждение, когда подходит срок.",
-    morningPlan: "Утренний план",
-    sampleTime: "сейчас",
-    sampleBody: "Задание по химии нужно сдать завтра. Начнём сейчас?",
-    allow: "Разрешить уведомления",
-    notNow: "Не сейчас",
-  },
 
-  onboardingTrial: {
-    headline: "Вот что произойдёт.",
-    body: "Без сюрпризов. Не нужно гадать, когда спишут деньги.",
-    today: "СЕГОДНЯ",
-    day: (day: number) => `ДЕНЬ ${day}`,
-    anytime: "В ЛЮБОЙ МОМЕНТ",
-    startTitle: "Начните бесплатный период",
-    startBody: "Полный доступ к Nexdo Pro. Ничего не списывается.",
-    remindTitle: "Мы напомним",
-    remindBody: "Предупредим за 2 дня до конца пробного периода — времени решить достаточно.",
-    endTitle: "Пробный период заканчивается",
-    endBody: (price: string, yearly: boolean) =>
-      `Списывается ${price}/${yearly ? "год" : "месяц"} — или отмените раньше и ничего не платите.`,
-    cancelTitle: "Отмена в любой момент",
-    cancelBody: "В Настройках → «Управлять подпиской» или в подписках App Store или Google Play. Без звонков и анкет.",
-    next: "Продолжить",
-  },
 
-  onboardingPaywall: {
-    headline: "Вот что входит.",
-    body: "Бесплатно — это Nexdo вручную: добавлять задачи, планировать и работать над ними. Pro добавляет ИИ Nexdo, каждый месяц:",
-    bestValue: (percent: number) => `ВЫГОДНЕЕ ВСЕГО · ЭКОНОМИЯ ${percent}%`,
-    features: {
-      chat: (count: number) => `${count} заметок-контекста для ИИ`,
-      media: (count: number) => `${count} фото и документов`,
-      voice: (minutes: number) => `${minutes} мин голосовых заметок`,
-      live: (minutes: number) => `${minutes} мин Волшебного микрофона`,
-      assist: (count: number) => `${count} разбивок ИИ`,
-    },
-    extras: ["Звуки фокуса во время работы", "Статистика: полная история и ваш темп"],
-  },
 
   auth: {
-    welcomeBack: "С возвращением.",
-    signInSubtitle: "Войдите, чтобы продолжить с того же места.",
     email: "E-MAIL",
     password: "ПАРОЛЬ",
     logIn: "Войти",
     continue: "Продолжить",
     useCode: "Войти по коду из письма",
-    continueWithEmail: "или продолжить с e-mail",
-    noAccount: "Нет аккаунта?",
-    signUp: "Зарегистрироваться",
-    signUpButton: "Зарегистрироваться",
-    haveAccount: "Уже есть аккаунт?",
-    terms: "Продолжая, вы соглашаетесь с Условиями и Политикой конфиденциальности Nexdo.",
     invalidCode: "Неверный код. Попробуйте снова.",
     sendCodeError: "Не удалось отправить код подтверждения. Попробуйте снова.",
-    signUpTitle: "Не потеряйте свой план.",
-    signUpSubtitle: (count: number) =>
-      count === 1
-        ? "Ваша задача упорядочена и готова. Создайте аккаунт, чтобы сохранить её и продолжить."
-        : `Задачи (${count}) упорядочены и готовы. Создайте аккаунт, чтобы сохранить их и продолжить.`,
-    signUpTitleNoPlan: "Создайте аккаунт.",
-    signUpSubtitleNoPlan: "Держите все дела в одном месте, а Nexdo подскажет, с чего начать.",
-    continueWithGoogle: "Продолжить с Google",
-    continueWithApple: "Продолжить с Apple",
     checkEmail: "Проверьте почту",
     codeSentTo: "Мы отправили 6-значный код на",
     somethingWrong: "Что-то пошло не так. Попробуйте снова.",
@@ -1274,6 +1200,8 @@ export const ru: Translations = {
     step: (index: number, label: string) => `Шаг ${index}: ${label}`,
     breakIntoSteps: "Разбить на шаги",
     sound: "Звук фокуса",
+    stepDone: "Шаг готов",
+    stepOf: (index: number, total: number, label: string) => `Шаг ${index} из ${total}: ${label}`,
   },
 
   /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
@@ -1324,5 +1252,202 @@ export const ru: Translations = {
     found: (n: number) => (n === 1 ? `Nexdo нашёл 1 задачу · нажмите, чтобы оставить` : `Nexdo нашёл задач: ${n} · нажмите, чтобы оставить`),
     addTasks: (n: number) => (n === 1 ? `Добавить 1 задачу` : `Добавить задачи: ${n}`),
     busy: (n: number) => (n === 1 ? `1 задача на этот день` : `Задач на этот день: ${n}`),
+  },
+
+  /** The onboarding (app/onboarding/, 2026-11-12). */
+  onboardingFlow: {
+    back: "Назад",
+    progress: "Прогресс",
+    continue: "Продолжить",
+    today: "Сегодня",
+    tomorrow: "Завтра",
+    noDate: "Без даты",
+    hook: {
+      eyebrow: "ВАША ГОЛОВА ПРЯМО СЕЙЧАС",
+      thoughts: ["подарок маме", "отчёт по лабе!!", "ответить сэму", "написать преподу…", "стоматолог???", "спортзал?", "счёт за телефон"],
+      tasks: ["Дописать отчёт по лабе", "Ответить Сэму", "Записаться к стоматологу", "Спортзал в 18:00", "Оплатить телефон"],
+      doThisFirst: "Сначала это",
+      headlineTop: "Хватит управлять задачами.",
+      headlineBottom: "Просто сделайте следующую.",
+      getStarted: "Начать",
+      haveAccount: "У меня уже есть аккаунт",
+    },
+    problem: {
+      headline: "Проблема не в вашем списке. ",
+      highlight: "А в том, что выбрать первым.",
+      tasks: [
+        ["Дописать отчёт", "Завтра"],
+        ["Ответить Сэму", "Сегодня"],
+        ["Записаться к стоматологу", "На этой неделе"],
+        ["Готовиться к экзамену", "Пятница"],
+        ["Купить продукты", "Вечером"],
+        ["Позвонить маме", "Воскресенье"],
+        ["Спортзал", "18:00"],
+        ["Оплатить телефон", "15-го"],
+        ["Прочитать главу 4", "Четверг"],
+        ["Убраться в комнате", "Выходные"],
+        ["Написать преподу", "Сегодня"],
+        ["Починить велосипед", "Без даты"],
+      ] as [string, string][],
+    },
+    picks: {
+      headline: "Nexdo выбирает, ",
+      highlight: "что делать первым.",
+      body: "Он взвешивает каждую задачу: срок, длительность, важность.",
+      gym: ["Спортзал", "Сегодня, 18:00"] as [string, string],
+      reply: ["Ответить Сэму", "Сегодня"] as [string, string],
+      lab: ["Дописать отчёт по лабе", "Завтра"] as [string, string],
+      dentist: ["Записаться к стоматологу", "На этой неделе"] as [string, string],
+      minutes: (count: number) => `${count} мин`,
+    },
+    pains: {
+      headline: "Что привело вас сюда?",
+      options: {
+        overwhelmed: "Мой список меня подавляет",
+        procrastinate: "Я откладываю дела",
+        forget: "Я всё забываю",
+        juggling: "Я разрываюсь между учёбой, работой и жизнью",
+        focus: "Хочу лучше сосредотачиваться",
+        finish: "Начинаю много, заканчиваю мало",
+      },
+    },
+    load: {
+      headline: "Сколько у вас сейчас в голове?",
+      body: "Сдвиньте примерно.",
+      stops: {
+        few: "1–5",
+        some: "5–10",
+        many: "10–20",
+        lots: "20+",
+      },
+      slider: "Сколько у вас в голове",
+    },
+    mic: {
+      headline: "Расскажите Nexdo всё, что у вас в голове.",
+      title: "Позвольте Nexdo вас слышать",
+      body: "Чтобы проговаривать задачи, а не печатать. Аудио используется только для создания ваших задач. Мы никогда не храним запись.",
+      allow: "Разрешить микрофон",
+      type: "Лучше напечатаю",
+      deniedTitle: "Микрофон выключен",
+      deniedBody: "Его можно включить в настройках телефона — или напечатать задачи.",
+    },
+    dump: {
+      headline: "Скажите всё, что у вас в голове.",
+      body: "Nexdo превращает это в задачи, пока вы говорите.",
+      heard: "ИЗ ТОГО, ЧТО ВЫ СКАЗАЛИ",
+      count: (count: number) => {
+        const mod10 = count % 10;
+        const mod100 = count % 100;
+        const word = mod10 === 1 && mod100 !== 11 ? "задача" : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "задачи" : "задач";
+        return `${count} ${word}`;
+      },
+      listening: (time: string) => `Слушаю · ${time}`,
+      connecting: "Подключаюсь…",
+      done: "Готово",
+      typeInstead: "Лучше напечатать",
+      talkInstead: "Лучше сказать",
+      typeHeadline: "Напишите всё, что у вас в голове.",
+      typeBody: "Можно всё сразу. Nexdo превратит это в задачи.",
+      placeholder: "Дописать отчёт завтра, ответить Сэму, записаться к стоматологу…",
+      organize: "Превратить в задачи",
+      organizing: "Разбираю…",
+      timeUp: "Минута прошла. Вот что услышал Nexdo.",
+      nothingYet: "Пока ничего не пришло. Попробуйте ещё раз или напечатайте.",
+      couldntStart: "Не удалось начать запись. Попробуйте ещё раз или напечатайте.",
+      trialUsed: "Бесплатная попытка на этом телефоне уже использована. Напечатайте задачи.",
+      skip: "Пока пропустить",
+    },
+    founder: {
+      title: "Пара слов от основателя",
+      place: "Монреаль",
+      initials: "MB",
+      quote: "Я создал Nexdo, потому что в голове никогда не было ясности. Я знал, что у меня много дел, но всё в голове перепуталось. Мне хотелось одно очень простое место, куда можно выгрузить всё, а потом просто увидеть, что мне нужно сделать. Надеюсь, оно подарит эту ясность и вам.",
+      signature: "— Benmouna Mohammed",
+    },
+    expect: {
+      headline: "Чего ждать.",
+      body: "Nexdo освещает хаос и наводит порядок.",
+      tasks: ["Отчёт", "Ответить Сэму", "Стоматолог", "Спортзал"],
+      outcomes: ["Ясная голова", "Порядок", "Больше сделано"],
+    },
+    nudge: {
+      before: "Напоминание в ",
+      after: " каждый день.",
+      body: "Выберите время. Каждое утро Nexdo будет говорить, с какой задачи начать.",
+      changeTime: (time: string) => `Изменить время, ${time}`,
+      app: "Nexdo",
+      now: "сейчас",
+      sampleTask: "Дописать отчёт по лабе",
+      turnOn: "Включить напоминания",
+      notNow: "Не сейчас",
+    },
+    promise: {
+      headline: "Пообещайте себе.",
+      sentence: (first: string, second: string) => `На этой неделе я ${first} и ${second}.`,
+      phrases: {
+        overwhelmed: "разгружу голову",
+        procrastinate: "перестану всё откладывать",
+        forget: "ничего не упущу",
+        juggling: "наведу порядок в учёбе, работе и жизни",
+        focus: "буду делать по одному делу за раз",
+        finish: "закончу то, что начал",
+      },
+      moreDone: "сделаю больше",
+      hold: "Удерживайте, чтобы пообещать",
+      committed: "Обещано",
+      holdLabel: "Нажмите и удерживайте, чтобы пообещать",
+    },
+    paywall: {
+      close: "Закрыть",
+      restore: "Восстановить",
+      free: "Бесплатно",
+      pro: "Pro",
+      freeTitle: "Nexdo Бесплатно",
+      freeBody: "Планируйте задачи и дни сами.",
+      proTitle: "Nexdo Pro",
+      proBody: "Всё из бесплатного, а основную работу Nexdo берёт на себя.",
+      rows: {
+        live: "Magic mic",
+        assist: "Разбить",
+        media: "Фото и документы",
+        voice: "Голосовые заметки",
+        chat: "Заметки-контекст",
+        sounds: "Звуки фокуса",
+        insights: "Статистика",
+      },
+      allSounds: (count: number) => `Все ${count}`,
+      insightsFree: "7 дней",
+      insightsPro: "За всё время",
+      locked: "Pro",
+      yearly: "Год",
+      monthly: "Месяц",
+      perMonth: "/ мес",
+      aYear: (price: string) => `${price} в год`,
+      billedMonthly: "оплата раз в месяц",
+      discount: (percent: number) => `−${percent}%`,
+      cancelAnytime: "Отмена в любой момент",
+      continueFree: "Продолжить бесплатно",
+      subscribe: "Оформить подписку",
+    },
+    save: {
+      headline: "Сохраните задачи.",
+      body: "Создайте бесплатный аккаунт, чтобы они были в сохранности и на всех ваших устройствах.",
+      notSaved: "Ещё не сохранены",
+      google: "Продолжить с Google",
+      apple: "Продолжить с Apple",
+      email: "Продолжить по e-mail",
+      haveAccount: "Уже есть аккаунт?",
+      logIn: "Войти",
+      createAccount: "Создать аккаунт",
+    },
+    logIn: {
+      headline: "С возвращением.",
+      body: "Войдите, чтобы продолжить с того места, где остановились.",
+      google: "Войти через Google",
+      apple: "Войти через Apple",
+      email: "Войти по e-mail",
+      newHere: "Впервые в Nexdo?",
+      createAccount: "Создать аккаунт",
+    },
   },
 };

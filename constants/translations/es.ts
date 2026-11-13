@@ -25,7 +25,7 @@ const shiftLength = (amount: number, unit: ShiftUnit) => {
   const size = Math.abs(amount);
   const label = {
     minutes: plural(size, "minuto", "minutos"),
-    hours: plural(size, "hora", "horas"),
+    hours: "h",
     days: plural(size, "día", "días"),
     weeks: plural(size, "semana", "semanas"),
     months: plural(size, "mes", "meses"),
@@ -89,7 +89,7 @@ export const es: Translations = {
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} min`;
-      const hoursLabel = `${hours} ${plural(hours, "hora", "horas")}`;
+      const hoursLabel = `${hours} h`;
       if (hours === 0) return minsLabel;
       if (mins === 0) return hoursLabel;
       return `${hoursLabel} ${minsLabel}`;
@@ -258,7 +258,7 @@ export const es: Translations = {
   /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
   focusSound: {
     label: "Sonido de concentración",
-    names: { off: "Ninguno", rain: "Lluvia", waves: "Olas", thunder: "Tormenta", stream: "Arroyo", forest: "Bosque", fireplace: "Chimenea", cafe: "Cafetería" },
+    names: { off: "Ninguno", rain: "Lluvia", waves: "Olas", thunder: "Tormenta", stream: "Arroyo", forest: "Bosque", fireplace: "Chimenea" },
   },
 
   insights: {
@@ -347,6 +347,15 @@ export const es: Translations = {
     stepPlaceholder: "Describe el paso…",
     addStep: "Añadir paso",
     confirm: "Confirmar estos pasos",
+    contextPlaceholder: "¿Algo que Nexdo deba saber? Pega las instrucciones o añade una foto.",
+    send: "Enviar y dividir",
+    skipAndBreak: "Saltar y dividir la tarea",
+    planEyebrow: "Tu plan",
+    smallSteps: (count: number) => (count === 1 ? "1 paso pequeño" : `${count} pasos pequeños`),
+    startStep: (index: number) => `Empezar el paso ${index}`,
+    editStep: (label: string) => `Editar «${label}»`,
+    saveStep: "Guardar paso",
+    addAStep: "Añadir un paso",
   },
 
   tasks: {
@@ -799,7 +808,7 @@ export const es: Translations = {
     reminderTime: "Hora del recordatorio",
     beforeDeadline: "TAMBIÉN ANTES DE UNA HORA FIJA",
     offsetChip: (minutes: number) =>
-      minutes < 60 ? `${minutes} min` : minutes < 1440 ? plural(minutes / 60, "1 hora", `${minutes / 60} horas`) : plural(minutes / 1440, "1 día", `${minutes / 1440} días`),
+      minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${minutes / 60} h` : plural(minutes / 1440, "1 día", `${minutes / 1440} días`),
     importantReminder: "Recordatorio extra para prioridad alta",
     importantReminderBody: "El día anterior, a la hora del recordatorio.",
     notificationsDenied: "Las notificaciones de Nexdo están desactivadas en los ajustes del teléfono, así que no puede llegar ningún recordatorio.",
@@ -877,11 +886,11 @@ export const es: Translations = {
     pro: "Pro",
     unlimitedNote: "Añadir tareas a mano, la página Hoy y los recordatorios son ilimitados en ambos planes.",
     extraTitle: {
-      sounds: "Los sonidos de concentración vienen con Nexdo Pro.",
+      sounds: "Todos los sonidos de concentración vienen con Nexdo Pro.",
       insights: "Todo tu historial y tu ritmo vienen con Nexdo Pro.",
     },
     extraHint:
-      "Pro añade sonidos de concentración, todas tus estadísticas con tu ritmo y la IA de Nexdo. Las tareas, Hoy, las sesiones y los recordatorios siguen siendo gratis.",
+      "Pro añade todos los sonidos de concentración, todas tus estadísticas con tu ritmo y la IA de Nexdo. Las tareas, Hoy, las sesiones, los recordatorios y el sonido de lluvia siguen siendo gratis.",
     extras: {
       sounds: "Sonidos de concentración",
       insights: "Estadísticas y ritmo",
@@ -895,6 +904,24 @@ export const es: Translations = {
       `Gratis durante ${trialLength(count, unit)}, después ${price} al ${yearly ? "año" : "mes"}. Cancela cuando quieras.`,
     terms: (price: string, yearly: boolean) => `${price} al ${yearly ? "año" : "mes"}, se renueva hasta que canceles.`,
     continueFree: "Seguir con el plan gratis",
+    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
+    kicker: "NEXDO PRO",
+    headlineTop: "Menos pensar.",
+    headlineBottom: "Más hacer.",
+    whatYouGet: "LO QUE OBTIENES",
+    rows: {
+      basics: "Tareas, calendario, recordatorios",
+      focusTimer: "Temporizador de enfoque",
+      media: "Fotos y archivos",
+      chat: "Notas de contexto",
+      allSounds: (count: number) => `Los ${count}`,
+      allTime: "Todo el historial",
+    },
+    seconds: (amount: string) => `${amount} s`,
+    perMo: "/ mes",
+    billedYearly: (price: string) => `${price} al año`,
+    billedMonthly: "facturado al mes",
+    restoreShort: "Restaurar",
     restore: "Restaurar compras",
     termsLink: "Condiciones",
     privacyLink: "Privacidad",
@@ -943,7 +970,7 @@ export const es: Translations = {
     overdueBody: "Su fecha límite acaba de pasar. Toca para terminarla o elegir otro momento.",
     overdueChannel: "Tareas vencidas",
     remindersChannel: "Recordatorios de tareas",
-    planningChannel: "Planificación diaria",
+    planningChannel: "Empujón matutino",
     completeAction: "Marcar como hecha",
     dueTodayTitle: (title: string) => `Para hoy: ${title}`,
     dueTodayBody: "Sin hora fija: cualquier momento de hoy sirve.",
@@ -954,16 +981,15 @@ export const es: Translations = {
       minutes < 60
         ? `${minutes} ${plural(minutes, "minuto", "minutos")}`
         : minutes < 1440
-          ? `${Math.round(minutes / 60)} ${plural(Math.round(minutes / 60), "hora", "horas")}`
+          ? `${Math.round(minutes / 60)} h`
           : `${Math.round(minutes / 1440)} ${plural(Math.round(minutes / 1440), "día", "días")}`,
     dueTomorrowTitle: (title: string) => `Para mañana: ${title}`,
     dueTomorrowBody: "Mañana, sin hora fija.",
     dueTomorrowAtBody: (time: string) => `Para mañana a ${clock(time)}.`,
-    dailyTitle: "Planifica tu día",
-    dailyDueBody: (count: number, top: string) =>
-      `${count} ${plural(count, "tarea vence", "tareas vencen")} hoy.${top ? ` Empieza por «${top}».` : ""}`,
-    dailyOpenBody: (count: number, top: string) =>
-      `${count} ${plural(count, "tarea abierta", "tareas abiertas")}.${top ? ` Empieza por «${top}».` : ""}`,
+    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
+    dailyTitle: (top: string) => `Empieza por: ${top}`,
+    dailyDueBody: (count: number) => `+ ${count} más para hoy`,
+    dailyOpenBody: "Una cosa a la vez. Toca para empezar.",
     trialEndingTitle: "Tu prueba gratis termina en 2 días",
     trialEndingBody: (date: string) =>
       `Nexdo Pro empieza el ${date}. ¿No lo quieres? Toca aquí y luego Gestionar la suscripción para cancelarlo antes.`,
@@ -1022,7 +1048,7 @@ export const es: Translations = {
     pickDay: "Elegir un día",
     restore: "Restaurar compras",
     remindersHint: "Un aviso el día que vence una tarea",
-    dailyPlanHint: "Tu plan del día, cada mañana",
+    dailyPlanHint: "La tarea con la que empezar, cada mañana",
     overdueHint: "Un aviso cuando una tarea se atrasa",
     leadTitle: "Tareas con hora — avisarme",
     leadAtStart: "Al empezar",
@@ -1053,6 +1079,11 @@ export const es: Translations = {
     timedTitle: "Tareas con hora",
     dateOnlyLabel: "Tareas solo con fecha",
     dateOnlyHint: "Aviso esa mañana",
+    /** Settings → Notifications: the morning nudge row (2026-11-12). */
+    morningNudge: "Empujón matutino",
+    morningAt: (time: string) => `Cada día a las ${time}`,
+    inMorningNudge: "Incluido en tu empujón matutino",
+    previewMorningTask: "Terminar el informe",
     taskNeedsDate: "Añade una fecha para recibir avisos",
     remindThisTask: "Recordarme esta tarea",
     remindersWhen: "El día que vence, a la hora elegida en Ajustes, y antes de una hora fija.",
@@ -1097,26 +1128,7 @@ export const es: Translations = {
     deletePartialError: "No se pudo terminar de eliminar tu cuenta: parte de tus datos ya se borró, pero la cuenta sigue existiendo. Inténtalo de nuevo para terminar.",
   },
 
-  onboarding: {
-    next: "Siguiente paso",
-    getStarted: "Empezar",
-    haveAccount: "Ya tengo una cuenta",
-    stickyNotes: ["¿cita dentista?", "examen próx. semana", "compra", "responder correo"],
-    headline: "Deja de darle vueltas a qué hacer después.",
-    body: "Vacía tu cabeza. Nexdo lo organiza, detecta las fechas límite y te dice qué merece tu atención.",
-    nextUp: "A CONTINUACIÓN",
-    sampleTask: "Terminar el informe de laboratorio de química",
-    dueTomorrow: "Para mañana",
-  },
 
-  onboardingSort: {
-    headline: "Todo lo que tienes en la cabeza.\nArrástralo para ordenarlo.",
-    body: "Baja la línea — mira cómo el desorden se convierte en un plan.",
-    head: "EN TU CABEZA",
-    plan: "EN TU PLAN",
-    priority: { high: "ALTA", medium: "MEDIA", low: "BAJA" },
-    dragHandle: "Arrastra para ordenar tus tareas",
-  },
 
   onboardingGoals: {
     headline: "Con sinceridad: ¿cuáles te suenan?",
@@ -1132,39 +1144,9 @@ export const es: Translations = {
     continue: "Continuar",
   },
 
-  onboardingDump: {
-    eyebrow: "PRUEBA EL MICRO MÁGICO",
-    headline: "Solo di lo que tienes pendiente.",
-    body: "**Toca el micrófono y cuéntale tu semana**, aunque sea en desorden. Nexdo lo convierte en tareas. ¿Prefieres escribir? Usa el cuadro de texto.",
-    placeholder: "Terminar los deberes de mates para el viernes\nEscribir al profesor\nHacer la compra esta noche…",
-    startRecording: "Activar el micro mágico",
-    stopRecording: "Parar y organizar",
-    transcribing: "Transcribiendo…",
-    organize: "Organizar con Nexdo",
-    trialUsedHeadline: "Ya has probado la IA de Nexdo",
-    trialUsedBody: "La prueba gratuita es **una por dispositivo**. Crea tu cuenta para conservar tus tareas y seguir organizándote con la IA.",
-    trialUsedCta: "Continuar",
-  },
 
-  onboardingAnalyzing: {
-    headline: "Convirtiéndolo en un plan…",
-    body: "Nexdo está analizando fechas, duraciones, dependencias y carga mental.",
-    steps: [
-      "Detectando cada tarea en el texto",
-      "Detectando fechas límite y franjas horarias",
-      "Estimando el esfuerzo real",
-      "Calculando prioridades y la siguiente acción",
-    ],
-  },
 
-  onboardingPlan: {
-    extracted: (count: number) => `${count} ${plural(count, "TAREA EXTRAÍDA", "TAREAS EXTRAÍDAS")}`,
-    headline: "Tu mente ya está algo más despejada.",
-    body: "Nexdo ha extraído tareas concretas, ha identificado las fechas límite y ha calculado las duraciones.",
-    nothingFound: "Nexdo no ha encontrado nada que hacer ahí. Podrás añadir tareas por tu cuenta cuando todo esté listo.",
-    score: (value: number) => `Puntuación ${value}`,
-    next: "¿Por dónde empiezo?",
-  },
+
 
   onboardingFocus: {
     eyebrow: "EL MOTOR DE DECISIÓN",
@@ -1178,73 +1160,17 @@ export const es: Translations = {
     next: "Tiene sentido",
   },
 
-  onboardingNotify: {
-    headline: "Un aviso, justo cuando importa.",
-    body: "Cada mañana, lo único con lo que empezar. Y un aviso cuando algo vence.",
-    morningPlan: "Plan de la mañana",
-    sampleTime: "ahora",
-    sampleBody: "Tu tarea de química es para mañana. ¿Empiezas ahora?",
-    allow: "Permitir notificaciones",
-    notNow: "Ahora no",
-  },
 
-  onboardingTrial: {
-    headline: "Esto es exactamente lo que pasa.",
-    body: "Sin sorpresas. Sin adivinar cuándo se te cobrará.",
-    today: "HOY",
-    day: (day: number) => `DÍA ${day}`,
-    anytime: "CUANDO QUIERAS",
-    startTitle: "Empieza tu prueba gratis",
-    startBody: "Acceso completo a Nexdo Pro. Sin cargos.",
-    remindTitle: "Te lo recordamos",
-    remindBody: "Un aviso 2 días antes de que acabe la prueba — tiempo de sobra para decidir.",
-    endTitle: "Termina la prueba",
-    endBody: (price: string, yearly: boolean) =>
-      `Se cobra ${price}/${yearly ? "año" : "mes"} — o cancela antes y no pagas nada.`,
-    cancelTitle: "Cancela cuando quieras",
-    cancelBody: "En Ajustes → Gestionar la suscripción, o en tus suscripciones de App Store o Google Play. Sin llamadas ni formularios.",
-    next: "Continuar",
-  },
 
-  onboardingPaywall: {
-    headline: "Esto es lo que incluye.",
-    body: "El plan gratis es Nexdo a mano — añadir, planificar y hacer tus tareas. Pro añade la IA de Nexdo, cada mes:",
-    bestValue: (percent: number) => `MEJOR OPCIÓN · AHORRA ${percent} %`,
-    features: {
-      chat: (count: number) => `${count} notas de contexto para la IA`,
-      media: (count: number) => `${count} fotos y documentos`,
-      voice: (minutes: number) => `${minutes} min de notas de voz`,
-      live: (minutes: number) => `${minutes} min de Micro mágico`,
-      assist: (count: number) => `${count} desgloses con IA`,
-    },
-    extras: ["Sonidos de concentración mientras trabajas", "Estadísticas: todo tu historial y tu ritmo"],
-  },
 
   auth: {
-    welcomeBack: "Hola de nuevo.",
-    signInSubtitle: "Inicia sesión para seguir justo donde lo dejaste.",
     email: "CORREO ELECTRÓNICO",
     password: "CONTRASEÑA",
     logIn: "Iniciar sesión",
     continue: "Continuar",
     useCode: "Usar un código por correo",
-    continueWithEmail: "o continúa con tu correo",
-    noAccount: "¿No tienes cuenta?",
-    signUp: "Regístrate",
-    signUpButton: "Registrarse",
-    haveAccount: "¿Ya tienes una cuenta?",
-    terms: "Al continuar, aceptas las Condiciones y la Política de privacidad de Nexdo.",
     invalidCode: "Código no válido. Inténtalo de nuevo.",
     sendCodeError: "No se pudo enviar el código de verificación. Inténtalo de nuevo.",
-    signUpTitle: "No pierdas tu plan.",
-    signUpSubtitle: (count: number) =>
-      count === 1
-        ? "Tu tarea está ordenada y lista. Crea una cuenta para guardarla y seguir."
-        : `${count} tareas están ordenadas y listas. Crea una cuenta para guardarlas y seguir.`,
-    signUpTitleNoPlan: "Crea tu cuenta.",
-    signUpSubtitleNoPlan: "Ten todo lo que tienes que hacer en un solo lugar y deja que Nexdo te diga por dónde empezar.",
-    continueWithGoogle: "Continuar con Google",
-    continueWithApple: "Continuar con Apple",
     checkEmail: "Revisa tu correo",
     codeSentTo: "Hemos enviado un código de 6 dígitos a",
     somethingWrong: "Algo salió mal. Inténtalo de nuevo.",
@@ -1268,6 +1194,8 @@ export const es: Translations = {
     step: (index: number, label: string) => `Paso ${index}: ${label}`,
     breakIntoSteps: "Dividir en pasos",
     sound: "Sonido de enfoque",
+    stepDone: "Paso hecho",
+    stepOf: (index: number, total: number, label: string) => `Paso ${index} de ${total}: ${label}`,
   },
 
   /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
@@ -1318,5 +1246,197 @@ export const es: Translations = {
     found: (n: number) => (n === 1 ? `Nexdo encontró 1 tarea · toca para quedártela` : `Nexdo encontró ${n} tareas · toca para quedártelas`),
     addTasks: (n: number) => (n === 1 ? `Añadir 1 tarea` : `Añadir ${n} tareas`),
     busy: (n: number) => (n === 1 ? `1 tarea para ese día` : `${n} tareas para ese día`),
+  },
+
+  /** The onboarding (app/onboarding/, 2026-11-12). */
+  onboardingFlow: {
+    back: "Atrás",
+    progress: "Progreso",
+    continue: "Continuar",
+    today: "Hoy",
+    tomorrow: "Mañana",
+    noDate: "Sin fecha",
+    hook: {
+      eyebrow: "TU CABEZA, AHORA MISMO",
+      thoughts: ["cumple de mamá", "¡¡informe de lab!!", "responder a sam", "escribir al profe…", "¿¿dentista??", "¿gym?", "factura del móvil"],
+      tasks: ["Terminar el informe de laboratorio", "Responder a Sam", "Pedir cita con el dentista", "Gym a las 6", "Pagar la factura del móvil"],
+      doThisFirst: "Haz esto primero",
+      headlineTop: "Deja de gestionar tareas.",
+      headlineBottom: "Haz solo la siguiente.",
+      getStarted: "Empezar",
+      haveAccount: "Ya tengo una cuenta",
+    },
+    problem: {
+      headline: "Tu lista no es el problema. ",
+      highlight: "Elegir qué va primero, sí.",
+      tasks: [
+        ["Terminar el informe", "Mañana"],
+        ["Responder a Sam", "Hoy"],
+        ["Pedir cita al dentista", "Esta semana"],
+        ["Estudiar para el examen", "Viernes"],
+        ["Hacer la compra", "Esta noche"],
+        ["Llamar a mamá", "Domingo"],
+        ["Gym", "18:00"],
+        ["Pagar el móvil", "El día 15"],
+        ["Leer el capítulo 4", "Jueves"],
+        ["Ordenar el cuarto", "Fin de semana"],
+        ["Escribir al profe", "Hoy"],
+        ["Arreglar la bici", "Sin fecha"],
+      ] as [string, string][],
+    },
+    picks: {
+      headline: "Nexdo elige ",
+      highlight: "qué va primero.",
+      body: "Sopesa cada tarea: cuándo vence, cuánto tarda, cuánto importa.",
+      gym: ["Gym", "Hoy, 18:00"] as [string, string],
+      reply: ["Responder a Sam", "Hoy"] as [string, string],
+      lab: ["Terminar el informe de laboratorio", "Mañana"] as [string, string],
+      dentist: ["Pedir cita con el dentista", "Esta semana"] as [string, string],
+      minutes: (count: number) => `${count} min`,
+    },
+    pains: {
+      headline: "¿Qué te trae por aquí?",
+      options: {
+        overwhelmed: "Mi lista me agobia",
+        procrastinate: "Lo dejo todo para luego",
+        forget: "Se me olvidan las cosas",
+        juggling: "Hago malabares entre estudios, trabajo y vida",
+        focus: "Quiero concentrarme mejor",
+        finish: "Empiezo mucho, termino poco",
+      },
+    },
+    load: {
+      headline: "¿Cuánto tienes en la cabeza ahora mismo?",
+      body: "Desliza, a ojo.",
+      stops: {
+        few: "1–5",
+        some: "5–10",
+        many: "10–20",
+        lots: "20+",
+      },
+      slider: "Cuánto tienes en la cabeza",
+    },
+    mic: {
+      headline: "Cuéntale a Nexdo todo lo que tienes en la cabeza.",
+      title: "Deja que Nexdo te escuche",
+      body: "Para que digas tus tareas en vez de escribirlas. El audio solo se usa para crear tus tareas. Nunca guardamos la grabación.",
+      allow: "Permitir el micrófono",
+      type: "Prefiero escribir",
+      deniedTitle: "El micrófono está desactivado",
+      deniedBody: "Puedes activarlo en los ajustes del teléfono, o escribir tus tareas.",
+    },
+    dump: {
+      headline: "Di todo lo que tienes en la cabeza.",
+      body: "Nexdo lo convierte en tareas mientras hablas.",
+      heard: "DE LO QUE DIJISTE",
+      count: (count: number) => (count === 1 ? "1 tarea" : `${count} tareas`),
+      listening: (time: string) => `Escuchando · ${time}`,
+      connecting: "Conectando…",
+      done: "Ya está",
+      typeInstead: "Mejor escribir",
+      talkInstead: "Mejor hablar",
+      typeHeadline: "Escribe todo lo que tienes en la cabeza.",
+      typeBody: "Todo de una vez está bien. Nexdo lo convierte en tareas.",
+      placeholder: "Terminar el informe mañana, responder a Sam, pedir cita al dentista…",
+      organize: "Convertir en tareas",
+      organizing: "Ordenándolo…",
+      timeUp: "Se acabó el minuto. Esto es lo que oyó Nexdo.",
+      nothingYet: "Aún no ha llegado nada. Inténtalo de nuevo o escribe.",
+      couldntStart: "No se pudo empezar a escuchar. Inténtalo de nuevo o escribe.",
+      trialUsed: "La prueba gratis ya se usó en este teléfono. Escribe tus tareas.",
+      skip: "Saltar por ahora",
+    },
+    founder: {
+      title: "Una nota del fundador",
+      place: "Montreal",
+      initials: "MB",
+      quote: "Creé Nexdo porque nunca tenía la mente clara. Sabía que tenía mucho que hacer, pero todo estaba enredado en mi cabeza. Quería un lugar muy fácil donde soltarlo todo y luego ver simplemente lo que tengo que hacer. Espero que a ti también te dé esa claridad.",
+      signature: "— Benmouna Mohammed",
+    },
+    expect: {
+      headline: "Qué esperar.",
+      body: "Nexdo ilumina el caos y lo pone en orden.",
+      tasks: ["Informe", "Responder a Sam", "Dentista", "Gym"],
+      outcomes: ["Mente clara", "Organizado", "Más hecho"],
+    },
+    nudge: {
+      before: "Un empujón a las ",
+      after: ", cada día.",
+      body: "Elige una hora. Cada mañana, Nexdo te dice la tarea con la que empezar.",
+      changeTime: (time: string) => `Cambiar la hora, ${time}`,
+      app: "Nexdo",
+      now: "ahora",
+      sampleTask: "Terminar el informe de laboratorio",
+      turnOn: "Activar recordatorios",
+      notNow: "Ahora no",
+    },
+    promise: {
+      headline: "Hazlo una promesa.",
+      sentence: (first: string, second: string) => `Esta semana, voy a ${first} y ${second}.`,
+      phrases: {
+        overwhelmed: "despejar la cabeza",
+        procrastinate: "dejar de aplazar las cosas",
+        forget: "no dejar que se me escape nada",
+        juggling: "poner en orden estudios, trabajo y vida",
+        focus: "hacer una cosa cada vez",
+        finish: "terminar lo que empiezo",
+      },
+      moreDone: "hacer más",
+      hold: "Mantén pulsado para comprometerte",
+      committed: "Comprometido",
+      holdLabel: "Mantén pulsado para comprometerte",
+    },
+    paywall: {
+      close: "Cerrar",
+      restore: "Restaurar",
+      free: "Gratis",
+      pro: "Pro",
+      freeTitle: "Nexdo Gratis",
+      freeBody: "Organiza tus tareas y tus días por tu cuenta.",
+      proTitle: "Nexdo Pro",
+      proBody: "Todo lo de Gratis, y Nexdo hace el trabajo pesado.",
+      rows: {
+        live: "Magic mic",
+        assist: "Desglosar",
+        media: "Fotos y documentos",
+        voice: "Notas de voz",
+        chat: "Notas de contexto",
+        sounds: "Sonidos de concentración",
+        insights: "Estadísticas",
+      },
+      allSounds: (count: number) => `Los ${count}`,
+      insightsFree: "7 días",
+      insightsPro: "Todo",
+      locked: "Pro",
+      yearly: "Anual",
+      monthly: "Mensual",
+      perMonth: "/ mes",
+      aYear: (price: string) => `${price} al año`,
+      billedMonthly: "facturado al mes",
+      discount: (percent: number) => `−${percent} %`,
+      cancelAnytime: "Cancela cuando quieras",
+      continueFree: "Seguir con Gratis",
+      subscribe: "Suscribirse",
+    },
+    save: {
+      headline: "Guarda tus tareas.",
+      body: "Crea una cuenta gratis para tenerlas a salvo y en todos tus dispositivos.",
+      notSaved: "Aún sin guardar",
+      google: "Continuar con Google",
+      apple: "Continuar con Apple",
+      email: "Continuar con correo",
+      haveAccount: "¿Ya tienes una cuenta?",
+      logIn: "Inicia sesión",
+      createAccount: "Crear cuenta",
+    },
+    logIn: {
+      headline: "Hola de nuevo.",
+      body: "Inicia sesión para seguir donde lo dejaste.",
+      google: "Iniciar sesión con Google",
+      apple: "Iniciar sesión con Apple",
+      email: "Iniciar sesión con correo",
+      newHere: "¿Nuevo en Nexdo?",
+      createAccount: "Crea una cuenta",
+    },
   },
 };

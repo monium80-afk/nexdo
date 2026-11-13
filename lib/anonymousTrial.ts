@@ -17,12 +17,14 @@ import { getClientIp } from "@/lib/anonymousRateLimit";
 import { serverMisconfigured } from "@/lib/serverAuth";
 import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
 
-export type TrialRoute = "inbox" | "extract-text" | "next";
+export type TrialRoute = "inbox" | "extract-text" | "next" | "live-session";
 
 // What one honest onboarding run needs: a few voice notes for the brain dump,
 // one read of it, and the advice on the task it picks — twice, for someone who
-// steps back past that screen and forward again.
-const TRIAL_ALLOWANCE: Record<TrialRoute, number> = { "extract-text": 3, inbox: 1, next: 2 };
+// steps back past that screen and forward again. Since 2026-11-12 the brain
+// dump listens live (app/onboarding/dump.tsx): one 60-second session, plus one
+// more for a connection that dropped.
+const TRIAL_ALLOWANCE: Record<TrialRoute, number> = { "extract-text": 3, inbox: 1, next: 2, "live-session": 2 };
 
 // A household or a classroom shares one IP, so this is a few rather than one.
 const NEW_TRIALS_PER_IP_PER_DAY = 5;

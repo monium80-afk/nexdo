@@ -74,3 +74,11 @@ export function keyToLocalDate(key: LocalDate): Date {
   const { y, m, d } = keyParts(key);
   return new Date(y, m - 1, d);
 }
+
+/** "08:30" in the phone's own way of writing a time ("8:30 AM", "08:30"). */
+export function formatClockTime(time: string, locale: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+}

@@ -93,11 +93,6 @@ export async function generateAdvice(
   }
 }
 
-/** The advice worked out on the phone alone — for where the AI isn't allowed (onboarding without consent). */
-export function offlineAdvice(task: Task): TaskAdvice {
-  return generateAdviceHeuristic(task);
-}
-
 // Heuristic fallback — was the only implementation before Layer B existed.
 // Advice here is derived at read time from the task, so it can never go
 // stale relative to a task edit.

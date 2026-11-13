@@ -9,6 +9,17 @@ export type FocusSoundName = Exclude<FocusSound, "off">;
 /** The order the session's picker lists them in. */
 export const FOCUS_SOUNDS = FOCUS_SOUND_CHOICES.filter((choice): choice is FocusSoundName => choice !== "off");
 
+/**
+ * The one sound Free gets, so a free session can have one too (the user's
+ * call, 2026-11-10); every other sound is Pro. Costs nothing — it's on the phone.
+ */
+export const FREE_FOCUS_SOUNDS: readonly FocusSound[] = ["rain"];
+
+/** Whether a sound needs Pro. "Off" never does. */
+export function isProFocusSound(sound: FocusSound): boolean {
+  return sound !== "off" && !FREE_FOCUS_SOUNDS.includes(sound);
+}
+
 const SOURCES: Record<FocusSoundName, number> = {
   rain: sounds.focusRain,
   waves: sounds.focusWaves,
@@ -16,7 +27,6 @@ const SOURCES: Record<FocusSoundName, number> = {
   stream: sounds.focusStream,
   forest: sounds.focusForest,
   fireplace: sounds.focusFireplace,
-  cafe: sounds.focusCafe,
 };
 
 /** Under the session's own sounds, never over them. */

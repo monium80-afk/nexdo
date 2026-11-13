@@ -7,7 +7,7 @@ import Svg, { Path } from "react-native-svg";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAiLocked } from "@/hooks/useAiLocked";
 import { useTranslation } from "@/hooks/useTranslation";
-import { FOCUS_SOUNDS } from "@/lib/focusSound";
+import { FOCUS_SOUNDS, isProFocusSound } from "@/lib/focusSound";
 import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -27,8 +27,6 @@ const SOUND_ICON: Record<FocusSound, string[]> = {
   forest: ["M12 3l5 7h-3l4 6H6l4-6H7z", "M12 16v5"],
   // A flame over two logs.
   fireplace: ["M12 3c1 3 4 4.5 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 0 1.5.8 2.5 2 2.5 0-2-1-4 0-6.5z", "M5 20l14-3M5 17l14 3"],
-  // A cup with steam.
-  cafe: ["M5 11h11v4a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z", "M16 12h1.5a2.5 2.5 0 0 1 0 5H16", "M9 4c-1 1 1 2 0 3M13 4c-1 1 1 2 0 3"],
 };
 
 function SoundIcon({ sound, size, color }: { sound: FocusSound; size: number; color: string }) {
@@ -42,10 +40,11 @@ function SoundIcon({ sound, size, color }: { sound: FocusSound; size: number; co
 }
 
 /**
- * A focus session's sound (Final-Focus.html): a cream pill at the top right
- * — "Rain ⌄" — opening a dark menu of Off and the sounds. It plays while the
+ * A focus session's sound (Final-Focus.html): a round cream button at the top
+ * right showing the sound's icon, opening a dark menu of Off and the sounds
+ * (icon + name). It plays while the
  * clock runs (hooks/useFocusSound.ts) and the pick is remembered for the next
- * session. Pro: on Free the sounds wear a padlock and open the plans.
+ * session. Rain is free; on Free the other sounds wear a padlock and open the plans.
  * (useAiLocked is "Pro features locked" — it isn't AI, but it's the same rule.)
  */
 export function FocusSoundPicker() {
@@ -55,7 +54,8 @@ export function FocusSoundPicker() {
   const choice = useSettingsStore((state) => state.focusSound);
   const setChoice = useSettingsStore((state) => state.setFocusSound);
   const options: FocusSound[] = ["off", ...FOCUS_SOUNDS];
-  const current: FocusSound = locked ? "off" : choice;
+  // On Free, a Pro sound picked before (say, while Pro) shows as Off.
+  const current: FocusSound = locked && isProFocusSound(choice) ? "off" : choice;
 
   const pillRef = useRef<ComponentRef<typeof View>>(null);
   const [menu, setMenu] = useState<{ top: number; right: number } | null>(null);
@@ -69,7 +69,7 @@ export function FocusSoundPicker() {
 
   const handlePick = (option: FocusSound) => {
     setMenu(null);
-    if (option !== "off" && locked) {
+    if (locked && isProFocusSound(option)) {
       openPaywall("sounds");
       return;
     }
@@ -86,8 +86,7 @@ export function FocusSoundPicker() {
           accessibilityRole="button"
           accessibilityLabel={`${t.focusPage.sound}: ${t.focusSound.names[current]}`}
           accessibilityState={{ expanded: menu !== null }}
-          // Just the sound's icon — its name would crowd "FOCUS SESSION";
-          // the menu has the names (the user's call, 2026-11-04).
+          // Just the sound's icon; the names are in the menu (the user's call, 2026-11-11).
           style={{
             width: 40,
             height: 40,
@@ -99,7 +98,7 @@ export function FocusSoundPicker() {
             justifyContent: "center",
           }}
         >
-          <SoundIcon sound={current} size={18} color={current === "off" ? "#7A6E64" : "#F26A2E"} />
+          <SoundIcon sound={current} size={20} color={current === "off" ? "#7A6E64" : "#F26A2E"} />
         </AnimatedPressable>
       </View>
 
@@ -125,7 +124,7 @@ export function FocusSoundPicker() {
             >
               {options.map((option) => {
                 const selected = current === option;
-                const padlock = option !== "off" && locked;
+                const padlock = locked && isProFocusSound(option);
                 return (
                   <Pressable
                     key={option}

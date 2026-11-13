@@ -69,8 +69,8 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const revealPasswordFields = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), KEYBOARD_SETTLE_MS);
 
   // Reopening the sheet starts from whatever the account holds now, and drops
-  // any half-finished edit from last time. Same pattern as VerificationModal:
-  // derived-from-props state, no effect needed.
+  // any half-finished edit from last time: derived-from-props state, no
+  // effect needed.
   const [prevVisible, setPrevVisible] = useState(visible);
   if (visible !== prevVisible) {
     setPrevVisible(visible);

@@ -4,6 +4,7 @@ import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTimin
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 
+import { useBlurBehind } from "@/components/BlurBackdropHost";
 import { useKeyboardHeight } from "@/components/BottomSheet";
 import { MOTION, colors } from "@/constants/theme";
 
@@ -14,7 +15,19 @@ const P = colors.palette;
  * rising over the dimmed page, with a grab handle. Sits on the keyboard while
  * it's open. Tapping the dimmed page closes it.
  */
-export function PaperSheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: ReactNode }) {
+export function PaperSheet({
+  visible,
+  onClose,
+  blur = false,
+  children,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  /** Blur the page behind as well as dimming it (BlurBackdropHost; tabs only). */
+  blur?: boolean;
+  children: ReactNode;
+}) {
+  useBlurBehind(blur && visible);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
@@ -43,7 +56,7 @@ export function PaperSheet({ visible, onClose, children }: { visible: boolean; o
 
   return (
     <Modal visible={mounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: P.veil }, veilStyle]} />
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: blur ? "rgba(34, 28, 23, 0.3)" : P.veil }, veilStyle]} />
       <View style={{ flex: 1, justifyContent: "flex-end", paddingBottom: keyboardHeight }}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View

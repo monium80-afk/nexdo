@@ -5,6 +5,7 @@ import { useEffect, useRef, type ComponentRef } from "react";
 import { View } from "react-native";
 
 import { AddTaskSheetHost } from "@/components/addSheet/AddTaskSheet";
+import { BlurBackdropHost } from "@/components/BlurBackdropHost";
 import { MagicMicOverlay } from "@/components/MagicMicOverlay";
 import { TabBar } from "@/components/TabBar";
 import { useColors } from "@/hooks/useTheme";
@@ -58,6 +59,8 @@ export default function TabsLayout() {
           <Tabs.Screen name="settings" options={{ title: t.tabs.settings }} />
         </Tabs>
       </BlurTargetView>
+      {/* The page blurred behind Break it down's sheets. */}
+      <BlurBackdropHost blurTarget={blurTarget} />
       <MagicMicOverlay blurTarget={blurTarget} />
       {/* Add task: a sheet over the blurred tabs (components/addSheet). */}
       <AddTaskSheetHost blurTarget={blurTarget} />

@@ -1,4 +1,4 @@
-﻿import AsyncStorage from "@react-native-async-storage/async-storage";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { I18nManager, NativeModules, Platform } from "react-native";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -11,17 +11,17 @@ import { FOCUS_SOUND_CHOICES, type AppLanguage, type FocusSound, type ThemePrefe
 type SettingsStore = {
   theme: ThemePreference;
   language: AppLanguage;
-  // Notification preferences â€” lib/reminders.ts turns them (and the task
+  // Notification preferences — lib/reminders.ts turns them (and the task
   // list) into what the phone schedules; hooks/useNotifications.ts applies it.
-  /** The daily planning note â€” separate from any deadline. */
+  /** The daily planning note — separate from any deadline. */
   dailyNudgeEnabled: boolean;
-  /** 24-hour "HH:MM" â€” the time of day the daily planning note arrives. */
+  /** 24-hour "HH:MM" — the time of day the daily planning note arrives. */
   dailyNudgeTime: string;
   /** An alert the moment a task's exact deadline passes. */
   overdueAlertsEnabled: boolean;
-  /** A reminder on the day a task is due â€” on by default. */
+  /** A reminder on the day a task is due — on by default. */
   deadlineRemindersEnabled: boolean;
-  /** 24-hour "HH:MM" â€” when that on-the-day reminder arrives. 9:00 by default. */
+  /** 24-hour "HH:MM" — when that on-the-day reminder arrives. 9:00 by default. */
   dayReminderTime: string;
   /** How long before a deadline with a time to remind: [] = at the start, or [minutes]. */
   reminderOffsets: number[];
@@ -66,9 +66,9 @@ export function reminderPreferences(state: SettingsStore): ReminderPreferences {
     beforeOffsets: state.reminderOffsets,
     importantDayBefore: state.importantExtraReminder,
     overdueAlerts: state.overdueAlertsEnabled,
-    // The daily plan note was taken out of Settings (2026-11-09), so it's
-    // off for everyone — no one is left with a note they can't turn off.
-    dailyPlanning: false,
+    // The morning nudge (back in Settings 2026-11-12, merged with the
+    // date-only morning ping).
+    dailyPlanning: state.dailyNudgeEnabled,
     dailyPlanningTime: state.dailyNudgeTime,
   };
 }
@@ -103,7 +103,7 @@ function phoneLocales(): string[] {
 }
 
 /**
- * The phone's own language, if Nexdo has it â€” English otherwise. Only the
+ * The phone's own language, if Nexdo has it — English otherwise. Only the
  * first launch uses it: once saved, the language stays what it was set to.
  * The phone's settings are asked first, then the JavaScript engine's own
  * locale (Intl), which follows the phone too.
@@ -158,7 +158,7 @@ export const useSettingsStore = create<SettingsStore>()(
     {
       name: "nexdo-settings",
       storage: createJSONStorage(() => AsyncStorage),
-      // A focus sound the app no longer has (brown noise, removed 2026-11-09) is "off".
+      // A focus sound the app no longer has (brown noise 2026-11-09, café 2026-11-10) is "off".
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<SettingsStore>;
         const focusSound =
@@ -169,7 +169,7 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       // Listing the keys also drops retired values older installs still have
       // saved ("planningStyle", "aiAutoMode" / "voiceAddButton" from before
-      // the AI chat was removed, "soundsEnabled" from before Settings â†’
+      // the AI chat was removed, "soundsEnabled" from before Settings →
       // Sounds was removed), the next time this store writes.
       partialize: (state) => ({
         theme: state.theme,

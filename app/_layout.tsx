@@ -103,6 +103,8 @@ export default function RootLayout() {
     "SpaceGrotesk-Bold": require("../assets/fonts/SpaceGrotesk-Bold.ttf"),
     // The small uppercase labels and times of the 2026-11 redesign.
     "SpaceMono-Bold": require("../assets/fonts/SpaceMono-Bold.ttf"),
+    // The founder's signature on onboarding's note (app/onboarding/founder.tsx).
+    "Caveat-SemiBold": require("../assets/fonts/Caveat-SemiBold.ttf"),
   });
 
   const pathname = usePathname()

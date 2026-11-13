@@ -50,6 +50,7 @@ import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { classifyIntent } from "@/lib/ai/classifyIntent";
+import { aiUnavailableMessage } from "@/lib/ai/language";
 import { extractAttachmentText } from "@/lib/ai/media";
 import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { makeDeadline, type DeadlineInput } from "@/lib/deadline";
@@ -371,6 +372,12 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       if (!mounted.current) return;
       setAiState("idle");
       if (error instanceof PlanLimitError) showPlanLimit(error.meter);
+      // classifyIntent falls back to the offline reader when the AI can't be
+      // reached, so this is something unexpected — still worth a word.
+      else {
+        console.warn("[AddTaskSheet] AI read failed", error);
+        setProblem(aiUnavailableMessage(getLanguage()));
+      }
     }
   };
 

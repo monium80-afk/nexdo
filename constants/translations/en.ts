@@ -62,10 +62,10 @@ export const en = {
   },
 
   format: {
-    /** "45 mins", "1 hour", "2 hours 15 mins" */
+    /** "45 mins", "1 h", "2 h 15 mins" */
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} ${plural(mins, "min", "mins")}`;
-      const hoursLabel = `${hours} ${plural(hours, "hour", "hours")}`;
+      const hoursLabel = `${hours} h`;
       if (hours === 0) return minsLabel;
       if (mins === 0) return hoursLabel;
       return `${hoursLabel} ${minsLabel}`;
@@ -264,7 +264,7 @@ export const en = {
   /** A focus session's background sound (Pro; components/FocusSoundPicker.tsx). */
   focusSound: {
     label: "Focus sound",
-    names: { off: "Off", rain: "Rain", waves: "Waves", thunder: "Thunderstorm", stream: "Stream", forest: "Forest", fireplace: "Fireplace", cafe: "Café" },
+    names: { off: "Off", rain: "Rain", waves: "Waves", thunder: "Thunderstorm", stream: "Stream", forest: "Forest", fireplace: "Fireplace" },
   },
 
   /** The Insights page (app/insights.tsx): focus time, tasks done, streak, and your pace (Pro). */
@@ -356,6 +356,15 @@ export const en = {
     stepPlaceholder: "Describe the step…",
     addStep: "Add step",
     confirm: "Confirm these steps",
+    contextPlaceholder: "Anything Nexdo should know? Paste the instructions, or add a photo.",
+    send: "Send and break it down",
+    skipAndBreak: "Skip and break it down",
+    planEyebrow: "Your plan",
+    smallSteps: (count: number) => (count === 1 ? "1 small step" : `${count} small steps`),
+    startStep: (index: number) => `Start step ${index}`,
+    editStep: (label: string) => `Edit "${label}"`,
+    saveStep: "Save step",
+    addAStep: "Add a step",
   },
 
   tasks: {
@@ -749,7 +758,7 @@ export const en = {
       const size = Math.abs(amount);
       const unitLabel = {
         minutes: plural(size, "minute", "minutes"),
-        hours: plural(size, "hour", "hours"),
+        hours: "h",
         days: plural(size, "day", "days"),
         weeks: plural(size, "week", "weeks"),
         months: plural(size, "month", "months"),
@@ -777,7 +786,7 @@ export const en = {
       const size = Math.abs(amount);
       const unitLabel = {
         minutes: plural(size, "minute", "minutes"),
-        hours: plural(size, "hour", "hours"),
+        hours: "h",
         days: plural(size, "day", "days"),
         weeks: plural(size, "week", "weeks"),
         months: plural(size, "month", "months"),
@@ -852,7 +861,7 @@ export const en = {
     reminderTime: "Reminder time",
     beforeDeadline: "ALSO BEFORE A SET TIME",
     offsetChip: (minutes: number) =>
-      minutes < 60 ? `${minutes} min` : minutes < 1440 ? plural(minutes / 60, "1 hour", `${minutes / 60} hours`) : plural(minutes / 1440, "1 day", `${minutes / 1440} days`),
+      minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${minutes / 60} h` : plural(minutes / 1440, "1 day", `${minutes / 1440} days`),
     importantReminder: "Extra reminder for high priority",
     importantReminderBody: "The day before, at the reminder time.",
     notificationsDenied: "Notifications are off for Nexdo in your phone's settings, so no reminder can arrive.",
@@ -940,10 +949,10 @@ export const en = {
     unlimitedNote: "Adding tasks by hand, the Today page and reminders are unlimited on both plans.",
     /** Opened from a Pro extra (lib/paywall.ts ProExtra): its headline. */
     extraTitle: {
-      sounds: "Focus sounds come with Nexdo Pro.",
+      sounds: "More focus sounds come with Nexdo Pro.",
       insights: "Your full history and your pace come with Nexdo Pro.",
     },
-    extraHint: "Pro adds focus sounds, your full Insights and pace, and Nexdo's AI. Tasks, Today, sessions and reminders stay free.",
+    extraHint: "Pro adds every focus sound, your full Insights and pace, and Nexdo's AI. Tasks, Today, sessions, reminders and the rain sound stay free.",
     /** The comparison's rows for Pro's extras. */
     extras: {
       sounds: "Focus sounds",
@@ -951,13 +960,31 @@ export const en = {
       insightsFree: "7 days",
       insightsPro: "All",
     },
-    startTrial: (count: number, unit: TrialUnit) => `Start ${count}-${unit} free trial`,
+    startTrial: (count: number, unit: TrialUnit) => `Start ${count} ${plural(count, unit, `${unit}s`)} free`,
     subscribe: "Get Nexdo Pro",
     working: "One moment…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `Free for ${count} ${plural(count, unit, `${unit}s`)}, then ${price} a ${yearly ? "year" : "month"}. Cancel anytime.`,
+      `${count} ${plural(count, unit, `${unit}s`)} free, then ${price} ${yearly ? "once a year" : "a month"}. Cancel anytime.`,
     terms: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}, renewed until you cancel.`,
     continueFree: "Continue with Free",
+    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
+    kicker: "NEXDO PRO",
+    headlineTop: "Less thinking.",
+    headlineBottom: "More doing.",
+    whatYouGet: "WHAT YOU GET",
+    rows: {
+      basics: "Tasks, calendar, reminders",
+      focusTimer: "Focus timer",
+      media: "Photos and files",
+      chat: "Context notes",
+      allSounds: (count: number) => `All ${count}`,
+      allTime: "All time",
+    },
+    seconds: (amount: string) => `${amount} sec`,
+    perMo: "/ mo",
+    billedYearly: (price: string) => `${price} billed yearly`,
+    billedMonthly: "billed monthly",
+    restoreShort: "Restore",
     restore: "Restore purchases",
     termsLink: "Terms",
     privacyLink: "Privacy",
@@ -1010,7 +1037,7 @@ export const en = {
     /** Android lists these under Nexdo's notification settings. */
     overdueChannel: "Overdue tasks",
     remindersChannel: "Task reminders",
-    planningChannel: "Daily planning",
+    planningChannel: "Morning nudge",
     completeAction: "Mark as done",
     dueTodayTitle: (title: string) => `Due today: ${title}`,
     dueTodayBody: "No set time — any time today works.",
@@ -1022,16 +1049,15 @@ export const en = {
       minutes < 60
         ? `${minutes} ${plural(minutes, "minute", "minutes")}`
         : minutes < 1440
-          ? `${Math.round(minutes / 60)} ${plural(Math.round(minutes / 60), "hour", "hours")}`
+          ? `${Math.round(minutes / 60)} h`
           : `${Math.round(minutes / 1440)} ${plural(Math.round(minutes / 1440), "day", "days")}`,
     dueTomorrowTitle: (title: string) => `Due tomorrow: ${title}`,
     dueTomorrowBody: "Tomorrow, no set time.",
     dueTomorrowAtBody: (time: string) => `Due tomorrow at ${time}.`,
-    dailyTitle: "Plan your day",
-    dailyDueBody: (count: number, top: string) =>
-      `${count} ${plural(count, "task", "tasks")} due today.${top ? ` Start with "${top}".` : ""}`,
-    dailyOpenBody: (count: number, top: string) =>
-      `${count} open ${plural(count, "task", "tasks")}.${top ? ` Start with "${top}".` : ""}`,
+    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
+    dailyTitle: (top: string) => `Start with: ${top}`,
+    dailyDueBody: (count: number) => `+ ${count} more due today`,
+    dailyOpenBody: "One thing at a time. Tap to begin.",
     /** Two days before a free trial turns into a paid plan (lib/trialReminder.ts). */
     trialEndingTitle: "Your free trial ends in 2 days",
     trialEndingBody: (date: string) =>
@@ -1093,7 +1119,7 @@ export const en = {
     pickDay: "Pick a day",
     restore: "Restore purchases",
     remindersHint: "A ping on the day a task is due",
-    dailyPlanHint: "Your plan for the day, every morning",
+    dailyPlanHint: "The one task to start with, every morning",
     overdueHint: "A heads-up when a task runs late",
     leadTitle: "Tasks with a time — remind me",
     leadAtStart: "At the start",
@@ -1124,6 +1150,11 @@ export const en = {
     timedTitle: "Tasks with a time",
     dateOnlyLabel: "Tasks with only a date",
     dateOnlyHint: "Pinged that morning",
+    /** Settings → Notifications: the morning nudge row (2026-11-12). */
+    morningNudge: "Morning nudge",
+    morningAt: (time: string) => `Every day at ${time}`,
+    inMorningNudge: "Listed in your morning nudge",
+    previewMorningTask: "Finish the report",
     taskNeedsDate: "Add a date to get reminders",
     remindThisTask: "Remind me about this task",
     remindersWhen: "On its due day, at the time set in Settings, plus before a set time.",
@@ -1168,28 +1199,7 @@ export const en = {
     deletePartialError: "Couldn't finish deleting your account — some of your data is already gone, but the account is still here. Try again to finish.",
   },
 
-  /** The chrome every onboarding step shares, then step 1's own copy. */
-  onboarding: {
-    next: "Next step",
-    getStarted: "Get Started",
-    haveAccount: "I already have an account",
-    stickyNotes: ["dentist appt?", "exam next week", "groceries", "reply to email"],
-    headline: "Stop figuring out what to do next.",
-    body: "Dump everything on your mind. Nexdo organizes it, detects deadlines, and tells you what deserves your attention.",
-    nextUp: "NEXT UP",
-    sampleTask: "Finish chemistry lab report",
-    dueTomorrow: "Due tomorrow",
-  },
 
-  /** Onboarding step 2 — the drag-to-sort demo. */
-  onboardingSort: {
-    headline: "Everything in your head.\nDrag it into order.",
-    body: "Pull the line down — watch the mess sort itself into a plan.",
-    head: "IN YOUR HEAD",
-    plan: "IN YOUR PLAN",
-    priority: { high: "HIGH", medium: "MED", low: "LOW" },
-    dragHandle: "Drag to sort your tasks",
-  },
 
   /** Onboarding step 3 — what gets in the user's way. The options are
    *  first-person confessions, so the question asks which ones fit. Labels are
@@ -1208,45 +1218,9 @@ export const en = {
     continue: "Continue",
   },
 
-  /** Onboarding step 4 — the brain dump, typed or spoken. Every line asks for
-   *  tasks by name: "what's on your mind" read as an invitation to chat. */
-  onboardingDump: {
-    // The step is Magic mic's demo: talk, and it becomes tasks. Typing still works.
-    eyebrow: "TRY MAGIC MIC",
-    headline: "Just say what's on your plate.",
-    body: "**Tap the mic and talk through your week** — messy is fine. Nexdo turns it into tasks. Rather type? Use the box.",
-    placeholder: "Finish math homework by Friday\nEmail my professor\nBuy groceries tonight…",
-    startRecording: "Start Magic mic",
-    stopRecording: "Stop and organize",
-    transcribing: "Writing it down…",
-    organize: "Organize with Nexdo",
-    // Shown instead of the dump once this install has had its free AI run.
-    trialUsedHeadline: "You've already tried Nexdo's AI",
-    trialUsedBody: "The free preview is **one run per device**. Create your account to keep your tasks and keep organizing with AI.",
-    trialUsedCta: "Continue",
-  },
 
-  /** Onboarding step 5 — the wait while the AI reads the dump. */
-  onboardingAnalyzing: {
-    headline: "Turning that into a plan…",
-    body: "Nexdo is analyzing dates, durations, dependencies, and cognitive load.",
-    steps: [
-      "Finding distinct tasks in raw text",
-      "Detecting deadlines & time windows",
-      "Estimating realistic effort",
-      "Calculating priority scores & next action",
-    ],
-  },
 
-  /** Onboarding step 6 — what the AI pulled out of the dump. */
-  onboardingPlan: {
-    extracted: (count: number) => `${count} ${plural(count, "TASK", "TASKS")} EXTRACTED`,
-    headline: "Your mind looks a little clearer.",
-    body: "Nexdo extracted specific tasks, identified deadlines, and calculated durations.",
-    nothingFound: "Nexdo couldn't find anything to do in that. You can add tasks yourself once you're set up.",
-    score: (value: number) => `Score ${value}`,
-    next: "What should I do first?",
-  },
+
 
   /** Onboarding step 7 — the one task Nexdo picks, and a tip for doing it. */
   onboardingFocus: {
@@ -1261,81 +1235,17 @@ export const en = {
     next: "Makes sense",
   },
 
-  /** Onboarding step 8 — asking for notifications, with a sample of one. */
-  onboardingNotify: {
-    headline: "One nudge, right when it matters.",
-    body: "Each morning, the one thing to start with. Plus a heads-up when something's due.",
-    /** The row that sets when the morning plan arrives. */
-    morningPlan: "Morning plan",
-    sampleTime: "now",
-    sampleBody: "Your chemistry assignment is due tomorrow. Want to start now?",
-    allow: "Allow notifications",
-    notNow: "Not now",
-  },
 
-  /** Onboarding step 9 — the free trial, day by day. Only shown when the store offers one. */
-  onboardingTrial: {
-    headline: "Here's exactly what happens.",
-    body: "No surprises. No guessing when you'll be charged.",
-    today: "TODAY",
-    day: (day: number) => `DAY ${day}`,
-    anytime: "ANYTIME",
-    startTitle: "Start your free trial",
-    startBody: "Full access to Nexdo Pro. Nothing charged.",
-    remindTitle: "We'll remind you",
-    remindBody: "A heads-up 2 days before your trial ends — plenty of time to decide.",
-    endTitle: "Trial ends",
-    endBody: (price: string, yearly: boolean) =>
-      `${price}/${yearly ? "year" : "month"} charged — or cancel any time before this to pay nothing.`,
-    cancelTitle: "Cancel anytime",
-    cancelBody: "In Settings → Manage subscription, or in your App Store or Google Play subscriptions. No calls, no forms.",
-    next: "Continue",
-  },
 
-  /** Onboarding step 10 — the plans, before the account is made. Prices come from the store. */
-  onboardingPaywall: {
-    headline: "Here's what's included.",
-    body: "Free is Nexdo by hand — adding, planning and focusing on your tasks. Pro adds Nexdo's AI, every month:",
-    bestValue: (percent: number) => `BEST VALUE · SAVE ${percent}%`,
-    /** What a Pro month includes, from lib/plan.ts. */
-    features: {
-      chat: (count: number) => `${count} context notes for AI`,
-      media: (count: number) => `${count} photos and documents`,
-      voice: (minutes: number) => `${minutes} min of voice notes`,
-      live: (minutes: number) => `${minutes} min of Magic mic`,
-      assist: (count: number) => `${count} AI breakdowns`,
-    },
-    /** Pro's extras, under the monthly allowances (lib/paywall.ts ProExtra). */
-    extras: ["Focus sounds while you work", "Insights: your full history and your pace"],
-  },
 
   auth: {
-    welcomeBack: "Welcome back.",
-    signInSubtitle: "Log in to pick up right where you left off.",
     email: "EMAIL",
     password: "PASSWORD",
     logIn: "Log in",
     continue: "Continue",
     useCode: "Use email code instead",
-    continueWithEmail: "or continue with email",
-    noAccount: "Don't have an account?",
-    signUp: "Sign up",
-    signUpButton: "Sign Up",
-    haveAccount: "I have an account already?",
-    terms: "By continuing you agree to Nexdo's Terms and Privacy Policy.",
     invalidCode: "Invalid code. Try again.",
     sendCodeError: "Couldn't send the verification code. Try again.",
-    signUpTitle: "Don't lose your plan.",
-    signUpSubtitle: (count: number) =>
-      count === 1
-        ? "Your task is sorted and ready. Create an account to save it and keep going."
-        : `${count} tasks are sorted and ready. Create an account to save them and keep going.`,
-    // For anyone who reaches sign-up without a plan: from the log-in screen,
-    // or when the brain dump had nothing in it to do.
-    signUpTitleNoPlan: "Create your account.",
-    signUpSubtitleNoPlan: "Keep everything you need to do in one place, and let Nexdo tell you what to tackle first.",
-    continueWithGoogle: "Continue with Google",
-    continueWithApple: "Continue with Apple",
     checkEmail: "Check your email",
     codeSentTo: "We sent a 6-digit code to",
     somethingWrong: "Something went wrong. Try again.",
@@ -1359,6 +1269,8 @@ export const en = {
     step: (index: number, label: string) => `Step ${index}: ${label}`,
     breakIntoSteps: "Break it into steps",
     sound: "Focus sound",
+    stepDone: "Step done",
+    stepOf: (index: number, total: number, label: string) => `Step ${index} of ${total}: ${label}`,
   },
 
   /** The Add task sheet (components/addSheet/, addtask-design/ 2026-11-08). */
@@ -1409,5 +1321,198 @@ export const en = {
     found: (n: number) => (n === 1 ? `Nexdo found 1 task · tap to keep` : `Nexdo found ${n} tasks · tap to keep`),
     addTasks: (n: number) => (n === 1 ? `Add 1 task` : `Add ${n} tasks`),
     busy: (n: number) => (n === 1 ? `1 task due` : `${n} tasks due`),
+  },
+
+  /** The onboarding (nexdo-onboarding-final, 2026-11-12): 14 screens, app/onboarding/. */
+  onboardingFlow: {
+    back: "Back",
+    progress: "Onboarding progress",
+    continue: "Continue",
+    /** A found task's day, in its line ("Tomorrow · 1 h"). */
+    today: "Today",
+    tomorrow: "Tomorrow",
+    noDate: "No date",
+    hook: {
+      eyebrow: "YOUR HEAD, RIGHT NOW",
+      /** The tangled thoughts, as typed in a hurry. */
+      thoughts: ["mom bday gift", "lab report!!", "reply to sam", "email the prof…", "dentist???", "gym?", "phone bill"],
+      /** The same thoughts once sorted, top task first. */
+      tasks: ["Finish the lab report", "Reply to Sam", "Book the dentist", "Gym at 6", "Pay the phone bill"],
+      doThisFirst: "Do this first",
+      headlineTop: "Stop managing tasks.",
+      headlineBottom: "Just do the next one.",
+      getStarted: "Get started",
+      haveAccount: "I already have an account",
+    },
+    problem: {
+      headline: "Your list isn’t the problem. ",
+      highlight: "Picking what’s first is.",
+      tasks: [
+        ["Finish lab report", "Tomorrow"],
+        ["Reply to Sam", "Today"],
+        ["Book the dentist", "This week"],
+        ["Study for exam", "Friday"],
+        ["Buy groceries", "Tonight"],
+        ["Call mom", "Sunday"],
+        ["Gym", "6 PM"],
+        ["Pay phone bill", "The 15th"],
+        ["Read chapter 4", "Thursday"],
+        ["Clean room", "Weekend"],
+        ["Email the prof", "Today"],
+        ["Fix bike", "No date"],
+      ] as [string, string][],
+    },
+    picks: {
+      headline: "Nexdo picks ",
+      highlight: "what comes first.",
+      body: "It weighs every task: when it’s due, how long it takes, how much it matters.",
+      gym: ["Gym", "Today, 6 PM"] as [string, string],
+      reply: ["Reply to Sam", "Today"] as [string, string],
+      lab: ["Finish the lab report", "Tomorrow"] as [string, string],
+      dentist: ["Book the dentist", "This week"] as [string, string],
+      minutes: (count: number) => `${count} min`,
+    },
+    pains: {
+      headline: "What brings you here?",
+      options: {
+        overwhelmed: "I feel overwhelmed by my list",
+        procrastinate: "I procrastinate",
+        forget: "I forget things",
+        juggling: "I juggle school, work and life",
+        focus: "I want to focus better",
+        finish: "I start lots, finish little",
+      },
+    },
+    load: {
+      headline: "How much is on your mind right now?",
+      body: "Slide to a rough guess.",
+      stops: { few: "1–5", some: "5–10", many: "10–20", lots: "20+" },
+      slider: "How much is on your mind",
+    },
+    mic: {
+      headline: "Tell Nexdo everything on your mind.",
+      title: "Let Nexdo hear you",
+      body: "So you can talk your tasks out instead of typing. Audio is only used to create your tasks. We never keep the recording.",
+      allow: "Allow microphone",
+      type: "I’d rather type",
+      deniedTitle: "Microphone is off",
+      deniedBody: "You can turn it on in your phone’s settings, or type your tasks instead.",
+    },
+    dump: {
+      headline: "Say everything on your mind.",
+      body: "Nexdo turns it into tasks while you talk.",
+      heard: "FROM WHAT YOU SAID",
+      count: (count: number) => (count === 1 ? "1 task" : `${count} tasks`),
+      listening: (time: string) => `Listening · ${time}`,
+      connecting: "Connecting…",
+      done: "I’m done",
+      typeInstead: "Type instead",
+      talkInstead: "Talk instead",
+      typeHeadline: "Type everything on your mind.",
+      typeBody: "All in one go is fine. Nexdo turns it into tasks.",
+      placeholder: "Finish the lab report tomorrow, reply to Sam, book the dentist…",
+      organize: "Turn into tasks",
+      organizing: "Sorting it out…",
+      timeUp: "That’s the minute. Here’s what Nexdo heard.",
+      nothingYet: "Nothing came through yet. Try again, or type instead.",
+      couldntStart: "Couldn’t start listening. Try again, or type instead.",
+      trialUsed: "The free try was already used on this phone. Type your tasks instead.",
+      skip: "Skip for now",
+    },
+    founder: {
+      title: "A note from the founder",
+      place: "Montréal",
+      initials: "MB",
+      quote:
+        "I built Nexdo because my mind never felt clear. I knew I had a lot to do, but it was all tangled up in my head. I wanted one really easy place to dump everything into, and then just see what I’ve got to do. I hope it gives you that clarity too.",
+      signature: "— Benmouna Mohammed",
+    },
+    expect: {
+      headline: "What to expect.",
+      body: "Nexdo lights up the mess and puts it in order.",
+      tasks: ["Lab report", "Reply to Sam", "Dentist", "Gym"],
+      outcomes: ["Clear head", "Organized", "More done"],
+    },
+    nudge: {
+      before: "A nudge at ",
+      after: ", every day.",
+      body: "Pick a time. Each morning, Nexdo tells you the one task to start with.",
+      changeTime: (time: string) => `Change time, ${time}`,
+      app: "Nexdo",
+      now: "now",
+      sampleTask: "Finish the lab report",
+      turnOn: "Turn on reminders",
+      notNow: "Not now",
+    },
+    promise: {
+      headline: "Make it a promise.",
+      /** "This week, I’ll <first> and <second>." — `second` is moreDone when only one answer was picked. */
+      sentence: (first: string, second: string) => `This week, I’ll ${first} and ${second}.`,
+      phrases: {
+        overwhelmed: "clear my head",
+        procrastinate: "stop putting things off",
+        forget: "stop letting things slip",
+        juggling: "keep school, work and life in order",
+        focus: "focus on one thing at a time",
+        finish: "finish what I start",
+      },
+      moreDone: "get more done",
+      hold: "Hold to commit",
+      committed: "Committed",
+      holdLabel: "Press and hold to commit",
+    },
+    paywall: {
+      close: "Close",
+      restore: "Restore",
+      free: "Free",
+      pro: "Pro",
+      freeTitle: "Nexdo Free",
+      freeBody: "Organize your tasks and days yourself.",
+      proTitle: "Nexdo Pro",
+      proBody: "All of Free, and Nexdo does the hard work.",
+      rows: {
+        live: "Magic mic",
+        assist: "Break it down",
+        media: "Photos & files",
+        voice: "Voice notes",
+        chat: "Context notes",
+        sounds: "Focus sounds",
+        insights: "Insights",
+      },
+      allSounds: (count: number) => `All ${count}`,
+      insightsFree: "7 days",
+      insightsPro: "All time",
+      locked: "Pro",
+      yearly: "Yearly",
+      monthly: "Monthly",
+      perMonth: "/ mo",
+      aYear: (price: string) => `${price} a year`,
+      billedMonthly: "billed monthly",
+      discount: (percent: number) => `−${percent}%`,
+      cancelAnytime: "Cancel anytime",
+      continueFree: "Continue with Free",
+      /** The button with Monthly picked (no trial there). */
+      subscribe: "Subscribe",
+    },
+    save: {
+      headline: "Save your tasks.",
+      body: "Make a free account so they’re safe and on all your devices.",
+      notSaved: "Not saved yet",
+      google: "Continue with Google",
+      apple: "Continue with Apple",
+      email: "Continue with email",
+      haveAccount: "Already have an account?",
+      logIn: "Log in",
+      createAccount: "Create account",
+    },
+    logIn: {
+      headline: "Welcome back.",
+      body: "Log in to pick up right where you left off.",
+      google: "Log in with Google",
+      apple: "Log in with Apple",
+      email: "Log in with email",
+      newHere: "New to Nexdo?",
+      createAccount: "Create an account",
+    },
   },
 };

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppState } from "react-native";
 
-import { playFocusSound } from "@/lib/focusSound";
+import { isProFocusSound, playFocusSound } from "@/lib/focusSound";
 import { isPurchasesEnabled } from "@/lib/purchases";
 import { isRecording, onRecordingChange } from "@/lib/recordingMode";
 import { useSessionStore } from "@/store/useSessionStore";
@@ -19,7 +19,8 @@ export function useFocusSound() {
   const running = useSessionStore((state) => state.session !== null && state.session.runningSince !== null);
   const choice = useSettingsStore((state) => state.focusSound);
   const isPro = useIsPro();
-  const allowed = isPro || !isPurchasesEnabled;
+  // Rain is free; the rest need Pro (lib/focusSound.ts).
+  const allowed = isPro || !isPurchasesEnabled || !isProFocusSound(choice);
   const [appActive, setAppActive] = useState(AppState.currentState === "active");
   const [recording, setRecording] = useState(isRecording());
 

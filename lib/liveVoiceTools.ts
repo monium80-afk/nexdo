@@ -1,7 +1,7 @@
 import type { InboxAction, InboxActionType, InboxFilter, InboxRecurrence } from "@/app/api/inbox+api";
 import { toStructuredAction, toTaskFilter } from "@/lib/ai/classifyIntent";
 import { guessDuration } from "@/lib/ai/extractTasks";
-import type { StructuredAction } from "@/lib/ai/types";
+import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { matchesFilter } from "@/lib/taskOperations";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -112,6 +112,37 @@ function inboxAction(
 }
 
 const pad = (value: number) => String(value).padStart(2, "0");
+
+/**
+ * An add_task call as the task it would create, without touching the list —
+ * onboarding's brain dump (app/onboarding/dump.tsx) keeps these as drafts
+ * until an account exists. Null when the call has no title. Same resolution
+ * as a real add (dates in the user's time zone, repeats, a guessed length).
+ */
+export function draftFromAddTask(args: Record<string, unknown>, now: Date = new Date()): ExtractedTaskDraft | null {
+  const title = text(args.title);
+  if (!title) return null;
+  const recurrence = recurrenceOf(args.repeat);
+  const estimatedMinutes = number(args.estimatedMinutes);
+  const action = inboxAction("CREATE_TASK", null, {
+    dueDatePhrase: text(args.dueDatePhrase),
+    estimatedMinutes: estimatedMinutes ?? guessDuration(title),
+    priority: oneOf(args.priority, PRIORITIES),
+    recurrence,
+    title,
+  });
+  const structured = toStructuredAction(action, { now, realId: () => null });
+  if (!structured || structured.type !== "CREATE_TASK") return null;
+  const draft = structured.drafts[0];
+  const kind = recurrence && args.repeat && typeof args.repeat === "object" ? oneOf((args.repeat as Record<string, unknown>).kind, KINDS) : undefined;
+  if (draft?.recurrence && kind) draft.recurrence = { ...draft.recurrence, kind };
+  return draft ?? null;
+}
+
+/** Whether two titles name the same thing, ignoring case, accents and punctuation. */
+export function sameTitle(a: string, b: string): boolean {
+  return titleKey(a) === titleKey(b);
+}
 
 /** The most cards one show_task puts up ("all my tasks" on a long list). */
 const MAX_SHOWN = 50;

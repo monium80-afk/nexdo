@@ -126,6 +126,8 @@ const T = {
   vanish: 220,
   stagger: 160,
 } as const;
+/** The overlay closes on its own this long after Done or Discard, if nothing else closed it. */
+const OVERLAY_BACKUP_CLOSE_MS = 15_000;
 /** When the cards take off after Done: once the blur has cleared. */
 const FLY_AFTER = T.veilOutDelay + T.veilOut;
 
@@ -583,10 +585,22 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
       leaveQuietly();
       return;
     }
-    void sendCardsHome(list);
+    sendCardsHome(list).catch((error) => {
+      console.warn("[MagicMic] couldn't send the cards home", error);
+      leaveQuietly();
+    });
     // Runs once, when the mic has stopped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ending, isActive]);
+
+  // Never stuck on screen: whatever happens after Done or Discard (a last
+  // sentence that never ends, a step that hangs), the overlay goes. Changes
+  // already made stay; the screens behind show the live list again.
+  useEffect(() => {
+    if (!ending) return;
+    const backup = setTimeout(closeOverlay, OVERLAY_BACKUP_CLOSE_MS);
+    return () => clearTimeout(backup);
+  }, [closeOverlay, ending]);
 
   const handleDone = useCallback(() => {
     if (ending) return;

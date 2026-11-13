@@ -39,7 +39,7 @@ describe("the plans", () => {
     });
     // Free has no AI at all since 2026-10-26; Magic mic went to 90 minutes on Pro.
     assert.deepEqual(shown("free"), { chat: 0, media: 0, voice: 0, live: 0, assist: 0 });
-    assert.deepEqual(shown("pro"), { chat: 400, media: 50, voice: 50, live: 90, assist: 100 });
+    assert.deepEqual(shown("pro"), { chat: 100, media: 50, voice: 50, live: 90, assist: 100 });
     // Voice and Live voice are counted in seconds.
     assert.equal(PLAN_LIMITS.pro.voice, 3000);
     assert.equal(PLAN_LIMITS.pro.live, 5400);
