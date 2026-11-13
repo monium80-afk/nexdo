@@ -24,7 +24,7 @@ export default function OnboardingLayout() {
     if (step >= 0) posthog.capture("onboarding_step_viewed", { step: step + 1, screen: name });
   }, [pathname]);
 
-  if (!isLoaded && !(globalThis as { __CALCHECK__?: boolean }).__CALCHECK__) return null;
+  if (!isLoaded) return null;
   if (isSignedIn) return <Redirect href="/" />;
   return <Stack screenOptions={{ headerShown: false, animation: "none" }} />;
 }

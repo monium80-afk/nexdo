@@ -72,7 +72,7 @@ function AccountSetup({ children }: { children: ReactNode }) {
     if (isLoaded || splashTimedOut) SplashScreen.hideAsync().catch(() => {});
   }, [isLoaded, splashTimedOut]);
 
-  if (!isLoaded && !(globalThis as { __CALCHECK__?: boolean }).__CALCHECK__) {
+  if (!isLoaded) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.cream[100] }}>
         <ActivityIndicator color={colors.orange[500]} />

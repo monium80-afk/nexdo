@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { FlatList, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 import Animated, { Easing, Keyframe, LinearTransition, useReducedMotion } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -99,6 +99,9 @@ function sortTasks(list: Task[], sort: TaskSortOption): Task[] {
     return compareBySort(a, b, sort);
   });
 }
+
+/** About a screenful of task rows: drawn first, and the only ones with an entrance. */
+const FIRST_SCREEN_ROWS = 10;
 
 export default function TasksListScreen() {
   const colors = useColors();
@@ -323,8 +326,13 @@ export default function TasksListScreen() {
         ListEmptyComponent={<View className="px-[20px]"><EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} /></View>}
         renderItem={({ item: task, index }) => (
           <Animated.View
-            ref={(view) => { if (view) rowViews.current.set(task.id, view as unknown as ComponentRef<typeof View>); else rowViews.current.delete(task.id); }}
-            entering={listItemEntering(index)}
+            ref={(view: ComponentRef<typeof Animated.View> | null) => {
+              if (view) rowViews.current.set(task.id, view as unknown as ComponentRef<typeof View>);
+              else rowViews.current.delete(task.id);
+            }}
+            // Only the first screenful rises in: rows the list draws later, as
+            // it's scrolled, are simply there (no fade-in while scrolling).
+            entering={index < FIRST_SCREEN_ROWS ? listItemEntering(index) : undefined}
             exiting={listItemExiting()}
             layout={REST_SLIDE}
             className="mx-[20px]"
@@ -341,7 +349,7 @@ export default function TasksListScreen() {
         contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={10}
+        initialNumToRender={FIRST_SCREEN_ROWS}
         windowSize={7}
       />
       </View>
