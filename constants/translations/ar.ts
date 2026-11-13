@@ -106,6 +106,30 @@ export const ar: Translations = {
     calendar: "التقويم",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "حدث خطأ ما",
+    body: "تعذّر فتح هذه الشاشة. مهامك بأمان.",
+    retry: "????? ???????",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "إضافة قائمتك؟",
+    body: (n: number) => `ذكرت ${n} مهام قبل تسجيل الدخول. هل تريد إضافتها إلى حسابك؟`,
+    add: "أضفها",
+    skip: "تخطَّ",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "لم تتم المزامنة بعد — تغييراتك محفوظة على هذا الهاتف.",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "مشاركة بيانات الاستخدام",
+    on: "مفعّل",
+    off: "متوقف",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} دقيقة`;
@@ -894,58 +918,12 @@ export const ar: Translations = {
   },
 
   paywall: {
-    close: "إغلاق",
-    title: "دع نكسدو يفكّر أكثر عنك.",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "برو يمنح الذكاء الاصطناعي مساحة ليخطّط مهامك معك."
-        : `رتّب نكسدو ${tasksObject(taskCount)} لك بالفعل. برو يمنح الذكاء الاصطناعي مساحة ليواصل التخطيط معك.`,
-    yearly: "سنوي",
-    monthly: "شهري",
-    save: (percent: number) => `وفّر ${percent}%`,
-    aMonth: (price: string) => `${price} شهريًا`,
-    perMonth: "شهريًا",
-    eachMonth: "كل شهر",
-    free: "مجاني",
-    pro: "برو",
-    unlimitedNote: "إضافة المهام يدويًا وصفحة «اليوم» والتذكيرات غير محدودة في الخطتين.",
-    extraTitle: {
-      sounds: "جميع أصوات التركيز متاحة مع نكسدو برو.",
-      insights: "سجلّك الكامل وإيقاعك متاحان مع نكسدو برو.",
-    },
-    extraHint: "يضيف برو كل أصوات التركيز، وإحصاءاتك كاملة مع إيقاعك، وذكاء نكسدو الاصطناعي. المهام وصفحة «اليوم» والجلسات والتذكيرات وصوت المطر تبقى مجانية.",
-    extras: {
-      sounds: "أصوات التركيز",
-      insights: "الإحصاءات والإيقاع",
-      insightsFree: "7 أيام",
-      insightsPro: "الكل",
-    },
     startTrial: (count: number, unit: TrialUnit) => `ابدأ تجربة مجانية لمدة ${trialLength(count, unit)}`,
-    subscribe: "اشترك في نكسدو برو",
     working: "لحظة…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `مجانًا لمدة ${trialLength(count, unit)}، ثم ${price} ${yearly ? "سنويًا" : "شهريًا"}. يمكنك الإلغاء في أي وقت.`,
     terms: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}، ويتجدّد حتى تلغيه.`,
-    continueFree: "المتابعة بالخطة المجانية",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "تفكير أقل.",
-    headlineBottom: "إنجاز أكثر.",
-    whatYouGet: "ما ستحصل عليه",
-    rows: {
-      basics: "المهام والتقويم والتذكيرات",
-      focusTimer: "مؤقت التركيز",
-      media: "الصور والملفات",
-      chat: "ملاحظات السياق",
-      allSounds: (count: number) => `كل الـ ${count}`,
-      allTime: "كل السجل",
-    },
     seconds: (amount: string) => `${amount} ث`,
-    perMo: "/ شهر",
-    billedYearly: (price: string) => `${price} تُدفع سنويًا`,
-    billedMonthly: "تُدفع شهريًا",
-    restoreShort: "استعادة",
-    restore: "استعادة المشتريات",
     termsLink: "الشروط",
     privacyLink: "الخصوصية",
     loading: "جارٍ تحميل الخطط…",
@@ -1440,6 +1418,8 @@ export const ar: Translations = {
       discount: (percent: number) => `−${percent}%`,
       cancelAnytime: "ألغِ في أي وقت",
       continueFree: "المتابعة بالمجاني",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "ليس الآن",
       subscribe: "اشترك",
     },
     save: {

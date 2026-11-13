@@ -410,7 +410,7 @@ export default function OnboardingNudge() {
               paddingBottom: Math.max(insets.bottom, 20),
             }}
           >
-            <DateTimePicker value={timeToDate(time)} mode="time" display="spinner" locale={t.locale} onChange={handlePick} textColor={ONB.ink} />
+            <DateTimePicker value={timeToDate(time)} mode="time" display="spinner" locale={t.locale} onChange={handlePick} textColor={ONB.ink} themeVariant="light" />
             <PrimaryButton label={t.onboardingFlow.continue} arrow={false} onPress={() => setPicking(false)} />
           </View>
         </Modal>

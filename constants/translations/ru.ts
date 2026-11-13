@@ -90,6 +90,30 @@ export const ru: Translations = {
     calendar: "Календарь",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "Что-то пошло не так",
+    body: "Не удалось открыть этот экран. Ваши задачи в безопасности.",
+    retry: "?????????????",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "Добавить ваш список?",
+    body: (n: number) => `Перед входом вы назвали задач: ${n}. Добавить их в аккаунт?`,
+    add: "Добавить",
+    skip: "Пропустить",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "Ещё не синхронизировано — изменения сохранены на этом телефоне.",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "Отправлять данные об использовании",
+    on: "Вкл.",
+    off: "Выкл.",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} мин`;
@@ -877,58 +901,12 @@ export const ru: Translations = {
   },
 
   paywall: {
-    close: "Закрыть",
-    title: "Пусть Nexdo думает больше за вас.",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro даёт ИИ возможность планировать задачи вместе с вами."
-        : `Nexdo уже упорядочил ${taskCount === 1 ? "вашу задачу" : `ваши задачи (${taskCount})`}. Pro даёт ИИ возможность и дальше планировать ${taskCount === 1 ? "её" : "их"} вместе с вами.`,
-    yearly: "Год",
-    monthly: "Месяц",
-    save: (percent: number) => `Экономия ${percent}%`,
-    aMonth: (price: string) => `${price} в месяц`,
-    perMonth: "в месяц",
-    eachMonth: "Каждый месяц",
-    free: "Бесплатно",
-    pro: "Pro",
-    unlimitedNote: "Добавление задач вручную, экран «Сегодня» и напоминания без ограничений на обоих тарифах.",
-    extraTitle: {
-      sounds: "Все звуки фокуса входят в Nexdo Pro.",
-      insights: "Полная история и ваш темп входят в Nexdo Pro.",
-    },
-    extraHint: "Pro добавляет все звуки фокуса, полную статистику и темп, а также ИИ Nexdo. Задачи, «Сегодня», сессии, напоминания и звук дождя остаются бесплатными.",
-    extras: {
-      sounds: "Звуки фокуса",
-      insights: "Статистика и ваш темп",
-      insightsFree: "7 дней",
-      insightsPro: "Всё",
-    },
     startTrial: (count: number, unit: TrialUnit) => `Попробовать бесплатно ${trialLength(count, unit)}`,
-    subscribe: "Оформить Nexdo Pro",
     working: "Секунду…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `Бесплатно ${trialLength(count, unit)}, затем ${price} в ${yearly ? "год" : "месяц"}. Отменить можно в любой момент.`,
     terms: (price: string, yearly: boolean) => `${price} в ${yearly ? "год" : "месяц"}, продлевается, пока вы не отмените.`,
-    continueFree: "Продолжить бесплатно",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "Меньше думать.",
-    headlineBottom: "Больше делать.",
-    whatYouGet: "ЧТО ВЫ ПОЛУЧАЕТЕ",
-    rows: {
-      basics: "Задачи, календарь, напоминания",
-      focusTimer: "Таймер фокуса",
-      media: "Фото и файлы",
-      chat: "Заметки-контекст",
-      allSounds: (count: number) => `Все ${count}`,
-      allTime: "Вся история",
-    },
     seconds: (amount: string) => `${amount} сек`,
-    perMo: "/ мес",
-    billedYearly: (price: string) => `${price} в год`,
-    billedMonthly: "оплата раз в месяц",
-    restoreShort: "Восстановить",
-    restore: "Восстановить покупки",
     termsLink: "Условия",
     privacyLink: "Конфиденциальность",
     loading: "Загружаю тарифы…",
@@ -1427,6 +1405,8 @@ export const ru: Translations = {
       discount: (percent: number) => `−${percent}%`,
       cancelAnytime: "Отмена в любой момент",
       continueFree: "Продолжить бесплатно",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "Не сейчас",
       subscribe: "Оформить подписку",
     },
     save: {

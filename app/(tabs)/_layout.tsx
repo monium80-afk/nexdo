@@ -25,10 +25,10 @@ export default function TabsLayout() {
   // fresh logins and returning sessions that are already authenticated).
   useEffect(() => {
     if (user) {
+      // The account ID only — no name (review 2026-11-13: less personal data
+      // to hold, and analytics doesn't need it).
       posthog.identify(user.id, {
         $set: {
-          first_name: user.firstName ?? null,
-          last_name: user.lastName ?? null,
           created_at: user.createdAt?.toISOString() ?? null,
         },
         $set_once: {

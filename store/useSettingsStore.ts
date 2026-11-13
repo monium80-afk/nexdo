@@ -4,13 +4,15 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { DEFAULT_REMINDER_PREFERENCES, type ReminderPreferences } from "@/lib/reminders";
-import { FOCUS_SOUND_CHOICES, type AppLanguage, type FocusSound, type ThemePreference } from "@/types/settings";
+import { FOCUS_SOUND_CHOICES, type AppLanguage, type FocusSound } from "@/types/settings";
 
 // "language" drives the interface copy (see lib/i18n.ts) and the language the
-// AI replies in. "theme" is saved but not applied yet.
+// AI replies in. The app is light-only ("theme" was saved but never applied,
+// and was removed 2026-11-13). "analyticsEnabled" turns PostHog off and on
+// (Settings → Preferences, applied in app/_layout.tsx).
 type SettingsStore = {
-  theme: ThemePreference;
   language: AppLanguage;
+  analyticsEnabled: boolean;
   // Notification preferences — lib/reminders.ts turns them (and the task
   // list) into what the phone schedules; hooks/useNotifications.ts applies it.
   /** The daily planning note — separate from any deadline. */
@@ -41,7 +43,7 @@ type SettingsStore = {
   aiConsent: boolean;
   /** The sound a focus session plays while its clock runs (Pro; lib/focusSound.ts). Off by default. */
   focusSound: FocusSound;
-  setTheme: (theme: ThemePreference) => void;
+  setAnalyticsEnabled: (analyticsEnabled: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
   setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
   setDailyNudgeTime: (dailyNudgeTime: string) => void;
@@ -123,7 +125,7 @@ export function deviceLanguage(): AppLanguage {
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
-      theme: "system",
+      analyticsEnabled: true,
       language: deviceLanguage(),
       dailyNudgeEnabled: false,
       dailyNudgeTime: "09:00",
@@ -137,7 +139,7 @@ export const useSettingsStore = create<SettingsStore>()(
       gemStageSeen: 0,
       aiConsent: false,
       focusSound: "off",
-      setTheme: (theme) => set({ theme }),
+      setAnalyticsEnabled: (analyticsEnabled) => set({ analyticsEnabled }),
       setLanguage: (language) => set({ language }),
       setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
       setDailyNudgeTime: (dailyNudgeTime) => set({ dailyNudgeTime }),
@@ -172,7 +174,7 @@ export const useSettingsStore = create<SettingsStore>()(
       // the AI chat was removed, "soundsEnabled" from before Settings →
       // Sounds was removed), the next time this store writes.
       partialize: (state) => ({
-        theme: state.theme,
+        analyticsEnabled: state.analyticsEnabled,
         language: state.language,
         dailyNudgeEnabled: state.dailyNudgeEnabled,
         dailyNudgeTime: state.dailyNudgeTime,

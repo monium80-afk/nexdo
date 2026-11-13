@@ -81,6 +81,30 @@ export const fr: Translations = {
     calendar: "Calendrier",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "Un problème est survenu",
+    body: "Cet écran n’a pas pu s’afficher. Vos tâches sont en sécurité.",
+    retry: "Recharger",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "Ajouter votre vidage de tête ?",
+    body: (n: number) => `Vous avez listé ${n} tâches avant de vous connecter. Les ajouter à votre compte ?`,
+    add: "Les ajouter",
+    skip: "Ignorer",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "Pas encore synchronisé — vos changements sont enregistrés sur ce téléphone.",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "Partager les données d’utilisation",
+    on: "Activé",
+    off: "Désactivé",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} min`;
@@ -876,59 +900,12 @@ export const fr: Translations = {
   },
 
   paywall: {
-    close: "Fermer",
-    title: "Laissez Nexdo réfléchir davantage pour vous.",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro donne à l'IA la place de planifier vos tâches avec vous."
-        : `Nexdo a déjà organisé ${taskCount === 1 ? "votre tâche" : `vos ${taskCount} tâches`}. Pro donne à l'IA la place de continuer à ${taskCount === 1 ? "la" : "les"} planifier avec vous.`,
-    yearly: "Annuel",
-    monthly: "Mensuel",
-    save: (percent: number) => `Économisez ${percent} %`,
-    aMonth: (price: string) => `${price} par mois`,
-    perMonth: "par mois",
-    eachMonth: "Chaque mois",
-    free: "Gratuit",
-    pro: "Pro",
-    unlimitedNote: "L'ajout de tâches à la main, la page Aujourd'hui et les rappels sont illimités dans les deux formules.",
-    extraTitle: {
-      sounds: "Tous les sons de concentration font partie de Nexdo Pro.",
-      insights: "Tout votre historique et votre rythme font partie de Nexdo Pro.",
-    },
-    extraHint:
-      "Pro ajoute tous les sons de concentration, toutes vos statistiques avec votre rythme, et l'IA de Nexdo. Les tâches, Aujourd'hui, les sessions, les rappels et le son de pluie restent gratuits.",
-    extras: {
-      sounds: "Sons de concentration",
-      insights: "Statistiques et rythme",
-      insightsFree: "7 jours",
-      insightsPro: "Tout",
-    },
     startTrial: (count: number, unit: TrialUnit) => `Commencer l'essai gratuit de ${trialLength(count, unit)}`,
-    subscribe: "Passer à Nexdo Pro",
     working: "Un instant…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `Gratuit pendant ${trialLength(count, unit)}, puis ${price} par ${yearly ? "an" : "mois"}. Résiliable à tout moment.`,
     terms: (price: string, yearly: boolean) => `${price} par ${yearly ? "an" : "mois"}, renouvelé jusqu'à résiliation.`,
-    continueFree: "Continuer gratuitement",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "Moins réfléchir.",
-    headlineBottom: "Plus agir.",
-    whatYouGet: "CE QUE VOUS OBTENEZ",
-    rows: {
-      basics: "Tâches, calendrier, rappels",
-      focusTimer: "Minuteur de focus",
-      media: "Photos et fichiers",
-      chat: "Notes de contexte",
-      allSounds: (count: number) => `Les ${count}`,
-      allTime: "Tout l'historique",
-    },
     seconds: (amount: string) => `${amount} s`,
-    perMo: "/ mois",
-    billedYearly: (price: string) => `${price} facturé par an`,
-    billedMonthly: "facturé chaque mois",
-    restoreShort: "Restaurer",
-    restore: "Restaurer les achats",
     termsLink: "Conditions",
     privacyLink: "Confidentialité",
     loading: "Chargement des formules…",
@@ -957,7 +934,7 @@ export const fr: Translations = {
     removeScreenshot: "Retirer la capture d'écran",
     screenshotInvalid: "Impossible de joindre cette image. Choisissez une capture ou une photo de moins de 5 Mo.",
     screenshotError: "Impossible d'envoyer votre capture d'écran. Réessayez, ou retirez-la pour envoyer sans elle.",
-    privacyNote: "Envoyé avec votre compte Nexdo, la version de l'app et le type de téléphone : inutile d'ajouter votre e-mail.",
+    privacyNote: "Envoyé avec votre compte Nexdo, la version de l'app et le type de téléphone : inutile d'ajouter votre courriel.",
     reportLabel: "Signaler",
     reportA11y: "Signaler ce contenu généré par l'IA",
     reportTitle: "Signaler un contenu de l'IA",
@@ -1041,7 +1018,7 @@ export const fr: Translations = {
     changePhoto: "Changer la photo",
     photoHint: "JPG ou PNG, moins de 5 Mo",
     name: "NOM",
-    email: "E-MAIL",
+    email: "COURRIEL",
     save: "Enregistrer",
     feedbackSubtitle: "Nous lisons chaque message.",
     feedbackPlaceholder: "Qu'est-ce qui rendrait Nexdo meilleur pour vous ?",
@@ -1111,8 +1088,8 @@ export const fr: Translations = {
     nameError: "Impossible d'enregistrer votre nom. Réessayez.",
     saving: "Enregistrement…",
     saved: "Enregistré",
-    email: "E-mail",
-    noEmail: "Aucun e-mail sur ce compte",
+    email: "Courriel",
+    noEmail: "Aucun courriel sur ce compte",
     changePassword: "Changer le mot de passe",
     currentPassword: "Mot de passe actuel",
     newPassword: "Nouveau mot de passe",
@@ -1170,14 +1147,14 @@ export const fr: Translations = {
 
 
   auth: {
-    email: "E-MAIL",
+    email: "COURRIEL",
     password: "MOT DE PASSE",
     logIn: "Se connecter",
     continue: "Continuer",
-    useCode: "Utiliser plutôt un code par e-mail",
+    useCode: "Utiliser plutôt un code par courriel",
     invalidCode: "Code invalide. Réessayez.",
     sendCodeError: "Impossible d'envoyer le code de vérification. Réessayez.",
-    checkEmail: "Vérifiez vos e-mails",
+    checkEmail: "Vérifiez vos courriels",
     codeSentTo: "Nous avons envoyé un code à 6 chiffres à",
     somethingWrong: "Une erreur s'est produite. Réessayez.",
     showPassword: "Afficher le mot de passe",
@@ -1285,7 +1262,7 @@ export const fr: Translations = {
         ["Sport", "18 h"],
         ["Payer la facture de tél.", "Le 15"],
         ["Lire le chapitre 4", "Jeudi"],
-        ["Ranger la chambre", "Ce week-end"],
+        ["Ranger la chambre", "Cette fin de semaine"],
         ["Écrire au prof", "Aujourd’hui"],
         ["Réparer le vélo", "Sans date"],
       ] as [string, string][],
@@ -1313,7 +1290,7 @@ export const fr: Translations = {
     },
     load: {
       headline: "Combien de choses avez-vous en tête ?",
-      body: "Faites glisser, à peu près.",
+      body: "Faites glisser pour estimer.",
       stops: {
         few: "1–5",
         some: "5–10",
@@ -1363,7 +1340,7 @@ export const fr: Translations = {
       headline: "À quoi vous attendre.",
       body: "Nexdo éclaire le chaos et le met en ordre.",
       tasks: ["Rapport de labo", "Répondre à Sam", "Dentiste", "Sport"],
-      outcomes: ["Tête claire", "Organisé", "Plus accompli"],
+      outcomes: ["Tête claire", "Tout en ordre", "Plus efficace"],
     },
     nudge: {
       before: "Un coup de pouce à ",
@@ -1389,7 +1366,7 @@ export const fr: Translations = {
       },
       moreDone: "en faire plus",
       hold: "Maintenez pour vous engager",
-      committed: "Engagé",
+      committed: "C’est promis",
       holdLabel: "Maintenez appuyé pour vous engager",
     },
     paywall: {
@@ -1400,7 +1377,7 @@ export const fr: Translations = {
       freeTitle: "Nexdo Gratuit",
       freeBody: "Organisez vos tâches et vos journées vous-même.",
       proTitle: "Nexdo Pro",
-      proBody: "Tout le Gratuit, et Nexdo fait le gros du travail.",
+      proBody: "Tout le forfait Gratuit, et Nexdo fait le gros du travail.",
       rows: {
         live: "Magic mic",
         assist: "Découper",
@@ -1422,6 +1399,8 @@ export const fr: Translations = {
       discount: (percent: number) => `−${percent} %`,
       cancelAnytime: "Annulable à tout moment",
       continueFree: "Continuer gratuitement",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "Pas maintenant",
       subscribe: "S’abonner",
     },
     save: {
@@ -1430,7 +1409,7 @@ export const fr: Translations = {
       notSaved: "Pas encore enregistrées",
       google: "Continuer avec Google",
       apple: "Continuer avec Apple",
-      email: "Continuer avec un e-mail",
+      email: "Continuer avec un courriel",
       haveAccount: "Vous avez déjà un compte ?",
       logIn: "Se connecter",
       createAccount: "Créer le compte",
@@ -1440,7 +1419,7 @@ export const fr: Translations = {
       body: "Connectez-vous pour reprendre là où vous en étiez.",
       google: "Se connecter avec Google",
       apple: "Se connecter avec Apple",
-      email: "Se connecter avec un e-mail",
+      email: "Se connecter avec un courriel",
       newHere: "Nouveau sur Nexdo ?",
       createAccount: "Créer un compte",
     },

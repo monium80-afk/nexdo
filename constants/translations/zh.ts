@@ -61,6 +61,30 @@ export const zh: Translations = {
     calendar: "日历",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "出了点问题",
+    body: "这个页面无法加载。你的任务很安全。",
+    retry: "????",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "添加你的清单吗？",
+    body: (n: number) => `登录前你列出了 ${n} 个任务。要把它们加到你的账户吗？`,
+    add: "添加",
+    skip: "跳过",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "尚未同步——你的更改已保存在这部手机上。",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "分享使用数据",
+    on: "开",
+    off: "关",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       if (hours === 0) return `${mins} 分钟`;
@@ -817,58 +841,12 @@ export const zh: Translations = {
   },
 
   paywall: {
-    close: "关闭",
-    title: "让 Nexdo 替你多想一点。",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro 让 AI 有余力和你一起规划任务。"
-        : `Nexdo 已经整理好你的 ${taskCount} 个任务。Pro 让 AI 有余力继续和你一起规划。`,
-    yearly: "按年",
-    monthly: "按月",
-    save: (percent: number) => `省 ${percent}%`,
-    aMonth: (price: string) => `每月 ${price}`,
-    perMonth: "每月",
-    eachMonth: "每月",
-    free: "免费",
-    pro: "Pro",
-    unlimitedNote: "两个方案都可以无限手动添加任务、使用「今天」页面和提醒。",
-    extraTitle: {
-      sounds: "全部专注音效属于 Nexdo Pro。",
-      insights: "完整历史和你的节奏属于 Nexdo Pro。",
-    },
-    extraHint: "Pro 增加全部专注音效、完整的数据洞察和节奏，以及 Nexdo 的 AI。任务、今天、专注、提醒和雨声依然免费。",
-    extras: {
-      sounds: "专注音效",
-      insights: "数据洞察和节奏",
-      insightsFree: "7 天",
-      insightsPro: "全部",
-    },
     startTrial: (count: number, unit: TrialUnit) => `开始 ${trialLength(count, unit)}免费试用`,
-    subscribe: "获取 Nexdo Pro",
     working: "请稍候…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `免费 ${trialLength(count, unit)}，之后每${yearly ? "年" : "月"} ${price}。随时取消。`,
     terms: (price: string, yearly: boolean) => `每${yearly ? "年" : "月"} ${price}，自动续订直到你取消。`,
-    continueFree: "继续使用免费版",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "少想一点。",
-    headlineBottom: "多做一点。",
-    whatYouGet: "你将获得",
-    rows: {
-      basics: "任务、日历、提醒",
-      focusTimer: "专注计时",
-      media: "照片和文件",
-      chat: "背景笔记",
-      allSounds: (count: number) => `全部 ${count} 种`,
-      allTime: "全部记录",
-    },
     seconds: (amount: string) => `${amount} 秒`,
-    perMo: "/ 月",
-    billedYearly: (price: string) => `每年 ${price}`,
-    billedMonthly: "按月计费",
-    restoreShort: "恢复",
-    restore: "恢复购买",
     termsLink: "条款",
     privacyLink: "隐私",
     loading: "正在加载方案…",
@@ -1351,6 +1329,8 @@ export const zh: Translations = {
       discount: (percent: number) => `−${percent}%`,
       cancelAnytime: "随时取消",
       continueFree: "继续使用免费版",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "以后再说",
       subscribe: "订阅",
     },
     save: {

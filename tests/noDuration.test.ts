@@ -25,7 +25,7 @@ beforeEach(() => {
 describe("a task with no duration", () => {
   it("reads as such wherever a length is shown", () => {
     assert.equal(formatTaskLength(0), "No duration");
-    assert.equal(formatTaskLength(45), "45 mins");
+    assert.equal(formatTaskLength(45), "45 min");
   });
 
   it("can be set on purpose, and given a length again", () => {

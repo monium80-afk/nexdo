@@ -64,6 +64,30 @@ export const bn: Translations = {
     calendar: "ক্যালেন্ডার",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "কিছু একটা ভুল হয়েছে",
+    body: "এই স্ক্রিনটি খোলা গেল না। আপনার কাজগুলো নিরাপদে আছে।",
+    retry: "???? ??? ????",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "আপনার তালিকা যোগ করবেন?",
+    body: (n: number) => `লগ ইন করার আগে আপনি ${n}টি কাজ বলেছিলেন। এগুলো আপনার অ্যাকাউন্টে যোগ করবেন?`,
+    add: "যোগ করুন",
+    skip: "বাদ দিন",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "এখনো সিঙ্ক হয়নি — আপনার পরিবর্তনগুলো এই ফোনে সেভ আছে।",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "ব্যবহারের তথ্য শেয়ার করুন",
+    on: "চালু",
+    off: "বন্ধ",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       if (hours === 0) return `${mins} মিনিট`;
@@ -825,58 +849,12 @@ export const bn: Translations = {
   },
 
   paywall: {
-    close: "বন্ধ করুন",
-    title: "Nexdo-কে আপনার হয়ে আরও ভাবতে দিন।",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro-তে AI আপনার সাথে কাজের পরিকল্পনা করার সুযোগ পায়।"
-        : `Nexdo আপনার ${tasks(taskCount)} আগেই গুছিয়ে দিয়েছে। Pro-তে AI আপনার সাথে সেগুলোর পরিকল্পনা চালিয়ে যেতে পারে।`,
-    yearly: "বার্ষিক",
-    monthly: "মাসিক",
-    save: (percent: number) => `${percent}% বাঁচান`,
-    aMonth: (price: string) => `মাসে ${price}`,
-    perMonth: "প্রতি মাসে",
-    eachMonth: "প্রতি মাসে",
-    free: "ফ্রি",
-    pro: "Pro",
-    unlimitedNote: "হাতে কাজ যোগ করা, আজ পেজ আর রিমাইন্ডার দুই প্ল্যানেই সীমাহীন।",
-    extraTitle: {
-      sounds: "সব ফোকাস সাউন্ড Nexdo Pro-এর সাথে আসে।",
-      insights: "আপনার পুরো ইতিহাস আর গতি Nexdo Pro-এর সাথে আসে।",
-    },
-    extraHint: "Pro-তে যোগ হয় সব ফোকাস সাউন্ড, পুরো ইনসাইটস আর গতি, এবং Nexdo-র AI। কাজ, আজ, সেশন, রিমাইন্ডার আর বৃষ্টির সাউন্ড ফ্রি থাকে।",
-    extras: {
-      sounds: "ফোকাস সাউন্ড",
-      insights: "ইনসাইটস ও আপনার গতি",
-      insightsFree: "7 দিন",
-      insightsPro: "সব",
-    },
     startTrial: (count: number, unit: TrialUnit) => `${trialLength(count, unit)}ের ফ্রি ট্রায়াল শুরু করুন`,
-    subscribe: "Nexdo Pro নিন",
     working: "এক মুহূর্ত…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `${trialLength(count, unit)} ফ্রি, তারপর ${yearly ? "বছরে" : "মাসে"} ${price}। যেকোনো সময় বাতিল করুন।`,
     terms: (price: string, yearly: boolean) => `${yearly ? "বছরে" : "মাসে"} ${price}, বাতিল না করা পর্যন্ত নবায়ন হবে।`,
-    continueFree: "ফ্রি দিয়ে চালিয়ে যান",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "কম ভাবুন।",
-    headlineBottom: "বেশি করুন।",
-    whatYouGet: "আপনি যা পাবেন",
-    rows: {
-      basics: "টাস্ক, ক্যালেন্ডার, রিমাইন্ডার",
-      focusTimer: "ফোকাস টাইমার",
-      media: "ছবি ও ফাইল",
-      chat: "প্রসঙ্গ নোট",
-      allSounds: (count: number) => `সব ${count}টি`,
-      allTime: "পুরো ইতিহাস",
-    },
     seconds: (amount: string) => `${amount} সেকেন্ড`,
-    perMo: "/ মাস",
-    billedYearly: (price: string) => `বছরে ${price}`,
-    billedMonthly: "মাসিক বিল",
-    restoreShort: "রিস্টোর",
-    restore: "কেনাকাটা ফিরিয়ে আনুন",
     termsLink: "শর্তাবলি",
     privacyLink: "প্রাইভেসি",
     loading: "প্ল্যান লোড হচ্ছে…",
@@ -1370,6 +1348,8 @@ export const bn: Translations = {
       discount: (percent: number) => `−${percent}%`,
       cancelAnytime: "যেকোনো সময় বাতিল করুন",
       continueFree: "ফ্রি দিয়ে চালিয়ে যান",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "এখন না",
       subscribe: "সাবস্ক্রাইব করুন",
     },
     save: {

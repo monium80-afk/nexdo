@@ -7,7 +7,7 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { Chip } from "@/components/Chip";
 import { SectionHeader } from "@/components/SectionHeader";
 import { useRtlText } from "@/hooks/useRtlText";
-import { useColors, useThemeScheme } from "@/hooks/useTheme";
+import { useColors } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDeadline, makeDeadline, type DeadlineInput } from "@/lib/deadline";
 import { pad } from "@/lib/localDate";
@@ -59,7 +59,6 @@ export function RecurrencePicker({
   nested?: boolean;
 }) {
   const colors = useColors();
-  const scheme = useThemeScheme();
   const t = useTranslation();
   const rtl = useRtlText();
   const [endPickerOpen, setEndPickerOpen] = useState(false);
@@ -260,7 +259,7 @@ export function RecurrencePicker({
                   mode="time"
                   display="compact"
                   accentColor={colors.orange[500]}
-                  themeVariant={scheme}
+                  themeVariant="light"
                   onChange={(event, selected) => {
                     if (event.type !== "dismissed" && selected) setTime(selected);
                   }}
@@ -310,7 +309,7 @@ export function RecurrencePicker({
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 minimumDate={now}
                 accentColor={colors.orange[500]}
-                themeVariant={scheme}
+                themeVariant="light"
                 onChange={handleEndChange}
               />
             ) : null}

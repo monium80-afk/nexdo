@@ -17,7 +17,7 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemStill } from "@/components/GemMascot";
 import { ABOVE_SHADOW, footerBottom, MAX_FONT_SCALE, ONB, rowDirection, useIsRtl, useSvgId } from "@/components/onboarding/OnboardingKit";
 import { kf, LINEAR } from "@/components/onboarding/timeline";
-import { chosenPlan, type PlanChoice, type PlansState } from "@/components/PlanPicker";
+import { chosenPlan, type PlanChoice, type PlansState } from "@/lib/planChoice";
 import { SUPPORT_LINKS } from "@/constants/support";
 import { shadow } from "@/constants/shadow";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
@@ -161,6 +161,7 @@ function PlanSide({
   onChoose,
   onBuy,
   onFree,
+  freeLabel,
   onRetry,
   busy,
 }: {
@@ -173,6 +174,8 @@ function PlanSide({
   onChoose: (choice: PlanChoice) => void;
   onBuy: () => void;
   onFree: () => void;
+  /** "Continue with Free" in onboarding; "Not now" in the app, for someone already on Free. */
+  freeLabel: string;
   onRetry: () => void;
   busy: boolean;
 }) {
@@ -337,7 +340,7 @@ function PlanSide({
           {copy.cancelAnytime}
           {" · "}
           <Text onPress={busy ? undefined : onFree} accessibilityRole="button" style={{ color: ink, fontFamily: "SpaceGrotesk-Bold" }}>
-            {copy.continueFree}
+            {freeLabel}
           </Text>
         </Text>
         {/* What the store will charge, and when, with Terms and Privacy — what a subscription has to state. */}
@@ -578,6 +581,7 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** What ope
       onChoose={setChoice}
       onBuy={() => void handleBuy()}
       onFree={handleFree}
+      freeLabel={mode === "onboarding" ? copy.continueFree : copy.notNow}
       onRetry={() => {
         setPlansState({ status: "loading" });
         loadPlans();

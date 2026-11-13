@@ -1,7 +1,7 @@
 import { ClerkProvider, useAuth } from "@clerk/expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
-import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
+import { Stack, useGlobalSearchParams, usePathname, type ErrorBoundaryProps } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { PostHogProvider } from "posthog-react-native";
@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { CrashScreen } from "@/components/CrashScreen";
 import { UndoToast } from "@/components/UndoToast";
 import { colors } from "@/constants/theme";
 import { useAuthSync } from "@/hooks/useAuthSync";
@@ -19,6 +20,7 @@ import { publishableKey, resourceCache, tokenCache } from "@/lib/clerk";
 import { watchCompletions } from "@/lib/focusLog";
 import { configureNotifications } from "@/lib/notifications";
 import { posthog } from "@/lib/posthog";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import "../global.css";
 
 SystemUI.setBackgroundColorAsync(colors.cream[100]);
@@ -36,6 +38,12 @@ AsyncStorage.removeItem("nexdo-chat").catch(() => {});
  * also puts the tabs under a screen opened straight from a link.
  */
 export const unstable_settings = { anchor: "(tabs)" };
+
+// A screen that fails to draw shows a calm "Something went wrong" with Try
+// again, instead of closing the app or leaving it blank (review 2026-11-13).
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  return <CrashScreen {...props} />;
+}
 
 /** The longest the splash waits for Clerk before handing over to a spinner. */
 const SPLASH_MAX_MS = 6_000;
@@ -64,7 +72,7 @@ function AccountSetup({ children }: { children: ReactNode }) {
     if (isLoaded || splashTimedOut) SplashScreen.hideAsync().catch(() => {});
   }, [isLoaded, splashTimedOut]);
 
-  if (!isLoaded) {
+  if (!isLoaded && !(globalThis as { __CALCHECK__?: boolean }).__CALCHECK__) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.cream[100] }}>
         <ActivityIndicator color={colors.orange[500]} />
@@ -118,6 +126,12 @@ export default function RootLayout() {
   useFocusSound();
   // Finished tasks are noted for Insights, whichever way they were done.
   useEffect(() => watchCompletions(), []);
+  // Settings → Preferences → Share usage data: PostHog off or on. Opting out
+  // is remembered by PostHog itself, so nothing is sent from the next launch on.
+  const analyticsEnabled = useSettingsStore((state) => state.analyticsEnabled);
+  useEffect(() => {
+    void (analyticsEnabled ? posthog.optIn() : posthog.optOut());
+  }, [analyticsEnabled]);
 
   // Manual screen tracking for Expo Router
   // @see https://posthog.com/docs/libraries/react-native

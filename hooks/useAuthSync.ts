@@ -2,7 +2,10 @@ import { useAuth, useClerk, useUser } from "@clerk/expo";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 
+import { showAlert } from "@/lib/alert";
+import type { ExtractedTaskDraft } from "@/lib/ai/types";
 import { setApiTokenGetter } from "@/lib/api";
+import { translate } from "@/lib/i18n";
 import { flushLiveUsageReports } from "@/lib/liveUsageReports";
 import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
@@ -48,9 +51,11 @@ function isNewAccount(accountCreatedAt: Date | null | undefined, sessionCreatedA
  * app/onboarding-plan.tsx), and without this step the whole dump was thrown
  * away at the door.
  *
- * Someone logging back into an existing account already has their list, so a
- * dump they made on the way in is dropped rather than mixed into it. It is
- * still claimed out of the store, so it can't linger into a later sign-up.
+ * Someone logging back into an existing account already has their list, so
+ * a dump they made on the way in isn't mixed into it unasked: they're asked
+ * whether to add it (it used to be dropped silently — anyone reinstalling
+ * lost what they had just said; review 2026-11-13). It is claimed out of the
+ * store either way, so it can't linger into a later sign-up.
  *
  * Deliberately after hydrateFromSupabase has settled: adding first would race
  * the merge, which decides what a signed-in user's task list actually is.
@@ -60,8 +65,28 @@ function isNewAccount(accountCreatedAt: Date | null | undefined, sessionCreatedA
  */
 function claimOnboardingDrafts(accountIsNew: boolean): boolean {
   const drafts = useOnboardingStore.getState().claimDrafts();
-  if (drafts.length === 0 || !accountIsNew) return false;
+  if (drafts.length === 0) return false;
+  if (!accountIsNew) {
+    const t = translate();
+    showAlert(t.draftsOnLogIn.title, t.draftsOnLogIn.body(drafts.length), [
+      { text: t.draftsOnLogIn.skip, style: "cancel", onPress: () => posthog.capture("onboarding_drafts_skipped_on_log_in", { task_count: drafts.length }) },
+      {
+        text: t.draftsOnLogIn.add,
+        onPress: () => {
+          saveDrafts(drafts);
+          posthog.capture("onboarding_drafts_added_on_log_in", { task_count: drafts.length });
+        },
+      },
+    ]);
+    return false;
+  }
+  saveDrafts(drafts);
+  posthog.capture("onboarding_drafts_saved", { task_count: drafts.length });
+  return true;
+}
 
+/** The brain dump's tasks, added to the signed-in account's list. */
+function saveDrafts(drafts: ExtractedTaskDraft[]) {
   const { addTask } = useTaskStore.getState();
   drafts.forEach((draft) =>
     addTask({
@@ -82,8 +107,6 @@ function claimOnboardingDrafts(accountIsNew: boolean): boolean {
       recurrence: draft.recurrence,
     }),
   );
-  posthog.capture("onboarding_drafts_saved", { task_count: drafts.length });
-  return true;
 }
 
 export function useAuthSync() {

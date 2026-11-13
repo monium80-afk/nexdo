@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { ScrollView, Text, TextInput, View, type LayoutRectangle } from "react-native";
+import { FlatList, ScrollView, Text, TextInput, View } from "react-native";
 import Animated, { Easing, Keyframe, LinearTransition, useReducedMotion } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -176,12 +176,9 @@ export default function TasksListScreen() {
     return sortTasks(filtered, sort);
   }, [tasks, status, sort, search, deadlineNow]);
 
-  // Where each row sits, for Magic mic's cards to land in (see
-  // components/MagicMicOverlay.tsx). Row layouts come from onLayout — the
-  // final place, even while the list is still sliding things into it.
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const listRef = useRef<ComponentRef<typeof View>>(null);
-  const rowLayouts = useRef(new Map<string, LayoutRectangle>());
+  // Visible row positions for Magic mic's landing animation and the edit card.
+  const scrollRef = useRef<ComponentRef<typeof View>>(null);
+  const rowViews = useRef(new Map<string, ComponentRef<typeof View>>());
   const shownIds = useRef<string[]>([]);
   useEffect(() => {
     shownIds.current = filteredTasks.map((task) => task.id);
@@ -192,17 +189,15 @@ export default function TasksListScreen() {
       setTasksLanding(async (taskIds) => {
         // A row that has only just been added needs a frame or two to be laid out.
         for (let frame = 0; frame < 8; frame++) {
-          const waiting = taskIds.some((id) => shownIds.current.includes(id) && !rowLayouts.current.has(id));
+          const waiting = taskIds.some((id) => shownIds.current.includes(id) && !rowViews.current.has(id));
           if (!waiting) break;
           await nextFrame();
         }
-        const [list, viewport] = await Promise.all([measureView(listRef.current), measureView(scrollRef.current)]);
+        const viewport = await measureView(scrollRef.current);
         const rows: Record<string, ScreenRect> = {};
         for (const id of taskIds) {
-          const row = rowLayouts.current.get(id);
-          if (list && row && shownIds.current.includes(id)) {
-            rows[id] = { x: list.x + row.x, y: list.y + row.y, width: row.width, height: row.height };
-          }
+          const row = shownIds.current.includes(id) ? await measureView(rowViews.current.get(id)) : null;
+          if (row) rows[id] = row;
         }
         return {
           rows,
@@ -261,9 +256,8 @@ export default function TasksListScreen() {
   // (components/TaskEditCard.tsx TaskEditModal).
   const [editing, setEditing] = useState<{ id: string; anchorY?: number } | null>(null);
   const handleOpenTask = async (taskId: string) => {
-    const row = rowLayouts.current.get(taskId);
-    const list = row ? await measureView(listRef.current) : null;
-    setEditing({ id: taskId, anchorY: list && row ? list.y + row.y : undefined });
+    const row = await measureView(rowViews.current.get(taskId));
+    setEditing({ id: taskId, anchorY: row?.y });
   };
 
   // The filters as a row of pills (Final-Tasks.html: "To do · 5", "Done · 2"…):
@@ -278,135 +272,79 @@ export default function TasksListScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.palette.paper }} edges={["top"]}>
-      <ScrollView
-        ref={scrollRef}
-        // Clear of the tab bar, which floats over the foot of the page.
+      <View ref={scrollRef} collapsable={false} style={{ flex: 1 }}>
+      <Animated.FlatList
+        data={filteredTasks}
+        keyExtractor={(task) => task.id}
+        ListHeaderComponent={(
+          <>
+            <View className="gap-[9px] px-[20px] pt-[10px]">
+              <View ref={sortChipRef} collapsable={false} className="self-start">
+                <AnimatedPressable onPress={() => openMenu(sortChipRef.current, setSortMenu)} scaleTo={0.96} accessibilityRole="button" className="h-[26px] flex-row items-center gap-[6px] rounded-full bg-peach px-[11px]">
+                  <AppIcon name="check" size={11} strokeWidth={3} color={colors.palette.accentInk} />
+                  <Text className="font-mono-bold text-[10px] tracking-[1.2px] text-accent-ink">{t.tasks.sortedBy(sortLabel).toUpperCase()}</Text>
+                  <Feather name="chevron-down" size={11} color={colors.palette.accentInk} />
+                </AnimatedPressable>
+              </View>
+              <View className="flex-row items-center justify-between gap-3">
+                <Text numberOfLines={1} className="shrink font-grotesk-bold text-[26px] leading-[30px] tracking-[-0.52px] text-ink" style={rtl}>{t.tasks.yourTasks}</Text>
+                <View className="flex-row items-center gap-[8px]">
+                  <AnimatedPressable onPress={() => setSearchOpen((open) => !open)} scaleTo={0.92} accessibilityRole="button" accessibilityLabel={t.tasks.searchPlaceholder} className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip">
+                    <Feather name={searchOpen ? "x" : "search"} size={17} color={colors.palette.ink} />
+                  </AnimatedPressable>
+                  <AnimatedPressable onPress={() => openAddSheet()} scaleTo={0.92} accessibilityRole="button" accessibilityLabel={t.tasks.addTask} className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink">
+                    <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+                  </AnimatedPressable>
+                </View>
+              </View>
+              {searchOpen ? (
+                <View className="h-[42px] flex-row items-center gap-2 rounded-full border-[1.5px] border-line bg-paper-card px-[14px]">
+                  <Feather name="search" size={15} color={colors.palette.inkMuted} />
+                  <TextInput value={search} onChangeText={setSearch} placeholder={t.tasks.searchPlaceholder} placeholderTextColor={colors.palette.inkMuted} autoFocus style={rtl} className="flex-1 font-grotesk-regular text-[13.5px] text-ink" />
+                </View>
+              ) : null}
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, gap: 7 }} accessibilityRole="radiogroup">
+              {filterPills.map((option) => {
+                const selected = status === option.value;
+                return (
+                  <AnimatedPressable key={option.value} onPress={() => setStatus(option.value)} scaleTo={0.95} accessibilityRole="radio" accessibilityState={{ selected }} className={`h-[34px] justify-center rounded-full px-[14px] ${selected ? "bg-ink" : "bg-chip"}`}>
+                    <View className="flex-row items-center">
+                      <Text className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`}>{`${option.label} \u00b7 `}</Text>
+                      <RollingCount value={option.count} className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`} />
+                    </View>
+                  </AnimatedPressable>
+                );
+              })}
+            </ScrollView>
+            <View className="h-[14px]" />
+          </>
+        )}
+        ListEmptyComponent={<View className="px-[20px]"><EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} /></View>}
+        renderItem={({ item: task, index }) => (
+          <Animated.View
+            ref={(view) => { if (view) rowViews.current.set(task.id, view as unknown as ComponentRef<typeof View>); else rowViews.current.delete(task.id); }}
+            entering={listItemEntering(index)}
+            exiting={listItemExiting()}
+            layout={REST_SLIDE}
+            className="mx-[20px]"
+          >
+            <View className={hiddenIds.includes(task.id) ? "opacity-0" : undefined}>
+              {landedIds.includes(task.id) && !reduceMotion ? (
+                <Animated.View pointerEvents="none" entering={LANDED_EDGE} className="absolute inset-0 z-10 rounded-[16px] border-[1.5px] border-accent" style={{ opacity: 0 }} />
+              ) : null}
+              <TaskCard task={task} onPress={() => void handleOpenTask(task.id)} onToggle={() => handleToggle(task)} onScorePress={(anchor) => setScoreTarget({ task, anchor })} />
+            </View>
+          </Animated.View>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-      >
-        <View className="gap-[9px] px-[20px] pt-[10px]">
-          {/* How the list is sorted, and the way to change it: its menu drops out of the pill. */}
-          <View ref={sortChipRef} collapsable={false} className="self-start">
-            <AnimatedPressable
-              onPress={() => openMenu(sortChipRef.current, setSortMenu)}
-              scaleTo={0.96}
-              accessibilityRole="button"
-              className="h-[26px] flex-row items-center gap-[6px] rounded-full bg-peach px-[11px]"
-            >
-              <AppIcon name="check" size={11} strokeWidth={3} color={colors.palette.accentInk} />
-              <Text className="font-mono-bold text-[10px] tracking-[1.2px] text-accent-ink">
-                {t.tasks.sortedBy(sortLabel).toUpperCase()}
-              </Text>
-              <Feather name="chevron-down" size={11} color={colors.palette.accentInk} />
-            </AnimatedPressable>
-          </View>
-
-          <View className="flex-row items-center justify-between gap-3">
-            <Text numberOfLines={1} className="shrink font-grotesk-bold text-[26px] leading-[30px] tracking-[-0.52px] text-ink" style={rtl}>
-              {t.tasks.yourTasks}
-            </Text>
-            <View className="flex-row items-center gap-[8px]">
-              <AnimatedPressable
-                onPress={() => setSearchOpen((open) => !open)}
-                scaleTo={0.92}
-                accessibilityRole="button"
-                accessibilityLabel={t.tasks.searchPlaceholder}
-                className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip"
-              >
-                <Feather name={searchOpen ? "x" : "search"} size={17} color={colors.palette.ink} />
-              </AnimatedPressable>
-              <AnimatedPressable
-                onPress={() => openAddSheet()}
-                scaleTo={0.92}
-                accessibilityRole="button"
-                accessibilityLabel={t.tasks.addTask}
-                className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
-              >
-                <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
-              </AnimatedPressable>
-            </View>
-          </View>
-
-          {searchOpen ? (
-            <View className="h-[42px] flex-row items-center gap-2 rounded-full border-[1.5px] border-line bg-paper-card px-[14px]">
-              <Feather name="search" size={15} color={colors.palette.inkMuted} />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder={t.tasks.searchPlaceholder}
-                placeholderTextColor={colors.palette.inkMuted}
-                autoFocus
-                style={rtl}
-                className="flex-1 font-grotesk-regular text-[13.5px] text-ink"
-              />
-            </View>
-          ) : null}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, gap: 7 }}
-          accessibilityRole="radiogroup"
-        >
-          {filterPills.map((option) => {
-            const selected = status === option.value;
-            return (
-              <AnimatedPressable
-                key={option.value}
-                onPress={() => setStatus(option.value)}
-                scaleTo={0.95}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                className={`h-[34px] justify-center rounded-full px-[14px] ${selected ? "bg-ink" : "bg-chip"}`}
-              >
-                <View className="flex-row items-center">
-                  <Text className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`}>
-                    {`${option.label} · `}
-                  </Text>
-                  <RollingCount value={option.count} className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`} />
-                </View>
-              </AnimatedPressable>
-            );
-          })}
-        </ScrollView>
-
-        <View>
-          <View ref={listRef} collapsable={false} className="gap-[10px] px-[20px] pt-[14px]">
-            {filteredTasks.length === 0 ? (
-              <EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} />
-            ) : (
-              filteredTasks.map((task, index) => (
-                <Animated.View
-                  key={task.id}
-                  entering={listItemEntering(index)}
-                  exiting={listItemExiting()}
-                  layout={REST_SLIDE}
-                  onLayout={(event) => rowLayouts.current.set(task.id, event.nativeEvent.layout)}
-                >
-                  <View className={hiddenIds.includes(task.id) ? "opacity-0" : undefined}>
-                    {landedIds.includes(task.id) && !reduceMotion ? (
-                      <Animated.View
-                        pointerEvents="none"
-                        entering={LANDED_EDGE}
-                        className="absolute inset-0 z-10 rounded-[16px] border-[1.5px] border-accent"
-                        style={{ opacity: 0 }}
-                      />
-                    ) : null}
-                    <TaskCard
-                      task={task}
-                      onPress={() => void handleOpenTask(task.id)}
-                      onToggle={() => handleToggle(task)}
-                      onScorePress={(anchor) => setScoreTarget({ task, anchor })}
-                    />
-                  </View>
-                </Animated.View>
-              ))
-            )}
-          </View>
-        </View>
-      </ScrollView>
+        initialNumToRender={10}
+        windowSize={7}
+      />
+      </View>
 
       <ScoreSheet target={scoreTarget} onClose={() => setScoreTarget(null)} />
 

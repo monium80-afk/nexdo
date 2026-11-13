@@ -1,3 +1,4 @@
+import Feather from "@expo/vector-icons/Feather";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
@@ -28,6 +29,7 @@ import { FOCUS_FINISH } from "@/constants/focusFinish";
 import { MOTION } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
+import { useSyncPending } from "@/hooks/useSyncPending";
 import { useColors } from "@/hooks/useTheme";
 import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -632,6 +634,7 @@ export default function Next() {
   // + to add a task by hand (here since 2026-11-02, when Magic mic took the
   // middle of the tab bar). The whole page scrolls as one, so the gem's
   // light and flame can reach up behind the title as in the mockup.
+  const syncPending = useSyncPending();
   const header = (
     <View className="flex-row items-end justify-between gap-3 px-[20px] pt-[6px]">
       <View className="shrink">
@@ -646,6 +649,15 @@ export default function Next() {
         >
           {t.next.today}
         </Text>
+        {/* Rare: a change that hasn't reached the server for a minute (offline). It's safe on the phone and retried on its own. */}
+        {syncPending ? (
+          <View className="mt-[4px] flex-row items-center gap-[6px]">
+            <Feather name="cloud-off" size={13} color={colors.palette.inkMuted} />
+            <Text numberOfLines={2} className="shrink font-grotesk-regular text-[12.5px] text-ink-muted" style={rtl}>
+              {t.sync.pending}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <AnimatedPressable
         onPress={() => openAddSheet()}

@@ -86,6 +86,30 @@ export const es: Translations = {
     calendar: "Calendario",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "Algo salió mal",
+    body: "Esta pantalla no se pudo cargar. Tus tareas están a salvo.",
+    retry: "Recargar",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "¿Añadir tu lista?",
+    body: (n: number) => `Anotaste ${n} tareas antes de iniciar sesión. ¿Añadirlas a tu cuenta?`,
+    add: "Añadirlas",
+    skip: "Omitir",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "Aún sin sincronizar: tus cambios están guardados en este teléfono.",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "Compartir datos de uso",
+    on: "Sí",
+    off: "No",
+  },
+
   format: {
     duration: (hours: number, mins: number) => {
       const minsLabel = `${mins} min`;
@@ -870,59 +894,12 @@ export const es: Translations = {
   },
 
   paywall: {
-    close: "Cerrar",
-    title: "Deja que Nexdo piense más por ti.",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro le da a la IA margen para planificar tus tareas contigo."
-        : `Nexdo ya organizó ${taskCount === 1 ? "tu tarea" : `tus ${taskCount} tareas`}. Pro le da a la IA margen para seguir ${taskCount === 1 ? "planificándola" : "planificándolas"} contigo.`,
-    yearly: "Anual",
-    monthly: "Mensual",
-    save: (percent: number) => `Ahorra ${percent} %`,
-    aMonth: (price: string) => `${price} al mes`,
-    perMonth: "al mes",
-    eachMonth: "Cada mes",
-    free: "Gratis",
-    pro: "Pro",
-    unlimitedNote: "Añadir tareas a mano, la página Hoy y los recordatorios son ilimitados en ambos planes.",
-    extraTitle: {
-      sounds: "Todos los sonidos de concentración vienen con Nexdo Pro.",
-      insights: "Todo tu historial y tu ritmo vienen con Nexdo Pro.",
-    },
-    extraHint:
-      "Pro añade todos los sonidos de concentración, todas tus estadísticas con tu ritmo y la IA de Nexdo. Las tareas, Hoy, las sesiones, los recordatorios y el sonido de lluvia siguen siendo gratis.",
-    extras: {
-      sounds: "Sonidos de concentración",
-      insights: "Estadísticas y ritmo",
-      insightsFree: "7 días",
-      insightsPro: "Todo",
-    },
     startTrial: (count: number, unit: TrialUnit) => `Empezar prueba gratis de ${trialLength(count, unit)}`,
-    subscribe: "Pásate a Nexdo Pro",
     working: "Un momento…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `Gratis durante ${trialLength(count, unit)}, después ${price} al ${yearly ? "año" : "mes"}. Cancela cuando quieras.`,
     terms: (price: string, yearly: boolean) => `${price} al ${yearly ? "año" : "mes"}, se renueva hasta que canceles.`,
-    continueFree: "Seguir con el plan gratis",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "Menos pensar.",
-    headlineBottom: "Más hacer.",
-    whatYouGet: "LO QUE OBTIENES",
-    rows: {
-      basics: "Tareas, calendario, recordatorios",
-      focusTimer: "Temporizador de enfoque",
-      media: "Fotos y archivos",
-      chat: "Notas de contexto",
-      allSounds: (count: number) => `Los ${count}`,
-      allTime: "Todo el historial",
-    },
     seconds: (amount: string) => `${amount} s`,
-    perMo: "/ mes",
-    billedYearly: (price: string) => `${price} al año`,
-    billedMonthly: "facturado al mes",
-    restoreShort: "Restaurar",
-    restore: "Restaurar compras",
     termsLink: "Condiciones",
     privacyLink: "Privacidad",
     loading: "Cargando planes…",
@@ -1416,6 +1393,8 @@ export const es: Translations = {
       discount: (percent: number) => `−${percent} %`,
       cancelAnytime: "Cancela cuando quieras",
       continueFree: "Seguir con Gratis",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "Ahora no",
       subscribe: "Suscribirse",
     },
     save: {

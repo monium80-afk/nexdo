@@ -149,6 +149,7 @@ function DayCalendar({ value, minimum, onPick, onClose }: { value: LocalDate; mi
       mode="date"
       display={Platform.OS === "ios" ? "inline" : "default"}
       accentColor={P.accent}
+      themeVariant="light"
       onChange={handle}
     />
   );

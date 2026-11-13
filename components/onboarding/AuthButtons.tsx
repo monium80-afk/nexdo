@@ -1,10 +1,11 @@
 import { useSignIn, useSignUp } from "@clerk/expo";
+import { useSignInWithApple } from "@clerk/expo/apple";
 import { useSSO } from "@clerk/expo/experimental";
 import Feather from "@expo/vector-icons/Feather";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { AppState, Text, TextInput, View, type TextInputProps } from "react-native";
+import { AppState, Platform, Text, TextInput, View, type TextInputProps } from "react-native";
 import Svg, { Path, Rect } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -28,18 +29,30 @@ export function useSocialAuth(mode: AuthMode) {
   const t = useTranslation();
   const router = useRouter();
   const { startSSOFlow } = useSSO();
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
   const [error, setError] = useState<string | null>(null);
   const start = async (provider: "google" | "apple") => {
     const event = mode === "signUp" ? "sign_up" : "sign_in";
     posthog.capture(`${event}_social_tapped`, { provider });
     setError(null);
     try {
-      const { createdSessionId } = await startSSOFlow({ strategy: provider === "google" ? "oauth_google" : "oauth_apple", redirectUrl: SSO_REDIRECT_URL });
+      // iPhone: Apple's own sheet, which App Review expects. Elsewhere, and
+      // for Google, Clerk's browser sign-in.
+      let createdSessionId: string | null = null;
+      if (provider === "apple" && Platform.OS === "ios") {
+        const result = await startAppleAuthenticationFlow();
+        createdSessionId = result.createdSessionId;
+        if (createdSessionId && "setActive" in result) await result.setActive?.({ session: createdSessionId });
+      } else {
+        ({ createdSessionId } = await startSSOFlow({ strategy: provider === "google" ? "oauth_google" : "oauth_apple", redirectUrl: SSO_REDIRECT_URL }));
+      }
       if (createdSessionId) {
         posthog.capture(`${event}_completed`, { method: "social", provider });
         router.replace("/");
       }
     } catch (err) {
+      // Closing Apple's sheet isn't a failure.
+      if (typeof err === "object" && err !== null && "code" in err && err.code === "ERR_REQUEST_CANCELED") return;
       console.error(`[onboarding/${event}] social`, JSON.stringify(err, null, 2));
       posthog.captureException(err instanceof Error ? err : new Error(String(err)), { context: `${event}_social`, provider });
       setError(t.auth.somethingWrong);

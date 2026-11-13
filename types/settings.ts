@@ -1,4 +1,3 @@
-export type ThemePreference = "light" | "dark" | "system";
 
 /**
  * The app's languages. Since 2026-11-02 also the five most spoken ones it

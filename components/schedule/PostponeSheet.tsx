@@ -101,6 +101,7 @@ export function PostponeSheet({ taskId, onClose }: { taskId: string | null; onCl
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 accentColor={P.accent}
+                themeVariant="light"
                 onChange={handlePicked}
               />
             ) : null}

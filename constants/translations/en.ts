@@ -61,10 +61,34 @@ export const en = {
     calendar: "Calendar",
   },
 
+  /** Shown in place of a screen that failed to draw (components/CrashScreen.tsx). */
+  crash: {
+    title: "Something went wrong",
+    body: "This screen couldn’t load. Your tasks are safe.",
+    retry: "Reload",
+  },
+  /** Logging in to an existing account with onboarding's brain dump still waiting (hooks/useAuthSync.ts). */
+  draftsOnLogIn: {
+    title: "Add your brain dump?",
+    body: (n: number) => `You listed ${n} tasks before logging in. Add them to your account?`,
+    add: "Add them",
+    skip: "Skip",
+  },
+  /** Today's quiet line while changes haven't reached the server for a while. */
+  sync: {
+    pending: "Not synced yet — your changes are saved on this phone.",
+  },
+  /** Settings → Preferences: product analytics on or off (PostHog). */
+  privacyPrefs: {
+    analytics: "Share usage data",
+    on: "On",
+    off: "Off",
+  },
+
   format: {
-    /** "45 mins", "1 h", "2 h 15 mins" */
+    /** "45 min", "1 h", "2 h 15 min" */
     duration: (hours: number, mins: number) => {
-      const minsLabel = `${mins} ${plural(mins, "min", "mins")}`;
+      const minsLabel = `${mins} min`;
       const hoursLabel = `${hours} h`;
       if (hours === 0) return minsLabel;
       if (mins === 0) return hoursLabel;
@@ -932,60 +956,12 @@ export const en = {
 
   /** The Nexdo Pro paywall (app/paywall.tsx). Prices come from the store, never from here. */
   paywall: {
-    close: "Close",
-    title: "Let Nexdo do more of the thinking.",
-    subtitle: (taskCount: number) =>
-      taskCount === 0
-        ? "Pro gives the AI room to plan your tasks with you."
-        : `Nexdo already organized your ${plural(taskCount, "task", `${taskCount} tasks`)}. Pro gives the AI room to keep planning ${plural(taskCount, "it", "them")} with you.`,
-    yearly: "Yearly",
-    monthly: "Monthly",
-    save: (percent: number) => `Save ${percent}%`,
-    aMonth: (price: string) => `${price} a month`,
-    perMonth: "per month",
-    eachMonth: "Each month",
-    free: "Free",
-    pro: "Pro",
-    unlimitedNote: "Adding tasks by hand, the Today page and reminders are unlimited on both plans.",
-    /** Opened from a Pro extra (lib/paywall.ts ProExtra): its headline. */
-    extraTitle: {
-      sounds: "More focus sounds come with Nexdo Pro.",
-      insights: "Your full history and your pace come with Nexdo Pro.",
-    },
-    extraHint: "Pro adds every focus sound, your full Insights and pace, and Nexdo's AI. Tasks, Today, sessions, reminders and the rain sound stay free.",
-    /** The comparison's rows for Pro's extras. */
-    extras: {
-      sounds: "Focus sounds",
-      insights: "Insights & your pace",
-      insightsFree: "7 days",
-      insightsPro: "All",
-    },
     startTrial: (count: number, unit: TrialUnit) => `Start ${count} ${plural(count, unit, `${unit}s`)} free`,
-    subscribe: "Get Nexdo Pro",
     working: "One moment…",
     trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
       `${count} ${plural(count, unit, `${unit}s`)} free, then ${price} ${yearly ? "once a year" : "a month"}. Cancel anytime.`,
     terms: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}, renewed until you cancel.`,
-    continueFree: "Continue with Free",
-    /** The paywall's design (2026-11-10, design/nexdo-paywall.html). */
-    kicker: "NEXDO PRO",
-    headlineTop: "Less thinking.",
-    headlineBottom: "More doing.",
-    whatYouGet: "WHAT YOU GET",
-    rows: {
-      basics: "Tasks, calendar, reminders",
-      focusTimer: "Focus timer",
-      media: "Photos and files",
-      chat: "Context notes",
-      allSounds: (count: number) => `All ${count}`,
-      allTime: "All time",
-    },
     seconds: (amount: string) => `${amount} sec`,
-    perMo: "/ mo",
-    billedYearly: (price: string) => `${price} billed yearly`,
-    billedMonthly: "billed monthly",
-    restoreShort: "Restore",
-    restore: "Restore purchases",
     termsLink: "Terms",
     privacyLink: "Privacy",
     loading: "Loading plans…",
@@ -1257,7 +1233,7 @@ export const en = {
   focusPage: {
     eyebrow: "Focus session",
     back: "Back",
-    /** Under the clock: "of 30 mins". */
+    /** Under the clock: "of 30 min". */
     ofLength: (length: string) => `of ${length}`,
     /** Under the ring once the task is done in a session: "18 min of focus · 12 min early" (FocusClockFace). */
     doneMinutes: (minutes: number) => `${minutes} min`,
@@ -1491,6 +1467,8 @@ export const en = {
       discount: (percent: number) => `−${percent}%`,
       cancelAnytime: "Cancel anytime",
       continueFree: "Continue with Free",
+      /** Inside the app, in place of continueFree (the user is already on Free). */
+      notNow: "Not now",
       /** The button with Monthly picked (no trial there). */
       subscribe: "Subscribe",
     },
