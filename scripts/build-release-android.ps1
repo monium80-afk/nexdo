@@ -104,12 +104,22 @@ $kept + "cmake.dir=$($cmake.FullName.Replace('\', '\\').Replace(':', '\:'))" | S
 Set-Location (Join-Path $project "android")
 # Phones only (32- and 64-bit ARM), like the dev build: x86/x86_64 are for
 # emulators and a few Chromebooks and would add a lot of native compile time.
-.\gradlew.bat app:bundleRelease "-PreactNativeArchitectures=armeabi-v7a,arm64-v8a" `
-  "-Pandroid.injected.signing.store.file=$keystore" `
-  "-Pandroid.injected.signing.store.password=$($props.storePassword)" `
-  "-Pandroid.injected.signing.key.alias=$($props.keyAlias)" `
-  "-Pandroid.injected.signing.key.password=$($props.keyPassword)"
-if ($LASTEXITCODE -ne 0) { throw "Gradle build failed" }
+# Gradle accepts project properties from the environment; keep passwords out
+# of the command line, which the Windows batch wrapper echoes into build logs.
+$signingProperties = @{
+  "ORG_GRADLE_PROJECT_android.injected.signing.store.file" = $keystore
+  "ORG_GRADLE_PROJECT_android.injected.signing.store.password" = $props.storePassword
+  "ORG_GRADLE_PROJECT_android.injected.signing.key.alias" = $props.keyAlias
+  "ORG_GRADLE_PROJECT_android.injected.signing.key.password" = $props.keyPassword
+}
+try {
+  foreach ($name in $signingProperties.Keys) { Set-Item -Path "Env:$name" -Value $signingProperties[$name] }
+  .\gradlew.bat app:bundleRelease "-PreactNativeArchitectures=armeabi-v7a,arm64-v8a"
+  $gradleExitCode = $LASTEXITCODE
+} finally {
+  foreach ($name in $signingProperties.Keys) { Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue }
+}
+if ($gradleExitCode -ne 0) { throw "Gradle build failed" }
 
 $aab = Join-Path $project "android\app\build\outputs\bundle\release\app-release.aab"
 # Fails the script if the bundle was signed with anything but the upload key:
