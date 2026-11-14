@@ -2,22 +2,18 @@ import { router } from "expo-router";
 
 import { showAlert } from "@/lib/alert";
 import { translate } from "@/lib/i18n";
-import type { Meter } from "@/lib/plan";
+import type { Meter, ProFeatureId } from "@/lib/plan";
 import { planLimitMessage } from "@/lib/planLimit";
 import { isPurchasesEnabled } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
-/** Pro features that aren't AI allowances (2026-11-02): no monthly count, just Pro. */
-export type ProExtra = "sounds" | "insights";
-export const PRO_EXTRAS: readonly ProExtra[] = ["sounds", "insights"];
-
-/** What the paywall was opened from: an AI allowance, or one of the extras. */
-export type PaywallReason = Meter | ProExtra;
+/** What the paywall was opened from: an allowance, or one of the Pro extras (focus sounds, Insights). */
+export type PaywallReason = ProFeatureId;
 
 /**
- * Opens the Nexdo Pro paywall (app/paywall.tsx). With a `reason`, it opens
- * on that feature — or the allowance that just ran out — instead of its
- * usual headline.
+ * Opens the Nexdo Pro paywall (app/paywall.tsx). With a `reason`, that
+ * feature's card — or the allowance that just ran out — comes to the front,
+ * outlined in orange.
  */
 export function openPaywall(reason?: PaywallReason) {
   router.push(reason ? { pathname: "/paywall", params: { reason } } : "/paywall");

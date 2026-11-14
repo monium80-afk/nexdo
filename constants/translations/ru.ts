@@ -401,6 +401,8 @@ export const ru: Translations = {
     showingSuffix: (_shown: number, total: number) => ` из ${total}`,
     emptyTitle: "Задачи не найдены",
     emptyBody: "Попробуйте другой фильтр или запрос.",
+    emptyNoneTitle: "Пока нет задач",
+    emptyNoneBody: "Нажмите +, чтобы добавить первую.",
     status: { all: "Все", pending: "Сделать", completed: "Готово", overdue: "Просроченные", noDeadline: "Без срока", archived: "Архив" },
     sort: { recent: "Недавно добавленные", dueDate: "Срок", priority: "Оценка приоритета" },
     score: (score: number) => `Оценка: ${score}`,
@@ -618,7 +620,11 @@ export const ru: Translations = {
     steps: {
       next: {
         title: "Сегодня",
-        body: "Всё со сроком на сегодня — и всё просроченное, — а наверху самое важное. Листайте, чтобы увидеть остальные, или переключитесь на «Все задачи». Нажмите + вверху, чтобы добавить задачу вручную.",
+        body: "Сверху — задача, которую стоит сделать первой. Смахните, чтобы увидеть следующую, или нажмите «Все», чтобы увидеть все задачи.",
+      },
+      add: {
+        title: "Добавить задачу",
+        body: "Нажмите + и напишите её. Хватит и названия: Nexdo сам решит, что делать первым.",
       },
       tasks: {
         title: "Все ваши задачи",
@@ -903,10 +909,6 @@ export const ru: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `Попробовать бесплатно ${trialLength(count, unit)}`,
     working: "Секунду…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `Бесплатно ${trialLength(count, unit)}, затем ${price} в ${yearly ? "год" : "месяц"}. Отменить можно в любой момент.`,
-    terms: (price: string, yearly: boolean) => `${price} в ${yearly ? "год" : "месяц"}, продлевается, пока вы не отмените.`,
-    seconds: (amount: string) => `${amount} сек`,
     termsLink: "Условия",
     privacyLink: "Конфиденциальность",
     loading: "Загружаю тарифы…",
@@ -917,6 +919,37 @@ export const ru: Translations = {
     offline: "Нет подключения. Подключитесь и попробуйте снова.",
     welcomeTitle: "У вас Nexdo Pro",
     welcomeBody: "Новый месячный лимит готов к использованию.",
+    close: "Закрыть",
+    restore: "Восстановить",
+    /** The headline's two lines; the second is orange. */
+    headline: ["Пусть Nexdo", "всё спланирует."] as [string, string],
+    subtitle: "Каждый месяц с Nexdo Pro:",
+    carouselLabel: "Что входит в Pro каждый месяц",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "Скажите — и это задачи." },
+      assist: { name: "Разбить", line: "Большие задачи, маленькие шаги." },
+      media: { name: "Фото и документы", line: "Фото превращается в задачи." },
+      voice: { name: "Голосовые заметки", line: "Говорите, а не печатайте." },
+      chat: { name: "Заметки-контекст", line: "Расскажите Nexdo детали." },
+      sounds: { name: "Звуки фокуса", line: "Дождь, волны, лес и другие." },
+      insights: { name: "Статистика", line: "Смотрите, как далеко вы зашли." },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "сек", times: "раз", uploads: "загрузок", notes: "заметок", sounds: "звуков", history: "история" },
+    allSounds: (count: number) => `Все ${count}`,
+    allTime: "За всё время",
+    yearly: "Год",
+    monthly: "Месяц",
+    yearlyDetail: (price: string) => `12 месяцев · ${price}`,
+    perMonth: "/ мес.",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} бесплатно`,
+    /** The button with Monthly picked. */
+    subscribe: "Оформить подписку",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} бесплатно, затем ${price} в год. Отмена в любой момент.`,
+    priceLine: (price: string, yearly: boolean) => `${price} в ${yearly ? "год" : "месяц"}. Отмена в любой момент.`,
   },
 
   feedback: {
@@ -993,7 +1026,7 @@ export const ru: Translations = {
     manage: "Управлять",
     upgrade: "Улучшить",
     freePlan: "Nexdo Free",
-    freeBody: "Все функции ИИ — в Pro.",
+    freeBody: "С Pro Nexdo планирует за вас.",
     renews: (date: string) => `Продление ${date}`,
     ends: (date: string) => `Заканчивается ${date}`,
     resetsIn: (days: number) => `сброс через ${days} дн.`,
@@ -1374,40 +1407,6 @@ export const ru: Translations = {
       hold: "Удерживайте, чтобы пообещать",
       committed: "Обещано",
       holdLabel: "Нажмите и удерживайте, чтобы пообещать",
-    },
-    paywall: {
-      close: "Закрыть",
-      restore: "Восстановить",
-      free: "Бесплатно",
-      pro: "Pro",
-      freeTitle: "Nexdo Бесплатно",
-      freeBody: "Планируйте задачи и дни сами.",
-      proTitle: "Nexdo Pro",
-      proBody: "Всё из бесплатного, а основную работу Nexdo берёт на себя.",
-      rows: {
-        live: "Magic mic",
-        assist: "Разбить",
-        media: "Фото и документы",
-        voice: "Голосовые заметки",
-        chat: "Заметки-контекст",
-        sounds: "Звуки фокуса",
-        insights: "Статистика",
-      },
-      allSounds: (count: number) => `Все ${count}`,
-      insightsFree: "7 дней",
-      insightsPro: "За всё время",
-      locked: "Pro",
-      yearly: "Год",
-      monthly: "Месяц",
-      perMonth: "/ мес",
-      aYear: (price: string) => `${price} в год`,
-      billedMonthly: "оплата раз в месяц",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "Отмена в любой момент",
-      continueFree: "Продолжить бесплатно",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "Не сейчас",
-      subscribe: "Оформить подписку",
     },
     save: {
       headline: "Сохраните задачи.",

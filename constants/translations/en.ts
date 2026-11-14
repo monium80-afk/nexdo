@@ -405,6 +405,9 @@ export const en = {
     showingSuffix: (shown: number, total: number) => ` of ${total} tasks`,
     emptyTitle: "No tasks found",
     emptyBody: "Try a different filter or search term.",
+    /** The list when there are no tasks at all (the two above are for a filter or search that matches none). */
+    emptyNoneTitle: "No tasks yet",
+    emptyNoneBody: "Tap + to add your first one.",
     status: { all: "All", pending: "To do", completed: "Done", overdue: "Overdue", noDeadline: "No deadline", archived: "Archived" },
     sort: { recent: "Recently added", dueDate: "Due date", priority: "Priority score" },
     score: (score: number) => `Score: ${score}`,
@@ -647,7 +650,12 @@ export const en = {
     steps: {
       next: {
         title: "Today",
-        body: "What's due today — and anything late — with the task most worth doing on top. Swipe for the others, or switch to All tasks to pick any of them. Tap + at the top to add a task by hand.",
+        body: "The task most worth doing is on top. Swipe for the next one, or tap All to see every task.",
+      },
+      /** The + at the top of Today. */
+      add: {
+        title: "Add a task",
+        body: "Tap + and type it in. A title is enough: Nexdo works out what comes first.",
       },
       tasks: {
         title: "All your tasks",
@@ -958,10 +966,6 @@ export const en = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `Start ${count} ${plural(count, unit, `${unit}s`)} free`,
     working: "One moment…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `${count} ${plural(count, unit, `${unit}s`)} free, then ${price} ${yearly ? "once a year" : "a month"}. Cancel anytime.`,
-    terms: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}, renewed until you cancel.`,
-    seconds: (amount: string) => `${amount} sec`,
     termsLink: "Terms",
     privacyLink: "Privacy",
     loading: "Loading plans…",
@@ -972,6 +976,37 @@ export const en = {
     offline: "You're offline. Connect and try again.",
     welcomeTitle: "You're on Nexdo Pro",
     welcomeBody: "Your new monthly allowance is ready to use.",
+    close: "Close",
+    restore: "Restore",
+    /** The headline's two lines; the second is orange. */
+    headline: ["Let Nexdo do", "the planning."] as [string, string],
+    subtitle: "Every month with Nexdo Pro:",
+    carouselLabel: "What you get with Pro, every month",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "Say it. It becomes tasks." },
+      assist: { name: "Break it down", line: "Big tasks, small steps." },
+      media: { name: "Photos & files", line: "Turn a photo into tasks." },
+      voice: { name: "Voice notes", line: "Talk instead of typing notes." },
+      chat: { name: "Context notes", line: "Tell Nexdo the details." },
+      sounds: { name: "Focus sounds", line: "Rain, waves, forest and more." },
+      insights: { name: "Insights", line: "See how far you’ve come." },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "sec", times: "times", uploads: "uploads", notes: "notes", sounds: "sounds", history: "history" },
+    allSounds: (count: number) => `All ${count}`,
+    allTime: "All time",
+    yearly: "Yearly",
+    monthly: "Monthly",
+    yearlyDetail: (price: string) => `12 months · ${price}`,
+    perMonth: "/ month",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${count} ${plural(count, unit, `${unit}s`)} free`,
+    /** The button with Monthly picked. */
+    subscribe: "Subscribe",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${count} ${plural(count, unit, `${unit}s`)} free, then ${price} a year. Cancel anytime.`,
+    priceLine: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}. Cancel anytime.`,
   },
 
   /** Settings → Send feedback. */
@@ -1056,7 +1091,7 @@ export const en = {
     manage: "Manage",
     upgrade: "Upgrade",
     freePlan: "Nexdo Free",
-    freeBody: "Every AI feature comes with Pro.",
+    freeBody: "Pro lets Nexdo do the planning.",
     renews: (date: string) => `Renews ${date}`,
     ends: (date: string) => `Ends ${date}`,
     resetsIn: (days: number) => `resets in ${days} ${days === 1 ? "day" : "days"}`,
@@ -1436,41 +1471,6 @@ export const en = {
       hold: "Hold to commit",
       committed: "Committed",
       holdLabel: "Press and hold to commit",
-    },
-    paywall: {
-      close: "Close",
-      restore: "Restore",
-      free: "Free",
-      pro: "Pro",
-      freeTitle: "Nexdo Free",
-      freeBody: "Organize your tasks and days yourself.",
-      proTitle: "Nexdo Pro",
-      proBody: "All of Free, and Nexdo does the hard work.",
-      rows: {
-        live: "Magic mic",
-        assist: "Break it down",
-        media: "Photos & files",
-        voice: "Voice notes",
-        chat: "Context notes",
-        sounds: "Focus sounds",
-        insights: "Insights",
-      },
-      allSounds: (count: number) => `All ${count}`,
-      insightsFree: "7 days",
-      insightsPro: "All time",
-      locked: "Pro",
-      yearly: "Yearly",
-      monthly: "Monthly",
-      perMonth: "/ mo",
-      aYear: (price: string) => `${price} a year`,
-      billedMonthly: "billed monthly",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "Cancel anytime",
-      continueFree: "Continue with Free",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "Not now",
-      /** The button with Monthly picked (no trial there). */
-      subscribe: "Subscribe",
     },
     save: {
       headline: "Save your tasks.",

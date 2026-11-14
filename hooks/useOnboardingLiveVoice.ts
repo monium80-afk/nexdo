@@ -8,6 +8,7 @@ import { describeNow } from "@/lib/ai/context";
 import { markTrialUsed } from "@/lib/aiTrial";
 import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
+import { PlanLimitError } from "@/lib/plan";
 import { createLiveVoice } from "@/lib/liveVoice";
 import { draftFromAddTask, sameTitle, type LiveToolCall, type LiveToolResult } from "@/lib/liveVoiceTools";
 import { beginRecording, endRecording } from "@/lib/recordingMode";
@@ -72,11 +73,20 @@ export function useOnboardingLiveVoice() {
         }
       },
       requestSession: async () => {
-        const session = await apiPost<LiveSessionResponseBody>("/api/live-session", {
-          tasks: [],
-          today: describeNow(new Date()),
-          language: getLanguage(),
-        } satisfies LiveSessionRequestBody);
+        let session: LiveSessionResponseBody;
+        try {
+          session = await apiPost<LiveSessionResponseBody>("/api/live-session", {
+            tasks: [],
+            today: describeNow(new Date()),
+            language: getLanguage(),
+          } satisfies LiveSessionRequestBody);
+        } catch (error) {
+          // The server has no free session left for this install
+          // (lib/anonymousTrial.ts): not a connection problem, so 07 says so
+          // and offers typing instead of "try again".
+          if (error instanceof Error && /trial_used|trial_unavailable/.test(error.message)) throw new PlanLimitError("live", "free");
+          throw error;
+        }
         // From here the install's free AI run is spent (lib/aiTrial.ts).
         void markTrialUsed();
         return session;

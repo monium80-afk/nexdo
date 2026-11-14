@@ -362,6 +362,8 @@ export const zh: Translations = {
     showingSuffix: (_shown: number, total: number) => ` / 共 ${total} 个任务`,
     emptyTitle: "没有找到任务",
     emptyBody: "换个筛选条件或搜索词试试。",
+    emptyNoneTitle: "还没有任务",
+    emptyNoneBody: "点 + 添加第一个任务。",
     status: { all: "全部", pending: "待办", completed: "已完成", overdue: "已逾期", noDeadline: "无截止日期", archived: "已归档" },
     sort: { recent: "最近添加", dueDate: "截止日期", priority: "优先级分数" },
     score: (score: number) => `分数：${score}`,
@@ -579,7 +581,11 @@ export const zh: Translations = {
     steps: {
       next: {
         title: "今天",
-        body: "今天到期的任务——以及逾期的——最值得做的排在最上面。左右滑动查看其他任务，或切换到「全部任务」任选一个。点顶部的 + 手动添加任务。",
+        body: "最值得先做的任务在最上面。滑动查看下一个，或点“全部”查看所有任务。",
+      },
+      add: {
+        title: "添加任务",
+        body: "点 + 写下任务。有标题就够了：Nexdo 会排好先后。",
       },
       tasks: {
         title: "你的全部任务",
@@ -843,10 +849,6 @@ export const zh: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `开始 ${trialLength(count, unit)}免费试用`,
     working: "请稍候…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `免费 ${trialLength(count, unit)}，之后每${yearly ? "年" : "月"} ${price}。随时取消。`,
-    terms: (price: string, yearly: boolean) => `每${yearly ? "年" : "月"} ${price}，自动续订直到你取消。`,
-    seconds: (amount: string) => `${amount} 秒`,
     termsLink: "条款",
     privacyLink: "隐私",
     loading: "正在加载方案…",
@@ -857,6 +859,37 @@ export const zh: Translations = {
     offline: "你处于离线状态。请连接网络后重试。",
     welcomeTitle: "你已升级到 Nexdo Pro",
     welcomeBody: "新的每月额度已可以使用。",
+    close: "关闭",
+    restore: "恢复购买",
+    /** The headline's two lines; the second is orange. */
+    headline: ["让 Nexdo", "替你做计划。"] as [string, string],
+    subtitle: "Nexdo Pro 每月包含：",
+    carouselLabel: "Pro 每月包含的内容",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "说出来，就成了任务。" },
+      assist: { name: "拆分", line: "大任务，小步骤。" },
+      media: { name: "照片和文档", line: "照片变成任务。" },
+      voice: { name: "语音笔记", line: "用说的代替打字。" },
+      chat: { name: "背景备注", line: "把细节告诉 Nexdo。" },
+      sounds: { name: "专注音效", line: "雨声、海浪、森林等。" },
+      insights: { name: "数据洞察", line: "看看你走了多远。" },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "秒", times: "次", uploads: "次上传", notes: "条笔记", sounds: "种音效", history: "历史记录" },
+    allSounds: (count: number) => `全部 ${count} 种`,
+    allTime: "全部时间",
+    yearly: "按年",
+    monthly: "按月",
+    yearlyDetail: (price: string) => `12 个月 · ${price}`,
+    perMonth: "/ 月",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `免费 ${trialLength(count, unit)}`,
+    /** The button with Monthly picked. */
+    subscribe: "订阅",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `免费 ${trialLength(count, unit)}，之后每年 ${price}。可随时取消。`,
+    priceLine: (price: string, yearly: boolean) => `每${yearly ? "年" : "月"} ${price}。可随时取消。`,
   },
 
   feedback: {
@@ -931,7 +964,7 @@ export const zh: Translations = {
     manage: "管理",
     upgrade: "升级",
     freePlan: "Nexdo 免费版",
-    freeBody: "所有 AI 功能都在 Pro 中。",
+    freeBody: "升级 Pro，让 Nexdo 替你做计划。",
     renews: (date: string) => `${date} 续订`,
     ends: (date: string) => `${date} 结束`,
     resetsIn: (days: number) => `${days} 天后重置`,
@@ -1298,40 +1331,6 @@ export const zh: Translations = {
       hold: "按住以承诺",
       committed: "已承诺",
       holdLabel: "按住以作出承诺",
-    },
-    paywall: {
-      close: "关闭",
-      restore: "恢复购买",
-      free: "免费",
-      pro: "Pro",
-      freeTitle: "Nexdo 免费版",
-      freeBody: "自己安排任务和每一天。",
-      proTitle: "Nexdo Pro",
-      proBody: "包含免费版的一切，繁重的工作交给 Nexdo。",
-      rows: {
-        live: "Magic mic",
-        assist: "拆分",
-        media: "照片和文档",
-        voice: "语音笔记",
-        chat: "背景备注",
-        sounds: "专注音效",
-        insights: "数据洞察",
-      },
-      allSounds: (count: number) => `全部 ${count} 种`,
-      insightsFree: "7 天",
-      insightsPro: "全部时间",
-      locked: "Pro",
-      yearly: "按年",
-      monthly: "按月",
-      perMonth: "/ 月",
-      aYear: (price: string) => `每年 ${price}`,
-      billedMonthly: "按月计费",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "随时取消",
-      continueFree: "继续使用免费版",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "以后再说",
-      subscribe: "订阅",
     },
     save: {
       headline: "保存你的任务。",

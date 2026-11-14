@@ -163,7 +163,6 @@ export default function OnboardingDump() {
   const busy = voice.status === "connecting" || voice.status === "finishing";
   const [elapsed, setElapsed] = useState(0);
   const [leaving, setLeaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const [typed, setTyped] = useState("");
   const [organizing, setOrganizing] = useState(false);
@@ -181,30 +180,20 @@ export default function OnboardingDump() {
     opacity: Math.min(1, Math.max(0, (contentHeight.value - boxHeight.value - offset.value) / FADE_BOTTOM)),
   }));
 
-  // Voice: start listening as soon as the screen opens (06 already asked).
-  // An install that has used its free AI run goes straight to typing.
+  // Voice: start listening as soon as the screen opens (06 already asked),
+  // also on a second pass through onboarding. The server decides whether this
+  // install has a free session left (lib/anonymousTrial.ts); only when it says
+  // no does the screen switch to typing, and then for good.
   const startVoice = voice.start;
   const started = useRef(false);
-  const mounted = useRef(true);
-  useEffect(
-    () => () => {
-      mounted.current = false;
-    },
-    [],
-  );
   useEffect(() => {
     if (mode !== "voice" || started.current) return;
     started.current = true;
-    void isTrialUsed().then((used) => {
-      if (!mounted.current) return;
-      if (used && useOnboardingStore.getState().drafts.length === 0) {
-        setNotice(copy.trialUsed);
-        setMode("type");
-        return;
-      }
-      if (!used) void startVoice();
-    });
-  }, [copy.trialUsed, mode, startVoice]);
+    void startVoice();
+  }, [mode, startVoice]);
+  // Refused by the server: typing, with the reason under the headline.
+  const voiceRefused = voice.status === "error" && voice.problem === "planLimit";
+  const shownMode = voiceRefused ? "type" : mode;
 
   // The clock in the pill.
   useEffect(() => {
@@ -257,9 +246,8 @@ export default function OnboardingDump() {
   };
 
   // Listening couldn't start (a connection problem): the pill says "try again" and is the way to.
-  const canRetry = voice.status === "error" && voice.problem !== "planLimit" && !notice;
+  const canRetry = voice.status === "error" && voice.problem !== "planLimit";
   const handleRetry = () => {
-    setNotice(null);
     void startVoice();
   };
 
@@ -272,7 +260,6 @@ export default function OnboardingDump() {
     if (!(await requestAiConsent())) return;
     const granted = (await getRecordingPermissionsAsync()).granted || (await requestRecordingPermissionsAsync()).granted;
     if (!granted) return;
-    setNotice(null);
     setMode("voice");
     started.current = true;
     void startVoice();
@@ -302,7 +289,7 @@ export default function OnboardingDump() {
     posthog.capture("onboarding_dump_typed", { task_count: stamped.length, ai: useAi });
   };
 
-  const shownNotice = notice ?? (listening || busy ? null : voiceNotice);
+  const shownNotice = listening || busy ? null : voiceNotice;
   const pillText = shownNotice
     ? shownNotice
     : listening || voice.status === "finishing"
@@ -346,7 +333,7 @@ export default function OnboardingDump() {
     </View>
   );
 
-  if (mode === "type") {
+  if (shownMode === "type") {
     return (
       <OnboardingScreen
         percent={ONB_PROGRESS.dump}
@@ -360,14 +347,14 @@ export default function OnboardingDump() {
             )}
             {drafts.length === 0 && !typed.trim() ? (
               <TextButton label={copy.skip} onPress={handleDone} />
-            ) : (
+            ) : voiceRefused ? null : (
               <TextButton label={copy.talkInstead} onPress={() => void switchToVoice()} />
             )}
           </>
         }
       >
         <View style={{ flex: 1, gap: 20 }}>
-          <OnboardingTitle title={copy.typeHeadline} body={notice ?? copy.typeBody} />
+          <OnboardingTitle title={copy.typeHeadline} body={voiceRefused ? copy.trialUsed : copy.typeBody} />
           <FadeUp delay={120}>
             <TextInput
               value={typed}
@@ -383,6 +370,12 @@ export default function OnboardingDump() {
               ]}
             />
           </FadeUp>
+          {/* With nothing typed the footer's link is "Skip", so the way back to the mic sits here. */}
+          {drafts.length === 0 && !typed.trim() && !voiceRefused ? (
+            <View style={{ alignItems: "center", marginTop: -8 }}>
+              <TextButton label={copy.talkInstead} onPress={() => void switchToVoice()} />
+            </View>
+          ) : null}
           {drafts.length > 0 ? list : null}
         </View>
       </OnboardingScreen>

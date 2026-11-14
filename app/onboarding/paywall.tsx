@@ -1,8 +1,8 @@
-import { NexdoPaywall } from "@/components/NexdoPaywall";
+import { NexdoPaywall } from "@/components/paywall/NexdoPaywall";
 
-// 12 · Paywall (screens/12-paywall.html): the shared paywall
-// (components/NexdoPaywall.tsx), which goes on to sign-up (13).
+// 12 · Paywall: the shared Nexdo Pro paywall (components/paywall/). Close
+// carries on to sign-up (13) on Free.
 
 export default function OnboardingPaywall() {
-  return <NexdoPaywall mode="onboarding" reason="onboarding" />;
+  return <NexdoPaywall mode="onboarding" reason={null} />;
 }

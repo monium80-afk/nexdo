@@ -1,9 +1,11 @@
 // Free vs Pro: what each plan includes in a calendar month. Shared by the
 // server, which enforces it (lib/serverPlan.ts), and the paywall, which shows
-// it (app/paywall.tsx) — one table, so the two can never disagree.
+// it (components/paywall/) — one table, so the two can never disagree.
 //
 // Adding, editing and sorting tasks by hand, the Next page and reminders are
 // not here: they never touch the AI, so they are unlimited on both plans.
+
+import { FOCUS_SOUND_CHOICES } from "@/types/settings";
 
 export type Plan = "free" | "pro";
 
@@ -31,15 +33,6 @@ export type Meter = "chat" | "media" | "voice" | "live" | "assist";
 
 export const METERS: readonly Meter[] = ["chat", "media", "voice", "live", "assist"];
 
-/**
- * The allowances the app shows (paywall, onboarding plans, Settings), in that
- * order. Photos and documents came back on 2026-10-08 as context for a task
- * (Task Details, a focus session). Voice notes were only ever sent from the
- * AI chat, so with it gone they aren't offered — the server still counts
- * them, should a request for them ever arrive.
- */
-export const SHOWN_METERS: readonly Meter[] = ["live", "assist", "chat", "media"];
-
 const MINUTE = 60;
 
 /**
@@ -53,6 +46,32 @@ export const PLAN_LIMITS: Record<Plan, Record<Meter, number>> = {
   free: { chat: 0, media: 0, voice: 0, live: 0, assist: 0 },
   pro: { chat: 100, media: 50, voice: 50 * MINUTE, live: 90 * MINUTE, assist: 100 },
 };
+
+/** What the paywall can be opened from: a monthly allowance, or one of the Pro extras. */
+export type ProFeatureId = Meter | "sounds" | "insights";
+
+/**
+ * The paywall's 7 cards (components/paywall/), in their order: each one's
+ * number and unit. The allowances are read straight from PLAN_LIMITS above —
+ * the numbers the server enforces — and the sound count from the app's list
+ * of focus sounds, so the paywall can't promise more than the app gives.
+ * Each card's name and line are copy (t.paywall.features).
+ *
+ * `amount: null` is a card without a count ("All time").
+ */
+export type ProFeatureUnit = "seconds" | "times" | "uploads" | "notes" | "sounds" | "history";
+export type ProFeature = { id: ProFeatureId; amount: number | null; unit: ProFeatureUnit };
+
+export const PRO_FEATURES: readonly ProFeature[] = [
+  { id: "live", amount: PLAN_LIMITS.pro.live, unit: "seconds" },
+  { id: "assist", amount: PLAN_LIMITS.pro.assist, unit: "times" },
+  { id: "media", amount: PLAN_LIMITS.pro.media, unit: "uploads" },
+  { id: "voice", amount: PLAN_LIMITS.pro.voice, unit: "seconds" },
+  { id: "chat", amount: PLAN_LIMITS.pro.chat, unit: "notes" },
+  // Every focus sound but "off".
+  { id: "sounds", amount: FOCUS_SOUND_CHOICES.length - 1, unit: "sounds" },
+  { id: "insights", amount: null, unit: "history" },
+];
 
 /** Whether a plan includes a meter at all (Free includes none of them). */
 export function planIncludes(plan: Plan, meter: Meter): boolean {

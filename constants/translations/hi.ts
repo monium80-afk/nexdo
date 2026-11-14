@@ -382,6 +382,8 @@ export const hi: Translations = {
     showingSuffix: (_shown: number, total: number) => ` / कुल ${total} काम`,
     emptyTitle: "कोई काम नहीं मिला",
     emptyBody: "कोई दूसरा फ़िल्टर या शब्द आज़माएँ।",
+    emptyNoneTitle: "अभी कोई काम नहीं",
+    emptyNoneBody: "पहला काम जोड़ने के लिए + दबाएँ।",
     status: { all: "सभी", pending: "करना है", completed: "हो गए", overdue: "देर से", noDeadline: "बिना डेडलाइन", archived: "आर्काइव" },
     sort: { recent: "हाल में जोड़े", dueDate: "डेडलाइन", priority: "प्राथमिकता स्कोर" },
     score: (score: number) => `स्कोर: ${score}`,
@@ -599,7 +601,11 @@ export const hi: Translations = {
     steps: {
       next: {
         title: "आज",
-        body: "आज के काम — और जो देर से हैं — सबसे ज़रूरी वाला सबसे ऊपर। बाकी देखने के लिए स्वाइप करें, या कोई भी चुनने के लिए सारे काम पर जाएँ। हाथ से काम जोड़ने के लिए ऊपर + पर टैप करें।",
+        body: "सबसे ज़रूरी काम सबसे ऊपर है। अगला देखने के लिए स्वाइप करें, या सारे काम देखने के लिए \"सभी\" दबाएँ।",
+      },
+      add: {
+        title: "काम जोड़ें",
+        body: "+ दबाएँ और लिख दें। सिर्फ़ शीर्षक काफ़ी है: Nexdo तय करता है कि पहले क्या करना है।",
       },
       tasks: {
         title: "आपके सारे काम",
@@ -877,10 +883,6 @@ export const hi: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} का फ़्री ट्रायल शुरू करें`,
     working: "एक पल…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `${trialLength(count, unit)} फ़्री, फिर ${price} प्रति ${yearly ? "साल" : "महीना"}। कभी भी रद्द करें।`,
-    terms: (price: string, yearly: boolean) => `${price} प्रति ${yearly ? "साल" : "महीना"}, रद्द करने तक रिन्यू होता रहेगा।`,
-    seconds: (amount: string) => `${amount} सेकंड`,
     termsLink: "शर्तें",
     privacyLink: "प्राइवेसी",
     loading: "प्लान लोड हो रहे हैं…",
@@ -891,6 +893,37 @@ export const hi: Translations = {
     offline: "आप ऑफ़लाइन हैं। कनेक्ट करके फिर कोशिश करें।",
     welcomeTitle: "आप Nexdo Pro पर हैं",
     welcomeBody: "आपकी नई मासिक लिमिट इस्तेमाल के लिए तैयार है।",
+    close: "बंद करें",
+    restore: "रीस्टोर",
+    /** The headline's two lines; the second is orange. */
+    headline: ["प्लानिंग Nexdo", "को करने दें।"] as [string, string],
+    subtitle: "Nexdo Pro के साथ हर महीने:",
+    carouselLabel: "Pro में हर महीने क्या मिलता है",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "बोलिए, वह टास्क बन जाएगा।" },
+      assist: { name: "बाँटें", line: "बड़े टास्क, छोटे कदम।" },
+      media: { name: "फ़ोटो और डॉक्यूमेंट", line: "फ़ोटो से टास्क बनाएँ।" },
+      voice: { name: "वॉइस नोट्स", line: "टाइप करने के बजाय बोलें।" },
+      chat: { name: "संदर्भ नोट", line: "Nexdo को ब्योरा बताएँ।" },
+      sounds: { name: "फ़ोकस साउंड", line: "बारिश, लहरें, जंगल और भी।" },
+      insights: { name: "इनसाइट्स", line: "देखें आप कितना आगे आए।" },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "सेकंड", times: "बार", uploads: "अपलोड", notes: "नोट्स", sounds: "साउंड", history: "इतिहास" },
+    allSounds: (count: number) => `सभी ${count}`,
+    allTime: "पूरा समय",
+    yearly: "सालाना",
+    monthly: "मासिक",
+    yearlyDetail: (price: string) => `12 महीने · ${price}`,
+    perMonth: "/ महीना",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} फ़्री`,
+    /** The button with Monthly picked. */
+    subscribe: "सब्सक्राइब करें",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} फ़्री, फिर ${price} प्रति वर्ष। कभी भी रद्द करें।`,
+    priceLine: (price: string, yearly: boolean) => `${price} प्रति ${yearly ? "वर्ष" : "महीना"}। कभी भी रद्द करें।`,
   },
 
   feedback: {
@@ -967,7 +1000,7 @@ export const hi: Translations = {
     manage: "प्रबंधित करें",
     upgrade: "अपग्रेड",
     freePlan: "Nexdo फ़्री",
-    freeBody: "हर AI सुविधा Pro के साथ आती है।",
+    freeBody: "Pro के साथ प्लानिंग Nexdo करता है।",
     renews: (date: string) => `${date} को नवीनीकरण`,
     ends: (date: string) => `${date} को समाप्त`,
     resetsIn: (days: number) => `${days} दिन में रीसेट`,
@@ -1343,40 +1376,6 @@ export const hi: Translations = {
       hold: "वादा करने के लिए दबाकर रखें",
       committed: "वादा पक्का",
       holdLabel: "वादा करने के लिए दबाकर रखें",
-    },
-    paywall: {
-      close: "बंद करें",
-      restore: "रीस्टोर",
-      free: "फ़्री",
-      pro: "Pro",
-      freeTitle: "Nexdo फ़्री",
-      freeBody: "अपने टास्क और दिन खुद व्यवस्थित करें।",
-      proTitle: "Nexdo Pro",
-      proBody: "फ़्री का सब कुछ, और भारी काम Nexdo करता है।",
-      rows: {
-        live: "Magic mic",
-        assist: "बाँटें",
-        media: "फ़ोटो और डॉक्यूमेंट",
-        voice: "वॉइस नोट्स",
-        chat: "संदर्भ नोट",
-        sounds: "फ़ोकस साउंड",
-        insights: "इनसाइट्स",
-      },
-      allSounds: (count: number) => `सभी ${count}`,
-      insightsFree: "7 दिन",
-      insightsPro: "पूरा समय",
-      locked: "Pro",
-      yearly: "सालाना",
-      monthly: "मासिक",
-      perMonth: "/ महीना",
-      aYear: (price: string) => `${price} सालाना`,
-      billedMonthly: "हर महीने बिल",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "कभी भी रद्द करें",
-      continueFree: "फ़्री के साथ जारी रखें",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "अभी नहीं",
-      subscribe: "सब्सक्राइब करें",
     },
     save: {
       headline: "अपने टास्क सेव करें।",

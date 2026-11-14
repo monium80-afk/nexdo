@@ -366,6 +366,8 @@ export const bn: Translations = {
     showingSuffix: (_shown: number, total: number) => ` / মোট ${total}টি কাজ`,
     emptyTitle: "কোনো কাজ পাওয়া যায়নি",
     emptyBody: "অন্য ফিল্টার বা শব্দ দিয়ে খুঁজে দেখুন।",
+    emptyNoneTitle: "এখনও কোনো কাজ নেই",
+    emptyNoneBody: "প্রথম কাজটি যোগ করতে + চাপুন।",
     status: { all: "সব", pending: "করতে হবে", completed: "হয়ে গেছে", overdue: "দেরি", noDeadline: "ডেডলাইন নেই", archived: "আর্কাইভ" },
     sort: { recent: "সম্প্রতি যোগ করা", dueDate: "শেষ সময়", priority: "অগ্রাধিকার স্কোর" },
     score: (score: number) => `স্কোর: ${score}`,
@@ -583,7 +585,11 @@ export const bn: Translations = {
     steps: {
       next: {
         title: "আজ",
-        body: "আজকের কাজ — আর যেগুলো দেরি হয়েছে — সবচেয়ে দরকারিটা সবার উপরে। বাকিগুলো দেখতে সোয়াইপ করুন, বা যেকোনোটি বাছতে সব কাজ-এ যান। হাতে কাজ যোগ করতে উপরের + ট্যাপ করুন।",
+        body: "সবচেয়ে জরুরি কাজটি সবার ওপরে। পরেরটি দেখতে সোয়াইপ করুন, বা সব কাজ দেখতে \"সব\" চাপুন।",
+      },
+      add: {
+        title: "কাজ যোগ করুন",
+        body: "+ চাপুন আর লিখে ফেলুন। শুধু শিরোনামই যথেষ্ট: কোনটা আগে, Nexdo ঠিক করে।",
       },
       tasks: {
         title: "আপনার সব কাজ",
@@ -851,10 +857,6 @@ export const bn: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `${trialLength(count, unit)}ের ফ্রি ট্রায়াল শুরু করুন`,
     working: "এক মুহূর্ত…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `${trialLength(count, unit)} ফ্রি, তারপর ${yearly ? "বছরে" : "মাসে"} ${price}। যেকোনো সময় বাতিল করুন।`,
-    terms: (price: string, yearly: boolean) => `${yearly ? "বছরে" : "মাসে"} ${price}, বাতিল না করা পর্যন্ত নবায়ন হবে।`,
-    seconds: (amount: string) => `${amount} সেকেন্ড`,
     termsLink: "শর্তাবলি",
     privacyLink: "প্রাইভেসি",
     loading: "প্ল্যান লোড হচ্ছে…",
@@ -865,6 +867,37 @@ export const bn: Translations = {
     offline: "আপনি অফলাইনে আছেন। সংযোগ করে আবার চেষ্টা করুন।",
     welcomeTitle: "আপনি এখন Nexdo Pro-তে",
     welcomeBody: "আপনার নতুন মাসিক সীমা ব্যবহারের জন্য তৈরি।",
+    close: "বন্ধ করুন",
+    restore: "রিস্টোর",
+    /** The headline's two lines; the second is orange. */
+    headline: ["পরিকল্পনা Nexdo-কে", "করতে দিন।"] as [string, string],
+    subtitle: "Nexdo Pro-তে প্রতি মাসে:",
+    carouselLabel: "Pro-তে প্রতি মাসে যা পাবেন",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "বলুন, তা টাস্ক হয়ে যাবে।" },
+      assist: { name: "ভাগ করুন", line: "বড় টাস্ক, ছোট ধাপ।" },
+      media: { name: "ছবি ও ডকুমেন্ট", line: "ছবি থেকে টাস্ক বানান।" },
+      voice: { name: "ভয়েস নোট", line: "টাইপ না করে বলুন।" },
+      chat: { name: "প্রসঙ্গ নোট", line: "Nexdo-কে বিস্তারিত জানান।" },
+      sounds: { name: "ফোকাস সাউন্ড", line: "বৃষ্টি, ঢেউ, বন আর আরও।" },
+      insights: { name: "ইনসাইটস", line: "দেখুন কতটা এগিয়েছেন।" },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "সেকেন্ড", times: "বার", uploads: "আপলোড", notes: "নোট", sounds: "সাউন্ড", history: "ইতিহাস" },
+    allSounds: (count: number) => `সবগুলো (${count})`,
+    allTime: "সব সময়ের",
+    yearly: "বার্ষিক",
+    monthly: "মাসিক",
+    yearlyDetail: (price: string) => `12 মাস · ${price}`,
+    perMonth: "/ মাস",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} ফ্রি`,
+    /** The button with Monthly picked. */
+    subscribe: "সাবস্ক্রাইব করুন",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} ফ্রি, তারপর বছরে ${price}। যেকোনো সময় বাতিল করুন।`,
+    priceLine: (price: string, yearly: boolean) => `${yearly ? "বছরে" : "মাসে"} ${price}। যেকোনো সময় বাতিল করুন।`,
   },
 
   feedback: {
@@ -941,7 +974,7 @@ export const bn: Translations = {
     manage: "পরিচালনা",
     upgrade: "আপগ্রেড",
     freePlan: "Nexdo ফ্রি",
-    freeBody: "সব AI সুবিধা Pro-তে পাওয়া যায়।",
+    freeBody: "Pro-তে পরিকল্পনা করে Nexdo।",
     renews: (date: string) => `${date} তারিখে নবায়ন`,
     ends: (date: string) => `${date} তারিখে শেষ`,
     resetsIn: (days: number) => `${days} দিনে রিসেট`,
@@ -1317,40 +1350,6 @@ export const bn: Translations = {
       hold: "প্রতিজ্ঞা করতে চেপে ধরুন",
       committed: "প্রতিজ্ঞা করা হলো",
       holdLabel: "প্রতিজ্ঞা করতে চেপে ধরে রাখুন",
-    },
-    paywall: {
-      close: "বন্ধ করুন",
-      restore: "রিস্টোর",
-      free: "ফ্রি",
-      pro: "Pro",
-      freeTitle: "Nexdo ফ্রি",
-      freeBody: "নিজের কাজ আর দিন নিজেই গুছিয়ে নিন।",
-      proTitle: "Nexdo Pro",
-      proBody: "ফ্রির সবকিছু, আর ভারী কাজটা করে Nexdo।",
-      rows: {
-        live: "Magic mic",
-        assist: "ভাগ করুন",
-        media: "ছবি ও ডকুমেন্ট",
-        voice: "ভয়েস নোট",
-        chat: "প্রসঙ্গ নোট",
-        sounds: "ফোকাস সাউন্ড",
-        insights: "ইনসাইটস",
-      },
-      allSounds: (count: number) => `সবগুলো (${count})`,
-      insightsFree: "7 দিন",
-      insightsPro: "সব সময়ের",
-      locked: "Pro",
-      yearly: "বার্ষিক",
-      monthly: "মাসিক",
-      perMonth: "/ মাস",
-      aYear: (price: string) => `বছরে ${price}`,
-      billedMonthly: "মাসিক বিল",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "যেকোনো সময় বাতিল করুন",
-      continueFree: "ফ্রি দিয়ে চালিয়ে যান",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "এখন না",
-      subscribe: "সাবস্ক্রাইব করুন",
     },
     save: {
       headline: "আপনার কাজগুলো সেভ করুন।",

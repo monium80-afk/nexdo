@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import Animated, { Easing, Keyframe, LinearTransition, useReducedMotion } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -102,6 +102,64 @@ function sortTasks(list: Task[], sort: TaskSortOption): Task[] {
 
 /** About a screenful of task rows: drawn first, and the only ones with an entrance. */
 const FIRST_SCREEN_ROWS = 10;
+
+/** The gap between two rows — one component for the list's lifetime, not a new one every render. */
+function RowGap() {
+  return <View style={{ height: 10 }} />;
+}
+
+type ScoreAnchor = ScoreTarget["anchor"];
+
+/**
+ * One row of the list. Memoised, so a row is drawn again only when its own
+ * task (or the screen's clock, `now`) changes — not on every letter typed in
+ * search or every sheet opened, which used to redraw every visible card and
+ * its animations (2026-11-13). The callbacks it gets are stable.
+ */
+const TaskRow = memo(function TaskRow({
+  task,
+  index,
+  hidden,
+  landed,
+  reduceMotion,
+  onOpen,
+  onToggle,
+  onScore,
+  register,
+}: {
+  task: Task;
+  index: number;
+  /** Its Magic mic card is still flying in: laid out, but not shown yet. */
+  hidden: boolean;
+  /** Its Magic mic card has just landed: a short orange edge. */
+  landed: boolean;
+  reduceMotion: boolean;
+  /** The screen's clock — a new one redraws the row's due label at a due time or midnight. */
+  now: Date;
+  onOpen: (taskId: string) => void;
+  onToggle: (task: Task) => void;
+  onScore: (task: Task, anchor: ScoreAnchor) => void;
+  register: (taskId: string, view: ComponentRef<typeof View> | null) => void;
+}) {
+  return (
+    <Animated.View
+      ref={(view: ComponentRef<typeof Animated.View> | null) => register(task.id, view as unknown as ComponentRef<typeof View> | null)}
+      // Only the first screenful rises in: rows the list draws later, as
+      // it's scrolled, are simply there (no fade-in while scrolling).
+      entering={index < FIRST_SCREEN_ROWS ? listItemEntering(index) : undefined}
+      exiting={listItemExiting()}
+      layout={REST_SLIDE}
+      className="mx-[20px]"
+    >
+      <View className={hidden ? "opacity-0" : undefined}>
+        {landed && !reduceMotion ? (
+          <Animated.View pointerEvents="none" entering={LANDED_EDGE} className="absolute inset-0 z-10 rounded-[16px] border-[1.5px] border-accent" style={{ opacity: 0 }} />
+        ) : null}
+        <TaskCard task={task} onPress={() => onOpen(task.id)} onToggle={() => onToggle(task)} onScorePress={(anchor) => onScore(task, anchor)} />
+      </View>
+    </Animated.View>
+  );
+});
 
 export default function TasksListScreen() {
   const colors = useColors();
@@ -237,31 +295,40 @@ export default function TasksListScreen() {
 
   // Ticking one off can be taken back; unticking is its own undo. A task that
   // counts for today feeds the gem — the toast says so (Anim-TaskDone.html).
-  const handleToggle = (task: Task) => {
-    if (task.status !== "pending") {
-      toggleTaskStatus(task.id);
-      return;
-    }
-    withUndo(t.undoToast.done(task.title), () => toggleTaskStatus(task.id));
-    const day = buildToday(
-      useTaskStore.getState().tasks.filter((entry) => !isRoutine(entry)),
-      { now: new Date(), today: dayKey },
-    );
-    const counted = getDueInfo(task).tone === "today" || getDueInfo(task).tone === "overdue";
-    const total = day.done + day.ids.size;
-    if (counted && total > 0) {
-      useUndoStore.getState().decorate({ message: t.undoToast.gemBrighter, subtitle: t.undoToast.doneToday(day.done, total), gem: true });
-    }
-  };
+  const handleToggle = useCallback(
+    (task: Task) => {
+      if (task.status !== "pending") {
+        toggleTaskStatus(task.id);
+        return;
+      }
+      withUndo(t.undoToast.done(task.title), () => toggleTaskStatus(task.id));
+      const day = buildToday(
+        useTaskStore.getState().tasks.filter((entry) => !isRoutine(entry)),
+        { now: new Date(), today: dayKey },
+      );
+      const counted = getDueInfo(task).tone === "today" || getDueInfo(task).tone === "overdue";
+      const total = day.done + day.ids.size;
+      if (counted && total > 0) {
+        useUndoStore.getState().decorate({ message: t.undoToast.gemBrighter, subtitle: t.undoToast.doneToday(day.done, total), gem: true });
+      }
+    },
+    [dayKey, t, toggleTaskStatus],
+  );
+  const handleScore = useCallback((task: Task, anchor: ScoreAnchor) => setScoreTarget({ task, anchor }), []);
+  const registerRow = useCallback((taskId: string, view: ComponentRef<typeof View> | null) => {
+    if (view) rowViews.current.set(taskId, view);
+    else rowViews.current.delete(taskId);
+  }, []);
 
   // The task being edited: the dark edit card opens over the page, right on
   // the tapped task, and the page fades behind it — nothing in the list moves
   // (components/TaskEditCard.tsx TaskEditModal).
   const [editing, setEditing] = useState<{ id: string; anchorY?: number } | null>(null);
-  const handleOpenTask = async (taskId: string) => {
+  const handleOpenTask = useCallback(async (taskId: string) => {
     const row = await measureView(rowViews.current.get(taskId));
     setEditing({ id: taskId, anchorY: row?.y });
-  };
+  }, []);
+  const openTask = useCallback((taskId: string) => void handleOpenTask(taskId), [handleOpenTask]);
 
   // The filters as a row of pills (Final-Tasks.html: "To do · 5", "Done · 2"…):
   // open and done first, then overdue (while there's any), no deadline, all.
@@ -323,29 +390,22 @@ export default function TasksListScreen() {
             <View className="h-[14px]" />
           </>
         )}
-        ListEmptyComponent={<View className="px-[20px]"><EmptyState icon="inbox" title={t.tasks.emptyTitle} body={t.tasks.emptyBody} /></View>}
+        ListEmptyComponent={<View className="px-[20px]"><EmptyState icon="inbox" title={tasks.length === 0 ? t.tasks.emptyNoneTitle : t.tasks.emptyTitle} body={tasks.length === 0 ? t.tasks.emptyNoneBody : t.tasks.emptyBody} /></View>}
         renderItem={({ item: task, index }) => (
-          <Animated.View
-            ref={(view: ComponentRef<typeof Animated.View> | null) => {
-              if (view) rowViews.current.set(task.id, view as unknown as ComponentRef<typeof View>);
-              else rowViews.current.delete(task.id);
-            }}
-            // Only the first screenful rises in: rows the list draws later, as
-            // it's scrolled, are simply there (no fade-in while scrolling).
-            entering={index < FIRST_SCREEN_ROWS ? listItemEntering(index) : undefined}
-            exiting={listItemExiting()}
-            layout={REST_SLIDE}
-            className="mx-[20px]"
-          >
-            <View className={hiddenIds.includes(task.id) ? "opacity-0" : undefined}>
-              {landedIds.includes(task.id) && !reduceMotion ? (
-                <Animated.View pointerEvents="none" entering={LANDED_EDGE} className="absolute inset-0 z-10 rounded-[16px] border-[1.5px] border-accent" style={{ opacity: 0 }} />
-              ) : null}
-              <TaskCard task={task} onPress={() => void handleOpenTask(task.id)} onToggle={() => handleToggle(task)} onScorePress={(anchor) => setScoreTarget({ task, anchor })} />
-            </View>
-          </Animated.View>
+          <TaskRow
+            task={task}
+            index={index}
+            hidden={hiddenIds.includes(task.id)}
+            landed={landedIds.includes(task.id)}
+            reduceMotion={reduceMotion}
+            now={deadlineNow}
+            onOpen={openTask}
+            onToggle={handleToggle}
+            onScore={handleScore}
+            register={registerRow}
+          />
         )}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ItemSeparatorComponent={RowGap}
         contentContainerStyle={{ paddingBottom: 28 + tabBarHeight }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"

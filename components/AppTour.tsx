@@ -1,5 +1,5 @@
 import { useIsFocused } from "expo-router";
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentRef, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -24,12 +24,27 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 
 /** The tab bar slots the tour points at. */
 export type TourAnchor = "index" | "tasks" | "mic" | "calendar";
+/** A stop on the tour: a tab bar slot, or Today's + button at the top of the page. */
+type TourStop = TourAnchor | "add";
 type TourTab = "index" | "tasks" | "calendar" | "settings";
 
-// Left to right along the bar, one sentence or two each — Settings is left
-// out on purpose: it explains itself. (Today's step mentions its + button.)
-const STEPS: { anchor: TourAnchor; tab: TourTab }[] = [
+/** Where something sits, in window coordinates (measureInWindow). */
+type TourRect = { x: number; y: number; width: number; height: number };
+type MeasureTarget = (done: (rect: TourRect) => void) => void;
+
+// Today's + lives in the page, not the bar: Today hands the tour a way to
+// find it on screen (app/(tabs)/index.tsx), read when that stop comes up.
+let measureAddButton: MeasureTarget | null = null;
+export function registerTourAddButton(measure: MeasureTarget | null) {
+  measureAddButton = measure;
+}
+
+// Today, then how to add a task (most of what a Free account does by hand),
+// then left to right along the bar, one or two sentences each. Settings is
+// left out on purpose: it explains itself.
+const STEPS: { anchor: TourStop; tab: TourTab }[] = [
   { anchor: "index", tab: "index" },
+  { anchor: "add", tab: "index" },
   { anchor: "tasks", tab: "tasks" },
   // The page behind stays on Tasks: the mic doesn't open during the tour.
   { anchor: "mic", tab: "tasks" },
@@ -38,10 +53,21 @@ const STEPS: { anchor: TourAnchor; tab: TourTab }[] = [
 
 // A beat for the page under it to settle and be seen first.
 const START_DELAY_MS = 700;
+// Rings: a tab icon's, and the one round Today's 40-wide + button.
 const RING = 46;
+const ADD_RING = 54;
+// Today has a moment to show (the tour may have just switched to it) before its + is found.
+const ADD_MEASURE_DELAY_MS = 150;
 const TAIL = 14;
-// Between the card's foot and the top of the bar.
+// Between the card and the ring it points at.
 const CARD_GAP = 14;
+const TAIL_STYLE = {
+  position: "absolute",
+  width: TAIL,
+  height: TAIL,
+  backgroundColor: colors.cream[50],
+  transform: [{ rotate: "45deg" }],
+} as const;
 const RING_GLOW = { boxShadow: "0 0 12px rgba(250, 130, 62, 0.75)" };
 
 /**
@@ -57,16 +83,19 @@ export function AppTour({
   anchors,
   barHeight,
   iconY,
+  micRing,
   currentTab,
   onShowTab,
   children,
 }: {
-  /** Each slot's icon centre, from the left edge of the bar. */
+  /** Each slot's icon centre, from the left edge of the screen. */
   anchors: Partial<Record<TourAnchor, number>>;
   /** The bar's full height, the phone's navigation area included. */
   barHeight: number;
   /** The icons' centre line, from the bottom of the screen. */
   iconY: number;
+  /** The ring around the mic: wider than the others, to clear its orange disc. */
+  micRing: number;
   currentTab: string | undefined;
   onShowTab: (tab: TourTab) => void;
   children: ReactNode;
@@ -143,9 +172,34 @@ export function AppTour({
   }, [finish, focused, step]);
 
   const current = step === null ? null : STEPS[step];
-  const anchorX = current ? anchors[current.anchor] : undefined;
   const copy = current ? stepCopy(t, current.anchor, micLocked) : null;
   const last = step === STEPS.length - 1;
+
+  // The + stop: found on screen once Today is showing, relative to this
+  // overlay (which covers the screen, but measuring both keeps it exact).
+  // Kept with the stop it was measured for, so a later visit (the tour replayed) measures afresh.
+  const overlay = useRef<ComponentRef<typeof View>>(null);
+  const [found, setFound] = useState<{ step: number; rect: TourRect } | null>(null);
+  const onAddStop = current?.anchor === "add";
+  useEffect(() => {
+    if (!onAddStop || step === null) return;
+    const timer = setTimeout(() => {
+      measureAddButton?.((rect) =>
+        overlay.current?.measureInWindow((x, y) => setFound({ step, rect: { ...rect, x: rect.x - x, y: rect.y - y } })),
+      );
+    }, ADD_MEASURE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [onAddStop, step]);
+  const addRect = onAddStop && found?.step === step ? found.rect : null;
+
+  // Where the ring and the card's tail go: a slot on the bar (the card above
+  // it), or the + at the top of Today (the card under it).
+  const bar = current && current.anchor !== "add" ? current.anchor : null;
+  const barX = bar ? anchors[bar] : undefined;
+  const ringSize = bar === "mic" ? micRing : RING;
+  const top = addRect ? { x: addRect.x + addRect.width / 2, y: addRect.y + addRect.height / 2 } : null;
+  // The + stop waits for its button to be found, rather than pointing at nothing.
+  const showCard = current && copy && (!onAddStop || top);
 
   return (
     <>
@@ -160,25 +214,30 @@ export function AppTour({
 
       {children}
 
-      {current && copy ? (
+      {/* Measured against for the + stop; never in the way. */}
+      <View ref={overlay} collapsable={false} pointerEvents="none" style={StyleSheet.absoluteFill} />
+
+      {/* Anywhere outside the card moves the tour on, the bar included. */}
+      {current ? <Pressable style={StyleSheet.absoluteFill} onPress={advance} accessible={false} /> : null}
+
+      {/* One stop: its ring, its card and the card's tail, fading in together. */}
+      {showCard ? (
         <Animated.View
+          key={`stop-${step}`}
           entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.screen)}
           exiting={reduceMotion ? undefined : FadeOut.duration(MOTION.duration.standard)}
+          pointerEvents="box-none"
           style={StyleSheet.absoluteFill}
           accessibilityViewIsModal
         >
-          {/* Anywhere outside the card moves the tour on, the bar included. */}
-          <Pressable style={StyleSheet.absoluteFill} onPress={advance} accessible={false} />
-
-          {anchorX !== undefined ? <Spotlight key={`ring-${step}`} x={anchorX} y={iconY} /> : null}
+          {barX !== undefined ? <Spotlight x={barX} bottom={iconY} size={ringSize} /> : null}
+          {top ? <Spotlight x={top.x} top={top.y} size={ADD_RING} /> : null}
 
           <View
             className="card card--cream-elevated absolute rounded-[24px] px-[18px] pb-4 pt-[18px]"
-            style={{ left: 16, right: 16, bottom: barHeight + CARD_GAP }}
+            style={top ? { left: 16, right: 16, top: top.y + ADD_RING / 2 + CARD_GAP } : { left: 16, right: 16, bottom: barHeight + CARD_GAP }}
           >
-            <Animated.View
-              key={step}
-              entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.standard)}
+            <View
               className="gap-1.5"
               accessible
               accessibilityLiveRegion="polite"
@@ -190,7 +249,7 @@ export function AppTour({
               <Text className="font-grotesk-regular text-[14px] leading-[20px] text-ink-cream-muted" style={rtl}>
                 {copy.body}
               </Text>
-            </Animated.View>
+            </View>
 
             <View className="mt-4 flex-row items-center gap-4">
               <StepDots index={step ?? 0} total={STEPS.length} />
@@ -200,23 +259,12 @@ export function AppTour({
             </View>
           </View>
 
-          {/* The card's tail, over its bottom edge, pointing down at the slot. */}
-          {anchorX !== undefined ? (
-            <Animated.View
-              key={`tail-${step}`}
-              pointerEvents="none"
-              entering={reduceMotion ? undefined : FadeIn.duration(MOTION.duration.standard)}
-              style={{
-                position: "absolute",
-                left: anchorX - TAIL / 2,
-                bottom: barHeight + CARD_GAP - TAIL / 2,
-                width: TAIL,
-                height: TAIL,
-                borderBottomRightRadius: 3,
-                backgroundColor: colors.cream[50],
-                transform: [{ rotate: "45deg" }],
-              }}
-            />
+          {/* The card's tail, over its edge: down at a bar slot, or up at the +. */}
+          {barX !== undefined ? (
+            <View pointerEvents="none" style={[TAIL_STYLE, { left: barX - TAIL / 2, bottom: barHeight + CARD_GAP - TAIL / 2, borderBottomRightRadius: 3 }]} />
+          ) : null}
+          {top ? (
+            <View pointerEvents="none" style={[TAIL_STYLE, { left: top.x - TAIL / 2, top: top.y + ADD_RING / 2 + CARD_GAP - TAIL / 2, borderTopLeftRadius: 3 }]} />
           ) : null}
         </Animated.View>
       ) : null}
@@ -228,10 +276,12 @@ function isTourTab(tab: string | undefined): tab is TourTab {
   return tab === "index" || tab === "tasks" || tab === "calendar" || tab === "settings";
 }
 
-function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micLocked: boolean) {
+function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourStop, micLocked: boolean) {
   switch (anchor) {
     case "index":
       return t.tour.steps.next;
+    case "add":
+      return t.tour.steps.add;
     case "tasks":
       return t.tour.steps.tasks;
     case "mic":
@@ -246,7 +296,7 @@ function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourAnchor, micL
  * from it. Mounted fresh for each stop (keyed by step), so where it sits is a
  * plain style — only the ripple, which starts and ends invisible, animates.
  */
-function Spotlight({ x, y }: { x: number; y: number }) {
+function Spotlight({ x, top, bottom, size }: { x: number; size: number } & ({ top: number; bottom?: never } | { bottom: number; top?: never })) {
   const reduceMotion = useReducedMotion();
   const pulse = useSharedValue(0);
 
@@ -261,13 +311,14 @@ function Spotlight({ x, y }: { x: number; y: number }) {
     transform: [{ scale: 1 + pulse.value * 0.45 }],
   }));
 
+  // Centred on (x, top) or (x, bottom): from the top of the screen, or up from its foot.
   const box = {
     position: "absolute",
-    left: x - RING / 2,
-    bottom: y - RING / 2,
-    width: RING,
-    height: RING,
-    borderRadius: RING / 2,
+    left: x - size / 2,
+    ...(top !== undefined ? { top: top - size / 2 } : { bottom: (bottom ?? 0) - size / 2 }),
+    width: size,
+    height: size,
+    borderRadius: size / 2,
   } as const;
 
   return (

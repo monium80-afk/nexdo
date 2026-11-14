@@ -209,9 +209,12 @@ export function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
   const insets = useSafeAreaInsets();
   // Where each slot's icon sits along the bar, for the first-run tour.
   // (Settings isn't a stop on the tour.)
+  // A slot reports its centre inside the bar; the bar starts BAR_SIDE in from
+  // the screen's edge, so that is added to give a position on the screen.
   const [anchors, setAnchors] = useState<Partial<Record<TourAnchor, number>>>({});
   const setAnchor = useCallback((slot: TourAnchor, x: number) => {
-    setAnchors((current) => (current[slot] === x ? current : { ...current, [slot]: x }));
+    const screenX = BAR_SIDE + x;
+    setAnchors((current) => (current[slot] === screenX ? current : { ...current, [slot]: screenX }));
   }, []);
   // Since SDK 58 the bar is handed the tabs' routes, an emitter for tab
   // presses and navigateToTab(routeKey) — no navigation object. Tabs are
@@ -252,8 +255,8 @@ export function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
         onPress={onPress}
         onAnchor={(x) => {
           if (routeName !== "settings") setAnchor(routeName, x);
-          // Where Magic mic's cards fly from any other tab.
-          if (routeName === "tasks") useMagicMicStore.getState().setTasksX(x);
+          // Where Magic mic's cards fly from any other tab (on the screen, so past the bar's side).
+          if (routeName === "tasks") useMagicMicStore.getState().setTasksX(BAR_SIDE + x);
         }}
       />
     );
@@ -272,6 +275,7 @@ export function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
       anchors={anchors}
       barHeight={BAR_HEIGHT + bottom}
       iconY={bottom + BAR_HEIGHT / 2}
+      micRing={MIC_DISC + 18}
       currentTab={focusedName}
       onShowTab={showTab}
     >

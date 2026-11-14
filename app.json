@@ -17,14 +17,14 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "adaptiveIcon": {
-        "backgroundColor": "#EFEBDA",
-        "foregroundImage": "./assets/images/nexdo-app-icon.png",
+        "backgroundColor": "#281910",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "softwareKeyboardLayoutMode": "resize",
+      "softwareKeyboardLayoutMode": "pan",
       "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"]
     },
     "web": {

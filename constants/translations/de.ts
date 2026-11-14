@@ -394,6 +394,8 @@ export const de: Translations = {
       ` von ${total} ${plural(total, "Aufgabe", "Aufgaben")} angezeigt`,
     emptyTitle: "Keine Aufgaben gefunden",
     emptyBody: "Probier einen anderen Filter oder Suchbegriff.",
+    emptyNoneTitle: "Noch keine Aufgaben",
+    emptyNoneBody: "Tippe auf +, um die erste hinzuzufügen.",
     status: { all: "Alle", pending: "Zu tun", completed: "Erledigt", overdue: "Überfällig", noDeadline: "Ohne Frist", archived: "Archiviert" },
     sort: { recent: "Zuletzt hinzugefügt", dueDate: "Fälligkeit", priority: "Prioritäts-Score" },
     score: (score: number) => `Score: ${score}`,
@@ -622,7 +624,11 @@ export const de: Translations = {
     steps: {
       next: {
         title: "Heute",
-        body: "Was heute fällig ist — und was überfällig ist — die lohnendste Aufgabe oben. Wische für die anderen oder wechsle zu Alle Aufgaben, um irgendeine andere zu wählen. Tippe oben auf +, um eine Aufgabe von Hand hinzuzufügen.",
+        body: "Oben steht die Aufgabe, die sich am meisten lohnt. Wische zur nächsten oder tippe auf Alle, um alle Aufgaben zu sehen.",
+      },
+      add: {
+        title: "Aufgabe hinzufügen",
+        body: "Tippe auf + und schreib sie auf. Ein Titel genügt: Nexdo findet heraus, was zuerst dran ist.",
       },
       tasks: {
         title: "Alle deine Aufgaben",
@@ -908,10 +914,6 @@ export const de: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} kostenlos testen`,
     working: "Einen Moment…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `${trialLength(count, unit)} kostenlos, danach ${price} pro ${yearly ? "Jahr" : "Monat"}. Jederzeit kündbar.`,
-    terms: (price: string, yearly: boolean) => `${price} pro ${yearly ? "Jahr" : "Monat"}, verlängert sich bis zur Kündigung.`,
-    seconds: (amount: string) => `${amount} Sek.`,
     termsLink: "Bedingungen",
     privacyLink: "Datenschutz",
     loading: "Tarife werden geladen…",
@@ -922,6 +924,37 @@ export const de: Translations = {
     offline: "Du bist offline. Stell eine Verbindung her und versuch es noch einmal.",
     welcomeTitle: "Du hast jetzt Nexdo Pro",
     welcomeBody: "Dein neues Monatskontingent steht bereit.",
+    close: "Schließen",
+    restore: "Wiederherstellen",
+    /** The headline's two lines; the second is orange. */
+    headline: ["Lass Nexdo", "für dich planen."] as [string, string],
+    subtitle: "Jeden Monat mit Nexdo Pro:",
+    carouselLabel: "Was Pro jeden Monat enthält",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "Sag es. Es wird zur Aufgabe." },
+      assist: { name: "Aufteilen", line: "Große Aufgaben, kleine Schritte." },
+      media: { name: "Fotos und Dokumente", line: "Aus einem Foto werden Aufgaben." },
+      voice: { name: "Sprachnotizen", line: "Sprechen statt Notizen tippen." },
+      chat: { name: "Kontextnotizen", line: "Gib Nexdo die Details." },
+      sounds: { name: "Fokus-Sounds", line: "Regen, Wellen, Wald und mehr." },
+      insights: { name: "Statistik", line: "Sieh, wie weit du gekommen bist." },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "Sek.", times: "Mal", uploads: "Uploads", notes: "Notizen", sounds: "Sounds", history: "Verlauf" },
+    allSounds: (count: number) => `Alle ${count}`,
+    allTime: "Gesamt",
+    yearly: "Jährlich",
+    monthly: "Monatlich",
+    yearlyDetail: (price: string) => `12 Monate · ${price}`,
+    perMonth: "/ Monat",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} gratis`,
+    /** The button with Monthly picked. */
+    subscribe: "Abonnieren",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} gratis, dann ${price} pro Jahr. Jederzeit kündbar.`,
+    priceLine: (price: string, yearly: boolean) => `${price} pro ${yearly ? "Jahr" : "Monat"}. Jederzeit kündbar.`,
   },
 
   feedback: {
@@ -998,7 +1031,7 @@ export const de: Translations = {
     manage: "Verwalten",
     upgrade: "Upgrade",
     freePlan: "Nexdo Free",
-    freeBody: "Alle KI-Funktionen gibt es mit Pro.",
+    freeBody: "Mit Pro plant Nexdo für dich.",
     renews: (date: string) => `Verlängert sich am ${date}`,
     ends: (date: string) => `Endet am ${date}`,
     resetsIn: (days: number) => `neu in ${days} ${days === 1 ? "Tag" : "Tagen"}`,
@@ -1375,40 +1408,6 @@ export const de: Translations = {
       hold: "Halten, um es zu versprechen",
       committed: "Versprochen",
       holdLabel: "Gedrückt halten, um es zu versprechen",
-    },
-    paywall: {
-      close: "Schließen",
-      restore: "Wiederherstellen",
-      free: "Kostenlos",
-      pro: "Pro",
-      freeTitle: "Nexdo Kostenlos",
-      freeBody: "Plane deine Aufgaben und Tage selbst.",
-      proTitle: "Nexdo Pro",
-      proBody: "Alles aus Kostenlos – und Nexdo übernimmt die Hauptarbeit.",
-      rows: {
-        live: "Magic mic",
-        assist: "Aufteilen",
-        media: "Fotos und Dokumente",
-        voice: "Sprachnotizen",
-        chat: "Kontextnotizen",
-        sounds: "Fokus-Sounds",
-        insights: "Statistik",
-      },
-      allSounds: (count: number) => `Alle ${count}`,
-      insightsFree: "7 Tage",
-      insightsPro: "Gesamt",
-      locked: "Pro",
-      yearly: "Jährlich",
-      monthly: "Monatlich",
-      perMonth: "/ Mon.",
-      aYear: (price: string) => `${price} pro Jahr`,
-      billedMonthly: "monatlich abgerechnet",
-      discount: (percent: number) => `−${percent} %`,
-      cancelAnytime: "Jederzeit kündbar",
-      continueFree: "Kostenlos weitermachen",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "Nicht jetzt",
-      subscribe: "Abonnieren",
     },
     save: {
       headline: "Sichere deine Aufgaben.",

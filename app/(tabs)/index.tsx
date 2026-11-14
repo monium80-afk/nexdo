@@ -17,6 +17,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
+import { registerTourAddButton } from "@/components/AppTour";
 import { GemGlow, GemMascot, gemLevelFor } from "@/components/GemMascot";
 import { AppIcon } from "@/components/icons/AppIcons";
 import { NextTaskCard, type CardBounds } from "@/components/NextTaskCard";
@@ -635,6 +636,12 @@ export default function Next() {
   // middle of the tab bar). The whole page scrolls as one, so the gem's
   // light and flame can reach up behind the title as in the mockup.
   const syncPending = useSyncPending();
+  // The tour's "add a task" stop points at this button: it asks where it is when that stop comes up.
+  const addButtonRef = useRef<ComponentRef<typeof View>>(null);
+  useEffect(() => {
+    registerTourAddButton((done) => addButtonRef.current?.measureInWindow((x, y, width, height) => done({ x, y, width, height })));
+    return () => registerTourAddButton(null);
+  }, []);
   const header = (
     <View className="flex-row items-end justify-between gap-3 px-[20px] pt-[6px]">
       <View className="shrink">
@@ -659,16 +666,19 @@ export default function Next() {
           </View>
         ) : null}
       </View>
-      <AnimatedPressable
-        onPress={() => openAddSheet()}
-        scaleTo={0.92}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel={t.tasks.addTask}
-        className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
-      >
-        <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
-      </AnimatedPressable>
+      {/* Wrapped so the first-run tour can find it on screen (components/AppTour.tsx). */}
+      <View ref={addButtonRef} collapsable={false}>
+        <AnimatedPressable
+          onPress={() => openAddSheet()}
+          scaleTo={0.92}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={t.tasks.addTask}
+          className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
+        >
+          <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+        </AnimatedPressable>
+      </View>
     </View>
   );
 

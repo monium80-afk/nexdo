@@ -392,6 +392,8 @@ export const fr: Translations = {
       ` ${plural(shown, "tâche affichée", "tâches affichées")} sur ${total}`,
     emptyTitle: "Aucune tâche trouvée",
     emptyBody: "Essayez un autre filtre ou un autre terme de recherche.",
+    emptyNoneTitle: "Aucune tâche pour l’instant",
+    emptyNoneBody: "Touchez + pour ajouter la première.",
     status: { all: "Toutes", pending: "À faire", completed: "Faites", overdue: "En retard", noDeadline: "Sans échéance", archived: "Archivées" },
     sort: { recent: "Ajout récent", dueDate: "Échéance", priority: "Score de priorité" },
     score: (score: number) => `Score : ${score}`,
@@ -612,7 +614,11 @@ export const fr: Translations = {
     steps: {
       next: {
         title: "Aujourd'hui",
-        body: "Ce qui est à faire aujourd'hui — et ce qui est en retard — avec en haut la tâche qui vaut le plus la peine. Balayez pour voir les autres, ou passez à Toutes les tâches pour en choisir une autre. Touchez + en haut pour ajouter une tâche à la main.",
+        body: "La tâche qui vaut le plus la peine est en haut. Balayez pour voir la suivante, ou touchez Tout pour voir toutes vos tâches.",
+      },
+      add: {
+        title: "Ajouter une tâche",
+        body: "Touchez + et écrivez-la. Un titre suffit : Nexdo trouve ce qui passe en premier.",
       },
       tasks: {
         title: "Toutes vos tâches",
@@ -902,10 +908,6 @@ export const fr: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `Commencer l'essai gratuit de ${trialLength(count, unit)}`,
     working: "Un instant…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `Gratuit pendant ${trialLength(count, unit)}, puis ${price} par ${yearly ? "an" : "mois"}. Résiliable à tout moment.`,
-    terms: (price: string, yearly: boolean) => `${price} par ${yearly ? "an" : "mois"}, renouvelé jusqu'à résiliation.`,
-    seconds: (amount: string) => `${amount} s`,
     termsLink: "Conditions",
     privacyLink: "Confidentialité",
     loading: "Chargement des formules…",
@@ -916,6 +918,37 @@ export const fr: Translations = {
     offline: "Vous êtes hors ligne. Connectez-vous et réessayez.",
     welcomeTitle: "Vous êtes passé à Nexdo Pro",
     welcomeBody: "Votre nouveau quota mensuel est prêt.",
+    close: "Fermer",
+    restore: "Restaurer",
+    /** The headline's two lines; the second is orange. */
+    headline: ["Laissez Nexdo", "tout planifier."] as [string, string],
+    subtitle: "Chaque mois avec Nexdo Pro :",
+    carouselLabel: "Ce que Pro inclut chaque mois",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "Dites-le, ça devient des tâches." },
+      assist: { name: "Découper", line: "Grandes tâches, petites étapes." },
+      media: { name: "Photos et documents", line: "Une photo devient des tâches." },
+      voice: { name: "Notes vocales", line: "Parlez au lieu de taper." },
+      chat: { name: "Notes de contexte", line: "Donnez les détails à Nexdo." },
+      sounds: { name: "Sons de concentration", line: "Pluie, vagues, forêt et plus." },
+      insights: { name: "Statistiques", line: "Voyez le chemin parcouru." },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "sec", times: "fois", uploads: "envois", notes: "notes", sounds: "sons", history: "historique" },
+    allSounds: (count: number) => `Les ${count}`,
+    allTime: "Tout l’historique",
+    yearly: "Annuel",
+    monthly: "Mensuel",
+    yearlyDetail: (price: string) => `12 mois · ${price}`,
+    perMonth: "/ mois",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} d'essai`,
+    /** The button with Monthly picked. */
+    subscribe: "S’abonner",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} d'essai, puis ${price} par an. Résiliable à tout moment.`,
+    priceLine: (price: string, yearly: boolean) => `${price} par ${yearly ? "an" : "mois"}. Résiliable à tout moment.`,
   },
 
   feedback: {
@@ -992,7 +1025,7 @@ export const fr: Translations = {
     manage: "Gérer",
     upgrade: "Passer à Pro",
     freePlan: "Nexdo Gratuit",
-    freeBody: "Toutes les fonctions IA sont dans Pro.",
+    freeBody: "Avec Pro, Nexdo planifie pour vous.",
     renews: (date: string) => `Renouvellement le ${date}`,
     ends: (date: string) => `Fin le ${date}`,
     resetsIn: (days: number) => `remise à zéro dans ${days} ${days <= 1 ? "jour" : "jours"}`,
@@ -1368,40 +1401,6 @@ export const fr: Translations = {
       hold: "Maintenez pour vous engager",
       committed: "C’est promis",
       holdLabel: "Maintenez appuyé pour vous engager",
-    },
-    paywall: {
-      close: "Fermer",
-      restore: "Restaurer",
-      free: "Gratuit",
-      pro: "Pro",
-      freeTitle: "Nexdo Gratuit",
-      freeBody: "Organisez vos tâches et vos journées vous-même.",
-      proTitle: "Nexdo Pro",
-      proBody: "Tout le forfait Gratuit, et Nexdo fait le gros du travail.",
-      rows: {
-        live: "Magic mic",
-        assist: "Découper",
-        media: "Photos et documents",
-        voice: "Notes vocales",
-        chat: "Notes de contexte",
-        sounds: "Sons de concentration",
-        insights: "Statistiques",
-      },
-      allSounds: (count: number) => `Les ${count}`,
-      insightsFree: "7 jours",
-      insightsPro: "Tout l’historique",
-      locked: "Pro",
-      yearly: "Annuel",
-      monthly: "Mensuel",
-      perMonth: "/ mois",
-      aYear: (price: string) => `${price} par an`,
-      billedMonthly: "facturé chaque mois",
-      discount: (percent: number) => `−${percent} %`,
-      cancelAnytime: "Annulable à tout moment",
-      continueFree: "Continuer gratuitement",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "Pas maintenant",
-      subscribe: "S’abonner",
     },
     save: {
       headline: "Enregistrez vos tâches.",

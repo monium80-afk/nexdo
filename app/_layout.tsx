@@ -19,6 +19,7 @@ import { useSessionAlarm } from "@/hooks/useSessionAlarm";
 import { publishableKey, resourceCache, tokenCache } from "@/lib/clerk";
 import { watchCompletions } from "@/lib/focusLog";
 import { configureNotifications } from "@/lib/notifications";
+import { PAYWALL_BG } from "@/components/paywall/paywallTheme";
 import { posthog } from "@/lib/posthog";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import "../global.css";
@@ -206,8 +207,10 @@ export default function RootLayout() {
               <Stack.Screen
                 name="paywall"
                 options={{
-                  presentation: "modal",
-                  contentStyle: { backgroundColor: colors.cream[100] },
+                  // Full screen and dark, as designed (components/paywall/).
+                  presentation: "fullScreenModal",
+                  animation: "slide_from_bottom",
+                  contentStyle: { backgroundColor: PAYWALL_BG },
                 }}
               />
             </Stack>

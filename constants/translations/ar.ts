@@ -414,6 +414,8 @@ export const ar: Translations = {
     showingSuffix: (shown: number, total: number) => ` من أصل ${total} مهمة`,
     emptyTitle: "لا توجد مهام",
     emptyBody: "جرّب عامل تصفية آخر أو كلمة بحث مختلفة.",
+    emptyNoneTitle: "لا توجد مهام بعد",
+    emptyNoneBody: "اضغط + لإضافة أول مهمة.",
     status: { all: "الكل", pending: "للإنجاز", completed: "منجزة", overdue: "متأخرة", noDeadline: "بلا موعد", archived: "مؤرشفة" },
     sort: { recent: "الأحدث إضافة", dueDate: "موعد الاستحقاق", priority: "درجة الأولوية" },
     score: (score: number) => `الدرجة: ${score}`,
@@ -640,7 +642,11 @@ export const ar: Translations = {
     steps: {
       next: {
         title: "اليوم",
-        body: "ما هو مستحق اليوم — وما تأخّر — والمهمة الأجدر بالإنجاز في الأعلى. اسحب لرؤية البقية، أو انتقل إلى «كل المهام» لتختار أي مهمة أخرى. اضغط على + في الأعلى لإضافة مهمة يدويًا.",
+        body: "في الأعلى المهمة الأجدر بالإنجاز. اسحب لترى التالية، أو اضغط «الكل» لترى كل مهامك.",
+      },
+      add: {
+        title: "أضف مهمة",
+        body: "اضغط + واكتبها. يكفي العنوان: يحدد Nexdo ما يأتي أولًا.",
       },
       tasks: {
         title: "كل مهامك",
@@ -920,10 +926,6 @@ export const ar: Translations = {
   paywall: {
     startTrial: (count: number, unit: TrialUnit) => `ابدأ تجربة مجانية لمدة ${trialLength(count, unit)}`,
     working: "لحظة…",
-    trialTerms: (count: number, unit: TrialUnit, price: string, yearly: boolean) =>
-      `مجانًا لمدة ${trialLength(count, unit)}، ثم ${price} ${yearly ? "سنويًا" : "شهريًا"}. يمكنك الإلغاء في أي وقت.`,
-    terms: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}، ويتجدّد حتى تلغيه.`,
-    seconds: (amount: string) => `${amount} ث`,
     termsLink: "الشروط",
     privacyLink: "الخصوصية",
     loading: "جارٍ تحميل الخطط…",
@@ -934,6 +936,37 @@ export const ar: Translations = {
     offline: "أنت غير متصل. اتصل بالإنترنت وأعد المحاولة.",
     welcomeTitle: "أنت الآن على نكسدو برو",
     welcomeBody: "رصيدك الشهري الجديد جاهز.",
+    close: "إغلاق",
+    restore: "استعادة",
+    /** The headline's two lines; the second is orange. */
+    headline: ["دع Nexdo", "يتولى التخطيط."] as [string, string],
+    subtitle: "كل شهر مع Nexdo Pro:",
+    carouselLabel: "ما يتضمنه Pro كل شهر",
+    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    features: {
+      live: { name: "Magic mic", line: "قلها فتصبح مهام." },
+      assist: { name: "تقسيم", line: "مهام كبيرة، خطوات صغيرة." },
+      media: { name: "الصور والمستندات", line: "حوّل صورة إلى مهام." },
+      voice: { name: "ملاحظات صوتية", line: "تحدث بدل كتابة الملاحظات." },
+      chat: { name: "ملاحظات السياق", line: "أخبر Nexdo بالتفاصيل." },
+      sounds: { name: "أصوات التركيز", line: "مطر وأمواج وغابة والمزيد." },
+      insights: { name: "الإحصاءات", line: "شاهد كم تقدمت." },
+    },
+    /** The small caps under each card's number. */
+    units: { seconds: "ثانية", times: "مرة", uploads: "رفع", notes: "ملاحظة", sounds: "أصوات", history: "السجل" },
+    allSounds: (count: number) => `الكل (${count})`,
+    allTime: "كل الوقت",
+    yearly: "سنوي",
+    monthly: "شهري",
+    yearlyDetail: (price: string) => `12 شهرًا · ${price}`,
+    perMonth: "/ شهر",
+    /** The badge on Yearly while it's picked (the trial is on Yearly only). */
+    trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} مجانًا`,
+    /** The button with Monthly picked. */
+    subscribe: "اشترك",
+    /** Under the button: the trial and what follows it, or just the price. */
+    trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} مجانًا، ثم ${price} سنويًا. ألغِ متى شئت.`,
+    priceLine: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}. ألغِ متى شئت.`,
   },
 
   feedback: {
@@ -1010,7 +1043,7 @@ export const ar: Translations = {
     manage: "إدارة",
     upgrade: "ترقية",
     freePlan: "Nexdo المجاني",
-    freeBody: "كل ميزات الذكاء الاصطناعي متاحة مع Pro.",
+    freeBody: "مع Pro، يتولى Nexdo التخطيط.",
     renews: (date: string) => `يتجدد في ${date}`,
     ends: (date: string) => `ينتهي في ${date}`,
     resetsIn: (days: number) => `يُعاد ضبطه بعد ${counted(days, "يوم", "أيام", "يومين")}`,
@@ -1387,40 +1420,6 @@ export const ar: Translations = {
       hold: "اضغط مطوّلًا للالتزام",
       committed: "تم الالتزام",
       holdLabel: "اضغط مطوّلًا للالتزام",
-    },
-    paywall: {
-      close: "إغلاق",
-      restore: "استعادة",
-      free: "مجاني",
-      pro: "Pro",
-      freeTitle: "نكسدو المجاني",
-      freeBody: "نظّم مهامك وأيامك بنفسك.",
-      proTitle: "نكسدو برو",
-      proBody: "كل ما في المجاني، ونكسدو يتولى العمل الشاق.",
-      rows: {
-        live: "Magic mic",
-        assist: "تقسيم",
-        media: "الصور والمستندات",
-        voice: "ملاحظات صوتية",
-        chat: "ملاحظات السياق",
-        sounds: "أصوات التركيز",
-        insights: "الإحصاءات",
-      },
-      allSounds: (count: number) => `الكل (${count})`,
-      insightsFree: "7 أيام",
-      insightsPro: "كل الوقت",
-      locked: "Pro",
-      yearly: "سنوي",
-      monthly: "شهري",
-      perMonth: "/ شهر",
-      aYear: (price: string) => `${price} سنويًا`,
-      billedMonthly: "يُدفع شهريًا",
-      discount: (percent: number) => `−${percent}%`,
-      cancelAnytime: "ألغِ في أي وقت",
-      continueFree: "المتابعة بالمجاني",
-      /** Inside the app, in place of continueFree (the user is already on Free). */
-      notNow: "ليس الآن",
-      subscribe: "اشترك",
     },
     save: {
       headline: "احفظ مهامك.",
