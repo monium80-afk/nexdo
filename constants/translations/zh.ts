@@ -862,18 +862,18 @@ export const zh: Translations = {
     close: "关闭",
     restore: "恢复购买",
     /** The headline's two lines; the second is orange. */
-    headline: ["让 Nexdo", "替你做计划。"] as [string, string],
+    headline: ["少想一点，", "多做一点。"] as [string, string],
     subtitle: "Nexdo Pro 每月包含：",
     carouselLabel: "Pro 每月包含的内容",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "说出来，就成了任务。" },
-      assist: { name: "拆分", line: "大任务，小步骤。" },
-      media: { name: "照片和文档", line: "照片变成任务。" },
-      voice: { name: "语音笔记", line: "用说的代替打字。" },
-      chat: { name: "背景备注", line: "把细节告诉 Nexdo。" },
-      sounds: { name: "专注音效", line: "雨声、海浪、森林等。" },
-      insights: { name: "数据洞察", line: "看看你走了多远。" },
+      live: { name: "Magic mic", line: "说出来，就成了任务。", detail: "按住麦克风，说说你的一天。Nexdo 会倾听，并把你说的话变成带日期和时长的任务，随时可以开始。" },
+      assist: { name: "拆分", line: "大任务，小步骤。", detail: "打开一个大任务，Nexdo 会把它拆成一个个小而具体的步骤，让你逐一完成。" },
+      media: { name: "照片和文档", line: "照片变成任务。", detail: "拍下课程表、白板或纸上的清单，或添加一份文档，Nexdo 会从中提取任务。" },
+      voice: { name: "语音笔记", line: "用说的代替打字。", detail: "用说话代替打字，为任务添加备注。Nexdo 会记录下来，并保存在任务里。" },
+      chat: { name: "背景备注", line: "把细节告诉 Nexdo。", detail: "告诉 Nexdo 这项任务的关键——为谁做、难点在哪、做到什么算完成——它会据此为你规划。" },
+      sounds: { name: "专注音效", line: "雨声、海浪、森林等。", detail: "雨声、海浪、森林、壁炉、咖啡馆等多种声音，陪你专注完成任务。" },
+      insights: { name: "数据洞察", line: "看看你走了多远。", detail: "查看你的节奏：专注时长、完成的任务，以及每周的对比，追溯到你开始使用 Nexdo 的那天。免费版只显示最近 7 天。" },
     },
     /** The small caps under each card's number. */
     units: { seconds: "秒", times: "次", uploads: "次上传", notes: "条笔记", sounds: "种音效", history: "历史记录" },
@@ -887,6 +887,10 @@ export const zh: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `免费 ${trialLength(count, unit)}`,
     /** The button with Monthly picked. */
     subscribe: "订阅",
+    continueFree: "继续使用免费版",
+    gotIt: "知道了",
+    everyMonth: "Pro 每月",
+    cardHint: "查看功能说明",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `免费 ${trialLength(count, unit)}，之后每年 ${price}。可随时取消。`,
     priceLine: (price: string, yearly: boolean) => `每${yearly ? "年" : "月"} ${price}。可随时取消。`,

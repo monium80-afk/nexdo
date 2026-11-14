@@ -94,8 +94,6 @@ const SHOWN_DEPTH = 2;
 // lighter and narrower than the front one, so it reads as a stack.
 // How far in from each side each place's card is drawn.
 const DEPTH_INSET = [0, 10, 22, 26];
-// How much lower each place's top edge is than the front card's.
-const DEPTH_TOP = [0, 10, 22, 22];
 // How far each place's bottom edge sticks out below the front card's.
 const DEPTH_OUT = [0, 10, 20, 20];
 // A waiting card is a flat band of brown, lighter the further back it sits:
@@ -296,15 +294,15 @@ function StackSlot({
         ],
       };
     }
-    // Narrower by DEPTH_INSET on each side; its top DEPTH_TOP lower and its
-    // bottom DEPTH_OUT below the front card's — the height is set by scaling
-    // about the card's centre, then moving it down into place.
-    const scaleX = interpolate(depth, DEPTHS, depthScale, Extrapolation.CLAMP);
-    const height = stackHeight.get();
-    const top = interpolate(depth, DEPTHS, DEPTH_TOP, Extrapolation.CLAMP);
-    const out = interpolate(depth, DEPTHS, DEPTH_OUT, Extrapolation.CLAMP);
-    const scaleY = height > 0 ? (height + out - top) / height : 1;
-    const translateY = top + (height * (scaleY - 1)) / 2;
+    // Narrower by DEPTH_INSET on each side, scaled evenly about its centre, so
+    // a card coming forward grows to full size (the older motion, back
+    // 2026-11-14). Scaled about its centre, its bottom edge rises by half the
+    // height it lost: dropping it back by that much lines it up with the front
+    // card's bottom edge, and DEPTH_OUT then sets it just below. Its top edge
+    // sits hidden behind the front card either way.
+    const scale = interpolate(depth, DEPTHS, depthScale, Extrapolation.CLAMP);
+    const translateY =
+      (stackHeight.get() * (1 - scale)) / 2 + interpolate(depth, DEPTHS, DEPTH_OUT, Extrapolation.CLAMP);
 
     return {
       zIndex: z,
@@ -314,8 +312,7 @@ function StackSlot({
         { translateX: x },
         { translateY },
         { rotateY: `${turn}deg` },
-        { scaleX },
-        { scaleY },
+        { scale },
       ],
     };
   });

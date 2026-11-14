@@ -870,18 +870,18 @@ export const bn: Translations = {
     close: "বন্ধ করুন",
     restore: "রিস্টোর",
     /** The headline's two lines; the second is orange. */
-    headline: ["পরিকল্পনা Nexdo-কে", "করতে দিন।"] as [string, string],
+    headline: ["কম ভাবুন,", "বেশি করুন।"] as [string, string],
     subtitle: "Nexdo Pro-তে প্রতি মাসে:",
     carouselLabel: "Pro-তে প্রতি মাসে যা পাবেন",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "বলুন, তা টাস্ক হয়ে যাবে।" },
-      assist: { name: "ভাগ করুন", line: "বড় টাস্ক, ছোট ধাপ।" },
-      media: { name: "ছবি ও ডকুমেন্ট", line: "ছবি থেকে টাস্ক বানান।" },
-      voice: { name: "ভয়েস নোট", line: "টাইপ না করে বলুন।" },
-      chat: { name: "প্রসঙ্গ নোট", line: "Nexdo-কে বিস্তারিত জানান।" },
-      sounds: { name: "ফোকাস সাউন্ড", line: "বৃষ্টি, ঢেউ, বন আর আরও।" },
-      insights: { name: "ইনসাইটস", line: "দেখুন কতটা এগিয়েছেন।" },
+      live: { name: "Magic mic", line: "বলুন, তা টাস্ক হয়ে যাবে।", detail: "মাইক চেপে ধরে আপনার দিনের কথা বলুন। Nexdo শোনে এবং আপনার কথাগুলোকে তারিখ ও সময়সহ কাজে বদলে দেয়, শুরু করার জন্য প্রস্তুত।" },
+      assist: { name: "ভাগ করুন", line: "বড় টাস্ক, ছোট ধাপ।", detail: "একটি বড় কাজ খুলুন, Nexdo সেটিকে ছোট ছোট স্পষ্ট ধাপে ভাগ করে দেবে, যা আপনি একে একে শেষ করতে পারবেন।" },
+      media: { name: "ছবি ও ডকুমেন্ট", line: "ছবি থেকে টাস্ক বানান।", detail: "সিলেবাস, হোয়াইটবোর্ড বা কাগজের তালিকার ছবি তুলুন, অথবা একটি ডকুমেন্ট যোগ করুন — Nexdo সেখান থেকে কাজগুলো বের করে আনবে।" },
+      voice: { name: "ভয়েস নোট", line: "টাইপ না করে বলুন।", detail: "টাইপ না করে কথা বলে কাজে নোট যোগ করুন। Nexdo সেগুলো লিখে রাখে এবং কাজের সাথে সংরক্ষণ করে।" },
+      chat: { name: "প্রসঙ্গ নোট", line: "Nexdo-কে বিস্তারিত জানান।", detail: "Nexdo-কে বলুন কাজটিতে কী গুরুত্বপূর্ণ — কার জন্য, কোনটা কঠিন, শেষ হলে কেমন দেখাবে — আর সে সেটা মাথায় রেখে পরিকল্পনা করবে।" },
+      sounds: { name: "ফোকাস সাউন্ড", line: "বৃষ্টি, ঢেউ, বন আর আরও।", detail: "বৃষ্টি, ঢেউ, বন, ফায়ারপ্লেস, ক্যাফে এবং আরও অনেক শব্দ, কোনো কাজে মনোযোগ দেওয়ার সময় শোনার জন্য।" },
+      insights: { name: "ইনসাইটস", line: "দেখুন কতটা এগিয়েছেন।", detail: "আপনার গতি দেখুন: ফোকাসের সময়, শেষ করা কাজ এবং সপ্তাহগুলোর তুলনা, Nexdo ব্যবহার শুরু করার দিন থেকে। ফ্রি সংস্করণে শেষ ৭ দিন দেখা যায়।" },
     },
     /** The small caps under each card's number. */
     units: { seconds: "সেকেন্ড", times: "বার", uploads: "আপলোড", notes: "নোট", sounds: "সাউন্ড", history: "ইতিহাস" },
@@ -895,6 +895,10 @@ export const bn: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} ফ্রি`,
     /** The button with Monthly picked. */
     subscribe: "সাবস্ক্রাইব করুন",
+    continueFree: "ফ্রি-তে চালিয়ে যান",
+    gotIt: "বুঝেছি",
+    everyMonth: "Pro-তে প্রতি মাসে",
+    cardHint: "এটি কী করে তা দেখায়",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} ফ্রি, তারপর বছরে ${price}। যেকোনো সময় বাতিল করুন।`,
     priceLine: (price: string, yearly: boolean) => `${yearly ? "বছরে" : "মাসে"} ${price}। যেকোনো সময় বাতিল করুন।`,

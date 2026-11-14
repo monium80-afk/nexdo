@@ -601,11 +601,6 @@ export default function Next() {
     router.navigate("/calendar");
   };
 
-  const openInsights = () => {
-    posthog.capture("insights_opened", { from: "today" });
-    router.push("/insights");
-  };
-
   // Done against what's left of today's tasks — not a session's task from
   // another day. The card shows once there's a day to measure: anything due
   // today, open or done.
@@ -719,18 +714,19 @@ export default function Next() {
           {/* No glow while the gem is still grey or bronze (levels 1–2, the user's call 2026-11-03). */}
           {gemLevel >= 3 ? <GemGlow size={GLOW_SIZE} animate={pageFocused} /> : null}
         </View>
-        <AnimatedPressable
-          onPress={openInsights}
-          scaleTo={0.96}
-          accessibilityRole="button"
+        {/* Decoration only (2026-11-14): no tap, and touch-transparent — its
+            drawing reaches up over the Today / All switch and used to swallow
+            the switch's taps. */}
+        <View
+          pointerEvents="none"
+          accessible
           accessibilityLabel={todayTotal > 0 ? t.next.todayProgress(today.done, todayTotal) : t.next.nothingToday}
-          accessibilityHint={t.insights.open}
           className="absolute self-center"
           style={{ top: GEM_TOP }}
         >
           {/* A level-up waits until it can be seen: Today on screen, no focus page over it. */}
           <GemMascot level={gemLevel} width={GEM_WIDTH} animate={pageFocused} holdLevelUps={!pageFocused || focusState !== null} />
-        </AnimatedPressable>
+        </View>
       </View>
     </>
   );

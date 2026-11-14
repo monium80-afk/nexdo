@@ -22,14 +22,18 @@ import { billedYearly, loadOnboardingPlans, loadProPlans, purchasePlan, restoreP
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
+import type { ProFeatureId } from "@/lib/plan";
+
 import { FeatureCarousel } from "./FeatureCarousel";
+import { FeatureDetail } from "./FeatureDetail";
 import { PaywallBackdrop } from "./PaywallBackdrop";
 import { PW } from "./paywallTheme";
 
 // The Nexdo Pro paywall (design 7B, nexdo-paywall-7b/), the one screen for
 // all three ways in: onboarding, Settings → Upgrade, and a locked feature.
-// `mode` decides what happens around it — in onboarding, Close carries on to
-// sign-up on Free; in the app, it goes back to where it was opened. `reason`
+// `mode` decides what happens around it — in onboarding there's no Close: a
+// "Continue with Free" pill in its place carries on to sign-up on Free (the
+// user's call, 2026-11-14); in the app, Close goes back to where it was opened. `reason`
 // is the locked feature it was opened from (or none): that feature's card
 // comes to the front with an orange border.
 //
@@ -55,14 +59,20 @@ const MOCK_ROOM = 763;
 
 /**
  * The mock's sizes, or the small-phone ones (README "Small phones") when the
- * mock's layout doesn't fit: the gem shrinks to 130 px and the cards to
- * 130 px tall, and the gaps tighten.
+ * mock's layout doesn't fit: the gem shrinks to 130 px, the cards to 92 px
+ * tall (a number and a name: the rest is a tap away), and the gaps tighten.
  */
+// The plan cards and the button, a size down from the mock (the user's call,
+// 2026-11-14: they looked too big on the phone).
+const ANNUAL_H = 64;
+const MONTHLY_H = 56;
+const CTA_H = 50;
+
 function sizesFor(room: number) {
   const compact = room < MOCK_ROOM;
   return compact
-    ? { compact, gemW: 130, cardH: 130, headlineGap: 0, carouselGap: 14, plansGap: 22, planGap: 10, minSpacer: 14 }
-    : { compact, gemW: 168, cardH: 142, headlineGap: 2, carouselGap: 21, plansGap: 32, planGap: 12, minSpacer: 24 };
+    ? { compact, gemW: 130, cardH: 92, headlineGap: 0, carouselGap: 14, plansGap: 22, planGap: 10, minSpacer: 10 }
+    : { compact, gemW: 168, cardH: 104, headlineGap: 2, carouselGap: 21, plansGap: 32, planGap: 12, minSpacer: 16 };
 }
 
 /** The selected plan's breathing ring (m7Ring): a 4 px halo fading in and out every 3 s. */
@@ -77,8 +87,8 @@ function RingGlow({ clock, borderWidth }: { clock: SharedValue<number>; borderWi
 
 function Check() {
   return (
-    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: PW.orange, alignItems: "center", justifyContent: "center" }}>
-      <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
+    <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: PW.orange, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
         <Path d="M5 12.5l4.5 4.5L19 7.5" />
       </Svg>
     </View>
@@ -118,15 +128,15 @@ function PlanCard({
       accessibilityLabel={`${title}, ${perMonth} ${copy.perMonth}${badge ? `, ${badge}` : ""}`}
       style={[
         {
-          height: kind === "annual" ? 74 : 64,
-          borderRadius: 20,
+          height: kind === "annual" ? ANNUAL_H : MONTHLY_H,
+          borderRadius: 18,
           borderWidth,
           borderColor: selected ? PW.orange : PW.line,
           backgroundColor: selected ? "rgba(242,106,46,0.12)" : PW.card,
           paddingLeft: (rtl ? 18 : 16) - borderWidth,
           paddingRight: (rtl ? 16 : 18) - borderWidth,
           alignItems: "center",
-          gap: 14,
+          gap: 12,
         },
         rowDirection(rtl),
         selected ? { boxShadow: "0 10px 26px rgba(242,106,46,0.14)" } : null,
@@ -140,24 +150,24 @@ function PlanCard({
           </Text>
         </View>
       ) : null}
-      {selected ? <Check /> : <View style={{ width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: PW.line }} />}
-      <View style={{ flex: 1, gap: 3 }}>
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 18, lineHeight: 22, color: PW.ink, textAlign: align }}>
+      {selected ? <Check /> : <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: PW.line }} />}
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: PW.ink, textAlign: align }}>
           {title}
         </Text>
         {kind === "annual" ? (
-          // A long price on a narrow phone ("12 months · CA$58.99") takes a second line; the card has room for it.
-          <Text numberOfLines={2} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, lineHeight: 17, color: PW.muted, textAlign: align }}>
+          // One line always (the user's call, 2026-11-14): a long price on a narrow phone ("12 months · USD 79.99") shrinks to fit instead of wrapping.
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16, color: PW.muted, textAlign: align }}>
             {copy.yearlyDetail(productPrice(product, t.locale))}
           </Text>
         ) : null}
       </View>
-      {/* The price shrinks to fit ("CA$9.49", "€6,99"); "/ month" keeps its size beside it. */}
-      <View style={[{ alignItems: "baseline", flexShrink: 1, maxWidth: "50%" }, rowDirection(rtl)]}>
-        <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ flexShrink: 1, fontFamily: "SpaceGrotesk-Bold", fontSize: 17, lineHeight: 22, color: PW.ink }}>
+      {/* The price keeps its width; the title column shrinks around it (its detail line shrinks its type to fit). */}
+      <View style={[{ alignItems: "baseline", flexShrink: 0 }, rowDirection(rtl)]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ flexShrink: 1, fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: PW.ink }}>
           {perMonth}
         </Text>
-        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ marginStart: 4, fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, lineHeight: 17, color: PW.muted }}>
+        <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ marginStart: 4, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16, color: PW.muted }}>
           {copy.perMonth}
         </Text>
       </View>
@@ -176,7 +186,7 @@ function Shine({ clock, width }: { clock: SharedValue<number>; width: number }) 
   if (width <= 0) return null;
   return (
     <Animated.View pointerEvents="none" style={[{ position: "absolute", top: 0, bottom: 0, left: 0, width: band }, style]}>
-      <Svg width={band} height={56}>
+      <Svg width={band} height={CTA_H}>
         <Defs>
           <LinearGradient id={id} x1={0} y1={0} x2={1} y2={0}>
             <Stop offset={0} stopColor="#FFFFFF" stopOpacity={0} />
@@ -184,7 +194,7 @@ function Shine({ clock, width }: { clock: SharedValue<number>; width: number }) 
             <Stop offset={1} stopColor="#FFFFFF" stopOpacity={0} />
           </LinearGradient>
         </Defs>
-        <Rect width={band} height={56} fill={`url(#${id})`} />
+        <Rect width={band} height={CTA_H} fill={`url(#${id})`} />
       </Svg>
     </Animated.View>
   );
@@ -200,7 +210,7 @@ function Pill({ onPress, disabled, label, children, width }: { onPress: () => vo
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={{ height: 40, width, minWidth: 40, paddingHorizontal: width ? 0 : 14, borderRadius: 20, backgroundColor: PW.glass, alignItems: "center", justifyContent: "center" }}
+      style={{ height: 40, width, minWidth: 40, flexShrink: 1, paddingHorizontal: width ? 0 : 14, borderRadius: 20, backgroundColor: PW.glass, alignItems: "center", justifyContent: "center" }}
     >
       {children}
     </AnimatedPressable>
@@ -219,7 +229,8 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
   const moving = focused && !reduceMotion;
   useStatusBarStyle("light");
 
-  const bottomPad = Math.max(insets.bottom, 20);
+  // 8 more than the safe area: Terms and Privacy sat right on the nav bar on a 360 × 740 phone.
+  const bottomPad = Math.max(insets.bottom, 20) + 8;
   const sizes = sizesFor(height - insets.top - bottomPad);
   const gemW = sizes.gemW;
   const gemH = (gemW * 220) / 200;
@@ -233,6 +244,9 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
   const [choice, setChoice] = useState<PlanChoice>("annual");
   const [busy, setBusy] = useState(false);
   const [buttonWidth, setButtonWidth] = useState(0);
+  // The feature card opened from the carousel; `detail` stays while it fades out.
+  const [detail, setDetail] = useState<ProFeatureId | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const loadPlans = useCallback(() => {
     // Onboarding has no account yet (an anonymous purchaser); the app's is the signed-in one.
@@ -371,13 +385,21 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
             {"\n"}
             <Text style={{ color: PW.peach }}>{copy.headline[1]}</Text>
           </Text>
-          <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ marginTop: 8, fontFamily: "SpaceGrotesk-Regular", fontSize: 15.5, lineHeight: 20, color: PW.muted, textAlign: "center" }}>
+          <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ marginTop: 6, fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 18, color: PW.muted, textAlign: "center" }}>
             {copy.subtitle}
           </Text>
         </Animated.View>
 
         <View style={{ marginTop: sizes.carouselGap }}>
-          <FeatureCarousel cardHeight={sizes.cardH} highlight={reason} moving={moving} />
+          <FeatureCarousel
+            cardHeight={sizes.cardH}
+            highlight={reason}
+            moving={moving && !detailOpen}
+            onOpen={(feature) => {
+              setDetail(feature);
+              setDetailOpen(true);
+            }}
+          />
         </View>
 
         <View accessibilityRole="radiogroup" style={{ marginTop: sizes.plansGap, marginHorizontal: 20, gap: sizes.planGap }}>
@@ -391,7 +413,7 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
               onPress={plansState.status === "error" ? () => { setPlansState({ status: "loading" }); loadPlans(); } : undefined}
               disabled={plansState.status !== "error"}
               accessibilityRole="button"
-              style={{ height: 74 + sizes.planGap + 64, borderRadius: 20, borderWidth: 1.5, borderColor: PW.line, backgroundColor: PW.card, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}
+              style={{ height: ANNUAL_H + sizes.planGap + MONTHLY_H, borderRadius: 18, borderWidth: 1.5, borderColor: PW.line, backgroundColor: PW.card, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}
             >
               <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-Medium", fontSize: 13.5, lineHeight: 19, color: PW.muted, textAlign: "center" }}>
                 {plansState.status === "error" ? `${copy.loadError}\n` : copy.loading}
@@ -412,20 +434,20 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
             accessibilityLabel={buyLabel}
             onLayout={(event) => setButtonWidth(event.nativeEvent.layout.width)}
             style={[
-              { alignSelf: "stretch", height: 56, borderRadius: 28, backgroundColor: PW.orange, overflow: "hidden", alignItems: "center", justifyContent: "center", opacity: !selected || busy ? 0.7 : 1 },
+              { alignSelf: "stretch", height: CTA_H, borderRadius: CTA_H / 2, backgroundColor: PW.orange, overflow: "hidden", alignItems: "center", justifyContent: "center", opacity: !selected || busy ? 0.7 : 1 },
               shadow("0 10px 26px rgba(242,106,46,0.38)", 10, PW.orange),
             ]}
           >
-            <Svg width="100%" height={56} style={{ position: "absolute" }}>
+            <Svg width="100%" height={CTA_H} style={{ position: "absolute" }}>
               <Defs>
                 <LinearGradient id={ctaId} x1="0" y1="0" x2="0" y2="1">
                   <Stop offset="0" stopColor="#FF7A3A" />
                   <Stop offset="1" stopColor="#EE5E22" />
                 </LinearGradient>
               </Defs>
-              <Rect width="100%" height={56} fill={`url(#${ctaId})`} />
+              <Rect width="100%" height={CTA_H} fill={`url(#${ctaId})`} />
             </Svg>
-            <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ paddingHorizontal: 20, fontFamily: "SpaceGrotesk-Bold", fontSize: 17, lineHeight: 22, color: "#FFFFFF" }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ paddingHorizontal: 20, fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: "#FFFFFF" }}>
               {buyLabel}
             </Text>
             {moving && !busy ? <Shine clock={clock} width={buttonWidth} /> : null}
@@ -435,6 +457,21 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ minHeight: 17, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 17, color: PW.muted, textAlign: "center" }}>
             {smallLine ?? " "}
           </Text>
+          {mode === "onboarding" ? (
+            <AnimatedPressable
+              onPress={handleClose}
+              disabled={busy}
+              scaleTo={0.97}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={copy.continueFree}
+              style={{ paddingHorizontal: 12, opacity: busy ? 0.5 : 1 }}
+            >
+              <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, lineHeight: 19, color: PW.ink, textDecorationLine: "underline" }}>
+                {copy.continueFree}
+              </Text>
+            </AnimatedPressable>
+          ) : null}
           <View style={[{ gap: 22 }, rowDirection(rtl)]}>
             <Text
               onPress={() => void WebBrowser.openBrowserAsync(SUPPORT_LINKS.termsOfService).catch(() => {})}
@@ -458,19 +495,25 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
         </View>
       </ScrollView>
 
-      {/* Close and Restore stay put over everything. */}
-      <View pointerEvents="box-none" style={[{ position: "absolute", left: 20, right: 20, top: insets.top + 54 - MOCK_INSET_TOP, justifyContent: "space-between" }, rowDirection(rtl)]}>
-        <Pill onPress={handleClose} disabled={busy} label={copy.close} width={40}>
-          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={PW.ink} strokeWidth={2.2} strokeLinecap="round">
-            <Path d="M6 6l12 12M18 6L6 18" />
-          </Svg>
-        </Pill>
+      {/* Close and Restore stay put over everything; onboarding has no Close ("Continue with Free" is under the button). */}
+      <View pointerEvents="box-none" style={[{ position: "absolute", left: 20, right: 20, top: insets.top + 54 - MOCK_INSET_TOP, justifyContent: "space-between", alignItems: "center", gap: 12 }, rowDirection(rtl)]}>
+        {mode === "onboarding" ? (
+          <View />
+        ) : (
+          <Pill onPress={handleClose} disabled={busy} label={copy.close} width={40}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={PW.ink} strokeWidth={2.2} strokeLinecap="round">
+              <Path d="M6 6l12 12M18 6L6 18" />
+            </Svg>
+          </Pill>
+        )}
         <Pill onPress={() => void handleRestore()} disabled={busy} label={copy.restore}>
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14, lineHeight: 18, color: PW.soft }}>
             {copy.restore}
           </Text>
         </Pill>
       </View>
+
+      <FeatureDetail open={detailOpen} feature={detail} onClose={() => setDetailOpen(false)} />
     </View>
   );
 }

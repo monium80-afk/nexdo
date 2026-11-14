@@ -896,18 +896,18 @@ export const hi: Translations = {
     close: "बंद करें",
     restore: "रीस्टोर",
     /** The headline's two lines; the second is orange. */
-    headline: ["प्लानिंग Nexdo", "को करने दें।"] as [string, string],
+    headline: ["कम सोचें,", "ज़्यादा करें।"] as [string, string],
     subtitle: "Nexdo Pro के साथ हर महीने:",
     carouselLabel: "Pro में हर महीने क्या मिलता है",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "बोलिए, वह टास्क बन जाएगा।" },
-      assist: { name: "बाँटें", line: "बड़े टास्क, छोटे कदम।" },
-      media: { name: "फ़ोटो और डॉक्यूमेंट", line: "फ़ोटो से टास्क बनाएँ।" },
-      voice: { name: "वॉइस नोट्स", line: "टाइप करने के बजाय बोलें।" },
-      chat: { name: "संदर्भ नोट", line: "Nexdo को ब्योरा बताएँ।" },
-      sounds: { name: "फ़ोकस साउंड", line: "बारिश, लहरें, जंगल और भी।" },
-      insights: { name: "इनसाइट्स", line: "देखें आप कितना आगे आए।" },
+      live: { name: "Magic mic", line: "बोलिए, वह टास्क बन जाएगा।", detail: "माइक दबाए रखें और अपने दिन के बारे में बोलें। Nexdo सुनता है और आपकी बातों को तारीख़ और समय के साथ टास्क में बदल देता है, तुरंत शुरू करने के लिए तैयार।" },
+      assist: { name: "बाँटें", line: "बड़े टास्क, छोटे कदम।", detail: "कोई बड़ा टास्क खोलें और Nexdo उसे छोटे, साफ़ स्टेप्स में बाँट देता है, जिन्हें आप एक-एक करके पूरा कर सकते हैं।" },
+      media: { name: "फ़ोटो और डॉक्यूमेंट", line: "फ़ोटो से टास्क बनाएँ।", detail: "सिलेबस, व्हाइटबोर्ड या काग़ज़ पर लिखी लिस्ट की फ़ोटो लें, या कोई डॉक्यूमेंट जोड़ें — Nexdo उसमें से टास्क निकाल लेता है।" },
+      voice: { name: "वॉइस नोट्स", line: "टाइप करने के बजाय बोलें।", detail: "टाइप करने के बजाय बोलकर टास्क में नोट्स जोड़ें। Nexdo उन्हें लिख लेता है और टास्क के साथ रखता है।" },
+      chat: { name: "संदर्भ नोट", line: "Nexdo को ब्योरा बताएँ।", detail: "Nexdo को बताएँ कि टास्क में क्या ज़रूरी है — किसके लिए है, क्या मुश्किल है, पूरा होना कैसा दिखेगा — और वह उसी हिसाब से प्लान करता है।" },
+      sounds: { name: "फ़ोकस साउंड", line: "बारिश, लहरें, जंगल और भी।", detail: "बारिश, लहरें, जंगल, अँगीठी, कैफ़े और बहुत कुछ — किसी टास्क पर फ़ोकस करते समय सुनने के लिए।" },
+      insights: { name: "इनसाइट्स", line: "देखें आप कितना आगे आए।", detail: "अपनी रफ़्तार देखें: फ़ोकस का समय, पूरे किए टास्क और आपके हफ़्तों की तुलना, जब से आपने Nexdo इस्तेमाल करना शुरू किया। फ़्री में पिछले 7 दिन दिखते हैं।" },
     },
     /** The small caps under each card's number. */
     units: { seconds: "सेकंड", times: "बार", uploads: "अपलोड", notes: "नोट्स", sounds: "साउंड", history: "इतिहास" },
@@ -921,6 +921,10 @@ export const hi: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} फ़्री`,
     /** The button with Monthly picked. */
     subscribe: "सब्सक्राइब करें",
+    continueFree: "फ़्री में जारी रखें",
+    gotIt: "समझ गया",
+    everyMonth: "Pro के साथ हर महीने",
+    cardHint: "बताता है कि यह क्या करता है",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} फ़्री, फिर ${price} प्रति वर्ष। कभी भी रद्द करें।`,
     priceLine: (price: string, yearly: boolean) => `${price} प्रति ${yearly ? "वर्ष" : "महीना"}। कभी भी रद्द करें।`,

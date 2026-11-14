@@ -939,18 +939,18 @@ export const ar: Translations = {
     close: "إغلاق",
     restore: "استعادة",
     /** The headline's two lines; the second is orange. */
-    headline: ["دع Nexdo", "يتولى التخطيط."] as [string, string],
+    headline: ["تفكير أقل،", "إنجاز أكثر."] as [string, string],
     subtitle: "كل شهر مع Nexdo Pro:",
     carouselLabel: "ما يتضمنه Pro كل شهر",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "قلها فتصبح مهام." },
-      assist: { name: "تقسيم", line: "مهام كبيرة، خطوات صغيرة." },
-      media: { name: "الصور والمستندات", line: "حوّل صورة إلى مهام." },
-      voice: { name: "ملاحظات صوتية", line: "تحدث بدل كتابة الملاحظات." },
-      chat: { name: "ملاحظات السياق", line: "أخبر Nexdo بالتفاصيل." },
-      sounds: { name: "أصوات التركيز", line: "مطر وأمواج وغابة والمزيد." },
-      insights: { name: "الإحصاءات", line: "شاهد كم تقدمت." },
+      live: { name: "Magic mic", line: "قلها فتصبح مهام.", detail: "اضغط مطوّلًا على الميكروفون وتحدّث عن يومك. ينصت Nexdo ويحوّل ما تقوله إلى مهام بتواريخ ومدد، جاهزة للبدء." },
+      assist: { name: "تقسيم", line: "مهام كبيرة، خطوات صغيرة.", detail: "افتح مهمة كبيرة وسيقسّمها Nexdo إلى خطوات صغيرة وواضحة تُنجزها واحدة تلو الأخرى." },
+      media: { name: "الصور والمستندات", line: "حوّل صورة إلى مهام.", detail: "صوّر جدولًا دراسيًا أو سبّورة أو قائمة على الورق، أو أضف مستندًا، وسيستخرج Nexdo المهام منه." },
+      voice: { name: "ملاحظات صوتية", line: "تحدث بدل كتابة الملاحظات.", detail: "أضف ملاحظات إلى مهمة بالكلام بدل الكتابة. يدوّنها Nexdo ويحفظها مع المهمة." },
+      chat: { name: "ملاحظات السياق", line: "أخبر Nexdo بالتفاصيل.", detail: "أخبر Nexdo بما يهم في المهمة — لمن هي، وما الصعب فيها، وكيف يبدو إنجازها — وسيخطط على هذا الأساس." },
+      sounds: { name: "أصوات التركيز", line: "مطر وأمواج وغابة والمزيد.", detail: "مطر وأمواج وغابة ومدفأة ومقهى وغيرها، لتستمع إليها أثناء تركيزك على مهمة." },
+      insights: { name: "الإحصاءات", line: "شاهد كم تقدمت.", detail: "اطّلع على وتيرتك: وقت التركيز والمهام المنجزة ومقارنة أسابيعك، منذ بدأت استخدام Nexdo. تعرض النسخة المجانية آخر 7 أيام." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "ثانية", times: "مرة", uploads: "رفع", notes: "ملاحظة", sounds: "أصوات", history: "السجل" },
@@ -964,6 +964,10 @@ export const ar: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} مجانًا`,
     /** The button with Monthly picked. */
     subscribe: "اشترك",
+    continueFree: "المتابعة مجانًا",
+    gotIt: "فهمت",
+    everyMonth: "كل شهر مع Pro",
+    cardHint: "يعرض ما تفعله",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} مجانًا، ثم ${price} سنويًا. ألغِ متى شئت.`,
     priceLine: (price: string, yearly: boolean) => `${price} ${yearly ? "سنويًا" : "شهريًا"}. ألغِ متى شئت.`,

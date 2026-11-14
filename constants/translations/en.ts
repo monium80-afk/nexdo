@@ -979,18 +979,18 @@ export const en = {
     close: "Close",
     restore: "Restore",
     /** The headline's two lines; the second is orange. */
-    headline: ["Let Nexdo do", "the planning."] as [string, string],
+    headline: ["Less thinking,", "more doing."] as [string, string],
     subtitle: "Every month with Nexdo Pro:",
     carouselLabel: "What you get with Pro, every month",
-    /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
+    /** The 7 cards: each one's name and line, and the detail card's paragraph (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "Say it. It becomes tasks." },
-      assist: { name: "Break it down", line: "Big tasks, small steps." },
-      media: { name: "Photos & files", line: "Turn a photo into tasks." },
-      voice: { name: "Voice notes", line: "Talk instead of typing notes." },
-      chat: { name: "Context notes", line: "Tell Nexdo the details." },
-      sounds: { name: "Focus sounds", line: "Rain, waves, forest and more." },
-      insights: { name: "Insights", line: "See how far you’ve come." },
+      live: { name: "Magic mic", line: "Say it. It becomes tasks.", detail: "Hold the mic and talk about your day. Nexdo listens and turns what you say into tasks, with dates and lengths, ready to go." },
+      assist: { name: "Break it down", line: "Big tasks, small steps.", detail: "Open a big task and Nexdo splits it into small, concrete steps you can tick off one at a time." },
+      media: { name: "Photos & files", line: "Turn a photo into tasks.", detail: "Snap a syllabus, a whiteboard or a list on paper, or add a document, and Nexdo pulls the tasks out of it." },
+      voice: { name: "Voice notes", line: "Talk instead of typing notes.", detail: "Add notes to a task by talking instead of typing. Nexdo writes them down and keeps them with the task." },
+      chat: { name: "Context notes", line: "Tell Nexdo the details.", detail: "Tell Nexdo what matters about a task — who it's for, what's tricky, what done looks like — and it plans around that." },
+      sounds: { name: "Focus sounds", line: "Rain, waves, forest and more.", detail: "Rain, waves, a forest, a fireplace, a café and more, to play while you focus on a task." },
+      insights: { name: "Insights", line: "See how far you’ve come.", detail: "See your pace: focus time, tasks done and how your weeks compare, as far back as you've used Nexdo. Free shows the last 7 days." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "sec", times: "times", uploads: "uploads", notes: "notes", sounds: "sounds", history: "history" },
@@ -1004,6 +1004,14 @@ export const en = {
     trialBadge: (count: number, unit: TrialUnit) => `${count} ${plural(count, unit, `${unit}s`)} free`,
     /** The button with Monthly picked. */
     subscribe: "Subscribe",
+    /** Onboarding only, a pill in place of Close: carries on to sign-up on Free. */
+    continueFree: "Continue with Free",
+    /** The detail card's button. */
+    gotIt: "Got it",
+    /** Over the number on the detail card (a feature with a monthly amount). */
+    everyMonth: "Every month with Pro",
+    /** Screen readers: what a tap on a carousel card does. */
+    cardHint: "Shows what it does",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${count} ${plural(count, unit, `${unit}s`)} free, then ${price} a year. Cancel anytime.`,
     priceLine: (price: string, yearly: boolean) => `${price} a ${yearly ? "year" : "month"}. Cancel anytime.`,

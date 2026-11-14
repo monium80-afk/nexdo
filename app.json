@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.nexdo.app",
+      "icon": "./assets/images/nexdo-app-icon-ios.png",
       "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false
@@ -17,7 +18,7 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 13,
+      "versionCode": 14,
       "adaptiveIcon": {
         "backgroundColor": "#281910",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

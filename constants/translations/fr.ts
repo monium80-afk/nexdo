@@ -921,18 +921,18 @@ export const fr: Translations = {
     close: "Fermer",
     restore: "Restaurer",
     /** The headline's two lines; the second is orange. */
-    headline: ["Laissez Nexdo", "tout planifier."] as [string, string],
+    headline: ["Moins réfléchir,", "plus agir."] as [string, string],
     subtitle: "Chaque mois avec Nexdo Pro :",
     carouselLabel: "Ce que Pro inclut chaque mois",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "Dites-le, ça devient des tâches." },
-      assist: { name: "Découper", line: "Grandes tâches, petites étapes." },
-      media: { name: "Photos et documents", line: "Une photo devient des tâches." },
-      voice: { name: "Notes vocales", line: "Parlez au lieu de taper." },
-      chat: { name: "Notes de contexte", line: "Donnez les détails à Nexdo." },
-      sounds: { name: "Sons de concentration", line: "Pluie, vagues, forêt et plus." },
-      insights: { name: "Statistiques", line: "Voyez le chemin parcouru." },
+      live: { name: "Magic mic", line: "Dites-le, ça devient des tâches.", detail: "Gardez le micro enfoncé et racontez votre journée. Nexdo écoute et transforme ce que vous dites en tâches, avec dates et durées, prêtes à l'emploi." },
+      assist: { name: "Découper", line: "Grandes tâches, petites étapes.", detail: "Ouvrez une grosse tâche et Nexdo la découpe en petites étapes concrètes, à cocher une par une." },
+      media: { name: "Photos et documents", line: "Une photo devient des tâches.", detail: "Photographiez un programme de cours, un tableau blanc ou une liste sur papier, ou ajoutez un document : Nexdo en extrait les tâches." },
+      voice: { name: "Notes vocales", line: "Parlez au lieu de taper.", detail: "Ajoutez des notes à une tâche en parlant au lieu de taper. Nexdo les écrit et les garde avec la tâche." },
+      chat: { name: "Notes de contexte", line: "Donnez les détails à Nexdo.", detail: "Dites à Nexdo ce qui compte pour une tâche — pour qui, ce qui est délicat, à quoi ressemble « terminé » — et il en tient compte pour planifier." },
+      sounds: { name: "Sons de concentration", line: "Pluie, vagues, forêt et plus.", detail: "Pluie, vagues, forêt, feu de cheminée, café et plus encore, à écouter pendant que vous vous concentrez sur une tâche." },
+      insights: { name: "Statistiques", line: "Voyez le chemin parcouru.", detail: "Voyez votre rythme : temps de concentration, tâches terminées et comparaison de vos semaines, depuis vos débuts sur Nexdo. La version gratuite montre les 7 derniers jours." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "sec", times: "fois", uploads: "envois", notes: "notes", sounds: "sons", history: "historique" },
@@ -946,6 +946,10 @@ export const fr: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} d'essai`,
     /** The button with Monthly picked. */
     subscribe: "S’abonner",
+    continueFree: "Continuer gratuitement",
+    gotIt: "Compris",
+    everyMonth: "Chaque mois avec Pro",
+    cardHint: "Affiche ce que ça fait",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} d'essai, puis ${price} par an. Résiliable à tout moment.`,
     priceLine: (price: string, yearly: boolean) => `${price} par ${yearly ? "an" : "mois"}. Résiliable à tout moment.`,

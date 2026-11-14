@@ -922,18 +922,18 @@ export const ru: Translations = {
     close: "Закрыть",
     restore: "Восстановить",
     /** The headline's two lines; the second is orange. */
-    headline: ["Пусть Nexdo", "всё спланирует."] as [string, string],
+    headline: ["Меньше думать,", "больше делать."] as [string, string],
     subtitle: "Каждый месяц с Nexdo Pro:",
     carouselLabel: "Что входит в Pro каждый месяц",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "Скажите — и это задачи." },
-      assist: { name: "Разбить", line: "Большие задачи, маленькие шаги." },
-      media: { name: "Фото и документы", line: "Фото превращается в задачи." },
-      voice: { name: "Голосовые заметки", line: "Говорите, а не печатайте." },
-      chat: { name: "Заметки-контекст", line: "Расскажите Nexdo детали." },
-      sounds: { name: "Звуки фокуса", line: "Дождь, волны, лес и другие." },
-      insights: { name: "Статистика", line: "Смотрите, как далеко вы зашли." },
+      live: { name: "Magic mic", line: "Скажите — и это задачи.", detail: "Удерживайте микрофон и расскажите о своём дне. Nexdo слушает и превращает сказанное в задачи с датами и длительностью — можно сразу браться." },
+      assist: { name: "Разбить", line: "Большие задачи, маленькие шаги.", detail: "Откройте большую задачу, и Nexdo разобьёт её на маленькие конкретные шаги, которые вы отмечаете один за другим." },
+      media: { name: "Фото и документы", line: "Фото превращается в задачи.", detail: "Сфотографируйте расписание, доску или список на бумаге либо добавьте документ — Nexdo вытащит из него задачи." },
+      voice: { name: "Голосовые заметки", line: "Говорите, а не печатайте.", detail: "Добавляйте заметки к задаче голосом, а не вручную. Nexdo запишет их и сохранит вместе с задачей." },
+      chat: { name: "Заметки-контекст", line: "Расскажите Nexdo детали.", detail: "Расскажите Nexdo, что важно в задаче — для кого она, в чём сложность, как выглядит результат, — и он будет планировать с учётом этого." },
+      sounds: { name: "Звуки фокуса", line: "Дождь, волны, лес и другие.", detail: "Дождь, волны, лес, камин, кафе и другие звуки — слушайте их, пока сосредоточены на задаче." },
+      insights: { name: "Статистика", line: "Смотрите, как далеко вы зашли.", detail: "Смотрите свой темп: время фокуса, выполненные задачи и сравнение недель — за всё время, что вы пользуетесь Nexdo. В бесплатной версии видны последние 7 дней." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "сек", times: "раз", uploads: "загрузок", notes: "заметок", sounds: "звуков", history: "история" },
@@ -947,6 +947,10 @@ export const ru: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} бесплатно`,
     /** The button with Monthly picked. */
     subscribe: "Оформить подписку",
+    continueFree: "Бесплатно",
+    gotIt: "Понятно",
+    everyMonth: "Каждый месяц с Pro",
+    cardHint: "Показывает, что это даёт",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} бесплатно, затем ${price} в год. Отмена в любой момент.`,
     priceLine: (price: string, yearly: boolean) => `${price} в ${yearly ? "год" : "месяц"}. Отмена в любой момент.`,

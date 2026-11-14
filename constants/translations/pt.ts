@@ -899,18 +899,18 @@ export const pt: Translations = {
     close: "Fechar",
     restore: "Restaurar",
     /** The headline's two lines; the second is orange. */
-    headline: ["Deixe o Nexdo", "planejar tudo."] as [string, string],
+    headline: ["Menos pensar,", "mais fazer."] as [string, string],
     subtitle: "Todo mês com o Nexdo Pro:",
     carouselLabel: "O que o Pro inclui todo mês",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "Fale e vira tarefa." },
-      assist: { name: "Dividir", line: "Tarefas grandes, passos pequenos." },
-      media: { name: "Fotos e documentos", line: "Transforme uma foto em tarefas." },
-      voice: { name: "Notas de voz", line: "Fale em vez de digitar notas." },
-      chat: { name: "Notas de contexto", line: "Conte os detalhes ao Nexdo." },
-      sounds: { name: "Sons de foco", line: "Chuva, ondas, floresta e mais." },
-      insights: { name: "Insights", line: "Veja o quanto você avançou." },
+      live: { name: "Magic mic", line: "Fale e vira tarefa.", detail: "Segure o microfone e conte como foi o seu dia. O Nexdo escuta e transforma o que você diz em tarefas, com datas e durações, prontas para começar." },
+      assist: { name: "Dividir", line: "Tarefas grandes, passos pequenos.", detail: "Abra uma tarefa grande e o Nexdo a divide em passos pequenos e concretos, para marcar um de cada vez." },
+      media: { name: "Fotos e documentos", line: "Transforme uma foto em tarefas.", detail: "Fotografe uma ementa, um quadro branco ou uma lista no papel, ou adicione um documento, e o Nexdo extrai as tarefas dali." },
+      voice: { name: "Notas de voz", line: "Fale em vez de digitar notas.", detail: "Adicione notas a uma tarefa falando em vez de digitar. O Nexdo as anota e guarda junto com a tarefa." },
+      chat: { name: "Notas de contexto", line: "Conte os detalhes ao Nexdo.", detail: "Diga ao Nexdo o que importa numa tarefa — para quem é, o que é difícil, como fica quando está pronta — e ele planeja com isso em mente." },
+      sounds: { name: "Sons de foco", line: "Chuva, ondas, floresta e mais.", detail: "Chuva, ondas, floresta, lareira, café e mais, para ouvir enquanto você se concentra numa tarefa." },
+      insights: { name: "Insights", line: "Veja o quanto você avançou.", detail: "Veja o seu ritmo: tempo de foco, tarefas concluídas e a comparação entre as suas semanas, desde que começou a usar o Nexdo. O plano grátis mostra os últimos 7 dias." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "seg", times: "vezes", uploads: "envios", notes: "notas", sounds: "sons", history: "histórico" },
@@ -924,6 +924,10 @@ export const pt: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} grátis`,
     /** The button with Monthly picked. */
     subscribe: "Assinar",
+    continueFree: "Seguir no grátis",
+    gotIt: "Entendi",
+    everyMonth: "Todo mês com o Pro",
+    cardHint: "Mostra o que faz",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} grátis, depois ${price} por ano. Cancele quando quiser.`,
     priceLine: (price: string, yearly: boolean) => `${price} por ${yearly ? "ano" : "mês"}. Cancele quando quiser.`,

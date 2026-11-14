@@ -46,27 +46,6 @@ import type { AppLanguage } from "@/types/settings";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
 const P = colors.palette;
-/** Development builds only: how many tasks "Dev: add test tasks" makes, and the title they share. */
-const DEV_SEED_COUNT = 200;
-const DEV_SEED_TITLE = "Dev test task";
-const DEV_SEED_LEVELS = ["low", "medium", "high"] as const;
-
-/** A long list to scroll through, due over the next month, some timed. */
-function addDevTasks() {
-  const { addTask } = useTaskStore.getState();
-  for (let i = 0; i < DEV_SEED_COUNT; i++) {
-    const due = new Date();
-    due.setDate(due.getDate() + (i % 30));
-    due.setHours(9 + (i % 10), 0, 0, 0);
-    addTask({ title: `${DEV_SEED_TITLE} ${i + 1}`, estimatedMinutes: 15 + (i % 4) * 15, dueDate: due.toISOString(), dueHasTime: i % 3 === 0, priorityLevel: DEV_SEED_LEVELS[i % 3] });
-  }
-}
-
-function removeDevTasks() {
-  const { tasks, deleteTask } = useTaskStore.getState();
-  tasks.filter((task) => task.title.startsWith(DEV_SEED_TITLE)).forEach((task) => deleteTask(task.id));
-}
-
 const APP_VERSION = Constants.expoConfig?.version ?? "2.0.0";
 const TIGHT = { includeFontPadding: false } as const;
 const CARD_SHADOW = SOFT_SHADOW;
@@ -775,13 +754,6 @@ export default function Settings() {
             rows={[
               { key: "language", label: t.redesign.language, value: languageName, onPress: () => setLanguageOpen(true) },
               { key: "tour", label: t.redesign.appTour, onPress: () => setTourSeen(false) },
-              // Development builds only: a long list, to look for lag (review 2026-11-13).
-              ...(__DEV__
-                ? [
-                    { key: "seed", label: `Dev: add ${DEV_SEED_COUNT} test tasks`, onPress: addDevTasks },
-                    { key: "unseed", label: "Dev: remove test tasks", onPress: removeDevTasks },
-                  ]
-                : []),
               {
                 key: "analytics",
                 label: t.privacyPrefs.analytics,

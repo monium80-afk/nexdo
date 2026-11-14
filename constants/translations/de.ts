@@ -927,18 +927,18 @@ export const de: Translations = {
     close: "Schließen",
     restore: "Wiederherstellen",
     /** The headline's two lines; the second is orange. */
-    headline: ["Lass Nexdo", "für dich planen."] as [string, string],
+    headline: ["Weniger grübeln,", "mehr machen."] as [string, string],
     subtitle: "Jeden Monat mit Nexdo Pro:",
     carouselLabel: "Was Pro jeden Monat enthält",
     /** The 7 cards: each one's name and line (their numbers are PRO_FEATURES in lib/plan.ts). */
     features: {
-      live: { name: "Magic mic", line: "Sag es. Es wird zur Aufgabe." },
-      assist: { name: "Aufteilen", line: "Große Aufgaben, kleine Schritte." },
-      media: { name: "Fotos und Dokumente", line: "Aus einem Foto werden Aufgaben." },
-      voice: { name: "Sprachnotizen", line: "Sprechen statt Notizen tippen." },
-      chat: { name: "Kontextnotizen", line: "Gib Nexdo die Details." },
-      sounds: { name: "Fokus-Sounds", line: "Regen, Wellen, Wald und mehr." },
-      insights: { name: "Statistik", line: "Sieh, wie weit du gekommen bist." },
+      live: { name: "Magic mic", line: "Sag es. Es wird zur Aufgabe.", detail: "Mikro gedrückt halten und vom Tag erzählen. Nexdo hört zu und macht daraus Aufgaben mit Datum und Dauer, fertig zum Loslegen." },
+      assist: { name: "Aufteilen", line: "Große Aufgaben, kleine Schritte.", detail: "Öffne eine große Aufgabe, und Nexdo zerlegt sie in kleine, konkrete Schritte, die du einen nach dem anderen abhakst." },
+      media: { name: "Fotos und Dokumente", line: "Aus einem Foto werden Aufgaben.", detail: "Fotografiere einen Stundenplan, ein Whiteboard oder eine Liste auf Papier, oder füge ein Dokument hinzu – Nexdo holt die Aufgaben heraus." },
+      voice: { name: "Sprachnotizen", line: "Sprechen statt Notizen tippen.", detail: "Füge Notizen zu einer Aufgabe hinzu, indem du sprichst statt tippst. Nexdo schreibt sie auf und bewahrt sie bei der Aufgabe auf." },
+      chat: { name: "Kontextnotizen", line: "Gib Nexdo die Details.", detail: "Sag Nexdo, was bei einer Aufgabe zählt – für wen sie ist, was knifflig ist, wann sie fertig ist – und es plant mit diesem Wissen." },
+      sounds: { name: "Fokus-Sounds", line: "Regen, Wellen, Wald und mehr.", detail: "Regen, Wellen, Wald, Kaminfeuer, Café und mehr, zum Hören, während du an einer Aufgabe arbeitest." },
+      insights: { name: "Statistik", line: "Sieh, wie weit du gekommen bist.", detail: "Sieh dein Tempo: Fokuszeit, erledigte Aufgaben und der Vergleich deiner Wochen, so weit zurück, wie du Nexdo nutzt. Gratis zeigt die letzten 7 Tage." },
     },
     /** The small caps under each card's number. */
     units: { seconds: "Sek.", times: "Mal", uploads: "Uploads", notes: "Notizen", sounds: "Sounds", history: "Verlauf" },
@@ -952,6 +952,10 @@ export const de: Translations = {
     trialBadge: (count: number, unit: TrialUnit) => `${trialLength(count, unit)} gratis`,
     /** The button with Monthly picked. */
     subscribe: "Abonnieren",
+    continueFree: "Kostenlos weiter",
+    gotIt: "Verstanden",
+    everyMonth: "Jeden Monat mit Pro",
+    cardHint: "Zeigt, was es kann",
     /** Under the button: the trial and what follows it, or just the price. */
     trialLine: (count: number, unit: TrialUnit, price: string) => `${trialLength(count, unit)} gratis, dann ${price} pro Jahr. Jederzeit kündbar.`,
     priceLine: (price: string, yearly: boolean) => `${price} pro ${yearly ? "Jahr" : "Monat"}. Jederzeit kündbar.`,
