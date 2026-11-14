@@ -8,7 +8,7 @@
     "scheme": "nexdo",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "bundleIdentifier": "com.nexdo.app",
       "icon": "./assets/images/nexdo-app-icon-ios.png",
       "usesAppleSignIn": true,
