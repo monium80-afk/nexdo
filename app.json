@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.nexdo.app",
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "backgroundColor": "#281910",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

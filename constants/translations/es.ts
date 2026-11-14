@@ -221,6 +221,9 @@ export const es: Translations = {
     previousYear: "Año anterior",
     nextYear: "Año siguiente",
     thisYear: "Volver a este año",
+    previousMonth: "Mes anterior",
+    nextMonth: "Mes siguiente",
+    backToThisMonth: "Volver a este mes",
     today: "HOY",
     stepOf: (step: number, total: number, label: string) => `Paso ${step} de ${total}: ${label}`,
     nothingDue: "Nada vence este día",
@@ -238,7 +241,8 @@ export const es: Translations = {
     fewerTasks: "Menos tareas",
     moreTasks: "Más",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "Todo el día",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "Cualquier hora",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} min` : mins === 0 ? `${hours} h` : `${hours} h ${mins} min`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -925,7 +929,7 @@ export const es: Translations = {
       media: { name: "Fotos y documentos", line: "Convierte una foto en tareas.", detail: "Haz una foto a un temario, una pizarra o una lista en papel, o añade un documento, y Nexdo saca las tareas de ahí." },
       voice: { name: "Notas de voz", line: "Habla en vez de escribir notas.", detail: "Añade notas a una tarea hablando en vez de escribir. Nexdo las anota y las guarda con la tarea." },
       chat: { name: "Notas de contexto", line: "Dale los detalles a Nexdo.", detail: "Cuéntale a Nexdo lo que importa de una tarea — para quién es, qué tiene de difícil, cómo se ve terminada — y lo tendrá en cuenta al planificar." },
-      sounds: { name: "Sonidos de concentración", line: "Lluvia, olas, bosque y más.", detail: "Lluvia, olas, un bosque, una chimenea, una cafetería y más, para escuchar mientras te concentras en una tarea." },
+      sounds: { name: "Sonidos de concentración", line: "Lluvia, olas, bosque y más.", detail: "Lluvia, olas, tormenta, un arroyo, un bosque y una chimenea, para escuchar mientras te concentras en una tarea." },
       insights: { name: "Estadísticas", line: "Mira cuánto has avanzado.", detail: "Mira tu ritmo: tiempo de concentración, tareas hechas y cómo se comparan tus semanas, desde que empezaste a usar Nexdo. La versión gratis muestra los últimos 7 días." },
     },
     /** The small caps under each card's number. */

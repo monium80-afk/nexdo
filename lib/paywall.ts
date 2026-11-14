@@ -4,7 +4,7 @@ import { showAlert } from "@/lib/alert";
 import { translate } from "@/lib/i18n";
 import type { Meter, ProFeatureId } from "@/lib/plan";
 import { planLimitMessage } from "@/lib/planLimit";
-import { isPurchasesEnabled } from "@/lib/purchases";
+import { isPurchasesEnabled, prefetchProPlans } from "@/lib/purchases";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
 /** What the paywall was opened from: an allowance, or one of the Pro extras (focus sounds, Insights). */
@@ -16,6 +16,8 @@ export type PaywallReason = ProFeatureId;
  * outlined in orange.
  */
 export function openPaywall(reason?: PaywallReason) {
+  // The prices start loading now, while the screen builds.
+  if (isPurchasesEnabled) prefetchProPlans();
   router.push(reason ? { pathname: "/paywall", params: { reason } } : "/paywall");
 }
 

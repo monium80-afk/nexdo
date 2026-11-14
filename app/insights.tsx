@@ -245,7 +245,8 @@ function InsightsView() {
   // Today's gem, as on the Today page, and the count under it.
   const todayList = useMemo(() => buildToday(tasks, { now: new Date(), today }), [tasks, today]);
   const todayTotal = todayList.done + todayList.ids.size;
-  const gemLevel: GemLevel = todayTotal > 0 ? gemLevelFor(todayList.done, todayTotal) : 3;
+  // Nothing due today counts as all done, as on the Today page (2026-11-14).
+  const gemLevel: GemLevel = todayTotal > 0 ? gemLevelFor(todayList.done, todayTotal) : 5;
   // How many more tasks until the gem moves up a level.
   let nextStep: { more: number; level: GemLevel } | null = null;
   for (let more = 1; todayTotal > 0 && gemLevel < 5 && more <= todayList.ids.size; more += 1) {

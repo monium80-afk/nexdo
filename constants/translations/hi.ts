@@ -210,6 +210,9 @@ export const hi: Translations = {
     previousYear: "पिछला साल",
     nextYear: "अगला साल",
     thisYear: "इस साल पर लौटें",
+    previousMonth: "पिछला महीना",
+    nextMonth: "अगला महीना",
+    backToThisMonth: "इस महीने पर लौटें",
     today: "आज",
     stepOf: (step: number, total: number, label: string) => `${total} में से कदम ${step}: ${label}`,
     nothingDue: "इस दिन कुछ नहीं",
@@ -227,7 +230,8 @@ export const hi: Translations = {
     fewerTasks: "कम काम",
     moreTasks: "ज़्यादा",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "पूरा दिन",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "कभी भी",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} मि` : mins === 0 ? `${hours} घं` : `${hours} घं ${mins} मि`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -906,7 +910,7 @@ export const hi: Translations = {
       media: { name: "फ़ोटो और डॉक्यूमेंट", line: "फ़ोटो से टास्क बनाएँ।", detail: "सिलेबस, व्हाइटबोर्ड या काग़ज़ पर लिखी लिस्ट की फ़ोटो लें, या कोई डॉक्यूमेंट जोड़ें — Nexdo उसमें से टास्क निकाल लेता है।" },
       voice: { name: "वॉइस नोट्स", line: "टाइप करने के बजाय बोलें।", detail: "टाइप करने के बजाय बोलकर टास्क में नोट्स जोड़ें। Nexdo उन्हें लिख लेता है और टास्क के साथ रखता है।" },
       chat: { name: "संदर्भ नोट", line: "Nexdo को ब्योरा बताएँ।", detail: "Nexdo को बताएँ कि टास्क में क्या ज़रूरी है — किसके लिए है, क्या मुश्किल है, पूरा होना कैसा दिखेगा — और वह उसी हिसाब से प्लान करता है।" },
-      sounds: { name: "फ़ोकस साउंड", line: "बारिश, लहरें, जंगल और भी।", detail: "बारिश, लहरें, जंगल, अँगीठी, कैफ़े और बहुत कुछ — किसी टास्क पर फ़ोकस करते समय सुनने के लिए।" },
+      sounds: { name: "फ़ोकस साउंड", line: "बारिश, लहरें, जंगल और भी।", detail: "बारिश, लहरें, गरज, झरना, जंगल और अँगीठी — किसी टास्क पर फ़ोकस करते समय सुनने के लिए।" },
       insights: { name: "इनसाइट्स", line: "देखें आप कितना आगे आए।", detail: "अपनी रफ़्तार देखें: फ़ोकस का समय, पूरे किए टास्क और आपके हफ़्तों की तुलना, जब से आपने Nexdo इस्तेमाल करना शुरू किया। फ़्री में पिछले 7 दिन दिखते हैं।" },
     },
     /** The small caps under each card's number. */

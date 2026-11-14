@@ -211,6 +211,9 @@ export const pt: Translations = {
     previousYear: "Ano anterior",
     nextYear: "Próximo ano",
     thisYear: "Voltar para este ano",
+    previousMonth: "Mês anterior",
+    nextMonth: "Próximo mês",
+    backToThisMonth: "Voltar para este mês",
     today: "HOJE",
     stepOf: (step: number, total: number, label: string) => `Etapa ${step} de ${total}: ${label}`,
     nothingDue: "Nada vence neste dia",
@@ -228,7 +231,8 @@ export const pt: Translations = {
     fewerTasks: "Menos tarefas",
     moreTasks: "Mais",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "O dia todo",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "Qualquer hora",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} min` : mins === 0 ? `${hours} h` : `${hours} h ${mins} min`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -909,7 +913,7 @@ export const pt: Translations = {
       media: { name: "Fotos e documentos", line: "Transforme uma foto em tarefas.", detail: "Fotografe uma ementa, um quadro branco ou uma lista no papel, ou adicione um documento, e o Nexdo extrai as tarefas dali." },
       voice: { name: "Notas de voz", line: "Fale em vez de digitar notas.", detail: "Adicione notas a uma tarefa falando em vez de digitar. O Nexdo as anota e guarda junto com a tarefa." },
       chat: { name: "Notas de contexto", line: "Conte os detalhes ao Nexdo.", detail: "Diga ao Nexdo o que importa numa tarefa — para quem é, o que é difícil, como fica quando está pronta — e ele planeja com isso em mente." },
-      sounds: { name: "Sons de foco", line: "Chuva, ondas, floresta e mais.", detail: "Chuva, ondas, floresta, lareira, café e mais, para ouvir enquanto você se concentra numa tarefa." },
+      sounds: { name: "Sons de foco", line: "Chuva, ondas, floresta e mais.", detail: "Chuva, ondas, trovoada, riacho, floresta e lareira, para ouvir enquanto você se concentra numa tarefa." },
       insights: { name: "Insights", line: "Veja o quanto você avançou.", detail: "Veja o seu ritmo: tempo de foco, tarefas concluídas e a comparação entre as suas semanas, desde que começou a usar o Nexdo. O plano grátis mostra os últimos 7 dias." },
     },
     /** The small caps under each card's number. */

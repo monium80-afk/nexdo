@@ -1,7 +1,7 @@
 import Feather from "@expo/vector-icons/Feather";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { BackHandler, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   Extrapolation,
@@ -502,6 +502,22 @@ export default function Next() {
 
   const handleFocusCelebrated = useCallback(() => setFocusClosing(true), []);
 
+  // Android's back button on the focus page: back to Today, as the page's
+  // own Back does (the session keeps running). The page is drawn over Today
+  // rather than being a screen of its own, so the press used to fall through
+  // and close the app (user's video, 2026-11-14). While it's already closing
+  // or finishing, the press is just used up. Only with Today on screen: a
+  // screen opened over it (the paywall) gets the press itself.
+  const focusOpen = focusState !== null;
+  useEffect(() => {
+    if (!focusOpen || !pageFocused) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!focusClosing && !focusFinishing) handleFocusCelebrated();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [focusOpen, pageFocused, focusClosing, focusFinishing, handleFocusCelebrated]);
+
   const measureInRoot = useCallback((bounds: CardBounds, onMeasured: (localBounds: CardBounds) => void) => {
     const root = rootRef.current;
     if (!root) {
@@ -621,10 +637,11 @@ export default function Next() {
   }, [dayKey, todayLeft, today.done]);
 
   // The gem (Final-Today.html) is today's progress: grey and asleep with
-  // nothing done, on fire once (nearly) everything is. With nothing due
-  // today it's simply awake. Tapping it opens Insights — the way in since the
-  // progress card it replaces (2026-11-02).
-  const gemLevel = todayTotal > 0 ? gemLevelFor(today.done, todayTotal) : 3;
+  // nothing done, on fire once everything is. Nothing left on today's list —
+  // even with nothing due today at all — counts as all done: level 5 (the
+  // user's call, 2026-11-14; it used to sit at level 3, which read as a bug
+  // next to "Today · 0").
+  const gemLevel = todayTotal > 0 ? gemLevelFor(today.done, todayTotal) : 5;
 
   // The page says what it is at the top: today's date over "Today", and the
   // + to add a task by hand (here since 2026-11-02, when Magic mic took the

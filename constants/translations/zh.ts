@@ -191,6 +191,9 @@ export const zh: Translations = {
     previousYear: "上一年",
     nextYear: "下一年",
     thisYear: "回到今年",
+    previousMonth: "上个月",
+    nextMonth: "下个月",
+    backToThisMonth: "回到本月",
     today: "今天",
     stepOf: (step: number, total: number, label: string) => `第 ${step}/${total} 步：${label}`,
     nothingDue: "这天没有到期任务",
@@ -208,7 +211,8 @@ export const zh: Translations = {
     fewerTasks: "较少任务",
     moreTasks: "较多",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "全天",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "随时",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} 分钟` : mins === 0 ? `${hours} 小时` : `${hours} 小时 ${mins} 分钟`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -872,7 +876,7 @@ export const zh: Translations = {
       media: { name: "照片和文档", line: "照片变成任务。", detail: "拍下课程表、白板或纸上的清单，或添加一份文档，Nexdo 会从中提取任务。" },
       voice: { name: "语音笔记", line: "用说的代替打字。", detail: "用说话代替打字，为任务添加备注。Nexdo 会记录下来，并保存在任务里。" },
       chat: { name: "背景备注", line: "把细节告诉 Nexdo。", detail: "告诉 Nexdo 这项任务的关键——为谁做、难点在哪、做到什么算完成——它会据此为你规划。" },
-      sounds: { name: "专注音效", line: "雨声、海浪、森林等。", detail: "雨声、海浪、森林、壁炉、咖啡馆等多种声音，陪你专注完成任务。" },
+      sounds: { name: "专注音效", line: "雨声、海浪、森林等。", detail: "雨声、海浪、雷声、溪流、森林和壁炉，陪你专注完成任务。" },
       insights: { name: "数据洞察", line: "看看你走了多远。", detail: "查看你的节奏：专注时长、完成的任务，以及每周的对比，追溯到你开始使用 Nexdo 的那天。免费版只显示最近 7 天。" },
     },
     /** The small caps under each card's number. */

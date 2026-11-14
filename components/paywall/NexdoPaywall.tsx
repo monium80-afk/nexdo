@@ -1,8 +1,8 @@
 import * as WebBrowser from "expo-web-browser";
-import { useFocusEffect, useIsFocused, useRouter } from "expo-router";
+import { useFocusEffect, useIsFocused, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
-import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { FadeIn, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
@@ -18,7 +18,7 @@ import { showAlert } from "@/lib/alert";
 import type { PaywallReason } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { monthlyEquivalent, productPrice } from "@/lib/price";
-import { billedYearly, loadOnboardingPlans, loadProPlans, purchasePlan, restorePurchases, type ProPlan, type ProPlans } from "@/lib/purchases";
+import { billedYearly, loadOnboardingPlans, purchasePlan, takeProPlans, restorePurchases, type ProPlan, type ProPlans } from "@/lib/purchases";
 import { useOnboardingStore } from "@/store/useOnboardingStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 
@@ -38,7 +38,7 @@ import { PW } from "./paywallTheme";
 // comes to the front with an orange border.
 //
 // Plans, prices and the trial all come from the store (RevenueCat). The
-// 3-day trial is on Yearly only: with Monthly picked the badge goes and the
+// 3-day trial is on Yearly only: its badge stays on the Yearly card, and with Monthly picked the
 // button says "Subscribe". The copy never says "AI".
 //
 // Animations move only opacity and transforms, on the UI thread, off one
@@ -68,11 +68,16 @@ const ANNUAL_H = 64;
 const MONTHLY_H = 56;
 const CTA_H = 50;
 
+/** The backdrop and the carousel come in after the slide (see NexdoPaywall); this soon at the latest. */
+const EXTRAS_FALLBACK_MS = 450;
+const EXTRAS_FADE_MS = 220;
+
+// plansGap: the plan cards sit a little lower than the mock (the user's call, 2026-11-14: +10 px).
 function sizesFor(room: number) {
   const compact = room < MOCK_ROOM;
   return compact
-    ? { compact, gemW: 130, cardH: 92, headlineGap: 0, carouselGap: 14, plansGap: 22, planGap: 10, minSpacer: 10 }
-    : { compact, gemW: 168, cardH: 104, headlineGap: 2, carouselGap: 21, plansGap: 32, planGap: 12, minSpacer: 16 };
+    ? { compact, gemW: 130, cardH: 92, headlineGap: 0, carouselGap: 14, plansGap: 32, planGap: 10, minSpacer: 10 }
+    : { compact, gemW: 168, cardH: 104, headlineGap: 2, carouselGap: 21, plansGap: 42, planGap: 12, minSpacer: 16 };
 }
 
 /** The selected plan's breathing ring (m7Ring): a 4 px halo fading in and out every 3 s. */
@@ -240,6 +245,24 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
   // One clock for every loop on the screen, in seconds; it holds while out of sight or with Reduce Motion.
   const clock = useLoopClock(3600);
 
+  // The screen only slides in once its first render is done, and the
+  // backdrop and the carousel (every card, three times over) are most of
+  // it: they used to hold the paywall back about a second (2026-11-14). So
+  // it opens with the gem, the words, the plans and the button, and those
+  // two fade in as the slide ends (or soon after, if no end is reported).
+  const navigation = useNavigation();
+  const [extrasShown, setExtrasShown] = useState(false);
+  useEffect(() => {
+    const show = () => setExtrasShown(true);
+    // A native-stack event; expo-router's navigation type doesn't list it.
+    const unsubscribe = navigation.addListener("transitionEnd" as never, show);
+    const fallback = setTimeout(show, EXTRAS_FALLBACK_MS);
+    return () => {
+      unsubscribe();
+      clearTimeout(fallback);
+    };
+  }, [navigation]);
+
   const [plansState, setPlansState] = useState<PlansState>({ status: "loading" });
   const [choice, setChoice] = useState<PlanChoice>("annual");
   const [busy, setBusy] = useState(false);
@@ -250,7 +273,8 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
 
   const loadPlans = useCallback(() => {
     // Onboarding has no account yet (an anonymous purchaser); the app's is the signed-in one.
-    (mode === "onboarding" ? loadOnboardingPlans() : loadProPlans()).then(
+    // In the app they've been loading since the Upgrade tap (lib/paywall.ts openPaywall).
+    (mode === "onboarding" ? loadOnboardingPlans() : takeProPlans()).then(
       (plans) => {
         setPlansState({ status: "ready", plans });
         // Yearly first — the plan with the trial.
@@ -298,7 +322,8 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
   const selectedYearly = plans !== null && selected !== null && billedYearly(selected, plans);
   // The trial is Yearly's alone: Monthly never shows one, even if the store has it.
   const trial = selected && selected === plans?.annual ? selected.trial : null;
-  const badge = plans?.annual?.trial && choice === "annual" ? copy.trialBadge(plans.annual.trial.count, plans.annual.trial.unit) : null;
+  // On the Yearly card whichever plan is picked (the user's call, 2026-11-14: it used to go with Monthly picked).
+  const badge = plans?.annual?.trial ? copy.trialBadge(plans.annual.trial.count, plans.annual.trial.unit) : null;
   const buyLabel = busy ? copy.working : trial ? copy.startTrial(trial.count, trial.unit) : copy.subscribe;
   const smallLine = selected
     ? trial
@@ -363,7 +388,11 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
 
   return (
     <View style={{ flex: 1, backgroundColor: PW.bg }}>
-      <PaywallBackdrop clock={clock} width={width} height={height} place={place} />
+      {extrasShown ? (
+        <Animated.View pointerEvents="none" entering={reduceMotion ? undefined : FadeIn.duration(EXTRAS_FADE_MS)} style={{ position: "absolute", top: 0, left: 0, width, height }}>
+          <PaywallBackdrop clock={clock} width={width} height={height} place={place} />
+        </Animated.View>
+      ) : null}
 
       <ScrollView
         bounces={false}
@@ -390,16 +419,21 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
           </Text>
         </Animated.View>
 
-        <View style={{ marginTop: sizes.carouselGap }}>
-          <FeatureCarousel
-            cardHeight={sizes.cardH}
-            highlight={reason}
-            moving={moving && !detailOpen}
-            onOpen={(feature) => {
-              setDetail(feature);
-              setDetailOpen(true);
-            }}
-          />
+        {/* Its room is kept while it's still on its way, so nothing below moves. */}
+        <View style={{ marginTop: sizes.carouselGap, height: sizes.cardH }}>
+          {extrasShown ? (
+            <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(EXTRAS_FADE_MS)}>
+              <FeatureCarousel
+                cardHeight={sizes.cardH}
+                highlight={reason}
+                moving={moving && !detailOpen}
+                onOpen={(feature) => {
+                  setDetail(feature);
+                  setDetailOpen(true);
+                }}
+              />
+            </Animated.View>
+          ) : null}
         </View>
 
         <View accessibilityRole="radiogroup" style={{ marginTop: sizes.plansGap, marginHorizontal: 20, gap: sizes.planGap }}>
@@ -513,7 +547,7 @@ export function NexdoPaywall({ mode, reason }: { mode: PaywallMode; /** The lock
         </Pill>
       </View>
 
-      <FeatureDetail open={detailOpen} feature={detail} onClose={() => setDetailOpen(false)} />
+      {extrasShown ? <FeatureDetail open={detailOpen} feature={detail} onClose={() => setDetailOpen(false)} /> : null}
     </View>
   );
 }

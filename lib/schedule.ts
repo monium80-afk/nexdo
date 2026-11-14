@@ -1,7 +1,7 @@
 import { deadlineOnThisPhone } from "@/lib/deadline";
 import { addDaysToKey, daysBetweenKeys, toLocalDateKey, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { computeScore, isActionable } from "@/lib/priority";
-import { isRoutine } from "@/lib/recurrence";
+import { buildOccurrence, isRoutine, nextSlot } from "@/lib/recurrence";
 import type { Task } from "@/types/task";
 
 // The days behind the Schedule screen and the Today page: each task on the
@@ -18,6 +18,11 @@ import type { Task } from "@/types/task";
 //   in the day's own routines list, open or done, and adds nothing to the
 //   day's work, its count or its dot (the user's call, 2026-10-28). A missed
 //   one simply passes, so it's never shown as late.
+// - With planAhead (the Calendar's Week and Month, 2026-11-14), the days after
+//   today also get each repeat's coming occurrences as `planned`: worked out
+//   here, never stored. A coming repeating task counts in the Month grid
+//   (scheduleParts taskCount); a routine never does. Today and the days gone
+//   show only what really happened.
 // There's no amount of work a day is filled up to. That may come back later
 // as a feature of its own.
 
@@ -41,6 +46,8 @@ export type DayPlan = {
   done: Task[];
   /** The day's routines, open or done: kept apart from its tasks (byRoutineOrder). */
   routines: Task[];
+  /** Repeats (routines and repeating tasks) coming on a day after today: not real tasks yet. Only with planAhead. */
+  planned: Task[];
   /** How long the open tasks take, together. */
   plannedMinutes: number;
 };
@@ -59,6 +66,8 @@ export type ScheduleOptions = {
   /** The first day and the last, both included. */
   from: LocalDate;
   until: LocalDate;
+  /** Also show each repeat's coming occurrences on the days after today. */
+  planAhead?: boolean;
 };
 
 function minutesOf(minutes: number): number {
@@ -75,12 +84,13 @@ function completedAt(task: Task): number {
 }
 
 /** Each day from `from` through `until`, with the tasks due on it. */
-export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptions): DayPlan[] {
+export function buildSchedule(tasks: Task[], { now, from, until, planAhead = false }: ScheduleOptions): DayPlan[] {
   const days: DayPlan[] = Array.from({ length: Math.max(0, daysBetweenKeys(from, until) + 1) }, (_, index) => ({
     date: addDaysToKey(from, index),
     items: [],
     done: [],
     routines: [],
+    planned: [],
     plannedMinutes: 0,
   }));
   const scores = new Map<string, number>();
@@ -107,6 +117,8 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
     scores.set(task.id, computeScore(task, { now }));
   }
 
+  if (planAhead) addPlanned(tasks, days, from, until, now);
+
   for (const day of days) {
     day.items.sort((a, b) => {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
@@ -118,8 +130,37 @@ export function buildSchedule(tasks: Task[], { now, from, until }: ScheduleOptio
     });
     day.done.sort((a, b) => completedAt(a) - completedAt(b));
     day.routines.sort(byRoutineOrder);
+    day.planned.sort(byRoutineOrder);
   }
   return days;
+}
+
+/**
+ * Each repeat's coming occurrences, on the days after today (and after its
+ * open occurrence), up to `until`. Only a series with an open occurrence goes
+ * on (one archived or ended has none), and a day that already has a real
+ * occurrence of it (done early, skipped, moved there) keeps that one instead.
+ */
+function addPlanned(tasks: Task[], days: DayPlan[], from: LocalDate, until: LocalDate, now: Date) {
+  const today = toLocalDateKey(now);
+  const real = new Set<string>();
+  for (const task of tasks) {
+    if (task.recurrence) real.add(`${task.recurrence.seriesId}@${task.recurrence.occurrenceDate}`);
+  }
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    const recurrence = task.recurrence;
+    if (!recurrence || task.status !== "pending" || seen.has(recurrence.seriesId)) continue;
+    seen.add(recurrence.seriesId);
+    const after = recurrence.occurrenceDate > today ? recurrence.occurrenceDate : today;
+    // The occurrences strictly after `after`, from `from` on.
+    for (let slot = nextSlot(recurrence.rule, after, from); slot && slot <= until; slot = nextSlot(recurrence.rule, slot)) {
+      if (real.has(`${recurrence.seriesId}@${slot}`)) continue;
+      const occurrence = buildOccurrence(task, slot, now);
+      const day = days[daysBetweenKeys(from, slot)];
+      if (occurrence && day) day.planned.push(occurrence);
+    }
+  }
 }
 
 export type TodayList = {

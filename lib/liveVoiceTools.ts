@@ -2,6 +2,8 @@ import type { InboxAction, InboxActionType, InboxFilter, InboxRecurrence } from 
 import { toStructuredAction, toTaskFilter } from "@/lib/ai/classifyIntent";
 import { guessDuration } from "@/lib/ai/extractTasks";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
+import { getLanguage } from "@/lib/i18n";
+import { parseQuickAdd } from "@/lib/quickAdd";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { matchesFilter } from "@/lib/taskOperations";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -49,6 +51,39 @@ function number(value: unknown): number | undefined {
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
   return typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
+}
+
+function wordKey(word: string): string {
+  return word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
+
+/**
+ * A day or time the model left in the title ("Reading today" — seen on the
+ * phone 2026-11-14, though the tool asks for the name without it): taken out
+ * of the name, and its date handed back as a phrase the deadline reader
+ * takes (`dueDatePhrase` is English, so it's written as the date itself).
+ *
+ * The quick-add rules find it, in any language they know. Only date words at
+ * the start or the end count, and only when they're all the rules read — so
+ * "Read Today magazine" and "Weekly review" keep their names.
+ */
+export function splitDateFromTitle(title: string, now: Date = new Date()): { title: string; dueDatePhrase?: string } {
+  const parsed = parseQuickAdd(title, now, getLanguage());
+  if (!parsed.deadlineTyped || !parsed.deadline || parsed.recurrence || parsed.durationTyped || !parsed.title) return { title };
+  const words = title.trim().split(/\s+/);
+  const kept = parsed.title.split(/\s+/).map(wordKey);
+  const matches = (slice: string[]) => slice.length === kept.length && slice.every((word, index) => wordKey(word) === kept[index]);
+  const name = matches(words.slice(0, kept.length))
+    ? words.slice(0, kept.length)
+    : matches(words.slice(words.length - kept.length))
+      ? words.slice(words.length - kept.length)
+      : null;
+  if (!name || name.length === words.length) return { title };
+  const { date, time } = parsed.deadline;
+  return {
+    title: name.join(" ").replace(/[\s,;:–-]+$/, ""),
+    dueDatePhrase: time ? `${date} at ${time}` : date,
+  };
 }
 
 /** "Call Mom!" and "call mom" are the same task. */
@@ -120,12 +155,15 @@ const pad = (value: number) => String(value).padStart(2, "0");
  * as a real add (dates in the user's time zone, repeats, a guessed length).
  */
 export function draftFromAddTask(args: Record<string, unknown>, now: Date = new Date()): ExtractedTaskDraft | null {
-  const title = text(args.title);
-  if (!title) return null;
+  const said = text(args.title);
+  if (!said) return null;
+  // A date left in the name comes out of it (splitDateFromTitle); one the model gave separately wins.
+  const split = splitDateFromTitle(said, now);
+  const title = split.title;
   const recurrence = recurrenceOf(args.repeat);
   const estimatedMinutes = number(args.estimatedMinutes);
   const action = inboxAction("CREATE_TASK", null, {
-    dueDatePhrase: text(args.dueDatePhrase),
+    dueDatePhrase: text(args.dueDatePhrase) ?? split.dueDatePhrase,
     estimatedMinutes: estimatedMinutes ?? guessDuration(title),
     priority: oneOf(args.priority, PRIORITIES),
     recurrence,
@@ -315,8 +353,13 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
 
     switch (call.name) {
       case "add_task": {
-        const title = text(args.title);
-        if (!title) return { ok: false, error: "A task needs a title." };
+        const said = text(args.title);
+        if (!said) return { ok: false, error: "A task needs a title." };
+        // "Reading today" as the name: the day comes out of it and becomes the
+        // deadline (splitDateFromTitle). A deadline the model gave separately wins.
+        const split = splitDateFromTitle(said);
+        const title = split.title;
+        if (!details.dueDatePhrase && split.dueDatePhrase) details.dueDatePhrase = split.dueDatePhrase;
         // Never a second copy of something already on the list — whether the
         // model misheard, repeated itself, or the user said it twice. What was
         // said about it still counts, though: a deadline, length, priority or

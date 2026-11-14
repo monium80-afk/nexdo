@@ -1,5 +1,7 @@
+import { Feather } from "@expo/vector-icons";
 import { useMemo, useRef, useState, type ComponentRef } from "react";
 import { ScrollView, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -28,9 +30,9 @@ function weekRange(start: LocalDate, end: LocalDate, locale: string): string {
   return `${left} – ${right}`;
 }
 
-/** The days from `from` to `until`, by date. */
-function plansBetween(tasks: Parameters<typeof buildSchedule>[0], from: LocalDate, until: LocalDate): Map<LocalDate, DayPlan> {
-  return new Map(buildSchedule(tasks, { now: new Date(), from, until }).map((day) => [day.date, day]));
+/** The days from `from` to `until`, by date; with `planAhead`, the repeats coming after today too. */
+function plansBetween(tasks: Parameters<typeof buildSchedule>[0], from: LocalDate, until: LocalDate, planAhead = false): Map<LocalDate, DayPlan> {
+  return new Map(buildSchedule(tasks, { now: new Date(), from, until, planAhead }).map((day) => [day.date, day]));
 }
 
 /** Week | Month | Year: the picked one dark, the others on the chip colour. */
@@ -67,14 +69,32 @@ function ModePills({ mode, onChange }: { mode: ScheduleMode; onChange: (mode: Sc
   );
 }
 
+/** A round ‹ or › in the header: the week, month or year before or after. */
+function StepButton({ icon, label, onPress }: { icon: "chevron-left" | "chevron-right"; label: string; onPress: () => void }) {
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.92}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip"
+    >
+      <Feather name={icon} size={20} color={colors.palette.ink} />
+    </AnimatedPressable>
+  );
+}
+
 /**
  * The Calendar tab — the Schedule (redesigned 2026-11-08 from the user's
  * screenshots): Week, Month and Year views of the tasks due on each day
  * (lib/schedule.ts — a late one stays on the day it was due, in red).
- * - Week: this week's days as tiles; the picked day's tasks and routines.
+ * - Week: the picked day's week as tiles; the picked day's tasks and routines.
  * - Month: the days as tiles, warmer the busier; the picked day's list.
  * - Year: each day a gem coloured by how much of it got done; a month opens
  *   in the Month view.
+ * Each view moves back and forward (2026-11-14): the ‹ › in the header, or a
+ * sideways swipe (left: the next one), and "Back to this …" once away.
  * Nothing here is stored: change a task or tick one off, and the days are
  * worked out again.
  */
@@ -88,27 +108,33 @@ export default function CalendarTab() {
   // The day the page is for; it moves on at midnight and on coming back to the app.
   const today = useToday();
   const thisYear = Number(today.slice(0, 4));
+  const thisMonth = Number(today.slice(5, 7));
   const [mode, setMode] = useState<ScheduleMode>("week");
   const [selected, setSelected] = useState<LocalDate>(today);
-  // The month the Month view shows (1-based), in this year.
-  const [month, setMonth] = useState(Number(today.slice(5, 7)));
+  // The year the Month and Year views show, and the Month view's month (1-based).
+  const [year, setYear] = useState(thisYear);
+  const [month, setMonth] = useState(thisMonth);
 
   // Week: the week of the picked day.
   const weekOf = weekStart(selected);
   const weekEnd = addDaysToKey(weekOf, 6);
   const week = Array.from({ length: 7 }, (_, index) => addDaysToKey(weekOf, index));
-  const weekPlans = useMemo(() => plansBetween(tasks, weekOf, weekEnd), [tasks, weekOf, weekEnd]);
+  // `today` too: what counts as "coming" moves on at midnight.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const weekPlans = useMemo(() => plansBetween(tasks, weekOf, weekEnd, true), [tasks, weekOf, weekEnd, today]);
 
   // Month and Year: worked out only while on screen.
-  const monthFirst = `${thisYear}-${pad(month)}-01`;
-  const monthLast = `${thisYear}-${pad(month)}-${pad(daysInMonth(thisYear, month))}`;
+  const monthFirst = `${year}-${pad(month)}-01`;
+  const monthLast = `${year}-${pad(month)}-${pad(daysInMonth(year, month))}`;
   const monthPlans = useMemo(
-    () => (mode === "month" ? plansBetween(tasks, monthFirst, monthLast) : new Map<LocalDate, DayPlan>()),
-    [mode, tasks, monthFirst, monthLast],
+    () => (mode === "month" ? plansBetween(tasks, monthFirst, monthLast, true) : new Map<LocalDate, DayPlan>()),
+    // `today` too: what counts as "coming" moves on at midnight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, tasks, monthFirst, monthLast, today],
   );
   const yearPlans = useMemo(
-    () => (mode === "year" ? plansBetween(tasks, `${thisYear}-01-01`, `${thisYear}-12-31`) : new Map<LocalDate, DayPlan>()),
-    [mode, tasks, thisYear],
+    () => (mode === "year" ? plansBetween(tasks, `${year}-01-01`, `${year}-12-31`) : new Map<LocalDate, DayPlan>()),
+    [mode, tasks, year],
   );
 
   // The Calendar is for looking ahead: a task there can only be postponed.
@@ -119,19 +145,68 @@ export default function CalendarTab() {
     if (task && task.status === "pending" && !task.recurrence) setPostponeId(id);
   };
 
-  // The Month view opens on the picked day's month, when that's in this year.
+  // A month shown: on today if it's this month, else on its 1st.
+  const showMonth = (shownYear: number, shownMonth: number) => {
+    setYear(shownYear);
+    setMonth(shownMonth);
+    const prefix = `${shownYear}-${pad(shownMonth)}`;
+    setSelected(today.startsWith(prefix) ? today : `${prefix}-01`);
+  };
+
+  // The Month view opens on the picked day's month; the Year view on its year.
   const handleModeChange = (next: ScheduleMode) => {
-    if (next === "month" && selected.startsWith(String(thisYear))) setMonth(Number(selected.slice(5, 7)));
+    if (next === "month") {
+      setYear(Number(selected.slice(0, 4)));
+      setMonth(Number(selected.slice(5, 7)));
+    } else if (next === "year") {
+      setYear(Number(selected.slice(0, 4)));
+    }
     setMode(next);
   };
 
-  // A month tapped in the year: open it, on today if it's this month, else on its 1st.
+  // A month tapped in the year: open it.
   const handleOpenMonth = (picked: number) => {
-    setMonth(picked);
-    setSelected(today.startsWith(`${thisYear}-${pad(picked)}`) ? today : `${thisYear}-${pad(picked)}-01`);
+    showMonth(year, picked);
     setMode("month");
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
+
+  // The week, month or year before (-1) or after (1). A week keeps its weekday picked.
+  const step = (direction: -1 | 1) => {
+    if (mode === "week") {
+      setSelected((day) => addDaysToKey(day, direction * 7));
+    } else if (mode === "month") {
+      const index = year * 12 + (month - 1) + direction;
+      showMonth(Math.floor(index / 12), (index % 12) + 1);
+    } else {
+      setYear(year + direction);
+      setSelected(year + direction === thisYear ? today : `${year + direction}-01-01`);
+    }
+  };
+
+  // Away from now: the way back, and its label.
+  const away = mode === "week" ? weekOf !== weekStart(today) : mode === "month" ? year !== thisYear || month !== thisMonth : year !== thisYear;
+  const backLabel = mode === "week" ? t.schedule.thisWeek : mode === "month" ? t.schedule.backToThisMonth : t.schedule.thisYear;
+  const goBack = () => {
+    if (mode === "week") setSelected(today);
+    else if (mode === "month") showMonth(thisYear, thisMonth);
+    else {
+      setYear(thisYear);
+      setSelected(today);
+    }
+  };
+  const previousLabel = mode === "week" ? t.schedule.previousWeek : mode === "month" ? t.schedule.previousMonth : t.schedule.previousYear;
+  const nextLabel = mode === "week" ? t.schedule.nextWeek : mode === "month" ? t.schedule.nextMonth : t.schedule.nextYear;
+
+  // Sideways only, so the page still scrolls up and down; taps still reach the tiles.
+  const swipe = Gesture.Pan()
+    .runOnJS(true)
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-12, 12])
+    .onEnd((event) => {
+      if (Math.abs(event.translationX) < 50 && Math.abs(event.velocityX) < 500) return;
+      step((event.translationX || event.velocityX) < 0 ? 1 : -1);
+    });
 
   const title =
     mode === "week"
@@ -139,8 +214,8 @@ export default function CalendarTab() {
         ? t.schedule.thisWeekTitle
         : t.schedule.weekOf(keyToLocalDate(weekOf).toLocaleDateString(t.locale, { month: "short", day: "numeric" }))
       : mode === "month"
-        ? capitalize(keyToLocalDate(monthFirst).toLocaleDateString(t.locale, { month: "long" }), t.locale)
-        : String(thisYear);
+        ? capitalize(keyToLocalDate(monthFirst).toLocaleDateString(t.locale, year === thisYear ? { month: "long" } : { month: "long", year: "numeric" }), t.locale)
+        : String(year);
   const monthTotal = useMemo(() => [...monthPlans.values()].reduce((sum, day) => sum + taskCount(day), 0), [monthPlans]);
   const subtitle =
     mode === "week" ? weekRange(weekOf, weekEnd, t.locale) : mode === "month" ? t.schedule.monthTasks(monthTotal) : t.schedule.yearSubtitle;
@@ -162,23 +237,38 @@ export default function CalendarTab() {
             >
               {title}
             </Text>
-            <Text numberOfLines={1} className="mt-[2.6px] font-grotesk-regular text-[14px] leading-[18px] text-ink-muted" style={TIGHT_TEXT}>
-              {subtitle}
-            </Text>
+            <View className="mt-[2.6px] flex-row items-center gap-[10px]">
+              <Text numberOfLines={1} className="shrink font-grotesk-regular text-[14px] leading-[18px] text-ink-muted" style={TIGHT_TEXT}>
+                {subtitle}
+              </Text>
+              {away ? (
+                <AnimatedPressable onPress={goBack} hitSlop={8} accessibilityRole="button">
+                  <Text numberOfLines={1} className="font-grotesk-bold text-[14px] leading-[18px] text-accent-ink" style={TIGHT_TEXT}>
+                    {backLabel}
+                  </Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
+          </View>
+          <View className="flex-row gap-[8px]">
+            <StepButton icon="chevron-left" label={previousLabel} onPress={() => step(-1)} />
+            <StepButton icon="chevron-right" label={nextLabel} onPress={() => step(1)} />
           </View>
         </View>
 
         <ModePills mode={mode} onChange={handleModeChange} />
 
-        <View className="mt-[12.25px]">
-          {mode === "week" ? (
-            <ScheduleWeek week={week} plans={weekPlans} selected={selected} onSelect={setSelected} onOpenTask={openTask} />
-          ) : mode === "month" ? (
-            <ScheduleMonth year={thisYear} month={month} plans={monthPlans} selected={selected} onSelect={setSelected} onOpenTask={openTask} />
-          ) : (
-            <ScheduleYear year={thisYear} plans={yearPlans} today={today} onOpenMonth={handleOpenMonth} />
-          )}
-        </View>
+        <GestureDetector gesture={swipe}>
+          <View className="mt-[12.25px]">
+            {mode === "week" ? (
+              <ScheduleWeek week={week} plans={weekPlans} selected={selected} onSelect={setSelected} onOpenTask={openTask} />
+            ) : mode === "month" ? (
+              <ScheduleMonth year={year} month={month} plans={monthPlans} selected={selected} onSelect={setSelected} onOpenTask={openTask} />
+            ) : (
+              <ScheduleYear year={year} plans={yearPlans} today={today} onOpenMonth={handleOpenMonth} />
+            )}
+          </View>
+        </GestureDetector>
       </ScrollView>
       <PostponeSheet taskId={postponeId} onClose={() => setPostponeId(null)} />
     </SafeAreaView>

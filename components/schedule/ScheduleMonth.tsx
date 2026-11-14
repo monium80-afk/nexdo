@@ -1,16 +1,7 @@
-import { Fragment } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { AnimatedPressable } from "@/components/AnimatedPressable";
-import {
-  CARD_SHADOW,
-  TIGHT_TEXT,
-  dayEntries,
-  lengthLabel,
-  taskCount,
-  timeLabel,
-  type DayEntry,
-} from "@/components/schedule/scheduleParts";
+import { CARD_SHADOW, TIGHT_TEXT, taskCount } from "@/components/schedule/scheduleParts";
+import { ScheduleDayLists } from "@/components/schedule/ScheduleWeek";
 import { useTranslation } from "@/hooks/useTranslation";
 import { daysInMonth, keyToLocalDate, pad, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { weekdayName } from "@/lib/recurrence";
@@ -35,38 +26,10 @@ function busyLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-/** One line of the picked day's card: time, title, and how long it takes. */
-function MonthRow({ entry, onPress }: { entry: DayEntry; onPress: () => void }) {
-  const t = useTranslation();
-  const length = lengthLabel(entry.minutes, t);
-  return (
-    <AnimatedPressable onPress={onPress} scaleTo={0.98} accessibilityRole="button" className="h-[43.5px] flex-row items-center">
-      <Text
-        numberOfLines={1}
-        className={`w-[74px] font-mono-bold text-[11px] leading-[14px] tracking-[0.5px] ${entry.overdue ? "text-alert" : "text-ink-muted"}`}
-        style={TIGHT_TEXT}
-      >
-        {timeLabel(entry, t)}
-      </Text>
-      <Text
-        numberOfLines={1}
-        className={`flex-1 font-grotesk-medium text-[15.5px] leading-[20px] ${entry.done ? "text-[#A79C92] line-through" : "text-ink"}`}
-        style={TIGHT_TEXT}
-      >
-        {entry.task.title}
-      </Text>
-      {length ? (
-        <Text className="ml-[8px] font-grotesk-regular text-[12.75px] leading-[16px] text-ink-muted" style={TIGHT_TEXT}>
-          {length}
-        </Text>
-      ) : null}
-    </AnimatedPressable>
-  );
-}
-
 /**
  * The Month view: the month's days as tiles, warmer the more tasks a day
- * has, with a key under them; then the picked day (outlined) and its list.
+ * has, with a key under them; then the picked day (outlined) and its lists,
+ * as under the Week view.
  */
 export function ScheduleMonth({
   year,
@@ -95,9 +58,6 @@ export function ScheduleMonth({
   while (cells.length % 7 !== 0) cells.push(null);
   const rows = Array.from({ length: cells.length / 7 }, (_, row) => cells.slice(row * 7, row * 7 + 7));
 
-  const { tasks, routines } = dayEntries(plans.get(selected));
-  const entries = [...tasks, ...routines];
-  const picked = keyToLocalDate(selected);
 
   return (
     <View>
@@ -162,29 +122,8 @@ export function ScheduleMonth({
         </View>
       </View>
 
-      <View className="mt-[19.15px] flex-row items-baseline gap-[8px]">
-        <Text className="font-grotesk-bold text-[16px] leading-[22px] text-ink" style={TIGHT_TEXT}>
-          {picked.toLocaleDateString(t.locale, { weekday: "long" })}
-        </Text>
-        <Text className="font-grotesk-regular text-[13px] leading-[22px] text-ink-muted" style={TIGHT_TEXT}>
-          {picked.toLocaleDateString(t.locale, { month: "short", day: "numeric" })}
-        </Text>
-      </View>
-
-      {entries.length > 0 ? (
-        <View className="mt-[8.35px] rounded-[21px] bg-paper-card px-[14px]" style={CARD_SHADOW}>
-          {entries.map((entry, index) => (
-            <Fragment key={entry.task.id}>
-              {index > 0 ? <View className="h-[1px] bg-chip" /> : null}
-              <MonthRow entry={entry} onPress={() => onOpenTask(entry.task.id)} />
-            </Fragment>
-          ))}
-        </View>
-      ) : (
-        <Text className="mt-[9.35px] font-grotesk-regular text-[14px] leading-[18px] text-ink-muted" style={TIGHT_TEXT}>
-          {t.schedule.nothingDue}
-        </Text>
-      )}
+      {/* The picked day: the same lists as under the Week view. */}
+      <ScheduleDayLists plan={plans.get(selected)} date={selected} onOpenTask={onOpenTask} />
     </View>
   );
 }

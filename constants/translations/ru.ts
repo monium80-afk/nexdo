@@ -227,6 +227,9 @@ export const ru: Translations = {
     previousYear: "Прошлый год",
     nextYear: "Следующий год",
     thisYear: "Вернуться к этому году",
+    previousMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
+    backToThisMonth: "Вернуться к этому месяцу",
     today: "СЕГОДНЯ",
     stepOf: (step: number, total: number, label: string) => `Шаг ${step} из ${total}: ${label}`,
     nothingDue: "В этот день сроков нет",
@@ -244,7 +247,8 @@ export const ru: Translations = {
     fewerTasks: "Меньше задач",
     moreTasks: "Больше",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "Весь день",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "В любое время",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} мин` : mins === 0 ? `${hours} ч` : `${hours} ч ${mins} мин`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -932,7 +936,7 @@ export const ru: Translations = {
       media: { name: "Фото и документы", line: "Фото превращается в задачи.", detail: "Сфотографируйте расписание, доску или список на бумаге либо добавьте документ — Nexdo вытащит из него задачи." },
       voice: { name: "Голосовые заметки", line: "Говорите, а не печатайте.", detail: "Добавляйте заметки к задаче голосом, а не вручную. Nexdo запишет их и сохранит вместе с задачей." },
       chat: { name: "Заметки-контекст", line: "Расскажите Nexdo детали.", detail: "Расскажите Nexdo, что важно в задаче — для кого она, в чём сложность, как выглядит результат, — и он будет планировать с учётом этого." },
-      sounds: { name: "Звуки фокуса", line: "Дождь, волны, лес и другие.", detail: "Дождь, волны, лес, камин, кафе и другие звуки — слушайте их, пока сосредоточены на задаче." },
+      sounds: { name: "Звуки фокуса", line: "Дождь, волны, лес и другие.", detail: "Дождь, волны, гроза, ручей, лес и камин — слушайте их, пока сосредоточены на задаче." },
       insights: { name: "Статистика", line: "Смотрите, как далеко вы зашли.", detail: "Смотрите свой темп: время фокуса, выполненные задачи и сравнение недель — за всё время, что вы пользуетесь Nexdo. В бесплатной версии видны последние 7 дней." },
     },
     /** The small caps under each card's number. */

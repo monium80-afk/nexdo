@@ -216,6 +216,9 @@ export const fr: Translations = {
     previousYear: "Année précédente",
     nextYear: "Année suivante",
     thisYear: "Revenir à cette année",
+    previousMonth: "Mois précédent",
+    nextMonth: "Mois suivant",
+    backToThisMonth: "Revenir à ce mois-ci",
     today: "AUJOURD'HUI",
     stepOf: (step: number, total: number, label: string) => `Étape ${step} sur ${total} : ${label}`,
     nothingDue: "Rien à faire ce jour-là",
@@ -233,7 +236,8 @@ export const fr: Translations = {
     fewerTasks: "Moins de tâches",
     moreTasks: "Plus",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "Toute la journée",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "À tout moment",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} min` : mins === 0 ? `${hours} h` : `${hours} h ${mins} min`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -931,7 +935,7 @@ export const fr: Translations = {
       media: { name: "Photos et documents", line: "Une photo devient des tâches.", detail: "Photographiez un programme de cours, un tableau blanc ou une liste sur papier, ou ajoutez un document : Nexdo en extrait les tâches." },
       voice: { name: "Notes vocales", line: "Parlez au lieu de taper.", detail: "Ajoutez des notes à une tâche en parlant au lieu de taper. Nexdo les écrit et les garde avec la tâche." },
       chat: { name: "Notes de contexte", line: "Donnez les détails à Nexdo.", detail: "Dites à Nexdo ce qui compte pour une tâche — pour qui, ce qui est délicat, à quoi ressemble « terminé » — et il en tient compte pour planifier." },
-      sounds: { name: "Sons de concentration", line: "Pluie, vagues, forêt et plus.", detail: "Pluie, vagues, forêt, feu de cheminée, café et plus encore, à écouter pendant que vous vous concentrez sur une tâche." },
+      sounds: { name: "Sons de concentration", line: "Pluie, vagues, forêt et plus.", detail: "Pluie, vagues, orage, ruisseau, forêt et feu de cheminée, à écouter pendant que vous vous concentrez sur une tâche." },
       insights: { name: "Statistiques", line: "Voyez le chemin parcouru.", detail: "Voyez votre rythme : temps de concentration, tâches terminées et comparaison de vos semaines, depuis vos débuts sur Nexdo. La version gratuite montre les 7 derniers jours." },
     },
     /** The small caps under each card's number. */

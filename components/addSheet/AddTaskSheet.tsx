@@ -151,19 +151,49 @@ function useKeyboardLiftIos() {
 }
 
 /**
- * Android: no lift. The sheet sits in its own window (a Modal) that Android
- * itself ends at the keyboard's top. Reading the keyboard's height there never
- * worked: the app's "pan" mode slides the whole screen instead (just far
- * enough to show the typed line, so Details stayed under the keyboard), and
- * Reanimated's reader gets no numbers in that mode (2026-11-09 screenshots).
+ * Android: the sheet sits in its own window (a Modal). Older Android ends that
+ * window at the keyboard's top by itself, and then there's nothing to lift.
+ * Android 15+ (what release builds target) draws it edge to edge instead: the
+ * window stays full height and the keyboard covers the sheet — fine in Expo,
+ * hidden on the phones (user's video, 2026-11-14). So: once the keyboard is
+ * up, how far it actually reaches into the sheet's area is measured, and the
+ * sheet is lifted by exactly that — 0 where Android already made room.
+ * (Reanimated's keyboard reader gets no numbers in the app's "pan" mode, so
+ * it's the keyboard events, 2026-11-09.)
  */
-function useNoKeyboardLift() {
+function useKeyboardLiftAndroid(areaRef: RefObject<ComponentRef<typeof View> | null>) {
   const lift = useSharedValue(0);
-  return { lift, height: 0 };
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const showing = Keyboard.addListener("keyboardDidShow", (event) => {
+      const keyboardTop = event.endCoordinates.screenY;
+      areaRef.current?.measureInWindow((_x, y, _width, areaHeight) => {
+        const overlap = Math.round(Math.min(event.endCoordinates.height, Math.max(0, y + areaHeight - keyboardTop)));
+        lift.set(withTiming(overlap, { duration: KEYBOARD_LIFT_MS }));
+        setHeight(overlap);
+      });
+    });
+    const hiding = Keyboard.addListener("keyboardDidHide", () => {
+      lift.set(withTiming(0, { duration: KEYBOARD_LIFT_MS }));
+      setHeight(0);
+    });
+    return () => {
+      showing.remove();
+      hiding.remove();
+    };
+  }, [areaRef, lift]);
+  return { lift, height };
 }
 
-const useKeyboardLift = Platform.OS === "android" ? useNoKeyboardLift : useKeyboardLiftIos;
-/** Android's sheet window (see useNoKeyboardLift). */
+/** How long the Android sheet takes to rise onto the keyboard once it's up. */
+const KEYBOARD_LIFT_MS = 160;
+
+function useKeyboardLift(areaRef: RefObject<ComponentRef<typeof View> | null>) {
+  // The platform never changes while the app runs, so the hooks called stay the same.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  return Platform.OS === "android" ? useKeyboardLiftAndroid(areaRef) : useKeyboardLiftIos();
+}
+/** Android's sheet window (see useKeyboardLiftAndroid). */
 const OWN_WINDOW = Platform.OS === "android";
 /**
  * Before Android 15 the system pads that window itself (down to the keyboard
@@ -199,7 +229,9 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   const addTask = useTaskStore((state) => state.addTask);
   const tasks = useTaskStore((state) => state.tasks);
   const aiLocked = useAiLocked();
-  const { lift, height: keyboardHeight } = useKeyboardLift();
+  // The sheet's whole area (sheetArea below): Android measures the keyboard against it.
+  const areaRef = useRef<ComponentRef<typeof View>>(null);
+  const { lift, height: keyboardHeight } = useKeyboardLift(areaRef);
   // The sheet's area: the whole screen on iOS; on Android, its window's room
   // between the status bar and the keyboard (or the navigation bar).
   const [overlayHeight, setOverlayHeight] = useState(windowHeight);
@@ -522,7 +554,8 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // Back on Android: the sheet's window gets it (Modal onRequestClose).
 
   // ─── Layout ────────────────────────────────────────────────────────────
-  const keyboardOpen = OWN_WINDOW ? fullHeight - overlayHeight > 120 : keyboardHeight > 0;
+  // Android: its window got shorter (older Android), or the sheet was lifted onto the keyboard (15+).
+  const keyboardOpen = keyboardHeight > 0 || (OWN_WINDOW && fullHeight - overlayHeight > 120);
   // Android's window already ends above the navigation bar.
   const bottomPadding = keyboardOpen || OWN_WINDOW ? 14 : Math.max(28, insets.bottom + 14);
   // The sheet never runs up under the status bar (outside Android's window),
@@ -862,6 +895,8 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // on Android (which ends it at the keyboard).
   const sheetArea = (
     <View
+      ref={areaRef}
+      collapsable={false}
       onLayout={(event) => handleAreaLayout(event.nativeEvent.layout.height)}
       style={StyleSheet.absoluteFill}
       accessibilityViewIsModal

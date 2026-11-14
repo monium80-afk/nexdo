@@ -218,6 +218,9 @@ export const de: Translations = {
     previousYear: "Vorheriges Jahr",
     nextYear: "Nächstes Jahr",
     thisYear: "Zurück zu diesem Jahr",
+    previousMonth: "Vorheriger Monat",
+    nextMonth: "Nächster Monat",
+    backToThisMonth: "Zurück zu diesem Monat",
     today: "HEUTE",
     stepOf: (step: number, total: number, label: string) => `Schritt ${step} von ${total}: ${label}`,
     nothingDue: "An diesem Tag ist nichts fällig",
@@ -235,7 +238,8 @@ export const de: Translations = {
     fewerTasks: "Weniger Aufgaben",
     moreTasks: "Mehr",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "Ganztägig",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "Jederzeit",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} Min.` : mins === 0 ? `${hours} Std.` : `${hours} Std. ${mins} Min.`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -937,7 +941,7 @@ export const de: Translations = {
       media: { name: "Fotos und Dokumente", line: "Aus einem Foto werden Aufgaben.", detail: "Fotografiere einen Stundenplan, ein Whiteboard oder eine Liste auf Papier, oder füge ein Dokument hinzu – Nexdo holt die Aufgaben heraus." },
       voice: { name: "Sprachnotizen", line: "Sprechen statt Notizen tippen.", detail: "Füge Notizen zu einer Aufgabe hinzu, indem du sprichst statt tippst. Nexdo schreibt sie auf und bewahrt sie bei der Aufgabe auf." },
       chat: { name: "Kontextnotizen", line: "Gib Nexdo die Details.", detail: "Sag Nexdo, was bei einer Aufgabe zählt – für wen sie ist, was knifflig ist, wann sie fertig ist – und es plant mit diesem Wissen." },
-      sounds: { name: "Fokus-Sounds", line: "Regen, Wellen, Wald und mehr.", detail: "Regen, Wellen, Wald, Kaminfeuer, Café und mehr, zum Hören, während du an einer Aufgabe arbeitest." },
+      sounds: { name: "Fokus-Sounds", line: "Regen, Wellen, Wald und mehr.", detail: "Regen, Wellen, Gewitter, Bach, Wald und Kaminfeuer, zum Hören, während du an einer Aufgabe arbeitest." },
       insights: { name: "Statistik", line: "Sieh, wie weit du gekommen bist.", detail: "Sieh dein Tempo: Fokuszeit, erledigte Aufgaben und der Vergleich deiner Wochen, so weit zurück, wie du Nexdo nutzt. Gratis zeigt die letzten 7 Tage." },
     },
     /** The small caps under each card's number. */

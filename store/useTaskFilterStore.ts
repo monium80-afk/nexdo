@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-export type TaskStatusFilter = "all" | "pending" | "completed" | "overdue" | "noDeadline";
+// No "all" since 2026-11-14 (the user's call): the list opens on To do.
+export type TaskStatusFilter = "pending" | "completed" | "overdue" | "noDeadline";
 export type TaskSortOption = "recent" | "dueDate" | "priority";
 
 type TaskFilterStore = {
@@ -13,7 +14,7 @@ type TaskFilterStore = {
 };
 
 export const useTaskFilterStore = create<TaskFilterStore>((set) => ({
-  status: "all",
+  status: "pending",
   sort: "recent",
   search: "",
   setStatus: (status) => set({ status }),

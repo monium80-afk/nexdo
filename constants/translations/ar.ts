@@ -242,6 +242,9 @@ export const ar: Translations = {
     previousYear: "السنة السابقة",
     nextYear: "السنة التالية",
     thisYear: "العودة إلى هذه السنة",
+    previousMonth: "الشهر السابق",
+    nextMonth: "الشهر التالي",
+    backToThisMonth: "العودة إلى هذا الشهر",
     today: "اليوم",
     stepOf: (step: number, total: number, label: string) => `الخطوة ${step} من ${total}: ${label}`,
     nothingDue: "لا شيء مستحق في هذا اليوم",
@@ -259,7 +262,8 @@ export const ar: Translations = {
     fewerTasks: "مهام أقل",
     moreTasks: "أكثر",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "طوال اليوم",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "أي وقت",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} د` : mins === 0 ? `${hours} س` : `${hours} س ${mins} د`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -949,7 +953,7 @@ export const ar: Translations = {
       media: { name: "الصور والمستندات", line: "حوّل صورة إلى مهام.", detail: "صوّر جدولًا دراسيًا أو سبّورة أو قائمة على الورق، أو أضف مستندًا، وسيستخرج Nexdo المهام منه." },
       voice: { name: "ملاحظات صوتية", line: "تحدث بدل كتابة الملاحظات.", detail: "أضف ملاحظات إلى مهمة بالكلام بدل الكتابة. يدوّنها Nexdo ويحفظها مع المهمة." },
       chat: { name: "ملاحظات السياق", line: "أخبر Nexdo بالتفاصيل.", detail: "أخبر Nexdo بما يهم في المهمة — لمن هي، وما الصعب فيها، وكيف يبدو إنجازها — وسيخطط على هذا الأساس." },
-      sounds: { name: "أصوات التركيز", line: "مطر وأمواج وغابة والمزيد.", detail: "مطر وأمواج وغابة ومدفأة ومقهى وغيرها، لتستمع إليها أثناء تركيزك على مهمة." },
+      sounds: { name: "أصوات التركيز", line: "مطر وأمواج وغابة والمزيد.", detail: "مطر وأمواج ورعد وجدول ماء وغابة ومدفأة، لتستمع إليها أثناء تركيزك على مهمة." },
       insights: { name: "الإحصاءات", line: "شاهد كم تقدمت.", detail: "اطّلع على وتيرتك: وقت التركيز والمهام المنجزة ومقارنة أسابيعك، منذ بدأت استخدام Nexdo. تعرض النسخة المجانية آخر 7 أيام." },
     },
     /** The small caps under each card's number. */

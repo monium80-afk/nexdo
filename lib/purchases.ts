@@ -228,6 +228,25 @@ export async function loadProPlans(): Promise<ProPlans> {
   return { monthly: withTrial(current?.monthly), annual: withTrial(current?.annual) };
 }
 
+// The app paywall's plans, asked for the moment it's opened (lib/paywall.ts
+// openPaywall), so they're on their way while the screen builds. Taken once:
+// the next opening (or a retry) asks again.
+let prefetchedPlans: Promise<ProPlans> | null = null;
+
+/** Starts loading the plans for the paywall about to open. */
+export function prefetchProPlans() {
+  prefetchedPlans = loadProPlans();
+  // Nothing waits on it yet; a failure is reported by takeProPlans' caller.
+  prefetchedPlans.catch(() => {});
+}
+
+/** The plans started by prefetchProPlans, or a fresh load when there are none. */
+export function takeProPlans(): Promise<ProPlans> {
+  const plans = prefetchedPlans ?? loadProPlans();
+  prefetchedPlans = null;
+  return plans;
+}
+
 let onboardingPlans: Promise<ProPlans> | null = null;
 
 /**

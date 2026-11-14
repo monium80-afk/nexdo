@@ -213,13 +213,12 @@ export default function TasksListScreen() {
 
   const statusOptions = useMemo(
     () => [
-      { label: t.tasks.status.all, value: "all" as TaskStatusFilter, count: tasks.length },
       { label: t.tasks.status.pending, value: "pending" as TaskStatusFilter, count: pendingCount },
       { label: t.tasks.status.completed, value: "completed" as TaskStatusFilter, count: completedCount },
       { label: t.tasks.status.overdue, value: "overdue" as TaskStatusFilter, count: overdueCount },
       { label: t.tasks.status.noDeadline, value: "noDeadline" as TaskStatusFilter, count: noDeadlineCount },
     ],
-    [tasks.length, pendingCount, completedCount, overdueCount, noDeadlineCount, t],
+    [pendingCount, completedCount, overdueCount, noDeadlineCount, t],
   );
 
   const sortOptions = SORT_VALUES.map((value) => ({ label: t.tasks.sort[value], value }));
@@ -331,13 +330,13 @@ export default function TasksListScreen() {
   const openTask = useCallback((taskId: string) => void handleOpenTask(taskId), [handleOpenTask]);
 
   // The filters as a row of pills (Final-Tasks.html: "To do · 5", "Done · 2"…):
-  // open and done first, then overdue (while there's any), no deadline, all.
+  // open and done first, then overdue (while there's any), no deadline. No
+  // "All" since 2026-11-14 (the user's call).
   const filterPills = [
-    statusOptions[1],
-    statusOptions[2],
-    ...(overdueCount > 0 || status === "overdue" ? [statusOptions[3]] : []),
-    statusOptions[4],
     statusOptions[0],
+    statusOptions[1],
+    ...(overdueCount > 0 || status === "overdue" ? [statusOptions[2]] : []),
+    statusOptions[3],
   ];
 
   return (

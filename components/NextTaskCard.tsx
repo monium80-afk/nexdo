@@ -649,13 +649,25 @@ export function NextTaskCard({
     // Keeps the held session — the clock — on screen once the session ends.
     setCelebratedTaskId(taskId);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    // The ending first, the task done just after. Completing it rebuilds all
+    // of Today underneath (cards, gem, "Done for today", the save), and done
+    // in the same moment it held the ending's first frame back about half a
+    // second (user's video, 2026-11-14). Two frames on, the ending is already
+    // running on the UI thread, where that work can't stall it — and Today
+    // is ready long before it shows again (sheetOutAt). Not cancelled on
+    // leaving the page: the tap on Done always completes the task. Today's
+    // fade back is timed from onFinishing, so that one stays on the tap.
     onFinishing?.();
-    try {
-      completeIt();
-      if (useSessionStore.getState().session?.taskIds.includes(taskId)) leaveSession();
-    } finally {
-      pendingCelebrationTaskIds.current.delete(taskId);
-    }
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        try {
+          completeIt();
+          if (useSessionStore.getState().session?.taskIds.includes(taskId)) leaveSession();
+        } finally {
+          pendingCelebrationTaskIds.current.delete(taskId);
+        }
+      }),
+    );
 
     const F = FOCUS_FINISH;
     // The ring closes: the success tap and the task's sound.
@@ -930,9 +942,10 @@ export function NextTaskCard({
               </View>
             </Animated.View>
 
-            {/* The title opens the task. */}
+            {/* The title only: tapping it does nothing (the user's call,
+                2026-11-14: it used to open the edit card mid-session). */}
             <Animated.View entering={sessionEnter(0, reduceMotion)} style={{ alignSelf: "stretch", marginTop: 2 }}>
-              <AnimatedPressable onPress={onDetails} scaleTo={0.99} accessibilityRole="button" disabled={finish !== null}>
+              <View accessibilityRole="header">
                 <View>
                   <Animated.Text
                     numberOfLines={2}
@@ -951,7 +964,7 @@ export function NextTaskCard({
                       ))
                     : null}
                 </View>
-              </AnimatedPressable>
+              </View>
             </Animated.View>
 
             {runningSession ? (

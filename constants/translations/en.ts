@@ -225,6 +225,9 @@ export const en = {
     previousYear: "Previous year",
     nextYear: "Next year",
     thisYear: "Back to this year",
+    previousMonth: "Previous month",
+    nextMonth: "Next month",
+    backToThisMonth: "Back to this month",
     today: "TODAY",
     stepOf: (step: number, total: number, label: string) => `Step ${step} of ${total}: ${label}`,
     nothingDue: "Nothing due this day",
@@ -242,7 +245,8 @@ export const en = {
     fewerTasks: "Fewer tasks",
     moreTasks: "More",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "All day",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "Anytime",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} min` : mins === 0 ? `${hours} h` : `${hours} h ${mins} min`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -989,7 +993,7 @@ export const en = {
       media: { name: "Photos & files", line: "Turn a photo into tasks.", detail: "Snap a syllabus, a whiteboard or a list on paper, or add a document, and Nexdo pulls the tasks out of it." },
       voice: { name: "Voice notes", line: "Talk instead of typing notes.", detail: "Add notes to a task by talking instead of typing. Nexdo writes them down and keeps them with the task." },
       chat: { name: "Context notes", line: "Tell Nexdo the details.", detail: "Tell Nexdo what matters about a task — who it's for, what's tricky, what done looks like — and it plans around that." },
-      sounds: { name: "Focus sounds", line: "Rain, waves, forest and more.", detail: "Rain, waves, a forest, a fireplace, a café and more, to play while you focus on a task." },
+      sounds: { name: "Focus sounds", line: "Rain, waves, forest and more.", detail: "Rain, waves, thunder, a stream, a forest and a fireplace, to play while you focus on a task." },
       insights: { name: "Insights", line: "See how far you’ve come.", detail: "See your pace: focus time, tasks done and how your weeks compare, as far back as you've used Nexdo. Free shows the last 7 days." },
     },
     /** The small caps under each card's number. */

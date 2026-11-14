@@ -194,6 +194,9 @@ export const bn: Translations = {
     previousYear: "আগের বছর",
     nextYear: "পরের বছর",
     thisYear: "এই বছরে ফিরুন",
+    previousMonth: "আগের মাস",
+    nextMonth: "পরের মাস",
+    backToThisMonth: "এই মাসে ফিরুন",
     today: "আজ",
     stepOf: (step: number, total: number, label: string) => `${total}টির মধ্যে ধাপ ${step}: ${label}`,
     nothingDue: "এই দিনে কিছু নেই",
@@ -211,7 +214,8 @@ export const bn: Translations = {
     fewerTasks: "কম কাজ",
     moreTasks: "বেশি",
     /** In the time column, for a task due on a day but at no set time. */
-    allDay: "সারা দিন",
+    /** A schedule row with no time of day (was "All day" until 2026-11-14). */
+    anytimeSlot: "যেকোনো সময়",
     /** A task's length in a day's list: "2 h", "30 min", "1 h 30 min". */
     length: (hours: number, mins: number) => (hours === 0 ? `${mins} মি` : mins === 0 ? `${hours} ঘ` : `${hours} ঘ ${mins} মি`),
     /** The year's key: a day's gem, from nothing done to everything done. */
@@ -880,7 +884,7 @@ export const bn: Translations = {
       media: { name: "ছবি ও ডকুমেন্ট", line: "ছবি থেকে টাস্ক বানান।", detail: "সিলেবাস, হোয়াইটবোর্ড বা কাগজের তালিকার ছবি তুলুন, অথবা একটি ডকুমেন্ট যোগ করুন — Nexdo সেখান থেকে কাজগুলো বের করে আনবে।" },
       voice: { name: "ভয়েস নোট", line: "টাইপ না করে বলুন।", detail: "টাইপ না করে কথা বলে কাজে নোট যোগ করুন। Nexdo সেগুলো লিখে রাখে এবং কাজের সাথে সংরক্ষণ করে।" },
       chat: { name: "প্রসঙ্গ নোট", line: "Nexdo-কে বিস্তারিত জানান।", detail: "Nexdo-কে বলুন কাজটিতে কী গুরুত্বপূর্ণ — কার জন্য, কোনটা কঠিন, শেষ হলে কেমন দেখাবে — আর সে সেটা মাথায় রেখে পরিকল্পনা করবে।" },
-      sounds: { name: "ফোকাস সাউন্ড", line: "বৃষ্টি, ঢেউ, বন আর আরও।", detail: "বৃষ্টি, ঢেউ, বন, ফায়ারপ্লেস, ক্যাফে এবং আরও অনেক শব্দ, কোনো কাজে মনোযোগ দেওয়ার সময় শোনার জন্য।" },
+      sounds: { name: "ফোকাস সাউন্ড", line: "বৃষ্টি, ঢেউ, বন আর আরও।", detail: "বৃষ্টি, ঢেউ, বজ্রপাত, ঝরনা, বন আর ফায়ারপ্লেস, কোনো কাজে মনোযোগ দেওয়ার সময় শোনার জন্য।" },
       insights: { name: "ইনসাইটস", line: "দেখুন কতটা এগিয়েছেন।", detail: "আপনার গতি দেখুন: ফোকাসের সময়, শেষ করা কাজ এবং সপ্তাহগুলোর তুলনা, Nexdo ব্যবহার শুরু করার দিন থেকে। ফ্রি সংস্করণে শেষ ৭ দিন দেখা যায়।" },
     },
     /** The small caps under each card's number. */

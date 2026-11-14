@@ -7,6 +7,9 @@ import { keyToLocalDate, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { weekdayName } from "@/lib/recurrence";
 import type { DayPlan } from "@/lib/schedule";
 
+/** A coming repeat's row (not a real task yet) is drawn this much lighter. */
+const PLANNED_OPACITY = 0.5;
+
 /** "TASKS" on ink, or "ROUTINES" on peach: the label over each of a day's lists. */
 function ListLabel({ label, tone }: { label: string; tone: "ink" | "peach" }) {
   return (
@@ -26,15 +29,19 @@ function EntryRow({ entry, last, onPress }: { entry: DayEntry; last: boolean; on
   const t = useTranslation();
   return (
     <AnimatedPressable
-      onPress={onPress}
+      // A coming repeat isn't a task yet: nothing to open, and drawn lighter.
+      onPress={entry.planned ? undefined : onPress}
+      disabled={entry.planned}
       scaleTo={0.98}
-      accessibilityRole="button"
+      accessibilityRole={entry.planned ? "text" : "button"}
       className="h-[47px] flex-row pt-[11.9px]"
-      style={last ? undefined : { borderBottomWidth: 0.75, borderBottomColor: ROW_RULE }}
+      style={[last ? undefined : { borderBottomWidth: 0.75, borderBottomColor: ROW_RULE }, entry.planned ? { opacity: PLANNED_OPACITY } : undefined]}
     >
       <Text
         numberOfLines={1}
-        className={`mt-[0.6px] w-[80px] pl-[2px] font-mono-bold text-[11px] leading-[22px] tracking-[0.9px] ${entry.overdue ? "text-alert" : "text-ink-muted"}`}
+        // A longer word for "Anytime" in some languages shrinks to fit the column.
+        adjustsFontSizeToFit
+        className={`mt-[0.6px] w-[80px] pl-[2px] pr-[6px] font-mono-bold text-[11px] leading-[22px] tracking-[0.9px] ${entry.overdue ? "text-alert" : "text-ink-muted"}`}
         style={TIGHT_TEXT}
       >
         {timeLabel(entry, t)}
@@ -69,8 +76,6 @@ export function ScheduleWeek({
   onOpenTask: (id: string) => void;
 }) {
   const t = useTranslation();
-  const { tasks, routines } = dayEntries(plans.get(selected));
-  const dayTitle = keyToLocalDate(selected).toLocaleDateString(t.locale, { weekday: "long", month: "short", day: "numeric" });
 
   return (
     <View>
@@ -105,6 +110,22 @@ export function ScheduleWeek({
         })}
       </View>
 
+      <ScheduleDayLists plan={plans.get(selected)} date={selected} onOpenTask={onOpenTask} />
+    </View>
+  );
+}
+
+/**
+ * The picked day under the Week and Month views (the same since 2026-11-14):
+ * its date, then its tasks and its routines, each list under its label.
+ */
+export function ScheduleDayLists({ plan, date, onOpenTask }: { plan: DayPlan | undefined; date: LocalDate; onOpenTask: (id: string) => void }) {
+  const t = useTranslation();
+  const { tasks, routines } = dayEntries(plan);
+  const dayTitle = keyToLocalDate(date).toLocaleDateString(t.locale, { weekday: "long", month: "short", day: "numeric" });
+
+  return (
+    <View>
       <Text className="mt-[17.4px] font-grotesk-bold text-[18px] leading-[24px] text-ink" style={TIGHT_TEXT}>
         {dayTitle}
       </Text>
