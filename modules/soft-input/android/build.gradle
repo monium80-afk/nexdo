@@ -1,0 +1,16 @@
+// The app's own Android module for the keyboard mode (modules/soft-input).
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.softinput'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.softinput"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}

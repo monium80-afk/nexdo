@@ -1,11 +1,11 @@
 import { BlurView } from "expo-blur";
 import { usePathname } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from "react";
 import {
   ActivityIndicator,
   Image,
   Keyboard,
-  Modal,
+  BackHandler,
   Platform,
   Pressable,
   ScrollView,
@@ -42,6 +42,7 @@ import {
   type DetailKey,
 } from "@/components/addSheet/AddSheetDetails";
 import { SheetIcon, type SheetIconName } from "@/components/addSheet/SheetParts";
+import { setKeyboardAdjustNothing } from "@/modules/soft-input";
 import { formatShortTime, formatTime, longDay } from "@/components/addSheet/sheetFormat";
 import { TaskPreviewCard } from "@/components/addSheet/TaskPreviewCard";
 import { MAX_TASK_TITLE_LENGTH } from "@/components/TaskFormFields";
@@ -151,39 +152,66 @@ function useKeyboardLiftIos() {
 }
 
 /**
- * Android: the sheet sits in its own window (a Modal). Older Android ends that
- * window at the keyboard's top by itself, and then there's nothing to lift.
- * Android 15+ (what release builds target) draws it edge to edge instead: the
- * window stays full height and the keyboard covers the sheet — fine in Expo,
- * hidden on the phones (user's video, 2026-11-14). So: once the keyboard is
- * up, how far it actually reaches into the sheet's area is measured, and the
- * sheet is lifted by exactly that — 0 where Android already made room.
+ * Android: the sheet is in the page (the app's main window), which is drawn
+ * edge to edge, so nothing makes room for the keyboard by itself. Once the
+ * keyboard is up, how far it reaches into the sheet's area is measured, and
+ * the sheet is lifted by exactly that. The keyboard events come only from the
+ * main window — why the sheet left its own window (a Modal) on 2026-11-14:
+ * there, they never came, and the keyboard covered it on release builds.
  * (Reanimated's keyboard reader gets no numbers in the app's "pan" mode, so
  * it's the keyboard events, 2026-11-09.)
+ *
+ * The app's "pan" mode also slides the whole page up by itself, to show the
+ * typed line — and with the lift on top, the sheet ended up twice as high
+ * (emulator, 2026-11-14). The area's measured place already includes that
+ * slide, so measuring it again as the keyboard settles, and lifting only by
+ * what's still covered, puts the sheet's foot on the keyboard's top whatever
+ * Android does. Measured against the keyboard's top on screen, which takes in
+ * the navigation bar under it (the event's height leaves that out).
  */
 function useKeyboardLiftAndroid(areaRef: RefObject<ComponentRef<typeof View> | null>) {
   const lift = useSharedValue(0);
   const [height, setHeight] = useState(0);
   useEffect(() => {
-    const showing = Keyboard.addListener("keyboardDidShow", (event) => {
-      const keyboardTop = event.endCoordinates.screenY;
+    let keyboardTop: number | null = null;
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    const settle = () => {
+      if (keyboardTop === null) return;
+      const top = keyboardTop;
       areaRef.current?.measureInWindow((_x, y, _width, areaHeight) => {
-        const overlap = Math.round(Math.min(event.endCoordinates.height, Math.max(0, y + areaHeight - keyboardTop)));
+        if (keyboardTop !== top) return;
+        const overlap = Math.round(Math.min(areaHeight, Math.max(0, y + areaHeight - top)));
         lift.set(withTiming(overlap, { duration: KEYBOARD_LIFT_MS }));
         setHeight(overlap);
       });
+    };
+    const clear = () => {
+      timers.forEach(clearTimeout);
+      timers = [];
+    };
+    const showing = Keyboard.addListener("keyboardDidShow", (event) => {
+      keyboardTop = event.endCoordinates.screenY;
+      clear();
+      settle();
+      timers = KEYBOARD_SETTLE_MS.map((ms) => setTimeout(settle, ms));
     });
     const hiding = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardTop = null;
+      clear();
       lift.set(withTiming(0, { duration: KEYBOARD_LIFT_MS }));
       setHeight(0);
     });
     return () => {
+      clear();
       showing.remove();
       hiding.remove();
     };
   }, [areaRef, lift]);
   return { lift, height };
 }
+
+/** When the sheet measures itself again after the keyboard is up: Android's own slide comes and goes in that time. */
+const KEYBOARD_SETTLE_MS = [120, 300, 600, 1000];
 
 /** How long the Android sheet takes to rise onto the keyboard once it's up. */
 const KEYBOARD_LIFT_MS = 160;
@@ -193,18 +221,6 @@ function useKeyboardLift(areaRef: RefObject<ComponentRef<typeof View> | null>) {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   return Platform.OS === "android" ? useKeyboardLiftAndroid(areaRef) : useKeyboardLiftIos();
 }
-/** Android's sheet window (see useKeyboardLiftAndroid). */
-const OWN_WINDOW = Platform.OS === "android";
-/**
- * Before Android 15 the system pads that window itself (down to the keyboard
- * or the navigation bar), and the Modal's own frame padded it again unless
- * the status bar is "translucent" — on the user's phone a gap the height of
- * the navigation bar over the keyboard (2026-11-09). Android 15+ draws windows
- * edge to edge, so there only the Modal's frame does it.
- */
-const SYSTEM_PADS_WINDOW = OWN_WINDOW && typeof Platform.Version === "number" && Platform.Version < 35;
-/** After the window shows: asking for the keyboard before that is dropped. */
-const FOCUS_DELAY_MS = 180;
 
 /** The sheet's place in the tabs layout: mounted only while it's open. */
 export function AddTaskSheetHost({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof View> | null> }) {
@@ -232,15 +248,9 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // The sheet's whole area (sheetArea below): Android measures the keyboard against it.
   const areaRef = useRef<ComponentRef<typeof View>>(null);
   const { lift, height: keyboardHeight } = useKeyboardLift(areaRef);
-  // The sheet's area: the whole screen on iOS; on Android, its window's room
-  // between the status bar and the keyboard (or the navigation bar).
+  // The sheet's area: the whole screen, on both platforms.
   const [overlayHeight, setOverlayHeight] = useState(windowHeight);
-  // Android: the tallest the window has been, so a shorter one means the keyboard is up.
-  const [fullHeight, setFullHeight] = useState(0);
-  const handleAreaLayout = (height: number) => {
-    setOverlayHeight(height);
-    setFullHeight((current) => Math.max(current, height));
-  };
+  const handleAreaLayout = (height: number) => setOverlayHeight(height);
   // The room above the keyboard (or the whole area when it's closed).
   const available = Math.max(0, overlayHeight - keyboardHeight);
   // The sheet's box ends right on the keyboard, following it as it moves.
@@ -298,7 +308,6 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
 
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: (1 - progress.value) * (windowHeight * 0.6) }] }));
-  const stripStyle = useAnimatedStyle(() => ({ transform: [{ translateY: (1 - progress.value) * (windowHeight * 0.6) }] }));
 
   // ─── Reading the line ──────────────────────────────────────────────────
   const now = useMemo(() => new Date(), [line]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -551,16 +560,34 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
     else close();
   };
 
-  // Back on Android: the sheet's window gets it (Modal onRequestClose).
+  // While the sheet is open, Android doesn't slide the page up for the
+  // keyboard itself: the sheet places itself on the keyboard (above), and the
+  // two together put it twice as high (emulator, 2026-11-14). Set before the
+  // keyboard first comes up; the usual mode is back once the sheet closes.
+  useLayoutEffect(() => {
+    if (Platform.OS !== "android") return;
+    setKeyboardAdjustNothing(true);
+    return () => setKeyboardAdjustNothing(false);
+  }, []);
+
+  // Back on Android, now that the sheet is in the page rather than a window of
+  // its own: up a level, as above, and never past the sheet to the page.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      goBack();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [goBack]);
 
   // ─── Layout ────────────────────────────────────────────────────────────
-  // Android: its window got shorter (older Android), or the sheet was lifted onto the keyboard (15+).
-  const keyboardOpen = keyboardHeight > 0 || (OWN_WINDOW && fullHeight - overlayHeight > 120);
-  // Android's window already ends above the navigation bar.
-  const bottomPadding = keyboardOpen || OWN_WINDOW ? 14 : Math.max(28, insets.bottom + 14);
-  // The sheet never runs up under the status bar (outside Android's window),
-  // nor under what floats on it.
-  const topInset = OWN_WINDOW && !SYSTEM_PADS_WINDOW ? 0 : insets.top;
+  const keyboardOpen = keyboardHeight > 0;
+  // With the keyboard down, clear of the navigation bar or home indicator:
+  // "Details" sat behind Android's buttons (user's screenshot, 2026-11-14).
+  const bottomPadding = keyboardOpen ? 14 : Math.max(28, insets.bottom + 14);
+  // The sheet never runs up under the status bar, nor under what floats on it.
+  const topInset = insets.top;
   const floatSpace = floatHeight > 0 ? floatHeight + FLOAT_GAP : 0;
   const sheetMax = Math.max(220, available - topInset - 12 - Math.min(floatSpace, 140));
   const floatMax = Math.max(120, available - topInset - 16 - sheetHeight - FLOAT_GAP);
@@ -638,10 +665,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       {plusButton}
       <TextInput
         ref={inputRef}
-        // Android focuses it once its window shows (Modal onShow): focused
-        // any earlier, the keyboard never came up, and a second focus() was
-        // ignored as already done.
-        autoFocus={!OWN_WINDOW}
+        autoFocus
         multiline
         onChangeText={handleLineChange}
         onFocus={() => {
@@ -932,9 +956,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
                 paddingBottom: bottomPadding,
                 maxHeight: sheetMax,
               },
-              // Android: none — it would show as a dark line where the window
-              // ends above the navigation bar.
-              OWN_WINDOW ? null : SHEET_SHADOW,
+              SHEET_SHADOW,
             ]}
           >
             <View style={{ alignSelf: "center", width: 40, height: 5, borderRadius: 3, backgroundColor: P.handle, marginBottom: 12 }} />
@@ -967,30 +989,11 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       </Animated.View>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: P.veil }, backdropStyle]} />
 
-      {OWN_WINDOW ? (
-        <>
-          {/* The sheet's paper carried on under the navigation bar, below its window. */}
-          <Animated.View
-            pointerEvents="none"
-            style={[{ position: "absolute", left: 0, right: 0, bottom: 0, height: insets.bottom, backgroundColor: P.paper }, stripStyle]}
-          />
-          <Modal
-            visible
-            transparent
-            animationType="none"
-            statusBarTranslucent={SYSTEM_PADS_WINDOW}
-            navigationBarTranslucent={false}
-            onRequestClose={goBack}
-            onShow={() => {
-              setTimeout(() => inputRef.current?.focus(), FOCUS_DELAY_MS);
-            }}
-          >
-            {sheetArea}
-          </Modal>
-        </>
-      ) : (
-        sheetArea
-      )}
+      {/* In the page on both platforms. Android had it in a window of its own
+          (a Modal) until 2026-11-14 — but the keyboard is only ever reported
+          for the app's main window, so there it never knew where the keyboard
+          was, and on release builds (edge to edge) the keyboard covered it. */}
+      {sheetArea}
     </View>
   );
 }

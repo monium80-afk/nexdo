@@ -1,0 +1,9 @@
+expo.modules.softinput.soft-input-pngs-0 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\generated\res\pngs\debug
+expo.modules.softinput.soft-input-updated_navigation_xml-1 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\generated\updated_navigation_xml\debug
+expo.modules.softinput.soft-input-mergeDebugResources-2 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\intermediates\incremental\debug\mergeDebugResources\merged.dir
+expo.modules.softinput.soft-input-mergeDebugResources-3 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\intermediates\incremental\debug\mergeDebugResources\stripped.dir
+expo.modules.softinput.soft-input-debug-4 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\intermediates\merged_res\debug\mergeDebugResources
+expo.modules.softinput.soft-input-debug-5 D:\Nexdo\nexdo-mobile\modules\soft-input\android\build\intermediates\packaged_res\debug\packageDebugResources
+expo.modules.softinput.soft-input-debug-6 D:\Nexdo\nexdo-mobile\modules\soft-input\android\src\debug\res
+expo.modules.softinput.soft-input-main-7 D:\Nexdo\nexdo-mobile\modules\soft-input\android\src\main\res
+gradleHome-0 D:\Nexdo\.build-cache\gradle
