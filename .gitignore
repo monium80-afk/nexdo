@@ -55,3 +55,6 @@ graphify-out/
 design/
 nexdo-design-handoff/
 addtask-design/
+
+# Build output of the app's own native modules (modules/*)
+modules/*/android/build/
