@@ -26,7 +26,7 @@ import { deleteServerRows, emptyServerFolder } from "@/lib/serverRpc";
 const USER_FOLDER_BUCKETS = ["chat-attachments", "feedback-screenshots"] as const;
 
 /** Tables whose rows belong to one account, by its Clerk user id in `user_id`. */
-const USER_TABLES = ["feedback", "chat_messages", "tasks"] as const;
+const USER_TABLES = ["feedback", "feedback_account_rate_limits", "chat_messages", "tasks"] as const;
 
 /** The account's data in Supabase: files first, so no message is left pointing at one. */
 export async function deleteAccountData(userId: string): Promise<void> {

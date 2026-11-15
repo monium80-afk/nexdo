@@ -73,25 +73,39 @@ const STORAGE_PAGE_SIZE = 100;
 export async function emptyServerFolder(bucket: string, folder: string): Promise<void> {
   if (!folder || folder.includes("/")) throw new Error(`refusing to empty "${folder}" in ${bucket}`);
   const { url, headers } = serviceRoleRequest();
-  for (;;) {
-    const listed = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ prefix: folder, limit: STORAGE_PAGE_SIZE, offset: 0 }),
-      signal: timeout(),
-    });
-    if (!listed.ok) throw new Error(`listing ${bucket}/${folder} failed: ${listed.status} ${await listed.text()}`);
-    const files = ((await listed.json()) as { name: string }[]).map((file) => `${folder}/${file.name}`);
-    if (files.length === 0) return;
+  type Entry = { name: string; id?: string | null; metadata?: unknown };
+  const isFolder = (entry: Entry) => entry.id == null && entry.metadata == null;
 
-    const removed = await fetch(`${url}/storage/v1/object/${bucket}`, {
-      method: "DELETE",
-      headers,
-      body: JSON.stringify({ prefixes: files }),
-      signal: timeout(),
-    });
-    if (!removed.ok) throw new Error(`emptying ${bucket}/${folder} failed: ${removed.status} ${await removed.text()}`);
-    if (((await removed.json()) as unknown[]).length === 0) throw new Error(`emptying ${bucket}/${folder} made no progress`);
-    if (files.length < STORAGE_PAGE_SIZE) return;
-  }
+  const emptyPath = async (path: string): Promise<void> => {
+    for (;;) {
+      const listed = await fetch(`${url}/storage/v1/object/list/${bucket}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prefix: path, limit: STORAGE_PAGE_SIZE, offset: 0 }),
+        signal: timeout(),
+      });
+      if (!listed.ok) throw new Error(`listing ${bucket}/${path} failed: ${listed.status} ${await listed.text()}`);
+      const entries = (await listed.json()) as Entry[];
+      if (entries.length === 0) return;
+
+      const folders = entries.filter(isFolder);
+      for (const entry of folders) await emptyPath(`${path}/${entry.name}`);
+
+      const files = entries
+        .filter((entry) => !isFolder(entry))
+        .map((entry) => `${path}/${entry.name}`);
+      if (files.length === 0) continue;
+
+      const removed = await fetch(`${url}/storage/v1/object/${bucket}`, {
+        method: "DELETE",
+        headers,
+        body: JSON.stringify({ prefixes: files }),
+        signal: timeout(),
+      });
+      if (!removed.ok) throw new Error(`emptying ${bucket}/${path} failed: ${removed.status} ${await removed.text()}`);
+      if (((await removed.json()) as unknown[]).length === 0) throw new Error(`emptying ${bucket}/${path} made no progress`);
+    }
+  };
+
+  await emptyPath(folder);
 }

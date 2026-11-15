@@ -4,6 +4,7 @@ import { guessDuration, guessPriorityLevel, parseDurationMinutes } from "@/lib/a
 import { GeminiHttpError, GeminiTimeoutError, generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, datePhraseInstruction, languageInstruction } from "@/lib/ai/language";
 import { hasExplicitTime, isAmbiguousDate, parseDatePhrase } from "@/lib/ai/parseDate";
+import { getTranslations } from "@/lib/i18n";
 import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { authenticate } from "@/lib/serverAuth";
@@ -114,6 +115,8 @@ export type InboxResponseBody = {
   reply: string;
   /** Set when the model couldn't be reached and "reply" is the apology — the message isn't counted. */
   unavailable?: true;
+  /** Fragments beyond the per-call recovery cap that still need to be captured. */
+  remainingFragments?: number;
 };
 
 // Internal per-call contract. Asking the model to fully resolve a compound
@@ -299,9 +302,9 @@ const MAX_TURNS = 6;
 const LEAKED_REASONING_PATTERN = /\b(estimatedMinutes|dueDate|priority|confirmationRequired|schema)\s*[:=]/i;
 
 function sanitizeTitle(title: string | undefined): string | undefined {
-  if (!title) return undefined;
-  if (title.length > 80 || LEAKED_REASONING_PATTERN.test(title)) return undefined;
-  return title;
+  const clean = title?.trim();
+  if (!clean || LEAKED_REASONING_PATTERN.test(clean)) return undefined;
+  return clean.length > 80 ? clean.slice(0, 80).trimEnd() : clean;
 }
 
 function finiteNumber(value: unknown): number | undefined {
@@ -529,7 +532,12 @@ async function classifyOneInstruction(params: {
   if (action.type === "CREATE_TASK") {
     fillMissingTaskFields(action, instructionText(params.message, remainingMessage), new Date(params.now), language);
   }
-  const reply = typeof raw.reply === "string" ? raw.reply : "";
+  const reply =
+    action.type === "CREATE_TASK" && !action.fields.title
+      ? getTranslations(language ?? "en").assistant.taskTitleClarification
+      : typeof raw.reply === "string"
+        ? raw.reply
+        : "";
   action.reply = reply;
 
   return {
@@ -574,7 +582,7 @@ async function classifyFragmentsIndependently(
   context: Omit<InboxRequestBody, "message">,
   askModel: AskModel,
   deadline: number,
-): Promise<{ actions: InboxAction[]; replies: string[]; intent: string | null }> {
+): Promise<{ actions: InboxAction[]; replies: string[]; intent: string | null; remainingFragments: number }> {
   if (fragments.length > MAX_RECOVERY_FRAGMENTS) {
     console.warn(`[api/inbox] recovery capped: ${fragments.length} fragments, classifying the first ${MAX_RECOVERY_FRAGMENTS}`);
   }
@@ -604,7 +612,7 @@ async function classifyFragmentsIndependently(
     if (outcome.value.reply) replies.push(outcome.value.reply);
     intent ??= outcome.value.intent;
   }
-  return { actions, replies, intent };
+  return { actions, replies, intent, remainingFragments: Math.max(0, fragments.length - MAX_RECOVERY_FRAGMENTS) };
 }
 
 // This route is the most expensive one in the app: a single request can drive
@@ -725,6 +733,7 @@ export async function resolveInboxMessage(
   // stalled turn below. The other ways out (nothing left, an error) have
   // already produced all they are going to.
   let ranOutOfTurns = false;
+  let remainingFragments = 0;
   // A turn that made no progress on a message holding more than one
   // instruction. Its action is one of them, but which part is left can't be
   // told: looping again would repeat it, and stopping would silently drop
@@ -789,6 +798,7 @@ export async function resolveInboxMessage(
     }
     actions.push(...recovered.actions);
     replies.push(...recovered.replies);
+    remainingFragments = Math.max(remainingFragments, recovered.remainingFragments);
     if (recovered.intent) intent = recovered.intent;
   }
 
@@ -798,15 +808,20 @@ export async function resolveInboxMessage(
       const recovered = await classifyFragmentsIndependently(fragments, body, askModel, deadline);
       actions.push(...recovered.actions);
       replies.push(...recovered.replies);
+      remainingFragments = Math.max(remainingFragments, recovered.remainingFragments);
       if (recovered.intent) intent = recovered.intent;
     }
   }
 
-  if (actions.length === 0) return fallbackResponse(body.language);
+  if (actions.length === 0) {
+    const fallback = fallbackResponse(body.language);
+    return remainingFragments ? { ...fallback, remainingFragments } : fallback;
+  }
 
   return {
     intent,
     actions,
     reply: replies.join(" ").trim() || aiUnavailableMessage(body.language),
+    remainingFragments: remainingFragments || undefined,
   };
 }

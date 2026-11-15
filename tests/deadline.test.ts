@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isAmbiguousDate, looksLikeDate, parseDateRange, parseDeadlinePhrase } from "@/lib/ai/parseDate";
+import { extractTasks } from "@/lib/ai/extractTasks";
 import {
   applyPickedDateTime,
   deadlineFromDate,
@@ -126,6 +127,26 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
     assert.deepEqual(parseDeadlinePhrase("le 5 mars 2028", NOW, "fr"), { date: "2028-03-05", time: undefined });
     // Without one, a month already gone this year is still next year's.
     assert.deepEqual(parseDeadlinePhrase("March 5", NOW), { date: "2027-03-05", time: undefined });
+  });
+
+  it("keeps a calendar date's comma attached to its year while splitting tasks", () => {
+    const drafts = extractTasks("Send the form by March 5, 2028, email Sam", NOW);
+    assert.equal(drafts.length, 2);
+    assert.equal(new Date(drafts[0].dueDate!).getFullYear(), 2028);
+  });
+
+  it('"this weekday" uses the current Monday-based week, unlike a bare weekday', () => {
+    assert.deepEqual(parseDeadlinePhrase("this Tuesday", NOW), { date: "2026-09-29", time: undefined });
+    assert.deepEqual(parseDeadlinePhrase("Monday", NOW), { date: "2026-10-05", time: undefined });
+  });
+
+  it('"this weekend" on Sunday stays in the weekend that includes Sunday', () => {
+    const sunday = local(2026, 10, 4, 10);
+    assert.deepEqual(parseDeadlinePhrase("this weekend", sunday), { date: "2026-10-03", time: undefined });
+    assert.deepEqual(parseDateRange("this weekend", sunday), {
+      from: local(2026, 10, 3).toISOString(),
+      to: new Date(2026, 9, 4, 23, 59, 59, 999).toISOString(),
+    });
   });
 });
 

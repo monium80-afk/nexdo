@@ -636,6 +636,8 @@ export const zh: Translations = {
     overdueWorkflow: (text: string) => `我会帮你处理「${text}」，暂时不改动任何任务。`,
     bestNext: (title: string, score: number) => `你最好的下一步是「${title}」——优先级分数 ${score}。`,
     allCaughtUp: "全部完成——目前没有待办。",
+    taskTitleClarification: "这项任务应该叫什么？我没能识别出有效的标题。",
+    captureRemaining: (count: number) => `我只能处理前 10 项。还有 ${count} 项需要添加，请在另一条消息中发送。`,
     noTaskFound: "没有从中找到任务——试着说出要做的事，比如「明天打扫房间」。",
     adviceDoNow: (label: string, duration: string) => `现在就做：${label}（约 ${duration}）。`,
     adviceJustDo: (title: string, duration: string) => `直接做吧——「${title}」大约需要 ${duration}。`,

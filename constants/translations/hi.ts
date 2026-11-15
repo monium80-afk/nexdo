@@ -656,6 +656,8 @@ export const hi: Translations = {
     overdueWorkflow: (text: string) => `मैं "${text}" में मदद करूँगा, अभी कोई काम बदले बिना।`,
     bestNext: (title: string, score: number) => `आपका सबसे अच्छा अगला कदम "${title}" है — प्राथमिकता स्कोर ${score}।`,
     allCaughtUp: "सब हो गया — अभी कुछ बाकी नहीं।",
+    taskTitleClarification: "इस काम का नाम क्या रखें? मुझे कोई सही शीर्षक समझ नहीं आया।",
+    captureRemaining: (count: number) => `मैं पहले 10 आइटम ही संसाधित कर पाया। ${count} और जोड़ने बाकी हैं — उन्हें दूसरे संदेश में भेजें।`,
     noTaskFound: 'इसमें मुझे कोई काम नहीं मिला — बताएँ कि क्या करना है, जैसे "कल घर साफ़ करना"।',
     adviceDoNow: (label: string, duration: string) => `अभी यह करें: ${label} (~${duration})।`,
     adviceJustDo: (title: string, duration: string) => `बस कर डालें — ${title} में लगभग ${duration} लगेंगे।`,

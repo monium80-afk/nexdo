@@ -306,6 +306,18 @@ $$;
 revoke all on function public.claim_ai_trial_call(text, text, text, int, int, int) from public, anon, authenticated;
 grant execute on function public.claim_ai_trial_call(text, text, text, int, int, int) to service_role;
 
+create extension if not exists pg_cron;
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'delete-expired-ai-trials';
+
+select cron.schedule(
+  'delete-expired-ai-trials',
+  '0 3 * * *',
+  $$delete from public.ai_trials where created_at < now() - interval '90 days';$$
+);
+
 -- ---------------------------------------------------------------------
 -- ai_usage: a daily ceiling on each signed-in account's AI calls
 -- ---------------------------------------------------------------------
@@ -602,6 +614,18 @@ create index if not exists feedback_rate_limits_created_at_idx on public.feedbac
 alter table public.feedback_rate_limits enable row level security;
 revoke all on public.feedback_rate_limits from anon, authenticated;
 
+-- Mobile account limits must outlive deletable feedback rows.
+create table if not exists public.feedback_account_rate_limits (
+  user_id text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists feedback_account_rate_limits_user_idx
+  on public.feedback_account_rate_limits (user_id, created_at);
+
+alter table public.feedback_account_rate_limits enable row level security;
+revoke all on public.feedback_account_rate_limits from anon, authenticated;
+
 -- Runs before every insert, ahead of the RLS checks:
 --   * app feedback gets the sender's user id from their Clerk token, so a
 --     client can't file feedback under someone else's account;
@@ -634,15 +658,21 @@ begin
     -- so parallel inserts can't all count fewer than ten.
     if new.user_id is not null then
       perform pg_advisory_xact_lock(hashtext('feedback_mobile_insert:' || new.user_id));
+      delete from feedback_account_rate_limits
+      where user_id = new.user_id and created_at < now() - interval '1 hour';
     end if;
 
     if new.user_id is not null and (
-      select count(*) from feedback
+      select count(*) from feedback_account_rate_limits
       where user_id = new.user_id and created_at > now() - interval '1 hour'
     ) >= 10 then
       raise sqlstate 'PGRST' using
         message = '{"code":"rate_limited","message":"Too much feedback in a short time.","details":null,"hint":"Try again later."}',
         detail = '{"status":429,"headers":{}}';
+    end if;
+
+    if new.user_id is not null then
+      insert into feedback_account_rate_limits (user_id) values (new.user_id);
     end if;
 
     return new;

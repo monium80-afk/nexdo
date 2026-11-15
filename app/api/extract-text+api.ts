@@ -7,7 +7,6 @@ import {
   asObject,
   badRequest,
   BadRequestError,
-  clampNumber,
   clampString,
   LANGUAGES,
   MAX_TITLE_LENGTH,
@@ -127,17 +126,6 @@ const MAX_BODY_BYTES = 9 * 1024 * 1024;
 // the real use; anything longer is someone trying to use this as a general
 // prompt channel rather than a caption.
 const MAX_INSTRUCTION_LENGTH = 500;
-
-// A voice note is counted by its length — what Google hears in it, measured
-// before it's transcribed (measureAudioSeconds). The length the app states,
-// with the file's size as a floor under it, only stands in when that can't
-// be measured: a low-bitrate file holds far more audio than its size
-// suggests, so on their own those two let a tampered app pass off a long
-// recording as a short one. The floor assumes a bitrate far above anything
-// the app records (compressed audio is about 16 KB a second, uncompressed
-// WAV under 200), so an honest length is never raised by it.
-const TYPICAL_BYTES_PER_SECOND = 16_000;
-const MAX_BYTES_PER_SECOND = { compressed: 40_000, wav: 200_000 };
 // Well past anything the app records (MAX_BODY_BYTES alone stops its own
 // recordings at a few minutes). Also what bounds a signed-out request, whose
 // trial counts calls rather than seconds.
@@ -145,23 +133,17 @@ const MAX_VOICE_SECONDS = 15 * 60;
 
 const EXTRACT_BUDGET_MS = 26_000;
 
-function estimatedVoiceSeconds(declared: number | undefined, bytes: number, mimeType: string): number {
-  const ceiling = mimeType.includes("wav") ? MAX_BYTES_PER_SECOND.wav : MAX_BYTES_PER_SECOND.compressed;
-  const seconds = Math.max(declared ?? bytes / TYPICAL_BYTES_PER_SECOND, bytes / ceiling);
-  return Math.min(MAX_VOICE_SECONDS, Math.max(1, Math.ceil(seconds)));
-}
-
 /** A voice note's length in whole seconds, or null for one longer than the app ever records. */
-async function voiceSeconds(params: { declared: number | undefined; bytes: number; mimeType: string; base64: string }): Promise<number | null> {
+async function voiceSeconds(params: { mimeType: string; base64: string }): Promise<number | null> {
   let seconds: number;
   try {
     seconds = await measureAudioSeconds(params);
   } catch (error) {
     console.warn(
-      "[api/extract-text] couldn't measure a voice note, going by its stated length:",
+      "[api/extract-text] couldn't measure a voice note:",
       error instanceof Error ? error.message : error,
     );
-    return estimatedVoiceSeconds(params.declared, params.bytes, params.mimeType.toLowerCase());
+    return null;
   }
   return seconds > MAX_VOICE_SECONDS ? null : Math.max(1, Math.ceil(seconds));
 }
@@ -225,9 +207,10 @@ export async function POST(request: Request) {
   if (earlyLimitResponse) return earlyLimitResponse;
 
   if (kind === "voice") {
-    const declared = clampNumber(parsed.durationSeconds, 0, MAX_VOICE_SECONDS);
-    const seconds = await voiceSeconds({ declared, bytes, mimeType, base64 });
-    if (seconds === null) return badRequest();
+    const seconds = await voiceSeconds({ mimeType, base64 });
+    if (seconds === null) {
+      return Response.json({ text: "", error: "duration_unavailable" } satisfies ExtractTextResponseBody, { status: 503 });
+    }
     usage = { meter: "voice", amount: seconds };
   }
 

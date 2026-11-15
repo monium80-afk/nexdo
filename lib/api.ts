@@ -130,7 +130,7 @@ export async function apiPost<T>(
       }
       throw new Error(`${path} failed: ${response.status}${detail ? ` ${detail.slice(0, 300)}` : ""}`);
     }
-    return response.json();
+    return await response.json();
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", forwardAbort);

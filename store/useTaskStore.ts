@@ -1159,7 +1159,10 @@ export const useTaskStore = create<TaskStore>()(
           }
           case "LIST_TASKS": {
             const now = new Date();
-            const matches = get().tasks.filter((task) => matchesFilter(task, action.filter, now));
+            const selectedIds = action.taskIds ? new Set(action.taskIds) : null;
+            const matches = get().tasks.filter(
+              (task) => (!selectedIds || selectedIds.has(task.id)) && matchesFilter(task, action.filter, now),
+            );
             return { message: describeTaskList(matches, translate(), now), taskIds: matches.map((task) => task.id) };
           }
           case "ADD_TASK_CONTEXT": {

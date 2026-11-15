@@ -41,19 +41,29 @@ export function resolveTaskReference(
   };
 
   const explicitMatches = preferOpen(candidates.filter((task) => titleMatches(text, task)));
-  if (ctx.currentTaskId && (explicitMatches.length === 0 || explicitMatches.some((t) => t.id === ctx.currentTaskId))) {
+  if (ctx.currentTaskId && explicitMatches.some((task) => task.id === ctx.currentTaskId)) {
     if (candidates.some((task) => task.id === ctx.currentTaskId)) {
       return { status: "resolved", taskId: ctx.currentTaskId };
     }
+  }
+
+  if (explicitMatches.length === 1) return { status: "resolved", taskId: explicitMatches[0].id };
+
+  for (const id of ctx.recentTaskIds) {
+    const task = explicitMatches.find((candidate) => candidate.id === id);
+    if (task) return { status: "resolved", taskId: task.id };
+  }
+
+  if (explicitMatches.length > 1) return { status: "ambiguous", candidates: explicitMatches };
+
+  if (ctx.currentTaskId && candidates.some((task) => task.id === ctx.currentTaskId)) {
+    return { status: "resolved", taskId: ctx.currentTaskId };
   }
 
   for (const id of ctx.recentTaskIds) {
     const task = candidates.find((candidate) => candidate.id === id);
     if (task && titleMatches(text, task)) return { status: "resolved", taskId: task.id };
   }
-
-  if (explicitMatches.length === 1) return { status: "resolved", taskId: explicitMatches[0].id };
-  if (explicitMatches.length > 1) return { status: "ambiguous", candidates: explicitMatches };
 
   const wordMatches = preferOpen(candidates.filter((task) => findTitleWordOverlap(text, task)));
   if (wordMatches.length === 1) return { status: "resolved", taskId: wordMatches[0].id };

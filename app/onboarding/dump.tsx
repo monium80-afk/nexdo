@@ -166,6 +166,7 @@ export default function OnboardingDump() {
 
   const [typed, setTyped] = useState("");
   const [organizing, setOrganizing] = useState(false);
+  const [remainingFragments, setRemainingFragments] = useState<number | null>(null);
 
   const scroll = useAnimatedRef<Animated.ScrollView>();
   // The fades at the list's edges show only where there's more to scroll to.
@@ -271,16 +272,22 @@ export default function OnboardingDump() {
     const text = typed.trim();
     if (!text || organizing) return;
     setOrganizing(true);
+    setRemainingFragments(null);
     const useAi = hasAiConsent() && !(await isTrialUsed());
     let found: ExtractedTaskDraft[];
     try {
       if (useAi) void markTrialUsed();
-      found = useAi
-        ? (await classifyIntent({ text, now: new Date(), recentTaskIds: [], tasks: [] })).actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : []))
-        : extractTasks(text, new Date(), getLanguage());
+      if (useAi) {
+        const turn = await classifyIntent({ text, now: new Date(), recentTaskIds: [], tasks: [] });
+        found = turn.actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : []));
+        setRemainingFragments(turn.remainingFragments ?? null);
+      } else {
+        found = extractTasks(text, new Date(), getLanguage());
+      }
     } catch (error) {
       console.warn("[onboarding/dump] extraction failed", error);
       found = extractTasks(text, new Date(), getLanguage());
+      setRemainingFragments(null);
     }
     const stamped = found.map((draft, index) => ({ ...draft, candidateId: draft.candidateId ?? `typed-${Date.now().toString(36)}-${index}` }));
     setDrafts([...useOnboardingStore.getState().drafts, ...stamped]);
@@ -370,6 +377,11 @@ export default function OnboardingDump() {
               ]}
             />
           </FadeUp>
+          {remainingFragments ? (
+            <Text className="font-grotesk-medium text-[13px] text-[#C4461A]">
+              {t.assistant.captureRemaining(remainingFragments)}
+            </Text>
+          ) : null}
           {/* With nothing typed the footer's link is "Skip", so the way back to the mic sits here. */}
           {drafts.length === 0 && !typed.trim() && !voiceRefused ? (
             <View style={{ alignItems: "center", marginTop: -8 }}>

@@ -30,5 +30,6 @@ export async function suggestBreakdown(
   };
 
   const result = await apiPost<BreakdownResponseBody>("/api/breakdown", body);
+  if (result.steps.length === 0) throw new Error("The AI returned no breakdown steps");
   return result.steps;
 }

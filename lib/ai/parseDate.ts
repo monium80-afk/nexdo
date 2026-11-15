@@ -776,8 +776,7 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   }
 
   if (/\b(this |the )?weekend\b/.test(lower)) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7));
+    const date = addDays(weekStart(now), 5);
     return resolve(date, 12);
   }
 
@@ -847,6 +846,7 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
     // for "next week" above): on a Tuesday, a week from Friday — but on a
     // Saturday, "next monday" is the day after tomorrow, not nine days off.
     if (new RegExp(`\\bnext\\s+${WEEKDAYS[i]}\\b`).test(lower)) return resolve(addDays(weekStart(now), 7 + ((i + 6) % 7)));
+    if (new RegExp(`\\bthis\\s+${WEEKDAYS[i]}\\b`).test(lower)) return resolve(addDays(weekStart(now), (i + 6) % 7));
     date.setDate(date.getDate() + ((i - date.getDay() + 7) % 7 || 7)); // next occurrence, never today
     return resolve(date);
   }

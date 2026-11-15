@@ -698,6 +698,8 @@ export const ar: Translations = {
     overdueWorkflow: (text: string) => `سأساعدك في «${text}» دون تغيير أي مهمة الآن.`,
     bestNext: (title: string, score: number) => `أفضل خطوة تالية لك هي «${title}» — درجة الأولوية ${score}.`,
     allCaughtUp: "كل شيء مُنجز — لا يوجد شيء قيد الانتظار الآن.",
+    taskTitleClarification: "ما الاسم الذي أضعه لهذه المهمة؟ لم أتمكن من فهم عنوان صالح.",
+    captureRemaining: (count: number) => `تمكنت من معالجة أول 10 عناصر فقط. لا يزال هناك ${count} لإضافتها — أرسلها في رسالة أخرى.`,
     noTaskFound: "لم أجد مهمة في ذلك — جرّب أن تسمّي ما تريد فعله، مثل «تنظيف المنزل غدًا».",
     adviceDoNow: (label: string, duration: string) => `افعل هذا الآن: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `ابدأ فحسب — «${title}» تستغرق حوالي ${duration}.`,

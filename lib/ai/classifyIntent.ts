@@ -34,7 +34,12 @@ export type ClassifyIntentInput = {
 // `replies` lines up with `actions`: what the model said about each one, or
 // null from the offline heuristic, which has no narration of its own — the
 // chat then uses the app's own message for it. `reply` is all of them joined.
-export type ClassifiedTurn = { actions: StructuredAction[]; replies: (string | null)[]; reply: string | null };
+export type ClassifiedTurn = {
+  actions: StructuredAction[];
+  replies: (string | null)[];
+  reply: string | null;
+  remainingFragments?: number;
+};
 
 const VALID_PRIORITIES: readonly ImportanceLevel[] = IMPORTANCE_LEVELS;
 
@@ -259,6 +264,9 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
       confirmationTier: "confirm-required",
     };
   }
+  if (action.type === "CREATE_TASK") {
+    return { type: "CLARIFY", question: t.assistant.taskTitleClarification, candidates: [], confirmationTier: "safe" };
+  }
 
   const singleKind = SINGLE_KIND[action.type];
   if (singleKind) {
@@ -291,7 +299,11 @@ function mapSingleAction(action: InboxAction, ctx: MapContext): StructuredAction
   if (action.type === "LIST_TASKS") {
     const filter = toTaskFilter(action.filter, ctx);
     if (!filter) return { type: "CLARIFY", question: t.ops.whichDates, candidates: [], confirmationTier: "safe" };
-    return { type: "LIST_TASKS", filter, confirmationTier: "safe" };
+    const taskIds = (action.taskIds ?? []).map((alias) => ctx.realId(alias)).filter((id): id is string => !!id);
+    if ((action.taskIds?.length ?? 0) > 0 && taskIds.length === 0) {
+      return { type: "UNKNOWN", reply: t.ops.notFound, confirmationTier: "safe" };
+    }
+    return { type: "LIST_TASKS", filter, taskIds: taskIds.length > 0 ? taskIds : undefined, confirmationTier: "safe" };
   }
 
   const taskId = ctx.realId(action.taskId);
@@ -351,15 +363,20 @@ function mapInboxResponse(response: InboxResponseBody, ctx: MapContext): Classif
   const replies: (string | null)[] = [];
   // The same task said twice in one message ("…call mum, and don't forget to
   // call mum") is one task: only its first mention becomes a card.
-  const newTitles = new Set<string>();
+  const newOccurrences = new Set<string>();
   for (const action of response.actions) {
     const mapped = mapSingleAction(action, ctx);
     if (!mapped) continue;
     if (mapped.type === "CREATE_TASK") {
       const drafts = mapped.drafts.filter((draft) => {
-        const key = titleKey(draft.title);
-        if (newTitles.has(key)) return false;
-        newTitles.add(key);
+        const key = JSON.stringify({
+          title: titleKey(draft.title),
+          dueDate: draft.dueDate ?? null,
+          dueHasTime: draft.dueHasTime ?? null,
+          recurrence: draft.recurrence ?? null,
+        });
+        if (newOccurrences.has(key)) return false;
+        newOccurrences.add(key);
         return true;
       });
       if (drafts.length === 0) continue;
@@ -368,15 +385,20 @@ function mapInboxResponse(response: InboxResponseBody, ctx: MapContext): Classif
     actions.push(mapped);
     replies.push(action.reply?.trim() || null);
   }
-  const reply = response.reply?.trim() || null;
+  const replyParts = [response.reply?.trim()];
+  if (response.remainingFragments) {
+    replyParts.push(translate().assistant.captureRemaining(response.remainingFragments));
+  }
+  const reply = replyParts.filter((part): part is string => !!part).join(" ") || null;
   if (actions.length === 0) {
     return {
       actions: [{ type: "UNKNOWN", reply: reply ?? translate().common.aiUnreachable, confirmationTier: "safe" }],
       replies: [reply],
       reply,
+      remainingFragments: response.remainingFragments,
     };
   }
-  return { actions, replies, reply };
+  return { actions, replies, reply, remainingFragments: response.remainingFragments };
 }
 
 const DELETE_PATTERN = /\b(delete|remove|cancel)\b/i;
@@ -384,6 +406,16 @@ const BULK_PATTERN = /\b(all|every|everything)\b/i;
 // Checked before COMPLETED_SCOPE_PATTERN — "uncompleted"/"incomplete" contain "complete".
 const PENDING_SCOPE_PATTERN = /\b(pending|uncompleted|incomplete|unfinished|not done|open|active|remaining)\b/i;
 const COMPLETED_SCOPE_PATTERN = /\b(completed?|done|finished)\b/i;
+const OVERDUE_SCOPE_PATTERN = /\b(overdue|past due|late)\b/i;
+const BASIC_ALL_DELETE_PATTERN =
+  /^\s*(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|cancel)\s+(?:everything|all(?:\s+of)?\s+(?:(?:my|the)\s+)?(?:tasks?|to-?dos?)|every(?:thing| tasks?| to-?dos?)|all(?:\s+of\s+them)?)(?:\s+please)?[.!?]*\s*$/i;
+const SAFE_BULK_DELETE_WORDS = new Set([
+  "please", "can", "could", "would", "you", "delete", "remove", "cancel",
+  "all", "every", "everything", "of", "my", "the", "task", "tasks", "to", "do", "todo", "todos",
+  "thing", "things", "item", "items", "them", "ones", "are", "is", "that", "which",
+  "pending", "uncompleted", "incomplete", "unfinished", "open", "active", "remaining",
+  "completed", "complete", "done", "finished", "overdue", "past", "due", "late",
+]);
 const ALREADY_DID_PATTERN = /\balready (did|finished|completed|done|started)\b/i;
 const REOPEN_PATTERN = /\b(reopen|re-open|unmark|undo (?:the )?completion|not (?:actually )?(?:done|finished))\b/i;
 const DONE_PATTERN = /\b(finished|done|complete[d]?)\b/i;
@@ -408,6 +440,12 @@ function operate(operation: TaskOperation, bulk = false): StructuredAction {
   return { type: "OPERATE", operation, confirmationTier: bulk ? "confirm-required" : "immediate" };
 }
 
+function hasUnrepresentableBulkDeleteQualifier(text: string): boolean {
+  if (/[^\x00-\x7F]/.test(text)) return true;
+  const normalized = text.replace(/\bnot\s+done\b/gi, "unfinished");
+  return (normalized.match(/[a-z]+/gi) ?? []).some((word) => !SAFE_BULK_DELETE_WORDS.has(word.toLowerCase()));
+}
+
 // Ordered keyword/regex rules — used as an offline fallback if the real
 // Gemini call below fails (no network, missing API key, malformed output),
 // so the inbox degrades gracefully instead of breaking. They produce the same
@@ -420,11 +458,20 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
   const t = translate();
 
   if (DELETE_PATTERN.test(text) && BULK_PATTERN.test(text)) {
-    const status: TaskStatusFilter = PENDING_SCOPE_PATTERN.test(text)
-      ? "pending"
-      : COMPLETED_SCOPE_PATTERN.test(text)
-        ? "completed"
-        : "all";
+    const scopeText = text.replace(/\bnot\s+done\b/gi, "unfinished");
+    const scopes = [
+      PENDING_SCOPE_PATTERN.test(scopeText) ? "pending" : null,
+      COMPLETED_SCOPE_PATTERN.test(scopeText) ? "completed" : null,
+      OVERDUE_SCOPE_PATTERN.test(scopeText) ? "overdue" : null,
+    ].filter((status): status is TaskStatusFilter => status !== null);
+    if (
+      scopes.length > 1 ||
+      hasUnrepresentableBulkDeleteQualifier(text) ||
+      (scopes.length === 0 && !BASIC_ALL_DELETE_PATTERN.test(text))
+    ) {
+      return { type: "CLARIFY", question: t.ops.whichTasks, candidates: [], confirmationTier: "safe" };
+    }
+    const status: TaskStatusFilter = scopes[0] ?? "all";
     return operate({ kind: "delete", target: { filter: { status } } }, true);
   }
 

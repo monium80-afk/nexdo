@@ -53,7 +53,7 @@ export type StructuredAction =
   | { type: "OPERATE"; operation: TaskOperation; confirmationTier: ConfirmationTier }
   // "Show me what I finished this week" — listed by the app from the full
   // list, so it isn't limited to the tasks the model was shown.
-  | { type: "LIST_TASKS"; filter: TaskFilter; confirmationTier: "safe" }
+  | { type: "LIST_TASKS"; filter: TaskFilter; taskIds?: string[]; confirmationTier: "safe" }
   // estimatedMinutes is set alongside a note when added context changes the
   // task's scope (taxonomy 2.2) or shrinks it via partial progress (3.3).
   | { type: "ADD_TASK_CONTEXT"; taskId: string; note: string; estimatedMinutes?: number; confirmationTier: "safe" }

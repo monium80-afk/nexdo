@@ -675,6 +675,8 @@ export const ru: Translations = {
     overdueWorkflow: (text: string) => `Помогу с «${text}», пока ничего не меняя в задачах.`,
     bestNext: (title: string, score: number) => `Лучший следующий шаг — «${title}», оценка приоритета ${score}.`,
     allCaughtUp: "Всё сделано — открытых задач сейчас нет.",
+    taskTitleClarification: "Как назвать эту задачу? Не удалось распознать подходящее название.",
+    captureRemaining: (count: number) => `Удалось обработать только первые 10 пунктов. Ещё ${count} нужно добавить — отправьте их отдельным сообщением.`,
     noTaskFound: "Не нашёл здесь задачи — попробуйте назвать, что нужно сделать, например «убраться дома завтра».",
     adviceDoNow: (label: string, duration: string) => `Сделайте сейчас: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `Просто сделайте — «${title}» займёт около ${duration}.`,

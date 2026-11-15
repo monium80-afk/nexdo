@@ -640,6 +640,8 @@ export const bn: Translations = {
     overdueWorkflow: (text: string) => `কোনো কাজ না বদলেই "${text}"-এ সাহায্য করব।`,
     bestNext: (title: string, score: number) => `আপনার পরের সবচেয়ে ভালো পদক্ষেপ "${title}" — অগ্রাধিকার স্কোর ${score}।`,
     allCaughtUp: "সব শেষ — এখন কিছু বাকি নেই।",
+    taskTitleClarification: "এই কাজটির নাম কী হবে? বৈধ কোনো শিরোনাম বুঝতে পারিনি।",
+    captureRemaining: (count: number) => `শুধু প্রথম ১০টি বিষয় প্রক্রিয়া করতে পেরেছি। আরও ${count}টি যোগ করা বাকি — সেগুলো আরেকটি বার্তায় পাঠান।`,
     noTaskFound: 'এতে কোনো কাজ পাইনি — কী করতে হবে সেটা বলুন, যেমন "কাল ঘর পরিষ্কার করা"।',
     adviceDoNow: (label: string, duration: string) => `এখনই এটা করুন: ${label} (~${duration})।`,
     adviceJustDo: (title: string, duration: string) => `শুধু করে ফেলুন — ${title}-এ প্রায় ${duration} লাগবে।`,

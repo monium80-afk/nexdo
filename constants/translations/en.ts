@@ -708,6 +708,8 @@ export const en = {
     overdueWorkflow: (text: string) => `I'll help with "${text}" without changing a task yet.`,
     bestNext: (title: string, score: number) => `Your best next move is "${title}" — priority score ${score}.`,
     allCaughtUp: "You're all caught up — nothing pending right now.",
+    taskTitleClarification: "What should I call this task? I couldn't make out a valid title.",
+    captureRemaining: (count: number) => `I could only process the first 10 items. ${count} more still need to be added — send them in another message.`,
     noTaskFound: 'I couldn\'t find a task in that — try naming what you need to do, like "clean the house tomorrow".',
     adviceDoNow: (label: string, duration: string) => `Do this now: ${label} (~${duration}).`,
     adviceJustDo: (title: string, duration: string) => `Just do it — ${title} should take about ${duration}.`,

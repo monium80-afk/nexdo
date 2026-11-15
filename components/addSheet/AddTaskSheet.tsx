@@ -408,6 +408,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
         return;
       }
       setFound(drafts.length > 0 ? { tasks: drafts.map(fromDraft), keep: drafts.map(() => true), source: "text" } : null);
+      setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : null);
       setAiState(drafts.length > 0 ? "idle" : "empty");
     } catch (error) {
       if (!mounted.current) return;
@@ -471,10 +472,11 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       if (!mounted.current || request !== attachmentRequest.current) return;
       setAttachment({ file, status: "done" });
       if (drafts.length === 0) {
-        setProblem(t.form.quick.aiNothing);
+        setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : t.form.quick.aiNothing);
         return;
       }
       setFound({ tasks: drafts.map(fromDraft), keep: drafts.map(() => true), source: "photo" });
+      setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : null);
     } catch (error) {
       if (!mounted.current || request !== attachmentRequest.current) return;
       setAttachment({ file, status: "failed" });

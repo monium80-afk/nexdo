@@ -9,7 +9,8 @@ process.env.TZ = "Europe/Paris";
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
-import { resolveInboxMessage, type InboxRequestBody } from "@/app/api/inbox+api";
+import { resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
+import { toStructuredAction } from "@/lib/ai/classifyIntent";
 import { GeminiTimeoutError } from "@/lib/ai/gemini";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore, whenAccountRead } from "@/store/useTaskStore";
@@ -299,6 +300,62 @@ describe("the inbox route, when the model makes no progress", () => {
     const result = await resolveInboxMessage(body("buy milk"), echoingModel(asked) as never);
     assert.deepEqual(asked, ["buy milk"]);
     assert.deepEqual(result.actions.map((entry) => entry.fields.title), ["Buy milk"]);
+  });
+
+  it("reports fragments left beyond the recovery cap after the first turn fails", async () => {
+    let calls = 0;
+    const recovering = async ({ userContent }: { userContent: string }) => {
+      if (calls++ < 2) throw new SyntaxError("malformed response");
+      const { message } = JSON.parse(userContent.split("\n").at(-1)!) as { message: string };
+      return {
+        intent: "create_task",
+        action: { type: "CREATE_TASK", fields: { title: message }, confirmationRequired: true },
+        remainingMessage: null,
+        reply: `Added ${message}.`,
+      };
+    };
+    const result = await resolveInboxMessage(
+      body(Array.from({ length: 12 }, (_, index) => `task ${index + 1}`).join(", ")),
+      recovering as never,
+    );
+    assert.equal(result.actions.length, 10);
+    assert.equal(result.remainingFragments, 2);
+  });
+
+  it("shortens a valid long task title and asks when no valid title remains", async () => {
+    const longTitle = await resolveInboxMessage(body("do something useful"), (async () => ({
+      intent: "create_task",
+      action: { type: "CREATE_TASK", fields: { title: "a".repeat(90) }, confirmationRequired: true },
+      remainingMessage: null,
+      reply: "Added it.",
+    })) as never);
+    assert.equal(longTitle.actions[0].fields.title?.length, 80);
+    assert.equal(longTitle.actions[0].reply, "Added it.");
+
+    const noTitle = await resolveInboxMessage(body("do something useful"), (async () => ({
+      intent: "create_task",
+      action: { type: "CREATE_TASK", fields: {}, confirmationRequired: true },
+      remainingMessage: null,
+      reply: "Done.",
+    })) as never);
+    assert.equal(noTitle.actions[0].reply, "What should I call this task? I couldn't make out a valid title.");
+  });
+});
+
+describe("listing explicit task aliases", () => {
+  it("keeps selected ids even when the filter is empty", () => {
+    const action: InboxAction = {
+      type: "LIST_TASKS",
+      taskId: null,
+      taskIds: ["t2"],
+      filter: null,
+      fields: {},
+      confirmationRequired: false,
+    };
+    assert.deepEqual(
+      toStructuredAction(action, { now: new Date(), realId: (alias) => (alias === "t2" ? "task-2" : null) }),
+      { type: "LIST_TASKS", filter: {}, taskIds: ["task-2"], confirmationTier: "safe" },
+    );
   });
 });
 

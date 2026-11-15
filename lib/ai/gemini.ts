@@ -265,6 +265,7 @@ async function callGemini(params: {
   cachedContent?: string;
   parts: GeminiPart[];
   responseSchema?: GeminiJsonSchema;
+  maxOutputTokens?: number;
   /** When to give up (ms since the epoch); DEFAULT_CALL_BUDGET_MS from now if not given. */
   deadline?: number;
 }): Promise<string> {
@@ -278,15 +279,13 @@ async function callGemini(params: {
         : { systemInstruction: params.systemPrompt ? { parts: [{ text: params.systemPrompt }] } : undefined }),
       contents: [{ role: "user", parts: params.parts }],
       generationConfig: {
-        // A small but non-zero budget — see the model comment above. Zero
-        // (thinking fully off) is what caused the runaway failures; this
-        // model also accepts thinkingBudget: 0 without erroring, unlike some
-        // other 3.x models, which makes that failure mode easy to miss.
-        thinkingConfig: { thinkingBudget: 512 },
+        // Gemini 3.1 Flash-Lite supports thinkingLevel; "low" leaves room for
+        // date reasoning without spending a large fraction of the output budget.
+        thinkingConfig: { thinkingLevel: "low" },
         // Generous enough for a normal reply, but deliberately not huge:
         // if the model ever does start rambling instead of answering, this
         // caps how much time/tokens that failure burns before falling back.
-        maxOutputTokens: 2048,
+        maxOutputTokens: params.maxOutputTokens ?? 2048,
         // Low temperature for a classification/extraction task with a
         // fixed schema — deterministic field-filling, not creative writing.
         temperature: 0,
@@ -311,9 +310,16 @@ async function callGemini(params: {
 
   const data = await response.json();
   logUsage(params.label, data.usageMetadata);
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    throw new Error("Gemini response was truncated at the output token limit");
+  }
+  if (candidate?.finishReason && candidate.finishReason !== "STOP") {
+    throw new Error(`Gemini response did not complete: ${candidate.finishReason}`);
+  }
   // find() rather than parts[0] as cheap insurance against a stray
   // non-text part (e.g. a thought) landing before the real text part.
-  const text = data.candidates?.[0]?.content?.parts?.find((p: { text?: string }) => typeof p.text === "string")?.text;
+  const text = candidate?.content?.parts?.find((p: { text?: string }) => typeof p.text === "string")?.text;
   if (typeof text !== "string") {
     throw new Error("Gemini response had no text content");
   }
@@ -457,6 +463,7 @@ export async function extractTextFromMedia(params: {
   const text = await callGemini({
     label: params.label,
     parts: [{ inlineData: { mimeType: params.mimeType, data: params.base64 } }, { text: params.instruction }],
+    maxOutputTokens: 8192,
     deadline: params.deadline,
   });
   return text.trim();

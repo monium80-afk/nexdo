@@ -60,7 +60,7 @@ async function fetchIsPro(userId: string, key: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     signal: AbortSignal.timeout(REVENUECAT_TIMEOUT_MS),
   });
-  if (response.status >= 400 && response.status < 500) {
+  if (response.status >= 400 && response.status < 500 && response.status !== 429) {
     throw new RevenueCatRefusedError(`RevenueCat answered ${response.status}`);
   }
   if (!response.ok) throw new Error(`RevenueCat answered ${response.status}`);
@@ -132,7 +132,7 @@ function planLimitResponse(meter: Meter, plan: Plan): Response {
  * What's allowed can't be worked out right now: the counts can't be read, or
  * a Pro claim can't be checked. The app treats it like any other AI outage.
  */
-function usageUnavailable(): Response {
+export function usageUnavailable(): Response {
   return Response.json({ error: "usage_unavailable" }, { status: 503 });
 }
 
@@ -255,6 +255,7 @@ export async function settleLiveSession(userId: string, sessionId: string, secon
   } catch (error) {
     // The session stays counted in full.
     console.error("[serverPlan] couldn't settle a Live voice session", error);
+    throw error;
   }
 }
 

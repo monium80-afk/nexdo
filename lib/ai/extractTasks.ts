@@ -129,7 +129,8 @@ const CHITCHAT_PATTERN = /^\s*(hi|hey|hello|yo|thanks|thank you|ok|okay|cool|nic
 export function parseDurationMinutes(text: string): number | undefined {
   for (const match of text.matchAll(DURATION_PATTERN)) {
     const [, before, digits, digitUnit, words, wordUnit, ago] = match;
-    if (ago || /^(in|within|dans|en|hace|vor)$/i.test(before ?? "")) continue;
+    const prefix = `${text.slice(0, match.index)}${before ?? ""} `;
+    if (ago || /^(in|within|dans|en|hace|vor)$/i.test(before ?? "") || /\bin\s+(?:the\s+)?next\s*$/i.test(prefix)) continue;
     const amountText = (digits ?? words).toLowerCase();
     // "half an hour" — "half" lands in the word-before capture.
     const amount = /^half$/i.test(before ?? "") ? 0.5 : (DURATION_WORDS[amountText] ?? Number.parseFloat(amountText));
@@ -201,8 +202,14 @@ function looksLikeTask(fragment: string): boolean {
 // simple sentence/keyword splitting, not general NLU — this is the offline
 // fallback for when /api/inbox can't be reached.
 export function extractTasks(text: string, now: Date = new Date(), language?: AppLanguage): ExtractedTaskDraft[] {
-  const fragments = text
+  const dateComma = "\uE000";
+  const protectedText = text.replace(
+    /\b(?:january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept?|october|oct|november|nov|december|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?,\s+\d{4}\b/gi,
+    (date) => date.replace(",", dateComma),
+  );
+  const fragments = protectedText
     .split(/\n|,| and then | and |;/i)
+    .map((fragment) => fragment.replaceAll(dateComma, ","))
     .map((fragment) => fragment.trim())
     .filter(looksLikeTask);
 

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { guessDuration } from "@/lib/ai/extractTasks";
+import { guessDuration, parseDurationMinutes } from "@/lib/ai/extractTasks";
 
 describe("duration guessed from the user's words", () => {
   it("a stated length always wins", () => {
@@ -22,5 +22,11 @@ describe("duration guessed from the user's words", () => {
     assert.equal(guessDuration("write the report"), 60);
     assert.equal(guessDuration("call the dentist"), 15);
     assert.equal(guessDuration("brush up on my French"), 30);
+  });
+
+  it('does not mistake "in the next" estimates for task durations', () => {
+    assert.equal(parseDurationMinutes("Finish in the next 2 hours"), undefined);
+    assert.equal(parseDurationMinutes("Finish in next 2 hours"), undefined);
+    assert.equal(parseDurationMinutes("Finish for 2 hours"), 120);
   });
 });

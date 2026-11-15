@@ -13,6 +13,7 @@
 // tampered app admits to, it can only open so many sessions a day, each no
 // longer than its token allows.
 import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
+import { usageUnavailable } from "@/lib/serverPlan";
 
 export type AiRoute = "live-session";
 
@@ -44,7 +45,7 @@ export async function claimUserCall(userId: string, route: AiRoute): Promise<Res
     } else {
       console.error("[aiUsageLimit] couldn't check the daily limit (is the ai_usage SQL in supabase/schema.sql run?)", error);
     }
-    return null;
+    return usageUnavailable();
   }
 
   if (allowed) return null;

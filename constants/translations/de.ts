@@ -681,6 +681,8 @@ export const de: Translations = {
     bestNext: (title: string, score: number) =>
       `Dein bester nächster Schritt: „${title}“ — Prioritäts-Score ${score}.`,
     allCaughtUp: "Alles erledigt — gerade ist nichts offen.",
+    taskTitleClarification: "Wie soll diese Aufgabe heißen? Ich konnte keinen gültigen Titel erkennen.",
+    captureRemaining: (count: number) => `Ich konnte nur die ersten 10 Einträge verarbeiten. ${count} weitere müssen noch hinzugefügt werden — sende sie in einer weiteren Nachricht.`,
     noTaskFound:
       "Darin konnte ich keine Aufgabe finden — sag mir einfach, was du erledigen musst, z. B. „morgen die Wohnung putzen“.",
     adviceDoNow: (label: string, duration: string) => `Mach das jetzt: ${label} (~${duration}).`,
