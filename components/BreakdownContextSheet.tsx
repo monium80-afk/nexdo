@@ -77,7 +77,13 @@ export function BreakdownContextSheet({
     }
     endRecording("voiceNote");
   };
-  useEffect(() => () => stopRecorder(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      run.current += 1;
+      stopRecorder();
+    },
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const handleClose = () => {
     run.current += 1;
@@ -129,32 +135,46 @@ export function BreakdownContextSheet({
   };
 
   const handlePick = async (pick: () => Promise<PickOutcome>) => {
+    const id = ++run.current;
     try {
       const outcome = await pick();
+      if (id !== run.current) return;
       if (outcome.status === "picked") void readFile(outcome.file);
       else if (outcome.status === "tooBig") setPhase({ kind: "error", message: t.taskDetail.attach.tooBig });
       else if (outcome.status === "unsupported") setPhase({ kind: "error", message: t.taskDetail.attach.unsupported });
       else if (outcome.status === "denied") setPhase({ kind: "error", message: t.taskDetail.attach.cameraDenied });
     } catch (error) {
+      if (id !== run.current) return;
       console.warn("[BreakdownContextSheet] couldn't pick a file", error);
       setPhase({ kind: "error", message: t.taskDetail.attach.pickFailed });
     }
   };
 
   const startRecording = async () => {
+    const id = ++run.current;
     try {
       const permission = await requestRecordingPermissionsAsync();
+      if (id !== run.current) return;
       if (!permission.granted) {
         setPhase({ kind: "error", message: t.live.problems.permission });
         return;
       }
       await beginRecording("voiceNote");
+      if (id !== run.current) {
+        endRecording("voiceNote");
+        return;
+      }
       await recorder.prepareToRecordAsync();
+      if (id !== run.current) {
+        stopRecorder();
+        return;
+      }
       recorder.record();
       setPhase({ kind: "recording" });
     } catch (error) {
-      console.warn("[BreakdownContextSheet] couldn't start recording", error);
       endRecording("voiceNote");
+      if (id !== run.current) return;
+      console.warn("[BreakdownContextSheet] couldn't start recording", error);
       setPhase({ kind: "error", message: t.breakdown.couldntHear });
     }
   };
@@ -166,6 +186,7 @@ export function BreakdownContextSheet({
     try {
       await recorder.stop();
       endRecording("voiceNote");
+      if (id !== run.current) return;
       const uri = recorder.uri;
       if (!uri) throw new Error("no recording");
       const text = await extractAttachmentText(

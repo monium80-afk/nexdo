@@ -3,6 +3,7 @@ import { toStructuredAction, toTaskFilter } from "@/lib/ai/classifyIntent";
 import { guessDuration } from "@/lib/ai/extractTasks";
 import type { ExtractedTaskDraft, StructuredAction } from "@/lib/ai/types";
 import { getLanguage } from "@/lib/i18n";
+import { sameTaskField, sameTaskSnapshot, type MicFieldWrite, type MicTaskWrite } from "@/lib/magicMicChanges";
 import { parseQuickAdd } from "@/lib/quickAdd";
 import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { matchesFilter } from "@/lib/taskOperations";
@@ -255,10 +256,65 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   // Every task a change from this session added, changed or removed — kept
   // after an undo too (the overlay compares those against how they started).
   const touched = new Set<string>();
+  const micWrites = new Map<string, MicTaskWrite>();
   // Tasks the user only named (show_task): id → when, latest naming wins.
   const shown = new Map<string, number>();
   const remember = (snapshots: Snapshot[]) => {
-    for (const snapshot of snapshots) touched.add(snapshot.taskId);
+    const current = new Map(useTaskStore.getState().tasks.map((task) => [task.id, task]));
+    for (const snapshot of snapshots) {
+      touched.add(snapshot.taskId);
+      const after = current.get(snapshot.taskId) ?? null;
+      const previous = micWrites.get(snapshot.taskId);
+      if (!previous) {
+        const fields = new Map<string, MicFieldWrite>();
+        if (snapshot.before && after) {
+          const keys = new Set([...Object.keys(snapshot.before), ...Object.keys(after)]);
+          for (const field of keys) {
+            if (field === "updatedAt") continue;
+            const before = snapshot.before[field as keyof Task];
+            const lastWritten = after[field as keyof Task];
+            if (!sameTaskField(before, lastWritten)) fields.set(field, { before, lastWritten, conflicted: false });
+          }
+        }
+        micWrites.set(snapshot.taskId, { before: snapshot.before, lastWritten: after, fields, conflicted: false });
+        continue;
+      }
+
+      const fields = new Map(previous.fields);
+      let conflicted = previous.conflicted;
+      const before = snapshot.before;
+      if (previous.before === null) {
+        if (before && previous.lastWritten && !sameTaskSnapshot(before, previous.lastWritten)) conflicted = true;
+      } else if (before && previous.lastWritten) {
+        for (const [field, write] of fields) {
+          if (!sameTaskField(before[field as keyof Task], write.lastWritten)) {
+            fields.set(field, { ...write, conflicted: true });
+          }
+        }
+        if (!after && !sameTaskSnapshot(before, previous.lastWritten)) conflicted = true;
+      } else if (previous.lastWritten === null && before) {
+        conflicted = true;
+      }
+
+      if (before && after) {
+        const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+        for (const field of keys) {
+          if (field === "updatedAt") continue;
+          const beforeValue = before[field as keyof Task];
+          const afterValue = after[field as keyof Task];
+          if (sameTaskField(beforeValue, afterValue)) continue;
+          const existing = fields.get(field);
+          if (!existing) {
+            fields.set(field, { before: beforeValue, lastWritten: afterValue, conflicted: false });
+            continue;
+          }
+          const fieldConflicted = existing.conflicted || !sameTaskField(beforeValue, existing.lastWritten);
+          if (!fieldConflicted && sameTaskField(afterValue, existing.before)) fields.delete(field);
+          else fields.set(field, { ...existing, lastWritten: afterValue, conflicted: fieldConflicted });
+        }
+      }
+      micWrites.set(snapshot.taskId, { ...previous, lastWritten: after, fields, conflicted });
+    }
     undoStack.push(snapshots);
   };
   // Recent calls, with the task each was about (the model's id for it).
@@ -279,7 +335,24 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   const undo = (): boolean => {
     const entry = undoStack.pop();
     if (!entry) return false;
+    const beforeUndo = new Map(useTaskStore.getState().tasks.map((task) => [task.id, task]));
     useTaskStore.getState().restoreSnapshots(entry);
+    const afterUndo = new Map(useTaskStore.getState().tasks.map((task) => [task.id, task]));
+    for (const snapshot of entry) {
+      if (beforeUndo.get(snapshot.taskId) === afterUndo.get(snapshot.taskId)) continue;
+      const previous = micWrites.get(snapshot.taskId);
+      if (!previous) continue;
+      const after = afterUndo.get(snapshot.taskId) ?? null;
+      const fields = new Map(previous.fields);
+      if (after) {
+        for (const [field, write] of fields) {
+          const value = after[field as keyof Task];
+          if (!write.conflicted && sameTaskField(value, write.before)) fields.delete(field);
+          else fields.set(field, { ...write, lastWritten: value });
+        }
+      }
+      micWrites.set(snapshot.taskId, { ...previous, lastWritten: after, fields });
+    }
     // Whatever was undone can be asked for again, and be done again.
     recent = [];
     return true;
@@ -541,7 +614,8 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
       const taskId = text(call.args.taskId) ?? result.taskId;
       // A change to a task makes the earlier calls about it history: the
       // same call again is a new instruction now, not their echo.
-      if (result.ok && taskId) recent = recent.filter((entry) => entry.taskId !== taskId);
+      if (result.ok && call.name === "change_tasks") recent = [];
+      else if (result.ok && taskId) recent = recent.filter((entry) => entry.taskId !== taskId);
       recent.push({ key, at: now, taskId, result });
       return result;
     },
@@ -552,5 +626,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
     touchedIds: (): string[] => [...touched],
     /** The tasks the user only named (show_task), with when, oldest first. */
     shownTasks: (): { taskId: string; at: number }[] => [...shown].map(([taskId, at]) => ({ taskId, at })),
+    /** The mic's original value and latest write for each touched task. */
+    micWrites: (): ReadonlyMap<string, MicTaskWrite> => new Map(micWrites),
   };
 }

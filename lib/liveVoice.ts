@@ -1,6 +1,7 @@
 import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
 import { AiConsentError } from "@/lib/aiConsent";
 import { audioLevel, decodeUtf8, encodeBase64, parseServerMessage, toMonoPcm16, type LiveEvent } from "@/lib/liveProtocol";
+import type { MicTaskWrite } from "@/lib/magicMicChanges";
 import type { LiveToolCall, LiveToolResult } from "@/lib/liveVoiceTools";
 import { PlanLimitError } from "@/lib/plan";
 
@@ -81,6 +82,8 @@ export type LiveVoiceDeps = {
   touchedIds?: () => readonly string[];
   /** The tasks the current session only named (lib/liveVoiceTools.ts shownTasks). */
   shownTasks?: () => readonly ShownTask[];
+  /** Original values and latest writes, for safely discarding mic changes. */
+  micWrites?: () => ReadonlyMap<string, MicTaskWrite>;
   /** How loud the microphone is (0–1) with every buffer sent, then 0 once it stops — for the sound waves. */
   onLevel?: (level: number) => void;
   /**
@@ -130,6 +133,8 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   // Google heard speech it hasn't finished acting on yet (ACTIVITY_START
   // without a turnComplete after it) — what Stop has to wait for.
   let turnOpen = false;
+  // Audio can be in flight before Google's speechStart event arrives.
+  let audioSinceTurnComplete = false;
   let finishTimer: ReturnType<typeof setTimeout> | undefined;
   let connectTimer: ReturnType<typeof setTimeout> | undefined;
   let limitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -184,6 +189,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     clearTimeout(silenceTimer);
     streaming = false;
     turnOpen = false;
+    audioSinceTurnComplete = false;
     ready = false;
     held = [];
     stopMicrophone(current);
@@ -208,7 +214,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     clearTimeout(limitTimer);
     clearTimeout(silenceTimer);
     // Everything said has been acted on: nothing to wait for.
-    if (!turnOpen || socket?.readyState !== SOCKET_OPEN) {
+    if ((!turnOpen && !audioSinceTurnComplete) || socket?.readyState !== SOCKET_OPEN) {
       end("stopped", problem);
       return;
     }
@@ -235,7 +241,10 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   const startListening = (current: number) => {
     if (current !== session || state.status !== "connecting") return;
     clearTimeout(connectTimer);
-    if (socket?.readyState === SOCKET_OPEN) held.forEach((message) => socket?.send(message));
+    if (socket?.readyState === SOCKET_OPEN) {
+      if (held.length > 0) audioSinceTurnComplete = true;
+      held.forEach((message) => socket?.send(message));
+    }
     held = [];
     listeningSince = Date.now();
     setState({ status: "listening", startedAt: listeningSince });
@@ -330,6 +339,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
         return;
       case "turnComplete":
         turnOpen = false;
+        audioSinceTurnComplete = false;
         if (state.status === "finishing") end("stopped", state.problem);
         else waitForSpeech();
         return;
@@ -364,6 +374,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     session += 1;
     const current = session;
     turnOpen = false;
+    audioSinceTurnComplete = false;
     ready = false;
     held = [];
     setState({ status: "connecting", problem: null, startedAt: null, changes: 0, undoable: 0, hearing: false });
@@ -450,7 +461,10 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
         if (held.length > MAX_HELD_CHUNKS) held.shift();
         return;
       }
-      if (socket?.readyState === SOCKET_OPEN) socket.send(message);
+      if (socket?.readyState === SOCKET_OPEN) {
+        socket.send(message);
+        audioSinceTurnComplete = true;
+      }
     },
     /** The screen is going away: end any session. Changes already made stay. */
     dispose: () => {
@@ -465,5 +479,6 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       };
     },
     getState: () => state,
+    micWrites: () => deps.micWrites?.() ?? new Map(),
   };
 }

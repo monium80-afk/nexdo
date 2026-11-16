@@ -8,6 +8,7 @@ process.env.TZ = "Europe/Paris";
 
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
 import { toStructuredAction } from "@/lib/ai/classifyIntent";
@@ -18,6 +19,7 @@ import type { Task } from "@/types/task";
 
 import { apiCalls } from "./stubs/api";
 import { fakeDb } from "./stubs/supabase";
+import { makeTask } from "./helpers";
 
 const USER = "user_1";
 const DAY = 24 * 60 * 60 * 1000;
@@ -99,6 +101,26 @@ describe("waiting for the account's tasks", () => {
     releaseSecond();
     await secondRead;
     assert.equal(await waiting, true);
+  });
+
+  it("does not restore a previous account's stash after another account starts loading", async () => {
+    const previousUser = "previous-user";
+    const activeUser = "active-user";
+    const stashKey = `nexdo-unsynced-tasks:${previousUser}`;
+    const stashedTask = makeTask({ id: "previous-account-task" });
+    await AsyncStorage.setItem(stashKey, JSON.stringify([stashedTask]));
+    useTaskStore.setState({ tasks: [], unsynced: {}, pendingDeletes: {}, ownerId: null, syncUserId: null });
+
+    const previousRead = useTaskStore.getState().hydrateFromSupabase(previousUser);
+    await Promise.resolve();
+    const activeRead = useTaskStore.getState().hydrateFromSupabase(activeUser);
+
+    assert.equal(await previousRead, false);
+    assert.equal(await activeRead, true);
+    assert.equal(useTaskStore.getState().ownerId, activeUser);
+    assert.equal(task(stashedTask.id), undefined);
+    assert.ok(await AsyncStorage.getItem(stashKey), "the previous account's unsynced task remains stashed");
+    await AsyncStorage.removeItem(stashKey);
   });
 });
 

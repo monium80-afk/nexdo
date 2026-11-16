@@ -144,6 +144,11 @@ const english: LanguageSpec = {
       body: `(?:on\\s+)?the\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?${EN_EVERY}\\s+month`,
       build: ([day]) => monthDayRule(day),
     },
+    // "every 2nd Monday" is a weekly interval, not a monthly day number.
+    {
+      body: `${EN_EVERY}\\s+${EN_N}\\s+(${EN_LIST})`,
+      build: ([n, list], spec) => weekly(weekdaysIn(list, spec), toInterval(n)),
+    },
     // "every 1st", "every 15th of the month" — the ordinal is required, so "every 3 days" isn't one.
     {
       body: `${EN_EVERY}\\s+(\\d{1,2})(?:st|nd|rd|th)(?:\\s+of\\s+the\\s+month)?`,

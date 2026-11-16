@@ -266,7 +266,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // Whether the sheet is still open when an AI answer comes back. Set in the
   // effect too: development mounts everything twice, cleanup included.
   const mounted = useRef(true);
-  const attachmentRequest = useRef(0);
+  const readRequest = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -298,6 +298,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   const close = useCallback(() => {
     if (closing.current) return;
     closing.current = true;
+    readRequest.current += 1;
     Keyboard.dismiss();
     progress.set(
       withTiming(0, { duration: reduceMotion ? 0 : CLOSE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
@@ -395,13 +396,14 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // makes of it as new tasks. Counted against the month's AI messages.
   const handleAiRead = async () => {
     const text = line.trim();
-    if (!text || aiState === "reading") return;
+    if (!text || aiState === "reading" || attachment?.status === "reading") return;
+    const request = ++readRequest.current;
     setAiState("reading");
     posthog.capture("quick_add_ai_read");
     try {
       const turn = await classifyIntent({ text, now: new Date(), recentTaskIds: [], tasks: [] });
       const drafts = turn.actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : []));
-      if (!mounted.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       // The line may have changed while the AI was reading it: then its answer is stale.
       if (lineRef.current.trim() !== text) {
         setAiState("idle");
@@ -411,7 +413,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : null);
       setAiState(drafts.length > 0 ? "idle" : "empty");
     } catch (error) {
-      if (!mounted.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       setAiState("idle");
       if (error instanceof PlanLimitError) showPlanLimit(error.meter);
       // classifyIntent falls back to the offline reader when the AI can't be
@@ -431,17 +433,18 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       openPaywall("media");
       return;
     }
-    const request = ++attachmentRequest.current;
+    const request = ++readRequest.current;
+    setAiState("idle");
     let outcome: PickOutcome;
     try {
       outcome = await pick();
     } catch (error) {
-      if (!mounted.current || request !== attachmentRequest.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       console.warn("[AddTaskSheet] couldn't pick a file", error);
       setProblem(t.taskDetail.attach.pickFailed);
       return;
     }
-    if (!mounted.current || request !== attachmentRequest.current || outcome.status === "cancelled") return;
+    if (!mounted.current || request !== readRequest.current || outcome.status === "cancelled") return;
     if (outcome.status !== "picked") {
       setProblem(
         outcome.status === "tooBig"
@@ -461,7 +464,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
     posthog.capture("add_task_from_file", { kind: file.kind });
     try {
       const text = await extractAttachmentText(file, { language: getLanguage() });
-      if (!mounted.current || request !== attachmentRequest.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       if (!text) {
         setAttachment({ file, status: "failed" });
         setProblem(file.kind === "photo" ? t.taskDetail.attach.emptyPhoto : t.taskDetail.attach.emptyDocument);
@@ -469,7 +472,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       }
       const turn = await classifyIntent({ text, now: new Date(), recentTaskIds: [], tasks: [] });
       const drafts = turn.actions.flatMap((action) => (action.type === "CREATE_TASK" ? action.drafts : []));
-      if (!mounted.current || request !== attachmentRequest.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       setAttachment({ file, status: "done" });
       if (drafts.length === 0) {
         setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : t.form.quick.aiNothing);
@@ -478,7 +481,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       setFound({ tasks: drafts.map(fromDraft), keep: drafts.map(() => true), source: "photo" });
       setProblem(turn.remainingFragments ? t.assistant.captureRemaining(turn.remainingFragments) : null);
     } catch (error) {
-      if (!mounted.current || request !== attachmentRequest.current) return;
+      if (!mounted.current || request !== readRequest.current) return;
       setAttachment({ file, status: "failed" });
       if (error instanceof PlanLimitError) showPlanLimit(error.meter);
       else setProblem(t.taskDetail.attach.readFailed);
@@ -486,7 +489,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   };
 
   const removeAttachment = () => {
-    attachmentRequest.current += 1;
+    readRequest.current += 1;
     setAttachment(null);
     setFound(null);
     setProblem(null);

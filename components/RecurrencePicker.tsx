@@ -79,6 +79,7 @@ export function RecurrencePicker({
     // defaultRecurrenceKind) until the user picks one below.
     onChange({
       frequency,
+      kind: value?.frequency === frequency ? value.kind : undefined,
       interval: value?.frequency === frequency ? value.interval : 1,
       weekdays: frequency === "weekly" ? (value?.weekdays?.length ? value.weekdays : [baseDay]) : undefined,
       endDate: value?.endDate,

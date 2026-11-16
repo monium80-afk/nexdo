@@ -217,6 +217,8 @@ export function useAuthSync() {
   // Nexdo Pro belongs to the account, so RevenueCat knows the user by their
   // Clerk id. Sign-out resets it (resetPurchaser, from the sign-out buttons).
   useEffect(() => {
-    if (userId) void identifyPurchaser(userId);
+    if (userId) {
+      void identifyPurchaser(userId).catch((error: unknown) => console.warn("[purchases] couldn't identify purchaser", error));
+    }
   }, [userId]);
 }

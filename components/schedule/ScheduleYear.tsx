@@ -69,21 +69,30 @@ const MonthCard = memo(function MonthCard({
   const current = today.startsWith(`${year}-${pad(month)}`);
   const tone = current ? "dark" : "light";
   const name = keyToLocalDate(first).toLocaleDateString(t.locale, { month: "short" }).replace(/\.$/, "");
+  const monthLabel = keyToLocalDate(first).toLocaleDateString(t.locale, { month: "long", year: "numeric" });
+  const gemLabels: Partial<Record<GemLevel, string>> = {
+    1: t.schedule.gemLevels.sleepy,
+    2: t.schedule.gemLevels.flicker,
+    3: t.schedule.gemLevels.steady,
+    4: t.schedule.gemLevels.glowing,
+    5: t.schedule.gemLevels.blazing,
+  };
 
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={keyToLocalDate(first).toLocaleDateString(t.locale, { month: "long", year: "numeric" })}
+      accessible={false}
       className={`flex-1 rounded-[15px] px-[8px] pb-[7.25px] pt-[10.75px] ${current ? "bg-ink" : "bg-paper-card"}`}
       style={current ? DARK_CARD_SHADOW : CARD_SHADOW}
     >
-      <Text
-        className={`font-mono-bold text-[9.5px] uppercase leading-[12px] tracking-[1.4px] ${current ? "text-peach-on-dark" : "text-ink-muted"}`}
-        style={TIGHT_TEXT}
-      >
-        {name}
-      </Text>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={monthLabel}>
+        <Text
+          className={`font-mono-bold text-[9.5px] uppercase leading-[12px] tracking-[1.4px] ${current ? "text-peach-on-dark" : "text-ink-muted"}`}
+          style={TIGHT_TEXT}
+        >
+          {name}
+        </Text>
+      </Pressable>
       <View className="mt-[5.45px]">
         {weeks.map((week, weekIndex) => (
           <View key={weekIndex} className="h-[10px] flex-row">
@@ -94,7 +103,18 @@ const MonthCard = memo(function MonthCard({
               const level = total > 0 ? gemLevelFor(plan?.done.length ?? 0, total) : null;
               const color = date > today ? FUTURE[tone] : level ? GEM_COLORS[level] : EMPTY[tone];
               return (
-                <View key={date} className="flex-1 items-center justify-center">
+                <View
+                  key={date}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={`${keyToLocalDate(date).toLocaleDateString(t.locale, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}${level ? `, ${gemLabels[level]}` : ""}`}
+                  className="flex-1 items-center justify-center"
+                >
                   <DayGem color={color} edged={current && date < today && (level === 1 || level === 2)} today={date === today} />
                 </View>
               );

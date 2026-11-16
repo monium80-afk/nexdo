@@ -7,7 +7,8 @@ const listeners = new Set<(event: { colorScheme: Scheme }) => void>();
 export const Platform = {
   OS: "ios" as string,
   select<T>(options: { ios?: T; android?: T; default?: T }): T | undefined {
-    return options.ios ?? options.default;
+    const platformOption = Platform.OS === "android" ? options.android : Platform.OS === "ios" ? options.ios : undefined;
+    return platformOption ?? options.default;
   },
 };
 
@@ -36,5 +37,6 @@ export const Alert = {
     alertCalls.push(args);
   },
 };
+export const Linking = { openURL: async (_url: string) => {} };
 
-export default { Platform, Appearance };
+export default { Platform, Appearance, Linking };

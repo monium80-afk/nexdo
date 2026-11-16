@@ -68,16 +68,28 @@ describe("occurrences are independent", () => {
   });
 
   it("editing just this occurrence leaves the series alone; 'future' changes it and keeps the history", () => {
-    const done = { ...mwf, id: "series-exercise@2026-09-21", status: "completed" as const, completedAt: "2026-09-21T17:00:00.000Z" };
+    const done = withDeadline(
+      {
+        ...mwf,
+        id: "series-exercise@2026-09-21",
+        status: "completed" as const,
+        completedAt: "2026-09-21T17:00:00.000Z",
+        recurrence: { ...mwf.recurrence!, occurrenceDate: "2026-09-21" },
+      },
+      makeDeadline({ date: "2026-09-21" }),
+    );
     const all = [done, mwf];
     const thisOnly = editTaskDelta(mwf, { title: "Run" }, "this", local(2026, 9, 28, 9), all).upserts;
     assert.equal(thisOnly[0].title, "Run");
     assert.equal(thisOnly[0].recurrence?.template.title, "exercise");
     assert.equal(thisOnly.length, 1);
 
+    const historicalSnapshot = structuredClone(done);
     const future = editTaskDelta(mwf, { title: "Run" }, "future", local(2026, 9, 28, 9), all).upserts;
     assert.equal(future[0].recurrence?.template.title, "Run");
     assert.equal(future.length, 1, "the completed occurrence isn't rewritten");
+    assert.equal(future.some((task) => task.id === done.id), false);
+    assert.deepEqual(done, historicalSnapshot);
   });
 
   it("moving an occurrence to Tuesday 'from now on' moves the rule; its date-only-ness follows the new deadline", () => {

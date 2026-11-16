@@ -445,7 +445,8 @@ export function latestDueSlot(rule: RecurrenceRule, after: LocalDate, today: Loc
         : rule.frequency === "monthly"
           ? rule.interval * 31
           : rule.interval * 366;
-  const from = addDaysToKey(today, -cycleDays - 1);
+  const lookbackEnd = rule.endDate && rule.endDate < today ? rule.endDate : today;
+  const from = addDaysToKey(lookbackEnd, -cycleDays - 1);
   let slot = nextSlot(rule, from > after ? from : after);
   if (!slot || slot > today) return null;
   for (let guard = 0; guard < 400; guard += 1) {

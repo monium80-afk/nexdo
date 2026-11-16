@@ -11,9 +11,11 @@ import { normalizeReassessment, parseReassessBody, type ReassessResponseBody } f
 import { en } from "@/constants/translations/en";
 import { makeDeadline, withDeadline } from "@/lib/deadline";
 import { toLocalDateKey } from "@/lib/localDate";
+import { discardSnapshots } from "@/lib/magicMicChanges";
 import { recommendTasks } from "@/lib/priority";
 import { normalizeRule, startSeries } from "@/lib/recurrence";
 import { DEFAULT_REMINDER_PREFERENCES, planNotifications } from "@/lib/reminders";
+import { normalizePersistedTasks, taskIdForCandidate } from "@/lib/taskModel";
 import { matchesFilter } from "@/lib/taskOperations";
 import { recalcAll } from "@/lib/taskPipeline";
 import { useReassessStore } from "@/store/useReassessStore";
@@ -50,6 +52,61 @@ beforeEach(async () => {
 });
 
 describe("saving a new task", () => {
+  it("only creates undo snapshots for tasks actually added", () => {
+    const existingId = taskIdForCandidate("already-added");
+    const newId = taskIdForCandidate("new-task");
+    useTaskStore.getState().addTask({
+      id: existingId,
+      title: "Existing task",
+      estimatedMinutes: 30,
+      priorityLevel: "medium",
+    });
+
+    const result = useTaskStore.getState().applyStructuredAction({
+      type: "CREATE_TASK",
+      confirmationTier: "confirm-required",
+      drafts: [
+        { candidateId: "already-added", title: "Duplicate", estimatedMinutes: 30, priorityLevel: "medium" },
+        { candidateId: "new-task", title: "New task", estimatedMinutes: 30, priorityLevel: "medium" },
+      ],
+    });
+    assert.deepEqual(result.undo, [{ taskId: newId, before: null }]);
+
+    useTaskStore.getState().restoreSnapshots(result.undo ?? []);
+    assert.ok(tasks().some((task) => task.id === existingId), "undo leaves the pre-existing task in place");
+    assert.ok(!tasks().some((task) => task.id === newId), "undo removes the task this action created");
+  });
+
+  it("discards only mic-written fields and preserves unrelated edits", () => {
+    const id = useTaskStore.getState().addTask({
+      title: "Original title",
+      estimatedMinutes: 30,
+      priorityLevel: "medium",
+    });
+    const before = tasks().find((task) => task.id === id)!;
+    const micTask = { ...before, title: "Mic title", updatedAt: "2026-11-15T12:00:00.000Z" };
+    const micWrite = {
+      before,
+      lastWritten: micTask,
+      fields: new Map([
+        ["title", { before: before.title, lastWritten: micTask.title, conflicted: false }],
+      ]),
+      conflicted: false,
+    };
+    const snapshots = discardSnapshots([micTask], [id], new Map([[id, micWrite]]));
+
+    useTaskStore.setState({ tasks: [{ ...micTask, notes: "Edited elsewhere" }] });
+    useTaskStore.getState().restoreSnapshots(snapshots);
+
+    const restored = tasks().find((task) => task.id === id)!;
+    assert.equal(restored.title, before.title);
+    assert.equal(restored.notes, "Edited elsewhere");
+
+    useTaskStore.setState({ tasks: [{ ...restored, title: "Changed after snapshot" }] });
+    useTaskStore.getState().restoreSnapshots(snapshots);
+    assert.equal(tasks().find((task) => task.id === id)?.title, "Changed after snapshot");
+  });
+
   it("a date-only deadline is saved date-only, into its own columns", async () => {
     const id = useTaskStore.getState().addTask({ title: "Study chemistry", estimatedMinutes: 120, priorityLevel: "high", deadline: { date: dayKey(1) } });
     await flush();
@@ -126,6 +183,11 @@ describe("AI updates from Task Details keep the same task", () => {
 });
 
 describe("archiving", () => {
+  it("preserves the archived status when normalizing persisted tasks", () => {
+    const [archived] = normalizePersistedTasks([makeTask({ id: "archived", status: "archived" })]);
+    assert.equal(archived.status, "archived");
+  });
+
   it("an archived task leaves the list, the recommendations and the reminders — and comes back on restore", async () => {
     const id = useTaskStore.getState().addTask({ title: "Old idea", estimatedMinutes: 30, priorityLevel: "medium", deadline: { date: dayKey(3) } });
     useTaskStore.getState().archiveTask(id);
@@ -162,7 +224,7 @@ describe("repeating tasks on launch and sync", () => {
     assert.equal(tasks().find((task) => task.id === "habit")?.status, "skipped");
 
     // A sync brings back the same rows: still one of each.
-    await useTaskStore.getState().hydrateFromSupabase(USER);
+    assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
     assert.deepEqual(tasks().map((task) => task.id).sort(), ids);
     assert.equal(fakeDb.rows("tasks").length, 2);
   });

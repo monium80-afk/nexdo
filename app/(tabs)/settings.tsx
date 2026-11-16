@@ -23,6 +23,7 @@ import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
+import { keyToLocalDate } from "@/lib/localDate";
 import { getNotificationPermission, requestNotificationPermission, type NotificationPermission } from "@/lib/notifications";
 import { buildInsights } from "@/lib/pace";
 import { openPaywall } from "@/lib/paywall";
@@ -392,8 +393,8 @@ export default function Settings() {
   const allEntries = useFocusLogStore((state) => state.entries);
   const allCompletions = useFocusLogStore((state) => state.completions);
   const week = useMemo(
-    () => buildInsights(entriesFor(allEntries, userId), entriesFor(allCompletions, userId), tasks, "week"),
-    [allEntries, allCompletions, tasks, userId],
+    () => buildInsights(entriesFor(allEntries, userId), entriesFor(allCompletions, userId), tasks, "week", keyToLocalDate(today)),
+    [allEntries, allCompletions, tasks, userId, today],
   );
   const weekMax = Math.max(1, ...week.bars.map((bar) => bar.tasksDone));
 

@@ -46,12 +46,15 @@ export const isTestStore = __DEV__ && API_KEY !== null && API_KEY === process.en
 let configured = false;
 
 // logIn / logOut can't overlap (the SDK refuses one while another is still
-// running), so account changes run one after another. A failure is logged and
-// the chain carries on, so the next change still gets its turn.
+// running), so account changes run one after another. The chain carries on
+// after failures, so the next change still gets its turn.
 let queue: Promise<void> = Promise.resolve();
-function enqueue(task: () => Promise<void>) {
-  queue = queue.then(task).catch((error: unknown) => console.warn("[purchases]", error));
-  return queue;
+function enqueue(task: () => Promise<void>, propagateFailure = false): Promise<void> {
+  const operation = queue.then(task);
+  queue = operation.catch((error: unknown) => {
+    if (!propagateFailure) console.warn("[purchases]", error);
+  });
+  return propagateFailure ? operation : queue;
 }
 
 // What the phone's trial reminder is set for, so an unchanged trial isn't
@@ -59,6 +62,7 @@ function enqueue(task: () => Promise<void>) {
 let trialReminderAt: number | null | undefined;
 // The latest sync, so an older one finishing late doesn't record its time.
 let trialReminderSync = 0;
+let identificationFailed = false;
 
 /**
  * Keeps the "your trial ends in 2 days" notification in step with the
@@ -121,22 +125,31 @@ function configure(apiKey: string) {
 export function identifyPurchaser(userId: string) {
   if (!API_KEY) return Promise.resolve();
   const apiKey = API_KEY;
-  return enqueue(async () => {
-    // Started without naming anyone, RevenueCat picks up the user it last ran
-    // as on this phone: this account on an ordinary launch — or, when the app
-    // was closed between onboarding's paywall and sign-up, the anonymous user
-    // that bought Pro there. Starting it as this account straight away would
-    // leave that purchase behind.
-    if (!configured) configure(apiKey);
-    if ((await Purchases.getAppUserID()) !== userId) {
-      // From onboarding's anonymous user, logging in a new account carries a
-      // subscription bought before sign-up over to it.
-      const { customerInfo } = await Purchases.logIn(userId);
-      publish(customerInfo);
-      return;
-    }
-    publish(await Purchases.getCustomerInfo());
-  });
+  return enqueue(
+    async () => {
+      try {
+        // Started without naming anyone, RevenueCat picks up the user it last ran
+        // as on this phone: this account on an ordinary launch — or, when the app
+        // was closed between onboarding's paywall and sign-up, the anonymous user
+        // that bought Pro there. Starting it as this account straight away would
+        // leave that purchase behind.
+        if (!configured) configure(apiKey);
+        if ((await Purchases.getAppUserID()) !== userId) {
+          // From onboarding's anonymous user, logging in a new account carries a
+          // subscription bought before sign-up over to it.
+          const { customerInfo } = await Purchases.logIn(userId);
+          publish(customerInfo);
+        } else {
+          publish(await Purchases.getCustomerInfo());
+        }
+        identificationFailed = false;
+      } catch (error) {
+        identificationFailed = true;
+        throw error;
+      }
+    },
+    true,
+  );
 }
 
 /**
@@ -161,8 +174,8 @@ export function startAnonymousPurchaser() {
  */
 export function resetPurchaser() {
   publish(null);
-  if (!configured) return Promise.resolve();
   return enqueue(async () => {
+    if (!configured) return;
     if (!(await Purchases.isAnonymous())) await Purchases.logOut();
   });
 }
@@ -289,7 +302,7 @@ export async function purchasePlan(plan: PurchasesPackage): Promise<PurchaseOutc
   // An account change still on its way to RevenueCat finishes first, so the
   // purchase is made for — and its Pro shown to — the account now signed in.
   await queue;
-  if (!configured) return "error";
+  if (!configured || identificationFailed) return "error";
   try {
     const { customerInfo } = await Purchases.purchasePackage(plan);
     publish(customerInfo);
@@ -318,7 +331,7 @@ export type RestoreOutcome = "restored" | "nothing" | "offline" | "error";
 /** Brings back Pro bought with this phone's App Store / Google Play account. */
 export async function restorePurchases(): Promise<RestoreOutcome> {
   await queue;
-  if (!configured) return "error";
+  if (!configured || identificationFailed) return "error";
   try {
     const customerInfo = await Purchases.restorePurchases();
     publish(customerInfo);

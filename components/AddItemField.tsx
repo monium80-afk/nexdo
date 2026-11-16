@@ -40,7 +40,7 @@ export function AddItemField({
         placeholder={placeholder}
         multiline={multiline}
         inputStyle={multiline ? { maxHeight: 120 } : undefined}
-        {...(multiline ? {} : { onSubmitEditing: disabled ? undefined : onAdd, returnKeyType: "done" as const })}
+        {...(multiline ? {} : { onSubmitEditing: disabled || !value.trim() ? undefined : onAdd, returnKeyType: "done" as const })}
       />
       <IconButton
         icon={icon}

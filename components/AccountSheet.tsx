@@ -368,6 +368,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
               setPasswordError(null);
               setEditingPassword(!editingPassword);
             }}
+            disabled={savingPassword || nameStatus === "saving"}
             scaleTo={0.97}
             accessibilityRole="button"
             style={{ flex: 1, height: 54, borderRadius: 27, backgroundColor: P.chip, alignItems: "center", justifyContent: "center" }}

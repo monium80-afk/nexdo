@@ -22,11 +22,13 @@ describe("repeat phrases", () => {
     assert.deepEqual(repeatOf("every 3 days"), { frequency: "daily", interval: 3 });
     assert.deepEqual(repeatOf("team call every monday"), { frequency: "weekly", interval: 1, weekdays: [1] });
     assert.deepEqual(repeatOf("every other tuesday"), { frequency: "weekly", interval: 2, weekdays: [2] });
+    assert.deepEqual(repeatOf("every 2nd Monday"), { frequency: "weekly", interval: 2, weekdays: [1] });
     assert.deepEqual(repeatOf("gym every mon, wed and fri"), { frequency: "weekly", interval: 1, weekdays: [1, 3, 5] });
     assert.deepEqual(repeatOf("standup weekdays"), { frequency: "weekly", interval: 1, weekdays: [1, 2, 3, 4, 5] });
     assert.deepEqual(repeatOf("every weekend"), { frequency: "weekly", interval: 1, weekdays: [6, 0] });
     assert.deepEqual(repeatOf("every 2 weeks on thursday"), { frequency: "weekly", interval: 2, weekdays: [4] });
     assert.deepEqual(repeatOf("pay rent every 1st"), { frequency: "monthly", interval: 1, monthDay: 1 });
+    assert.deepEqual(repeatOf("every 2nd"), { frequency: "monthly", interval: 1, monthDay: 2 });
     assert.deepEqual(repeatOf("on the 15th of every month"), { frequency: "monthly", interval: 1, monthDay: 15 });
     assert.deepEqual(repeatOf("every month"), { frequency: "monthly", interval: 1 });
     assert.deepEqual(repeatOf("biweekly"), { frequency: "weekly", interval: 2 });

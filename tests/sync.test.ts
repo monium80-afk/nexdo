@@ -24,21 +24,6 @@ describe("sync before the recurrence migration has been run", () => {
       recurrence: { frequency: "daily" },
     });
 
-    describe("cleaning up created task rows", () => {
-      it("deletes only when the row still has the version this save wrote", async () => {
-        fakeDb.reset();
-        fakeDb.tables.set(
-          "tasks",
-          new Map([["next", { id: "next", user_id: "user_1", updated_at: "2026-10-11T12:00:00.000Z" }]]),
-        );
-
-        await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T11:00:00.000Z" }], "user_1");
-        assert.ok(fakeDb.rows("tasks").some((row) => row.id === "next"), "a newer remote version is left in place");
-
-        await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T12:00:00.000Z" }], "user_1");
-        assert.equal(fakeDb.rows("tasks").some((row) => row.id === "next"), false);
-      });
-    });
     await flush();
     const tasks = useTaskStore.getState().tasks.filter((task) => task.id === plainId || task.id === repeatingId);
     fakeDb.reset();
@@ -70,5 +55,21 @@ describe("sync before the recurrence migration has been run", () => {
     await flush();
     assert.equal(fakeDb.rows("tasks").find((row) => row.id === repeating), undefined);
     assert.ok(repeating in useTaskStore.getState().unsynced);
+  });
+});
+
+describe("cleaning up created task rows", () => {
+  it("deletes only when the row still has the version this save wrote", async () => {
+    fakeDb.reset();
+    fakeDb.tables.set(
+      "tasks",
+      new Map([["next", { id: "next", user_id: "user_1", updated_at: "2026-10-11T12:00:00.000Z" }]]),
+    );
+
+    await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T11:00:00.000Z" }], "user_1");
+    assert.ok(fakeDb.rows("tasks").some((row) => row.id === "next"), "a newer remote version is left in place");
+
+    await deleteTaskRowsIfUnchanged([{ id: "next", updatedAt: "2026-10-11T12:00:00.000Z" }], "user_1");
+    assert.equal(fakeDb.rows("tasks").some((row) => row.id === "next"), false);
   });
 });

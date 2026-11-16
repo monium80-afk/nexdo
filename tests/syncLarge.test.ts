@@ -64,6 +64,35 @@ describe("more rows than one request returns", () => {
 });
 
 describe("re-reading the list while tasks change", () => {
+  it("keeps a task that was unsynced when the read began even if its save finishes during the read", async () => {
+    const updatedAt = new Date(Date.now() - 60_000).toISOString();
+    const task = {
+      id: "saved-during-read",
+      title: "Saved during the read",
+      status: "pending" as const,
+      estimatedMinutes: 30,
+      createdAt: updatedAt,
+      updatedAt,
+      priorityScore: 0,
+      suitabilityScore: 0,
+      importance: 50,
+      complexity: "simple" as const,
+      aiContext: { notes: [] },
+    };
+    useTaskStore.setState({ tasks: [task], unsynced: { [task.id]: updatedAt } });
+
+    const release = fakeDb.holdReads();
+    const reading = useTaskStore.getState().hydrateFromSupabase(USER);
+    await flush();
+    await useTaskStore.getState().saveUnsyncedTasks();
+    assert.deepEqual(useTaskStore.getState().unsynced, {});
+    assert.ok(fakeDb.rows("tasks").some((row) => row.id === task.id));
+
+    release();
+    assert.equal(await reading, true);
+    assert.ok(useTaskStore.getState().tasks.some((entry) => entry.id === task.id));
+  });
+
   it("tasks added and edited while the read is out stay as they are now; one deleted elsewhere long ago goes", async () => {
     const longAgo = new Date(Date.now() - 3_600_000).toISOString();
     const local = (id: string, updatedAt: string) => ({

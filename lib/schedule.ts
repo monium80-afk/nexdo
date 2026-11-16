@@ -145,7 +145,10 @@ function addPlanned(tasks: Task[], days: DayPlan[], from: LocalDate, until: Loca
   const today = toLocalDateKey(now);
   const real = new Set<string>();
   for (const task of tasks) {
-    if (task.recurrence) real.add(`${task.recurrence.seriesId}@${task.recurrence.occurrenceDate}`);
+    if (task.recurrence) {
+      real.add(`${task.recurrence.seriesId}@${task.recurrence.occurrenceDate}`);
+      if (task.deadline) real.add(`${task.recurrence.seriesId}@${deadlineOnThisPhone(task.deadline).date}`);
+    }
   }
   const seen = new Set<string>();
   for (const task of tasks) {

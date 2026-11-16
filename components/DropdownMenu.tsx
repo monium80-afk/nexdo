@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 
@@ -43,11 +43,13 @@ export function DropdownMenu<T extends string>({
 }) {
   const colors = useColors();
   const t = useTranslation();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(0);
   // Kept while it animates out, after the parent has already let go of it.
   const [shown, setShown] = useState<DropdownAnchor | null>(anchor);
+  const [menuSize, setMenuSize] = useState({ width: 0, height: 0 });
+  const [contentHeight, setContentHeight] = useState(0);
 
   if (anchor && anchor !== shown) setShown(anchor);
 
@@ -71,10 +73,19 @@ export function DropdownMenu<T extends string>({
 
   if (!shown) return null;
 
-  const position =
-    align === "left"
-      ? { left: Math.max(EDGE, shown.x) }
-      : { right: Math.max(EDGE, windowWidth - (shown.x + shown.width)) };
+  const maxWidth = Math.max(0, windowWidth - EDGE * 2);
+  const menuWidth = menuSize.width || Math.min(MIN_WIDTH, maxWidth);
+  const desiredLeft = align === "left" ? shown.x : shown.x + shown.width - menuWidth;
+  const left = Math.min(Math.max(EDGE, desiredLeft), Math.max(EDGE, windowWidth - EDGE - menuWidth));
+  const belowTop = shown.y + shown.height + GAP;
+  const aboveBottom = shown.y - GAP;
+  const availableBelow = Math.max(0, windowHeight - EDGE - belowTop);
+  const availableAbove = Math.max(0, aboveBottom - EDGE);
+  const naturalHeight = contentHeight || menuSize.height;
+  const placeAbove = naturalHeight > availableBelow && availableAbove > availableBelow;
+  const maxHeight = placeAbove ? availableAbove : availableBelow;
+  const visibleHeight = Math.min(naturalHeight || maxHeight, maxHeight);
+  const top = placeAbove ? Math.max(EDGE, aboveBottom - visibleHeight) : Math.min(belowTop, windowHeight - EDGE);
 
   return (
     // Translucent bars, so the modal's coordinates are the window's own and
@@ -82,57 +93,71 @@ export function DropdownMenu<T extends string>({
     <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onClose}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t.common.close} />
       <Animated.View
+        onLayout={({ nativeEvent: { layout } }) => {
+          setMenuSize((current) =>
+            current.width === layout.width && current.height === layout.height
+              ? current
+              : { width: layout.width, height: layout.height },
+          );
+        }}
         style={[
           {
             position: "absolute",
-            top: shown.y + shown.height + GAP,
-            minWidth: MIN_WIDTH,
-            maxWidth: windowWidth - EDGE * 2,
-            transformOrigin: align === "left" ? "top left" : "top right",
+            top,
+            left,
+            minWidth: Math.min(MIN_WIDTH, maxWidth),
+            maxWidth,
+            transformOrigin: placeAbove ? (align === "left" ? "bottom left" : "bottom right") : align === "left" ? "top left" : "top right",
           },
-          position,
           menuStyle,
         ]}
       >
-        <View className="card card--cream-elevated gap-0.5 rounded-[18px] p-1.5">
-          {options.map((option) => {
-            const isSelected = option.value === selected;
-            return (
-              <AnimatedPressable
-                key={option.value}
-                onPress={() => {
-                  onSelect(option.value);
-                  onClose();
-                }}
-                scaleTo={0.98}
-                accessibilityRole="menuitem"
-                accessibilityState={{ selected: isSelected }}
-                className={`flex-row items-center justify-between gap-4 rounded-[12px] px-3 py-2.5 ${isSelected ? "bg-orange-50" : ""}`}
-              >
-                <Text
-                  className={
-                    isSelected
-                      ? "font-grotesk-bold text-[14.5px] text-orange-600"
-                      : "font-grotesk-medium text-[14.5px] text-ink-cream"
-                  }
+        <ScrollView
+          style={{ maxHeight, flexGrow: 0, flexShrink: 1 }}
+          onContentSizeChange={(_width, height) => setContentHeight(height)}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View className="card card--cream-elevated gap-0.5 rounded-[18px] p-1.5">
+            {options.map((option) => {
+              const isSelected = option.value === selected;
+              return (
+                <AnimatedPressable
+                  key={option.value}
+                  onPress={() => {
+                    onSelect(option.value);
+                    onClose();
+                  }}
+                  scaleTo={0.98}
+                  accessibilityRole="menuitem"
+                  accessibilityState={{ selected: isSelected }}
+                  className={`flex-row items-center justify-between gap-4 rounded-[12px] px-3 py-2.5 ${isSelected ? "bg-orange-50" : ""}`}
                 >
-                  {option.label}
-                </Text>
-                <View className="flex-row items-center gap-2">
-                  {option.count !== undefined ? (
-                    <View className="rounded-full bg-cream-200 px-2 py-0.5">
-                      <Text className="font-grotesk-bold text-xs text-ink-cream-muted">{option.count}</Text>
+                  <Text
+                    className={
+                      isSelected
+                        ? "font-grotesk-bold text-[14.5px] text-orange-600"
+                        : "font-grotesk-medium text-[14.5px] text-ink-cream"
+                    }
+                  >
+                    {option.label}
+                  </Text>
+                  <View className="flex-row items-center gap-2">
+                    {option.count !== undefined ? (
+                      <View className="rounded-full bg-cream-200 px-2 py-0.5">
+                        <Text className="font-grotesk-bold text-xs text-ink-cream-muted">{option.count}</Text>
+                      </View>
+                    ) : null}
+                    {/* Always holds its place, so the labels don't shift as the pick moves. */}
+                    <View className="w-[16px] items-center">
+                      {isSelected ? <Feather name="check" size={16} color={colors.orange[500]} /> : null}
                     </View>
-                  ) : null}
-                  {/* Always holds its place, so the labels don't shift as the pick moves. */}
-                  <View className="w-[16px] items-center">
-                    {isSelected ? <Feather name="check" size={16} color={colors.orange[500]} /> : null}
                   </View>
-                </View>
-              </AnimatedPressable>
-            );
-          })}
-        </View>
+                </AnimatedPressable>
+              );
+            })}
+          </View>
+        </ScrollView>
       </Animated.View>
     </Modal>
   );

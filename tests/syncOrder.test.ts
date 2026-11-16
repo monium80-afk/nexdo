@@ -75,6 +75,52 @@ describe("task deletes that haven't reached Supabase", () => {
 });
 
 describe("saves and deletes of one task reach Supabase in order", () => {
+  it("clears a pending delete when saveTaskNow restores the task", async () => {
+    const id = addTask("Draft");
+    await flush();
+    useTaskStore.setState((state) => ({ pendingDeletes: { ...state.pendingDeletes, [id]: new Date().toISOString() } }));
+
+    const result = await useTaskStore.getState().saveTaskNow(id, (current) => ({
+      ...current,
+      title: "Draft restored",
+    }));
+
+    assert.equal(result.ok, true);
+    assert.equal(id in useTaskStore.getState().pendingDeletes, false);
+  });
+
+  it("keeps a second edit unsynced while the first save completes", async () => {
+    const id = addTask("Draft");
+    await flush();
+
+    let releaseFirst!: () => void;
+    fakeDb.upsertGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    useTaskStore.getState().updateTask(id, { title: "Draft v2" });
+    const firstVersion = localTask(id)!.updatedAt;
+    await flush();
+
+    let releaseSecond!: () => void;
+    fakeDb.upsertGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    useTaskStore.getState().updateTask(id, { title: "Draft v3" });
+    const secondVersion = localTask(id)!.updatedAt;
+    assert.ok(Date.parse(secondVersion) > Date.parse(firstVersion));
+    assert.equal(useTaskStore.getState().unsynced[id], secondVersion);
+
+    releaseFirst();
+    await flush();
+    assert.equal(useTaskStore.getState().unsynced[id], secondVersion);
+    assert.equal(dbRow(id)?.title, "Draft v2");
+
+    releaseSecond();
+    await flush();
+    assert.equal(dbRow(id)?.title, "Draft v3");
+    assert.equal(id in useTaskStore.getState().unsynced, false);
+  });
+
   it("an edit still on its way when the task is deleted can't bring its row back", async () => {
     const id = addTask("Draft");
     await flush();

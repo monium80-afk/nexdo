@@ -52,10 +52,13 @@ if ($LASTEXITCODE -ne 0) { throw "Gradle build failed" }
 $apk = Join-Path $project "android\app\build\outputs\apk\debug\app-debug.apk"
 Write-Host "Built: $apk"
 
-$devices = (adb devices) | Select-String -Pattern "\tdevice$"
-if ($devices) {
-  adb install -r $apk
+$deviceOutput = adb devices
+if ($LASTEXITCODE -ne 0) { throw "adb devices failed" }
+$devices = @($deviceOutput | Select-String -Pattern "^\S+\s+device$" | Where-Object { $_.Line -notmatch "^emulator-" })
+if ($devices.Count -gt 0) {
+  adb -d install -r $apk
+  if ($LASTEXITCODE -ne 0) { throw "adb install failed for the connected USB device" }
   Write-Host "Installed. Start the app with: npx expo start"
 } else {
-  Write-Host "No phone connected over USB. Connect it (USB debugging on) and run: adb install -r `"$apk`""
+  Write-Host "No phone connected over USB. Connect it (USB debugging on) and run: adb -d install -r `"$apk`""
 }

@@ -60,7 +60,7 @@ export function Chip({
       onPress={onPress}
       disabled={disabled}
       accessibilityRole={accessibilityRole}
-      accessibilityState={accessibilityRole === "radio" ? { selected } : undefined}
+      accessibilityState={accessibilityRole === "radio" ? { checked: selected } : undefined}
       style={filled ? gradients.accent : undefined}
       className={`chip min-h-[34px] shrink flex-row items-center gap-1.5 ${padding} ${surface} ${className}`}
     >

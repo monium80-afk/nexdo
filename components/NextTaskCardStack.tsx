@@ -539,10 +539,12 @@ export function NextTaskCardStack({
     const pending = sendOff.current;
     if (pending && !tasks.some((task) => task.id === pending.taskId)) {
       if (pending.timer) clearTimeout(pending.timer);
+      cancelAnimation(rise);
+      rise.set(0);
       sendOff.current = null;
       swipeLocked.set(false);
     }
-  }, [swipeLocked, tasks]);
+  }, [rise, swipeLocked, tasks]);
   useEffect(() => {
     if (completionTaskId && tasks.some((task) => task.id === completionTaskId)) return;
     todayDoneStarted.set(0);
@@ -891,7 +893,7 @@ export function NextTaskCardStack({
     .enabled(total > 1)
     .activeOffsetX([-12, 12])
     .failOffsetY([-12, 12])
-    .onBegin(() => {
+    .onStart(() => {
       if (swipeLocked.get()) return;
       cancelAnimation(dragX);
       cancelAnimation(rise);

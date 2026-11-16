@@ -20,11 +20,16 @@ export function ImageViewerModal({ uri, onClose }: { uri: string; onClose: () =>
       <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
         {/* Tapping the backdrop closes it — the same way the app's other
             sheets behave. */}
-        <Pressable className="flex-1 items-center justify-center" onPress={onClose}>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t.common.close}
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, alignItems: "center", justifyContent: "center" }}
+        >
           <Image source={{ uri }} resizeMode="contain" className="h-full w-full" />
         </Pressable>
 
-        <View className="absolute right-4 top-4">
+        <View style={{ alignItems: "flex-end", paddingTop: 16, paddingRight: 16 }}>
           <AnimatedPressable
             onPress={onClose}
             accessibilityRole="button"

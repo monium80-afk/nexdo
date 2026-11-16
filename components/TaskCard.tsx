@@ -235,6 +235,12 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
       return;
     }
     if (isCompleted) {
+      if (completeTimer.current) clearTimeout(completeTimer.current);
+      if (successBeat.current) clearTimeout(successBeat.current);
+      completeTimer.current = null;
+      successBeat.current = null;
+      setChecking(false);
+      resetAll();
       onToggle();
       return;
     }

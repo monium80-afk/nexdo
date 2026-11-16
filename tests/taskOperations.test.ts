@@ -4,7 +4,7 @@ process.env.TZ = "Europe/Paris";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { normalizeRule, startSeries } from "@/lib/recurrence";
+import { buildOccurrence, normalizeRule, startSeries } from "@/lib/recurrence";
 import {
   bulkRecurrenceScope,
   completeTaskDelta,
@@ -12,6 +12,7 @@ import {
   needsRecurrenceScope,
   planOperation,
   reopenTaskDelta,
+  skipOccurrenceDelta,
   shiftDate,
   type TaskOperation,
 } from "@/lib/taskOperations";
@@ -101,6 +102,13 @@ describe("bulk updates", () => {
     const stressed = critical.plan.upserts[0];
     assert.deepEqual(effectiveChanges(stressed, { priority: "high" }), {});
     assert.deepEqual(effectiveChanges(stressed, { priority: "medium" }), { priority: "medium" });
+
+    const repeatedHigh = apply([stressed], { kind: "update", target: { taskIds: ["b"] }, changes: { priority: "high" } });
+    assert.equal(repeatedHigh.plan.upserts.length, 0);
+    assert.equal(repeatedHigh.tasks[0].importance, 100);
+
+    const lowered = apply([stressed], { kind: "update", target: { taskIds: ["b"] }, changes: { priority: "medium" } });
+    assert.equal(lowered.tasks[0].importance, 50);
   });
 
   it("reschedules only overdue tasks to an absolute date, keeping their own time", () => {
@@ -189,12 +197,68 @@ describe("recurring tasks", () => {
     assert.equal(plan.outcomes[0].outcome, "skipped");
   });
 
+  it("skips past a closed successor and preserves the next pending occurrence", () => {
+    const gym = weeklyGym();
+    const now = local(2026, 10, 5, 8);
+    const closedNext = buildOccurrence(gym, "2026-10-12", now)!;
+    const pending = buildOccurrence(gym, "2026-10-19", now)!;
+    const closed = { ...closedNext, status: "completed" as const, completedAt: iso(2026, 10, 12, 8) };
+    const delta = skipOccurrenceDelta(gym, now, [gym, closed, pending]);
+
+    assert.deepEqual(delta.upserts, []);
+    assert.deepEqual(delta.deletes, [gym.id]);
+    assert.equal(delta.outcome.outcome, "skipped");
+    assert.equal(delta.outcome.next?.id, pending.id);
+  });
+
+  it("builds the first successor after a closed one when no pending successor exists", () => {
+    const gym = weeklyGym();
+    const now = local(2026, 10, 5, 8);
+    const closedNext = buildOccurrence(gym, "2026-10-12", now)!;
+    const closed = { ...closedNext, status: "completed" as const, completedAt: iso(2026, 10, 12, 8) };
+    const delta = skipOccurrenceDelta(gym, now, [gym, closed]);
+
+    assert.deepEqual(delta.upserts.map((task) => task.id), ["series-gym@2026-10-19"]);
+    assert.equal(delta.outcome.next?.id, "series-gym@2026-10-19");
+  });
+
+  it("deletes the current occurrence when a closed successor has no later slot", () => {
+    const gym = weeklyGym();
+    gym.recurrence!.rule.endDate = "2026-10-12";
+    const now = local(2026, 10, 5, 8);
+    const closedNext = buildOccurrence(gym, "2026-10-12", now)!;
+    const closed = { ...closedNext, status: "completed" as const, completedAt: iso(2026, 10, 12, 8) };
+    const delta = skipOccurrenceDelta(gym, now, [gym, closed]);
+
+    assert.deepEqual(delta.upserts, []);
+    assert.deepEqual(delta.deletes, [gym.id]);
+    assert.equal(delta.outcome.outcome, "deleted");
+  });
+
   it("deleting the series removes history too; 'future' keeps history", () => {
     const history = { ...weeklyGym(), id: "gym-old", status: "completed" as const, completedAt: iso(2026, 9, 28) };
     history.recurrence = { ...history.recurrence!, occurrenceDate: "2026-09-28" };
     const all = [history, weeklyGym()];
     assert.deepEqual(apply(all, { kind: "delete", target: { taskIds: ["gym"] }, scope: "series" }).plan.deletes.sort(), ["gym", "gym-old"]);
     assert.deepEqual(apply(all, { kind: "delete", target: { taskIds: ["gym"] }, scope: "future" }).plan.deletes, ["gym"]);
+  });
+
+  it("applies a series duration delta once per targeted occurrence while propagating other fields", () => {
+    const open = weeklyGym();
+    const history = { ...weeklyGym(), id: "gym-old", status: "completed" as const, completedAt: iso(2026, 9, 28), estimatedMinutes: 90 };
+    history.recurrence = { ...history.recurrence!, occurrenceDate: "2026-09-28" };
+    const { tasks } = apply([history, open], {
+      kind: "update",
+      target: { taskIds: [history.id, open.id] },
+      changes: { estimatedMinutesDelta: 15, title: "Workout" },
+      scope: "series",
+    });
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    assert.equal(byId.get(history.id)?.estimatedMinutes, 105);
+    assert.equal(byId.get(open.id)?.estimatedMinutes, 75);
+    assert.equal(byId.get(history.id)?.title, "Workout");
+    assert.equal(byId.get(open.id)?.title, "Workout");
+    assert.equal(byId.get(open.id)?.recurrence?.template.estimatedMinutes, 75);
   });
 
   it("editing only this occurrence leaves the template alone; 'future' rewrites it", () => {
@@ -246,6 +310,25 @@ describe("recurring tasks", () => {
     // "this" stays on the finished occurrence.
     const only = apply(afterDone, { kind: "update", target: { taskIds: ["gym"] }, changes: { title: "Workout" }, scope: "this" }).tasks;
     assert.equal(only.find((task) => task.id === openId)?.title, "Gym");
+  });
+
+  it("a deadline-only future edit through a completed occurrence retimes the pending occurrence", () => {
+    const now = local(2026, 10, 5, 8);
+    const afterDone = apply([weeklyGym()], { kind: "complete", target: { taskIds: ["gym"] } }, now).tasks;
+    const openId = "series-gym@2026-10-12";
+    const { tasks } = apply(
+      afterDone,
+      {
+        kind: "update",
+        target: { taskIds: ["gym"] },
+        changes: { deadline: { date: "2026-10-06", time: "19:00" } },
+        scope: "future",
+      },
+      now,
+    );
+    const open = tasks.find((task) => task.id === openId)!;
+    assert.deepEqual([open.deadline?.date, open.deadline?.time], ["2026-10-13", "19:00"]);
+    assert.deepEqual([open.recurrence?.occurrenceDate, open.recurrence?.rule.weekdays], ["2026-10-13", [2]]);
   });
 
   it("moving an occurrence to Tuesday 'from now on' re-times the rule", () => {

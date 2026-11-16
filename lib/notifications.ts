@@ -6,8 +6,7 @@ import { colors } from "@/constants/theme";
 import { translate } from "@/lib/i18n";
 import {
   diffNotifications,
-  LEGACY_NOTIFICATION_ID_PREFIX,
-  NOTIFICATION_ID_PREFIX,
+  shouldDismissPresentedNotification,
   type PlannedNotification,
   type ReminderChannel,
 } from "@/lib/reminders";
@@ -120,11 +119,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-function isOurs(identifier: string): boolean {
-  return identifier.startsWith(NOTIFICATION_ID_PREFIX) || identifier.startsWith(LEGACY_NOTIFICATION_ID_PREFIX);
-}
-
-async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<string>) {
+async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<string>, clearAll: boolean) {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const { cancel, schedule } = diffNotifications(
     desired,
@@ -141,8 +136,7 @@ async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<str
   for (const notification of presented) {
     const id = notification.request.identifier;
     const taskId = notification.request.content.data?.taskId;
-    if (!isOurs(id)) continue;
-    if (id.startsWith(LEGACY_NOTIFICATION_ID_PREFIX) || (typeof taskId === "string" && !openTaskIds.has(taskId))) {
+    if (shouldDismissPresentedNotification(id, taskId, openTaskIds, clearAll)) {
       await Notifications.dismissNotificationAsync(id);
     }
   }
@@ -174,22 +168,31 @@ async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<str
 // cancels and schedules and leave a reminder behind that no longer applies.
 let reconcileQueue: Promise<void> = Promise.resolve();
 
+function enqueueReconcile(
+  desired: PlannedNotification[],
+  openTaskIds: Set<string>,
+  clearAll: boolean,
+  propagateFailure = false,
+): Promise<void> {
+  if (!isSupported) return Promise.resolve();
+  const operation = reconcileQueue.then(() => runReconcile(desired, openTaskIds, clearAll));
+  reconcileQueue = operation
+    .catch((error) => console.warn("[notifications] couldn't update scheduled reminders", error));
+  return propagateFailure ? operation : reconcileQueue;
+}
+
 /**
  * Makes the phone's scheduled notifications exactly `desired` (from
  * lib/reminders.ts planNotifications). Pass an empty list to clear them all.
  * `openTaskIds`: tasks still open, whose reminders on screen may stay.
  */
 export function reconcileNotifications(desired: PlannedNotification[], openTaskIds: Set<string> = new Set()): Promise<void> {
-  if (!isSupported) return Promise.resolve();
-  reconcileQueue = reconcileQueue
-    .then(() => runReconcile(desired, openTaskIds))
-    .catch((error) => console.warn("[notifications] couldn't update scheduled reminders", error));
-  return reconcileQueue;
+  return enqueueReconcile(desired, openTaskIds, false);
 }
 
 /** Clears every reminder this app scheduled — signing out. */
 export function clearAllNotifications(): Promise<void> {
-  return reconcileNotifications([]);
+  return enqueueReconcile([], new Set(), true, true);
 }
 
 /**

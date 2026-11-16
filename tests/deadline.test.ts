@@ -247,6 +247,13 @@ describe("the stored deadline", () => {
     // 19:00 in New York (EDT, UTC−4) is 01:00 the next day in Paris (CEST, UTC+2).
     assert.equal(deadlineInstant(deadline).toISOString(), "2026-10-15T23:00:00.000Z");
   });
+
+  it("uses the local Date disambiguation for skipped and repeated times in another zone", () => {
+    const skipped = makeDeadline({ date: "2017-03-12", time: "02:30" }, "America/New_York")!;
+    const repeated = makeDeadline({ date: "2017-11-05", time: "01:30" }, "America/New_York")!;
+    assert.equal(deadlineInstant(skipped).toISOString(), "2017-03-12T07:30:00.000Z");
+    assert.equal(deadlineInstant(repeated).toISOString(), "2017-11-05T05:30:00.000Z");
+  });
 });
 
 describe("reading older and other-device data", () => {
@@ -283,6 +290,14 @@ describe("reading older and other-device data", () => {
     assert.deepEqual(reconcileDeadline({ ...task, dueDate: savedThere }).deadline, task.deadline);
   });
 
+  it("a date-only deadline in this phone's zone uses date-only tolerance", () => {
+    const task = withDeadline(makeTask({ id: "t" }), makeDeadline({ date: "2026-10-20" }));
+    const shiftedEndOfDay = new Date(Date.parse(task.dueDate!) + 2 * 60 * 1000).toISOString();
+    const reconciled = reconcileDeadline({ ...task, dueDate: shiftedEndOfDay });
+    assert.deepEqual(reconciled.deadline, task.deadline);
+    assert.equal(reconciled.dueDate, task.dueDate);
+  });
+
   it("a consistent deadline is left exactly as it is", () => {
     const task = withDeadline(makeTask({ id: "t" }), makeDeadline({ date: "2026-10-15" }));
     assert.deepEqual(reconcileDeadline(task).deadline, task.deadline);
@@ -317,6 +332,10 @@ describe("changing a deadline", () => {
     const dateOnly = makeDeadline({ date: "2026-10-20" })!;
     assert.equal(shiftDeadline(dateOnly, { amount: 2, unit: "hours" }), null);
     assert.equal(shiftDeadline(dateOnly, { amount: 48, unit: "hours" })?.date, "2026-10-22");
+    assert.equal(shiftDeadline(dateOnly, { amount: 23, unit: "hours" }), null);
+    assert.equal(shiftDeadline(dateOnly, { amount: -23, unit: "hours" }), null);
+    assert.equal(shiftDeadline(dateOnly, { amount: 25, unit: "hours" })?.date, "2026-10-21");
+    assert.equal(shiftDeadline(dateOnly, { amount: -25, unit: "hours" })?.date, "2026-10-19");
   });
 
   it("picking just another day on iOS's date-and-time spinner keeps a date-only deadline date-only", () => {

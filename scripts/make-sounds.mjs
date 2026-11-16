@@ -7,12 +7,13 @@
 // about a quarter of full scale), so a sound sits under the moment instead of
 // on top of it.
 import { Buffer } from "node:buffer";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RATE = 44_100;
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "sounds");
+mkdirSync(OUT, { recursive: true });
 
 /** One note: `partials` are [frequency multiple, loudness]; `decay` is the time constant in seconds. */
 function note(samples, { at, freq, decay, gain, attack = 0.004, partials = [[1, 1]] }) {

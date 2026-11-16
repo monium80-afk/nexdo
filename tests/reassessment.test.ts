@@ -45,6 +45,10 @@ function at(days: number, hour = 18, minute = 0): string {
   return date.toISOString();
 }
 
+const flush = async () => {
+  for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setImmediate(resolve));
+};
+
 function step(id: string, label: string, estimatedMinutes: number, status: Subtask["status"] = "pending", order = 0): Subtask {
   return { id, label, estimatedMinutes, status, order };
 }
@@ -708,6 +712,31 @@ describe("repeated and overlapping submissions", () => {
     assert.ok(useTaskStore.getState().tasks.some((entry) => entry.id === "run-next"));
   });
 
+  it("cleans up a created row using the version written by its latest retry", async () => {
+    seed({ id: "gym", title: "Gym", estimatedMinutes: 30 });
+    let builds = 0;
+    const result = await useTaskStore.getState().saveTaskNow("gym", (current) => {
+      builds += 1;
+      const next = { ...current, title: `Gym ${builds}`, updatedAt: new Date(Date.now() + builds).toISOString() };
+      if (builds < 3) {
+        useTaskStore.getState().updateTask("gym", { title: `Gym! ${builds}` });
+        const created = makeTask({
+          id: "gym-next",
+          title: "Gym",
+          createdAt: at(0),
+          updatedAt: new Date(Date.now() + builds).toISOString(),
+        });
+        return [next, created];
+      }
+      return next;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(result.ok, true);
+    assert.equal(builds, 3);
+    assert.equal(dbRow("gym-next"), undefined, "cleanup uses the version from the second write");
+  });
+
   it("does not treat an existing remote row as newly created when it is absent on the phone", async () => {
     seed({ id: "remote-parent", title: "Gym", estimatedMinutes: 30 });
     fakeDb.tables.set("tasks", new Map([["remote-next", { id: "remote-next", user_id: USER, title: "Remote task" }]]));
@@ -746,6 +775,43 @@ describe("repeated and overlapping submissions", () => {
     assert.equal(task("mid").title, "Pack for the trip");
     assert.equal(task("mid").subtasks!.find((subtask) => subtask.id === "a")!.status, "completed");
     assert.equal(dbRow("mid")?.title, "Pack for the trip");
+  });
+
+  it("keeps a step completed while a reassessment write is in flight", async () => {
+    seed({
+      id: "write-race",
+      title: "Research paper",
+      estimatedMinutes: 90,
+      subtasks: [step("a", "Find sources", 60, "current", 0), step("b", "Write summary", 30, "pending", 1)],
+      currentStepId: "a",
+    });
+    let answer!: (value: unknown) => void;
+    setApiHandler(() => new Promise((resolve) => (answer = resolve)));
+    const release = fakeDb.holdUpserts();
+    const pending = submit("write-race", "Only three sources are needed.");
+    await flush();
+    answer(
+      normalizeReassessment({
+        ...NO_FIELDS,
+        outcome: "update",
+        steps: [
+          { id: "a", title: "Find three sources", estimatedMinutes: 30 },
+          { id: "b", title: "Write summary", estimatedMinutes: 25 },
+        ],
+        summary: "Fewer sources.",
+      }),
+    );
+    await flush();
+    assert.equal(fakeDb.upsertAttempts, 1, "the first database write is waiting");
+
+    useTaskStore.getState().completeStep("write-race", "a");
+    release();
+    await pending;
+    await flush();
+
+    assert.equal(task("write-race").subtasks!.find((subtask) => subtask.id === "a")!.status, "completed");
+    const storedSteps = dbRow("write-race")?.subtasks as Subtask[] | undefined;
+    assert.equal(storedSteps?.find((subtask) => subtask.id === "a")?.status, "completed");
   });
 });
 

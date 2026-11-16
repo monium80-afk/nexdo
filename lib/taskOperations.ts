@@ -15,6 +15,7 @@ import {
   buildRule,
   isRoutine,
   latestDueSlot,
+  nextOccurrenceDate,
   nextSlot,
   openOccurrence,
   retimeRule,
@@ -26,7 +27,7 @@ import {
   type RuleInput,
 } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, type ImportanceLevel } from "@/lib/scoring";
-import type { SeriesTemplate, Subtask, Task, TaskDeadline, TaskPriorityLevel } from "@/types/task";
+import type { SeriesTemplate, Subtask, Task, TaskDeadline, TaskPriorityLevel, TaskRecurrence } from "@/types/task";
 
 // The structured task-operation system. Every change the AI asks for — and the
 // store's own complete / reopen / edit / delete — is planned here as pure data
@@ -37,6 +38,13 @@ import type { SeriesTemplate, Subtask, Task, TaskDeadline, TaskPriorityLevel } f
 
 export type { RecurrenceScope } from "@/lib/recurrence";
 export type { DateShift } from "@/lib/deadline";
+
+export function nextTaskUpdatedAt(previous: string | undefined, requestedAt: Date | string): string {
+  const requestedTime = requestedAt instanceof Date ? requestedAt.getTime() : Date.parse(requestedAt);
+  const previousTime = previous ? Date.parse(previous) : Number.NaN;
+  const timestamp = Number.isFinite(requestedTime) ? requestedTime : Date.now();
+  return new Date(Math.max(timestamp, Number.isFinite(previousTime) ? previousTime + 1 : timestamp)).toISOString();
+}
 
 export type TaskChanges = {
   title?: string;
@@ -291,6 +299,10 @@ export function shiftDate(iso: string, shift: DateShift): string {
 // ---------------------------------------------------------------------
 
 type TaskDelta = { upserts: Task[]; deletes: string[]; outcome: TaskOutcome };
+type EditTaskOptions = {
+  applyEstimatedMinutesDeltaToTask?: boolean;
+  applyEstimatedMinutesDeltaToTemplate?: boolean;
+};
 
 function outcomeFor(task: Task, outcome: OutcomeKind, extra: Partial<TaskOutcome> = {}): TaskOutcome {
   return { taskId: task.id, title: task.title, outcome, recurring: Boolean(task.recurrence), ...extra };
@@ -310,7 +322,13 @@ export function completeTaskDelta(task: Task, now: Date, allTasks: Task[], patch
     return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "already-completed" }) };
   }
   const nowIso = now.toISOString();
-  const completed: Task = { ...task, ...patch, status: "completed", completedAt: nowIso, updatedAt: nowIso };
+  const completed: Task = {
+    ...task,
+    ...patch,
+    status: "completed",
+    completedAt: nowIso,
+    updatedAt: nextTaskUpdatedAt(task.updatedAt, now),
+  };
   // Done means off the Next page's pinned spot, and out of the archive if it was there.
   delete completed.pinnedAt;
   delete completed.closedAt;
@@ -370,7 +388,7 @@ export function reopenTaskDelta(task: Task, now: Date, allTasks: Task[]): TaskDe
     // Without steps it keeps its own length — 0 stays "No duration".
     estimatedMinutes: reopenedSubtasks?.length ? remainingMinutes(reopenedSubtasks) : Math.max(task.estimatedMinutes || 0, 0),
     completedAt: undefined,
-    updatedAt: nowIso,
+    updatedAt: nextTaskUpdatedAt(task.updatedAt, now),
   };
   const deletes: string[] = [];
   if (task.recurrence) {
@@ -392,7 +410,7 @@ export function archiveTaskDelta(task: Task, now: Date): TaskDelta {
     return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "already-archived" }) };
   }
   const nowIso = now.toISOString();
-  const archived: Task = { ...task, status: "archived", closedAt: nowIso, updatedAt: nowIso };
+  const archived: Task = { ...task, status: "archived", closedAt: nowIso, updatedAt: nextTaskUpdatedAt(task.updatedAt, now) };
   delete archived.pinnedAt;
   return { upserts: [archived], deletes: [], outcome: outcomeFor(task, "archived") };
 }
@@ -402,7 +420,7 @@ export function restoreTaskDelta(task: Task, now: Date): TaskDelta {
   if (task.status !== "archived" && task.status !== "skipped") {
     return { upserts: [], deletes: [], outcome: outcomeFor(task, "unchanged", { reason: "already-open" }) };
   }
-  const restored: Task = { ...task, status: "pending", updatedAt: now.toISOString() };
+  const restored: Task = { ...task, status: "pending", updatedAt: nextTaskUpdatedAt(task.updatedAt, now) };
   delete restored.closedAt;
   return { upserts: [restored], deletes: [], outcome: outcomeFor(task, "restored") };
 }
@@ -437,7 +455,7 @@ export function skipMissedDelta(task: Task, now: Date, allTasks: Task[]): TaskDe
 /** The occurrence marked skipped, and the one on `slot` (if any) brought in. */
 function passDelta(task: Task, slot: string | null, now: Date, allTasks: Task[]): TaskDelta {
   const nowIso = now.toISOString();
-  const skipped: Task = { ...task, status: "skipped", closedAt: nowIso, updatedAt: nowIso };
+  const skipped: Task = { ...task, status: "skipped", closedAt: nowIso, updatedAt: nextTaskUpdatedAt(task.updatedAt, now) };
   delete skipped.pinnedAt;
   // No slot: the series has ended, so nothing comes after it.
   const current = slot ? buildOccurrence(task, slot, now) : null;
@@ -454,16 +472,33 @@ export function skipOccurrenceDelta(task: Task, now: Date, allTasks: Task[]): Ta
   if (!task.recurrence || task.status === "completed") {
     return { upserts: [], deletes: [task.id], outcome: outcomeFor(task, "deleted") };
   }
-  const next = buildNextOccurrence(task, now);
-  if (!next) return { upserts: [], deletes: [task.id], outcome: outcomeFor(task, "deleted") };
-  const existing = allTasks.find((candidate) => candidate.id === next.id);
-  return {
-    upserts: existing ? [] : [next],
-    deletes: [task.id],
-    outcome: outcomeFor(task, "skipped", {
-      next: { id: next.id, dueDate: (existing ?? next).dueDate, deadline: (existing ?? next).deadline },
-    }),
-  };
+  let next = buildNextOccurrence(task, now);
+  const visited = new Set([task.id]);
+  while (next && !visited.has(next.id)) {
+    const candidate = next;
+    visited.add(candidate.id);
+    const existing = allTasks.find((occurrence) => occurrence.id === candidate.id);
+    if (!existing) {
+      return {
+        upserts: [candidate],
+        deletes: [task.id],
+        outcome: outcomeFor(task, "skipped", {
+          next: { id: candidate.id, dueDate: candidate.dueDate, deadline: candidate.deadline },
+        }),
+      };
+    }
+    if (existing.status === "pending") {
+      return {
+        upserts: [],
+        deletes: [task.id],
+        outcome: outcomeFor(task, "skipped", {
+          next: { id: existing.id, dueDate: existing.dueDate, deadline: existing.deadline },
+        }),
+      };
+    }
+    next = buildNextOccurrence(existing, now);
+  }
+  return { upserts: [], deletes: [task.id], outcome: outcomeFor(task, "deleted") };
 }
 
 function validTitle(title: string | undefined): string | undefined {
@@ -487,8 +522,12 @@ export function editTaskDelta(
   scope: RecurrenceScope | undefined,
   now: Date,
   allTasks: Task[],
+  options: EditTaskOptions = {},
 ): TaskDelta {
   const nowIso = now.toISOString();
+  const effectivePriority = effectiveChanges(task, { priority: changes.priority }).priority;
+  const templateChanges =
+    effectivePriority === changes.priority ? changes : { ...changes, priority: undefined };
   let next: Task = { ...task };
   let changed = false;
   let dueChanged = false;
@@ -562,15 +601,17 @@ export function editTaskDelta(
     }
     templateMinutes = minutes;
   } else if (changes.estimatedMinutesDelta !== undefined && Number.isFinite(changes.estimatedMinutesDelta) && changes.estimatedMinutesDelta !== 0) {
-    next.estimatedMinutes = clampMinutes(task.estimatedMinutes + changes.estimatedMinutesDelta);
-    changed = true;
-    if (task.recurrence) {
+    if (options.applyEstimatedMinutesDeltaToTask !== false) {
+      next.estimatedMinutes = clampMinutes(task.estimatedMinutes + changes.estimatedMinutesDelta);
+      changed = true;
+    }
+    if (task.recurrence && options.applyEstimatedMinutesDeltaToTemplate !== false) {
       templateMinutes = clampMinutes(task.recurrence.template.estimatedMinutes + changes.estimatedMinutesDelta);
     }
   }
 
-  if (changes.priority && PRIORITY_LEVEL_IMPORTANCE[changes.priority] !== undefined) {
-    const importance = PRIORITY_LEVEL_IMPORTANCE[changes.priority];
+  if (effectivePriority && PRIORITY_LEVEL_IMPORTANCE[effectivePriority] !== undefined) {
+    const importance = PRIORITY_LEVEL_IMPORTANCE[effectivePriority];
     if (importance !== task.importance) {
       next.importance = importance;
       changed = true;
@@ -592,10 +633,12 @@ export function editTaskDelta(
         const started = startSeries({ ...next, recurrence: undefined }, rule, seriesId);
         // An existing series keeps its template, apart from what this edit changed.
         if (task.recurrence && started.recurrence) {
+          const templatePatch = pickTemplateChanges(next, task);
+          if (options.applyEstimatedMinutesDeltaToTemplate === false) delete templatePatch.estimatedMinutes;
           started.recurrence.template = {
             ...task.recurrence.template,
-            ...pickTemplateChanges(next, task),
-            ...requestedTemplateFields(changes, next),
+            ...templatePatch,
+            ...requestedTemplateFields(templateChanges, next),
           };
         }
         next = started;
@@ -611,7 +654,10 @@ export function editTaskDelta(
   // on its own ("this") and then given the same title for "future" still has
   // to reach the template.
   const templatePatch: TemplatePatch =
-    scope === "future" || scope === "series" ? { ...pickTemplateChanges(next, task), ...requestedTemplateFields(changes, next) } : {};
+    scope === "future" || scope === "series"
+      ? { ...pickTemplateChanges(next, task), ...requestedTemplateFields(templateChanges, next) }
+      : {};
+  if (options.applyEstimatedMinutesDeltaToTemplate === false) delete templatePatch.estimatedMinutes;
   if (templateMinutes !== undefined && (scope === "future" || scope === "series")) templatePatch.estimatedMinutes = templateMinutes;
 
   if (changes.recurrence === undefined && task.recurrence && next.recurrence && (scope === "future" || scope === "series")) {
@@ -633,7 +679,7 @@ export function editTaskDelta(
   // through a finished occurrence ("future" or "series") has to reach it,
   // template included — or the next occurrence comes back as it was.
   const others: Task[] = [];
-  if (task.recurrence && Object.keys(templatePatch).length > 0) {
+  if (task.recurrence && (Object.keys(templatePatch).length > 0 || (dueChanged && next.recurrence))) {
     const reached =
       scope === "series"
         ? seriesOccurrences(allTasks, task.recurrence.seriesId)
@@ -642,8 +688,11 @@ export function editTaskDelta(
           : [];
     for (const other of reached) {
       if (other.id === task.id) continue;
-      const patched = other.status === "pending" ? patchOpenOccurrence(other, templatePatch) : patchHistory(other, templatePatch);
-      if (patched) others.push({ ...patched, updatedAt: nowIso });
+      let patched = other.status === "pending" ? patchOpenOccurrence(other, templatePatch) : patchHistory(other, templatePatch);
+      if (other.status === "pending" && dueChanged && next.recurrence) {
+        patched = retimeOpenOccurrence(patched ?? other, next.recurrence, now) ?? patched;
+      }
+      if (patched) others.push({ ...patched, updatedAt: nextTaskUpdatedAt(other.updatedAt, now) });
     }
   }
 
@@ -658,7 +707,7 @@ export function editTaskDelta(
     };
   }
 
-  next.updatedAt = nowIso;
+  next.updatedAt = nextTaskUpdatedAt(task.updatedAt, now);
   const upserts = changed ? [next, ...others] : others;
 
   return {
@@ -744,6 +793,25 @@ function patchOpenOccurrence(task: Task, patch: TemplatePatch): Task | undefined
   return changed ? patched : undefined;
 }
 
+function retimeOpenOccurrence(task: Task, source: TaskRecurrence, now: Date): Task | undefined {
+  if (!task.recurrence) return undefined;
+  const occurrenceDate = nextOccurrenceDate(source, now);
+  if (!occurrenceDate) return undefined;
+  const rule = source.rule;
+  if (
+    task.recurrence.occurrenceDate === occurrenceDate &&
+    JSON.stringify(task.recurrence.rule) === JSON.stringify(rule) &&
+    sameDeadline(deadlineOf(task), slotDeadline(rule, occurrenceDate))
+  ) {
+    return undefined;
+  }
+  const recurrence = { ...task.recurrence, occurrenceDate, rule };
+  return {
+    ...withDeadline({ ...task, recurrence }, slotDeadline(rule, occurrenceDate)),
+    updatedAt: nextTaskUpdatedAt(task.updatedAt, now),
+  };
+}
+
 /**
  * Deletes one task. For a repeating one the scope decides: "this" skips just
  * this occurrence (the next one takes its place), "future" ends the series but
@@ -787,6 +855,7 @@ export function planOperation(tasks: Task[], operation: TaskOperation, now: Date
   const upserts = new Map<string, Task>();
   const deletes = new Set<string>();
   const outcomes: TaskOutcome[] = [];
+  const seriesDurationDeltasApplied = new Set<string>();
 
   for (const target of targets) {
     const current = working.get(target.id);
@@ -815,7 +884,26 @@ export function planOperation(tasks: Task[], operation: TaskOperation, now: Date
           operation.changes.recurrence !== undefined && current.status === "completed" && current.recurrence
             ? openOccurrence(list, current.recurrence.seriesId) ?? current
             : current;
-        delta = editTaskDelta(recurrenceTarget, operation.changes, operation.scope, now, list);
+        let editOptions: EditTaskOptions | undefined;
+        const durationDelta = operation.changes.estimatedMinutesDelta;
+        if (
+          operation.scope === "series" &&
+          operation.changes.estimatedMinutes === undefined &&
+          durationDelta !== undefined &&
+          Number.isFinite(durationDelta) &&
+          durationDelta !== 0 &&
+          recurrenceTarget.recurrence
+        ) {
+          const originalTarget = original.get(recurrenceTarget.id);
+          const seriesId = recurrenceTarget.recurrence.seriesId;
+          editOptions = {
+            applyEstimatedMinutesDeltaToTask:
+              !originalTarget || recurrenceTarget.estimatedMinutes === originalTarget.estimatedMinutes,
+            applyEstimatedMinutesDeltaToTemplate: !seriesDurationDeltasApplied.has(seriesId),
+          };
+          seriesDurationDeltasApplied.add(seriesId);
+        }
+        delta = editTaskDelta(recurrenceTarget, operation.changes, operation.scope, now, list, editOptions);
         break;
       }
     }

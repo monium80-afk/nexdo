@@ -82,7 +82,13 @@ describe("reading RevenueCat's answer", () => {
   it("goes by RevenueCat's clock, not this server's", () => {
     // Ended an hour before RevenueCat answered — whatever time this machine thinks it is.
     const answer = { ...subscriber({ expires_date: iso(NOW - HOUR) }), request_date_ms: NOW };
-    assert.equal(hasActiveEntitlement(answer), false);
+    const originalNow = Date.now;
+    Date.now = () => NOW - 2 * HOUR;
+    try {
+      assert.equal(hasActiveEntitlement(answer), false);
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });
 
@@ -222,10 +228,21 @@ describe("spending the month's allowance", () => {
 
   it("answers the paywall's 429 when the amount doesn't fit", async (t) => {
     withSupabaseKeys();
-    t.mock.method(globalThis, "fetch", async () => Response.json(-1));
-    const response = await claimPlanUsage(freeRequest(), "user_free", "voice", 95);
+    process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
+    const userId = "user_pro_quota";
+    const fetchMock = t.mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+      String(url).startsWith("https://api.revenuecat.com")
+        ? Response.json({ request_date_ms: NOW, subscriber: { entitlements: { nexdo_pro: { expires_date: iso(NOW + HOUR) } } } })
+        : Response.json(-1),
+    );
+    const request = new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
+    const response = await claimPlanUsage(request, userId, "voice", 95);
     assert.equal(response?.status, 429);
-    assert.deepEqual(await response?.json(), { error: "plan_limit", meter: "voice", plan: "free" });
+    assert.deepEqual(await response?.json(), { error: "plan_limit", meter: "voice", plan: "pro" });
+    const rpcCalls = fetchMock.mock.calls.filter((call) => String(call.arguments[0]).includes("/rpc/")).map(rpcCall);
+    assert.deepEqual(rpcCalls, [
+      { name: "claim_ai_plan_usage", args: { p_user_id: userId, p_meter: "voice", p_amount: 95, p_limit: PLAN_LIMITS.pro.voice } },
+    ]);
   });
 
   it("gives back a failed request's use — but not into a month it wasn't taken from", async (t) => {

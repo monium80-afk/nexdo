@@ -127,6 +127,7 @@ export function BreakdownSheet({
   const t = useTranslation();
   const rtl = useRtlText();
   // A new sheet starts from the task as it is (mounted fresh each time it opens).
+  const [hadStepsAtStart] = useState(() => (task.subtasks ?? []).length > 0);
   const [steps, setSteps] = useState(() => draftOf(task));
   const [editing, setEditing] = useState<Editing>(null);
   // The steps the AI wrote last, for its Report link — none until it has.
@@ -363,7 +364,7 @@ export function BreakdownSheet({
         </AnimatedPressable>
         <AnimatedPressable
           onPress={handleConfirm}
-          disabled={isLoading || final.length === 0}
+          disabled={isLoading || (!hadStepsAtStart && final.length === 0)}
           scaleTo={0.97}
           accessibilityRole="button"
           style={{
@@ -373,7 +374,7 @@ export function BreakdownSheet({
             backgroundColor: P.ink,
             alignItems: "center",
             justifyContent: "center",
-            opacity: isLoading || final.length === 0 ? 0.45 : 1,
+            opacity: isLoading || (!hadStepsAtStart && final.length === 0) ? 0.45 : 1,
           }}
         >
           <Text numberOfLines={1} style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17, color: "#FFFFFF", includeFontPadding: false }}>

@@ -108,6 +108,7 @@ export function useLiveVoice() {
       undoCount: () => runner.undoCount(),
       touchedIds: () => runner.touchedIds(),
       shownTasks: () => runner.shownTasks(),
+      micWrites: () => runner.micWrites(),
       onLevel: (value) => {
         // Eased between buffers, so the waves glide instead of twitching.
         level.value = withTiming(value, { duration: 120 });
@@ -140,5 +141,5 @@ export function useLiveVoice() {
     return () => subscription.remove();
   }, [voice]);
 
-  return { ...state, level, start: voice.start, stop: voice.stop, undo: voice.undo };
+  return { ...state, level, start: voice.start, stop: voice.stop, undo: voice.undo, micWrites: voice.micWrites };
 }

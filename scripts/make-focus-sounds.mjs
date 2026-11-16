@@ -13,7 +13,7 @@
 //   node scripts/make-focus-sounds.mjs "<folder with the .mp3s>"
 // Needs ffmpeg on PATH. Played by lib/focusSound.ts.
 import { execFileSync, spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +37,8 @@ const LOOPS = [
   { out: "focus-forest.m4a", source: "Forest Sounds.mp3", start: 1800, loop: 300 },
   { out: "focus-fireplace.m4a", source: "Campfire Sounds & Soft Crackling.mp3", start: 1800, loop: 300 },
 ];
+
+mkdirSync(OUT, { recursive: true });
 
 /**
  * The crossfade part of the filter graph, ending in [looped]. Input 0 is the

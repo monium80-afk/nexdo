@@ -270,7 +270,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
   const tasks = useTaskStore((state) => state.tasks);
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const originTab = useMagicMicStore((state) => state.originTab);
-  const { status, problem, startedAt, changes, undoable, touched, shown, hearing, level, start, stop, undo } = useLiveVoice();
+  const { status, problem, startedAt, changes, undoable, touched, shown, hearing, level, start, stop, undo, micWrites } = useLiveVoice();
   // The mic turns on while the session is still connecting, and what's said
   // then is kept: to the user it's already listening.
   const looksListening = status === "listening" || (status === "connecting" && hearing);
@@ -282,7 +282,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
   }, [touched]);
 
   // The list as it was when the mic opened: what every card is measured
-  // against, and what Discard goes back to.
+  // against. Discard uses the mic's own write history to preserve other edits.
   const [baseline] = useState(() => new Map(useTaskStore.getState().tasks.map((task) => [task.id, task])));
   // When each task last changed, so the latest change sits on top.
   const [changedAt, setChangedAt] = useState<ReadonlyMap<string, number>>(() => new Map());
@@ -615,11 +615,11 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
     // Put back once the mic has gone: a last sentence still being acted on
     // is put back with the rest. The toast's Undo brings it all back again.
     leaveQuietly(() => {
-      const snapshots = discardSnapshots(baseline, useTaskStore.getState().tasks, touchedRef.current);
+      const snapshots = discardSnapshots(useTaskStore.getState().tasks, touchedRef.current, micWrites());
       if (snapshots.length === 0) return;
       withUndo(t.live.discarded, () => useTaskStore.getState().restoreSnapshots(snapshots));
     });
-  }, [baseline, ending, leaveQuietly, stop, t]);
+  }, [ending, leaveQuietly, micWrites, stop, t]);
 
   // Android's back button finishes like Done: what was said is kept.
   useEffect(() => {

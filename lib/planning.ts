@@ -1,3 +1,4 @@
+import { deadlineOnThisPhone } from "@/lib/deadline";
 import { addDaysToKey, daysBetweenKeys, toLocalDateKey, type LocalDate } from "@/lib/localDate";
 import type { Subtask, Task } from "@/types/task";
 
@@ -61,7 +62,7 @@ export function summarizePlan(task: Task, now: Date): PlanSummary | null {
   if (Date.parse(task.dueDate) < now.getTime()) return { ...summary, pace: "overdue" };
 
   const today = toLocalDateKey(now);
-  const daysLeft = Math.max(1, daysBetweenKeys(today, task.deadline.date) + 1);
+  const daysLeft = Math.max(1, daysBetweenKeys(today, deadlineOnThisPhone(task.deadline).date) + 1);
   return {
     ...summary,
     pace: "scheduled",

@@ -13,6 +13,8 @@ export const fakeDb = {
   tables: new Map<string, Map<string, Row>>(),
   /** One entry per request: what it was and how many rows it carried. */
   writes: [] as { table: string; kind: "upsert" | "delete"; ids: string[] }[],
+  /** Number of upsert requests that have started, including ones held in flight. */
+  upsertAttempts: 0,
   /** Set to make the next write fail with this PostgREST error. */
   nextError: null as { code: string; message: string } | null,
   /** Columns the fake "database" doesn't have (PGRST204 when named). */
@@ -26,6 +28,7 @@ export const fakeDb = {
   reset() {
     this.tables.clear();
     this.writes = [];
+    this.upsertAttempts = 0;
     this.nextError = null;
     this.missingColumns.clear();
     this.upsertGate = null;
@@ -128,13 +131,14 @@ function query(name: string) {
     },
     then(resolve: (value: { data?: Row[] | null; error: unknown }) => void) {
       if (mode === "upsert") {
+        fakeDb.upsertAttempts += 1;
         const land = () => {
           const missing = upsertRows.flatMap((row) => Object.keys(row)).find((key) => fakeDb.missingColumns.has(key));
           if (missing) return { error: { code: "PGRST204", message: `Could not find the '${missing}' column` } };
           const error = takeError();
           if (error) return { error };
           const changed = ignoreDuplicates ? upsertRows.filter((row) => !table(name).has(row.id)) : upsertRows;
-          changed.forEach((row) => table(name).set(row.id, { ...row }));
+          changed.forEach((row) => table(name).set(row.id, structuredClone(row)));
           if (changed.length > 0) fakeDb.writes.push({ table: name, kind: "upsert", ids: changed.map((row) => row.id) });
           return { data: returning ? changed.map((row) => ({ id: row.id })) : null, error: null };
         };
@@ -156,7 +160,7 @@ function query(name: string) {
       }
       // Like a real Supabase project, never more than 1,000 rows a request.
       const from = window?.from ?? 0;
-      data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS)).map((row) => ({ ...row }));
+      data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS)).map((row) => structuredClone(row));
       if (fakeDb.readGate) return void fakeDb.readGate.then(() => resolve({ data, error: null }));
       return resolve({ data, error: null });
     },

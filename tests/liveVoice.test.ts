@@ -193,6 +193,7 @@ describe("live voice session", () => {
 
   it("on Stop with everything already acted on, ends at once", async () => {
     const { voice, socket, microphone } = await listening();
+    voice.sendAudio(audio());
     socket.receive(speechStart);
     socket.receive(toolCall({ name: "add_task", args: { title: "Buy milk" } }));
     socket.receive(turnComplete);
@@ -214,6 +215,18 @@ describe("live voice session", () => {
     socket.receive(toolCall({ name: "delete_task", args: { taskId: "t1" } }));
     assert.equal(calls.length, 1, "a call that arrives while finishing is still carried out");
     socket.receive(turnComplete);
+    assert.equal(voice.getState().status, "stopped");
+    assert.equal(socket.closed, true);
+  });
+
+  it("waits for sent audio even before speechStart arrives", async () => {
+    const { voice, socket } = await listening();
+    voice.sendAudio(audio());
+    voice.stop();
+
+    assert.equal(voice.getState().status, "finishing");
+    assert.deepEqual(socket.sent.at(-1), { realtimeInput: { audioStreamEnd: true } });
+    mock.timers.tick(3000);
     assert.equal(voice.getState().status, "stopped");
     assert.equal(socket.closed, true);
   });

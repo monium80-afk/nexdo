@@ -11,10 +11,13 @@ import { makeDeadline, withDeadline } from "@/lib/deadline";
 import {
   DEFAULT_REMINDER_PREFERENCES,
   diffNotifications,
+  LEGACY_NOTIFICATION_ID_PREFIX,
   MAX_SCHEDULED,
+  NOTIFICATION_ID_PREFIX,
   nextReminderFor,
   planNotifications,
   planTaskReminders,
+  shouldDismissPresentedNotification,
   type ReminderPreferences,
 } from "@/lib/reminders";
 import { archiveTaskDelta, completeTaskDelta, editTaskDelta } from "@/lib/taskOperations";
@@ -35,6 +38,17 @@ function times(task: Task, prefs = PREFS, now = NOW) {
     at: new Date(entry.fireAt).toString().slice(0, 21),
   }));
 }
+
+describe("presented notification cleanup", () => {
+  it("clears every app-owned notification only in explicit clear mode", () => {
+    const openTaskIds = new Set(["open-task"]);
+    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}daily`, undefined, openTaskIds), false);
+    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}daily`, undefined, openTaskIds, true), true);
+    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}task`, "open-task", openTaskIds, true), true);
+    assert.equal(shouldDismissPresentedNotification(`${LEGACY_NOTIFICATION_ID_PREFIX}old`, undefined, openTaskIds), true);
+    assert.equal(shouldDismissPresentedNotification("trial-end", undefined, openTaskIds, true), false);
+  });
+});
 
 describe("default reminder policy", () => {
   it("no deadline: no task reminder", () => {

@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 import {
   buildNextOccurrence,
   buildRule,
+  latestDueSlot,
   nextSlot,
   normalizeRule,
   occursOn,
@@ -78,6 +79,11 @@ describe("nextSlot", () => {
     const daily = rule({ frequency: "daily", anchorDate: "2026-10-01", endDate: "2026-10-03" });
     assert.equal(nextSlot(daily, "2026-10-02"), "2026-10-03");
     assert.equal(nextSlot(daily, "2026-10-03"), null);
+  });
+
+  it("finds the final eligible occurrence after a series has expired", () => {
+    const daily = rule({ frequency: "daily", anchorDate: "2026-09-24", endDate: "2026-09-26" });
+    assert.equal(latestDueSlot(daily, "2026-09-24", "2026-09-29"), "2026-09-26");
   });
 
   it("skips missed slots when told not to go back before today", () => {

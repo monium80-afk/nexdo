@@ -43,7 +43,7 @@ describe("sync before the deadline/reminder migration has been run", () => {
     assert.ok(row.due_date, "the instant is there, so no deadline is lost");
     assert.ok(!(id in useTaskStore.getState().unsynced));
 
-    await useTaskStore.getState().hydrateFromSupabase(USER);
+    assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
     const task = useTaskStore.getState().tasks.find((entry) => entry.id === id)!;
     assert.deepEqual([task.deadline?.date, task.deadline?.time], ["2026-10-15", undefined], "still date-only, not 23:59");
   });

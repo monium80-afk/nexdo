@@ -76,6 +76,7 @@ export function DetailsList({ rows, onOpen }: { rows: { key: DetailKey; icon: Sh
 // ─── Time ─────────────────────────────────────────────────────────────────
 
 const MINUTE_STEPS = Array.from({ length: 12 }, (_, index) => index * 5);
+const TIME_MINUTES = Array.from({ length: 60 }, (_, index) => index);
 
 /** A time of day on wheels: hour, minutes (5 at a time) and AM/PM — or 24-hour where that's the custom. */
 function TimeWheel({ time, onChange }: { time: string; onChange: (time: string) => void }) {
@@ -83,7 +84,7 @@ function TimeWheel({ time, onChange }: { time: string; onChange: (time: string) 
   const twentyFour = useMemo(() => uses24HourClock(t.locale), [t.locale]);
   const periods = useMemo(() => dayPeriods(t.locale), [t.locale]);
   const [hour, minute] = time.split(":").map(Number);
-  const minuteIndex = Math.min(11, Math.round(minute / 5));
+  const minuteIndex = minute;
   const set = (h: number, m: number) => onChange(`${pad(h)}:${pad(m)}`);
 
   if (twentyFour) {
@@ -92,14 +93,14 @@ function TimeWheel({ time, onChange }: { time: string; onChange: (time: string) 
         <Wheel
           items={Array.from({ length: 24 }, (_, index) => pad(index))}
           index={hour}
-          onChange={(index) => set(index, MINUTE_STEPS[minuteIndex])}
+          onChange={(index) => set(index, minute)}
           width={60}
           accessibilityLabel={t.addSheet.hoursShort}
         />
         <Wheel
-          items={MINUTE_STEPS.map(pad)}
+          items={TIME_MINUTES.map(pad)}
           index={minuteIndex}
-          onChange={(index) => set(hour, MINUTE_STEPS[index])}
+          onChange={(index) => set(hour, TIME_MINUTES[index])}
           width={60}
           accessibilityLabel={t.addSheet.minutesShort}
         />
@@ -113,14 +114,14 @@ function TimeWheel({ time, onChange }: { time: string; onChange: (time: string) 
       <Wheel
         items={Array.from({ length: 12 }, (_, index) => String(index + 1))}
         index={twelve - 1}
-        onChange={(index) => set(((index + 1) % 12) + (pm ? 12 : 0), MINUTE_STEPS[minuteIndex])}
+        onChange={(index) => set(((index + 1) % 12) + (pm ? 12 : 0), minute)}
         width={52}
         accessibilityLabel={t.addSheet.hoursShort}
       />
       <Wheel
-        items={MINUTE_STEPS.map(pad)}
+        items={TIME_MINUTES.map(pad)}
         index={minuteIndex}
-        onChange={(index) => set(hour, MINUTE_STEPS[index])}
+        onChange={(index) => set(hour, TIME_MINUTES[index])}
         width={52}
         accessibilityLabel={t.addSheet.minutesShort}
       />
@@ -279,13 +280,16 @@ export function DateDetail({
 
 // ─── Duration ─────────────────────────────────────────────────────────────
 
-const HOUR_STEPS = Array.from({ length: 13 }, (_, index) => index);
+const MAX_DURATION_MINUTES = 9_999;
+const HOUR_STEPS = Array.from({ length: Math.floor(MAX_DURATION_MINUTES / 60) + 1 }, (_, index) => index);
 const DURATION_SHORTCUTS = [15, 30, 60, 120, NO_DURATION];
 
 export function DurationDetail({ minutes, onChange, onBack }: { minutes: number; onChange: (minutes: number) => void; onBack: () => void }) {
   const t = useTranslation();
-  const hours = Math.min(12, Math.floor(minutes / 60));
-  const minuteIndex = Math.min(11, Math.round((minutes % 60) / 5));
+  const boundedMinutes = Math.min(MAX_DURATION_MINUTES, minutes);
+  const hours = Math.floor(boundedMinutes / 60);
+  const minuteIndex = Math.min(11, Math.round((boundedMinutes % 60) / 5));
+  const setDuration = (nextHours: number, nextMinutes: number) => onChange(Math.min(MAX_DURATION_MINUTES, nextHours * 60 + nextMinutes));
 
   return (
     <DetailCard>
@@ -294,7 +298,7 @@ export function DurationDetail({ minutes, onChange, onBack }: { minutes: number;
         <Wheel
           items={HOUR_STEPS.map(String)}
           index={hours}
-          onChange={(index) => onChange(index * 60 + MINUTE_STEPS[minuteIndex])}
+          onChange={(index) => setDuration(index, MINUTE_STEPS[minuteIndex])}
           width={60}
           accessibilityLabel={t.addSheet.hoursShort}
         />
@@ -302,7 +306,7 @@ export function DurationDetail({ minutes, onChange, onBack }: { minutes: number;
         <Wheel
           items={MINUTE_STEPS.map(pad)}
           index={minuteIndex}
-          onChange={(index) => onChange(hours * 60 + MINUTE_STEPS[index])}
+          onChange={(index) => setDuration(hours, MINUTE_STEPS[index])}
           width={60}
           accessibilityLabel={t.addSheet.minutesShort}
         />

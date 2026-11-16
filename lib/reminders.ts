@@ -108,6 +108,18 @@ export const NOTIFICATION_ID_PREFIX = "nexdo-";
 /** The prefix of the overdue alerts scheduled before this engine existed, cleared out on the first run. */
 export const LEGACY_NOTIFICATION_ID_PREFIX = "overdue-";
 
+export function shouldDismissPresentedNotification(
+  identifier: string,
+  taskId: unknown,
+  openTaskIds: Set<string>,
+  clearAll = false,
+): boolean {
+  const isOwned =
+    identifier.startsWith(NOTIFICATION_ID_PREFIX) || identifier.startsWith(LEGACY_NOTIFICATION_ID_PREFIX);
+  if (!isOwned) return false;
+  return clearAll || identifier.startsWith(LEGACY_NOTIFICATION_ID_PREFIX) || (typeof taskId === "string" && !openTaskIds.has(taskId));
+}
+
 /**
  * iOS keeps at most 64 pending notifications per app and silently drops the
  * rest, so the soonest ones win; later ones are scheduled on a later run

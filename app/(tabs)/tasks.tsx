@@ -358,7 +358,16 @@ export default function TasksListScreen() {
               <View className="flex-row items-center justify-between gap-3">
                 <Text numberOfLines={1} className="shrink font-grotesk-bold text-[26px] leading-[30px] tracking-[-0.52px] text-ink" style={rtl}>{t.tasks.yourTasks}</Text>
                 <View className="flex-row items-center gap-[8px]">
-                  <AnimatedPressable onPress={() => setSearchOpen((open) => !open)} scaleTo={0.92} accessibilityRole="button" accessibilityLabel={t.tasks.searchPlaceholder} className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip">
+                  <AnimatedPressable
+                    onPress={() => {
+                      if (searchOpen) setSearch("");
+                      setSearchOpen(!searchOpen);
+                    }}
+                    scaleTo={0.92}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.tasks.searchPlaceholder}
+                    className="h-[40px] w-[40px] items-center justify-center rounded-full bg-chip"
+                  >
                     <Feather name={searchOpen ? "x" : "search"} size={17} color={colors.palette.ink} />
                   </AnimatedPressable>
                   <AnimatedPressable onPress={() => openAddSheet()} scaleTo={0.92} accessibilityRole="button" accessibilityLabel={t.tasks.addTask} className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink">

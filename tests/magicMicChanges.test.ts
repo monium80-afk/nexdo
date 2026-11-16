@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { changedTaskIds, discardSnapshots, micChanges } from "@/lib/magicMicChanges";
+import { changedTaskIds, discardSnapshots, micChanges, type MicTaskWrite } from "@/lib/magicMicChanges";
 import type { Subtask, Task } from "@/types/task";
 
 import { makeTask } from "./helpers";
@@ -15,6 +15,19 @@ const report = makeTask({ id: "report", title: "Report", updatedAt: "2026-10-31T
 const call = makeTask({ id: "call", title: "Call Mom", updatedAt: "2026-10-31T08:00:00.000Z" });
 
 const baselineOf = (tasks: Task[]) => new Map(tasks.map((task) => [task.id, task]));
+
+const micWrite = (
+  before: Task | null,
+  lastWritten: Task | null,
+  fields: Record<string, [unknown, unknown]> = {},
+): MicTaskWrite => ({
+  before,
+  lastWritten,
+  fields: new Map(
+    Object.entries(fields).map(([field, [original, written]]) => [field, { before: original, lastWritten: written, conflicted: false }]),
+  ),
+  conflicted: false,
+});
 
 const steps = (): Subtask[] => [
   { id: "s1", label: "Outline", estimatedMinutes: 10, order: 0, status: "current" },
@@ -134,16 +147,19 @@ describe("Named tasks", () => {
   });
 
   it("never brings a named task into Discard", () => {
-    assert.deepEqual(discardSnapshots(baselineOf([gym]), [gym], []), []);
+    assert.deepEqual(discardSnapshots([gym], [], new Map()), []);
   });
 });
 
 describe("Discard", () => {
   it("puts back every change and takes away what was added", () => {
-    const baseline = baselineOf([gym, report]);
     const added = makeTask({ id: "new", title: "Buy milk" });
-    const moved = { ...report, updatedAt: "2026-10-31T09:00:00.000Z" };
-    const snapshots = discardSnapshots(baseline, [moved, added], ["report", "new", "gym"]);
+    const moved = { ...report, title: "Moved report", updatedAt: "2026-10-31T09:00:00.000Z" };
+    const snapshots = discardSnapshots([moved, added], ["report", "new", "gym"], new Map([
+      ["report", micWrite(report, moved, { title: [report.title, moved.title] })],
+      ["new", micWrite(null, added)],
+      ["gym", micWrite(gym, null)],
+    ]));
     assert.deepEqual(
       snapshots.map((snapshot) => [snapshot.taskId, snapshot.before?.updatedAt ?? null]),
       [
@@ -155,15 +171,29 @@ describe("Discard", () => {
   });
 
   it("has nothing to do when nothing changed", () => {
-    assert.deepEqual(discardSnapshots(baselineOf([gym]), [gym], ["gym"]), []);
+    assert.deepEqual(discardSnapshots([gym], ["gym"], new Map([["gym", micWrite(gym, gym)]])), []);
   });
 
   it("leaves alone what the mic didn't do", () => {
-    const baseline = baselineOf([gym, report]);
     const added = makeTask({ id: "new", title: "Buy milk" });
     const elsewhere = { ...report, updatedAt: "2026-10-31T09:00:00.000Z" };
     const synced = makeTask({ id: "synced", title: "Water plants" });
-    const snapshots = discardSnapshots(baseline, [added, synced, elsewhere], ["new"]);
-    assert.deepEqual(snapshots, [{ taskId: "new", before: null }]);
+    const snapshots = discardSnapshots(
+      [added, synced, elsewhere],
+      ["new"],
+      new Map([["new", micWrite(null, added)]]),
+    );
+    assert.deepEqual(snapshots.map(({ taskId, before }) => [taskId, before]), [["new", null]]);
+  });
+
+  it("does not restore a mic-written field after an external edit to that field", () => {
+    const micEdited = { ...report, title: "Mic title" };
+    const externallyEdited = { ...micEdited, title: "External title" };
+    const snapshots = discardSnapshots(
+      [externallyEdited],
+      ["report"],
+      new Map([["report", micWrite(report, micEdited, { title: [report.title, micEdited.title] })]]),
+    );
+    assert.deepEqual(snapshots, []);
   });
 });

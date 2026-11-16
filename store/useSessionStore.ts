@@ -28,6 +28,14 @@ export type ActiveSession = {
   elapsedMs: number;
   /** Epoch ms the current running span started; null while paused. */
   runningSince: number | null;
+  /** Milliseconds already spent focused on the active task, across pauses/resets. */
+  taskElapsedMs?: number;
+  /** Epoch ms the active task's current running span started; null while paused. */
+  taskRunningSince?: number | null;
+  /** When focus on the active task began. */
+  taskStartedAt?: number;
+  /** The active task's estimate when its focused span began. */
+  taskEstimateMinutes?: number;
   /** Epoch ms the session began. Absent on sessions saved before 2026-11-02. */
   startedAt?: number;
   /** The task's length when the session began — what its time is measured against (lib/pace.ts). */
@@ -45,17 +53,24 @@ export function sessionElapsedMs(session: ActiveSession, now: number = Date.now(
   return session.elapsedMs + (session.runningSince === null ? 0 : now - session.runningSince);
 }
 
+function taskSpanElapsedMs(session: ActiveSession, now: number): number {
+  if (session.taskElapsedMs === undefined) {
+    return sessionElapsedMs(session, now) + (session.resetMs ?? 0);
+  }
+  const runningSince = session.taskRunningSince === undefined ? session.runningSince : session.taskRunningSince;
+  return session.taskElapsedMs + (runningSince === null ? 0 : now - runningSince);
+}
+
 /** A session ending, however it ends: its time goes to the focus log (Insights, your pace). */
-function logEnd(session: ActiveSession | null): void {
+function logEnd(session: ActiveSession | null, endedAt = Date.now()): void {
   if (!session || session.userId === undefined) return;
-  const endedAt = Date.now();
-  const elapsedMs = sessionElapsedMs(session, endedAt) + (session.resetMs ?? 0);
+  const elapsedMs = taskSpanElapsedMs(session, endedAt);
   logEndedSession({
     taskId: session.taskIds[session.activeIndex] ?? session.taskIds[0],
     userId: session.userId,
     plannedMinutes: session.plannedMinutes,
-    estimateMinutes: session.estimateMinutes ?? session.plannedMinutes,
-    startedAt: session.startedAt ?? endedAt - elapsedMs,
+    estimateMinutes: session.taskEstimateMinutes ?? session.estimateMinutes ?? session.plannedMinutes,
+    startedAt: session.taskStartedAt ?? session.startedAt ?? endedAt - elapsedMs,
     elapsedMs,
     endedAt,
   });
@@ -106,6 +121,10 @@ export const useSessionStore = create<SessionStore>()(
             activeIndex: 0,
             elapsedMs: 0,
             runningSince: now,
+            taskElapsedMs: 0,
+            taskRunningSince: now,
+            taskStartedAt: now,
+            taskEstimateMinutes: plannedMinutes,
             startedAt: now,
             estimateMinutes: plannedMinutes,
           },
@@ -116,8 +135,17 @@ export const useSessionStore = create<SessionStore>()(
         set((state) => {
           const session = state.session;
           if (!session || session.runningSince === null) return {};
+          const now = Date.now();
           return {
-            session: { ...session, elapsedMs: sessionElapsedMs(session), runningSince: null },
+            session: {
+              ...session,
+              elapsedMs: sessionElapsedMs(session, now),
+              runningSince: null,
+              taskElapsedMs: taskSpanElapsedMs(session, now),
+              taskRunningSince: null,
+              taskStartedAt: session.taskStartedAt ?? session.startedAt ?? now,
+              taskEstimateMinutes: session.taskEstimateMinutes ?? session.estimateMinutes ?? session.plannedMinutes,
+            },
           };
         }),
 
@@ -125,25 +153,40 @@ export const useSessionStore = create<SessionStore>()(
         set((state) => {
           const session = state.session;
           if (!session || session.runningSince !== null) return {};
-          return { session: { ...session, runningSince: Date.now() } };
+          const now = Date.now();
+          return {
+            session: {
+              ...session,
+              runningSince: now,
+              taskElapsedMs: session.taskElapsedMs ?? taskSpanElapsedMs(session, now),
+              taskRunningSince: now,
+              taskStartedAt: session.taskStartedAt ?? session.startedAt ?? now,
+              taskEstimateMinutes: session.taskEstimateMinutes ?? session.estimateMinutes ?? session.plannedMinutes,
+            },
+          };
         }),
 
       // Restarts the countdown from the full budget and leaves it running —
       // a reset mid-session means "give me the whole block again", not "stop".
       // The time before the reset was still spent on the task: kept for the log.
       resetTimer: () =>
-        set((state) =>
-          state.session
-            ? {
-                session: {
-                  ...state.session,
-                  resetMs: (state.session.resetMs ?? 0) + sessionElapsedMs(state.session),
-                  elapsedMs: 0,
-                  runningSince: Date.now(),
-                },
-              }
-            : {},
-        ),
+        set((state) => {
+          const session = state.session;
+          if (!session) return {};
+          const now = Date.now();
+          return {
+            session: {
+              ...session,
+              resetMs: (session.resetMs ?? 0) + sessionElapsedMs(session, now),
+              elapsedMs: 0,
+              runningSince: now,
+              taskElapsedMs: taskSpanElapsedMs(session, now),
+              taskRunningSince: now,
+              taskStartedAt: session.taskStartedAt ?? session.startedAt ?? now,
+              taskEstimateMinutes: session.taskEstimateMinutes ?? session.estimateMinutes ?? session.plannedMinutes,
+            },
+          };
+        }),
 
       extendMinutes: (minutes) =>
         set((state) =>
@@ -156,7 +199,24 @@ export const useSessionStore = create<SessionStore>()(
         set((state) => {
           const session = state.session;
           if (!session || index < 0 || index >= session.taskIds.length) return {};
-          return { session: { ...session, activeIndex: index } };
+          if (index === session.activeIndex) return {};
+          const now = Date.now();
+          logEnd(session, now);
+          const taskId = session.taskIds[index];
+          const estimateMinutes =
+            useTaskStore.getState().tasks.find((task) => task.id === taskId)?.estimatedMinutes ??
+            session.estimateMinutes ??
+            session.plannedMinutes;
+          return {
+            session: {
+              ...session,
+              activeIndex: index,
+              taskElapsedMs: 0,
+              taskRunningSince: session.runningSince === null ? null : now,
+              taskStartedAt: now,
+              taskEstimateMinutes: estimateMinutes,
+            },
+          };
         }),
 
       dropTask: (taskId) =>
@@ -165,18 +225,36 @@ export const useSessionStore = create<SessionStore>()(
           const dropped = session ? session.taskIds.indexOf(taskId) : -1;
           if (!session || dropped < 0) return {};
           const taskIds = session.taskIds.filter((id) => id !== taskId);
+          const now = Date.now();
           if (taskIds.length === 0) {
-            logEnd(session);
+            logEnd(session, now);
             return { session: null };
           }
+          const removingActiveTask = dropped === session.activeIndex;
+          if (removingActiveTask) logEnd(session, now);
           // A task before the focused one going moves the focus down a place
           // with it; the focused one going hands it to the task after.
           const activeIndex = dropped < session.activeIndex ? session.activeIndex - 1 : session.activeIndex;
+          const nextActiveIndex = Math.min(activeIndex, taskIds.length - 1);
+          const nextTaskId = taskIds[nextActiveIndex];
+          const estimateMinutes = removingActiveTask
+            ? useTaskStore.getState().tasks.find((task) => task.id === nextTaskId)?.estimatedMinutes ??
+              session.estimateMinutes ??
+              session.plannedMinutes
+            : session.taskEstimateMinutes;
           return {
             session: {
               ...session,
               taskIds,
-              activeIndex: Math.min(activeIndex, taskIds.length - 1),
+              activeIndex: nextActiveIndex,
+              ...(removingActiveTask
+                ? {
+                    taskElapsedMs: 0,
+                    taskRunningSince: session.runningSince === null ? null : now,
+                    taskStartedAt: now,
+                    taskEstimateMinutes: estimateMinutes,
+                  }
+                : {}),
             },
           };
         }),

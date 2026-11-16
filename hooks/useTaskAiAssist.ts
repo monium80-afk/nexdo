@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import { suggestBreakdown } from "@/lib/ai/suggestBreakdown";
 import { AiConsentError } from "@/lib/aiConsent";
@@ -52,6 +52,12 @@ export function useTaskAiAssist(task: Task, availableMinutes?: number) {
   // Bumped by every new request and every cancel, so a slow response for a
   // request the user has already replaced or closed is simply dropped.
   const breakdownRequestId = useRef(0);
+
+  useLayoutEffect(() => {
+    if (breakdownState.taskId === task.id) return;
+    breakdownRequestId.current += 1;
+    setBreakdownState({ taskId: task.id, status: "idle" });
+  }, [breakdownState.taskId, task.id]);
 
   /**
    * New steps for the work left, given the sheet's draft — or null when there

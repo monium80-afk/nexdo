@@ -89,10 +89,28 @@ function zonedInstant(date: LocalDate, time: string, timeZone: string | undefine
   const local = new Date(y, m - 1, d, hour, minute, 0, 0).getTime();
   if (isDeviceZone(timeZone)) return local;
   const wall = Date.UTC(y, m - 1, d, hour, minute);
+  const offsets = new Set<number>();
+  for (const probe of [wall - 36 * 60 * 60 * 1000, wall, wall + 36 * 60 * 60 * 1000]) {
+    const offset = zoneOffsetMs(probe, timeZone!);
+    if (offset !== null) offsets.add(offset);
+  }
+
+  const candidates = [...offsets].flatMap((offset) => {
+    const instant = wall - offset;
+    const actualOffset = zoneOffsetMs(instant, timeZone!);
+    return actualOffset === null ? [] : [{ instant, wallDelta: instant + actualOffset - wall }];
+  });
+  const exact = candidates.filter((candidate) => candidate.wallDelta === 0).sort((a, b) => a.instant - b.instant);
+  if (exact.length > 0) return exact[0].instant;
+
+  // A skipped wall time moves forward by the gap, as local Date does.
+  const afterGap = candidates
+    .filter((candidate) => candidate.wallDelta > 0)
+    .sort((a, b) => a.wallDelta - b.wallDelta || a.instant - b.instant);
+  if (afterGap.length > 0) return afterGap[0].instant;
+
   const first = zoneOffsetMs(wall, timeZone!);
   if (first === null) return local;
-  // The offset at the guessed instant can differ from the one at the wall
-  // time itself when a daylight-saving change falls in between.
   const guess = wall - first;
   const second = zoneOffsetMs(guess, timeZone!);
   return second !== null && second !== first ? wall - second : guess;
@@ -283,7 +301,7 @@ export function shiftDeadline(deadline: TaskDeadline, shift: DateShift): TaskDea
     case "hours": {
       const ms = shift.amount * (shift.unit === "hours" ? 3_600_000 : 60_000);
       if (!deadline.time) {
-        const days = Math.round(ms / DAY_MS);
+        const days = Math.trunc(ms / DAY_MS);
         return days === 0 ? null : { ...deadline, date: addDaysToKey(deadline.date, days) };
       }
       const moved = wallTime(deadlineInstant(deadline).getTime() + ms, deadline.timeZone);
@@ -317,7 +335,7 @@ export function reconcileDeadline<T extends { deadline?: TaskDeadline; dueDate?:
   if (!task.dueDate) return withDeadline(task, undefined);
   const stored = Date.parse(task.dueDate);
   const sameInstantEverywhere =
-    isDeviceZone(deadline.timeZone) || (!!deadline.time && zoneOffsetMs(stored, deadline.timeZone!) !== null);
+    !!deadline.time && (isDeviceZone(deadline.timeZone) || zoneOffsetMs(stored, deadline.timeZone!) !== null);
   const tolerance = sameInstantEverywhere ? SAME_ZONE_TOLERANCE_MS : CROSS_ZONE_TOLERANCE_MS;
   if (!Number.isNaN(stored) && Math.abs(stored - deadlineInstant(deadline).getTime()) > tolerance) {
     return withDeadline(task, deadlineFromInstant(task.dueDate));

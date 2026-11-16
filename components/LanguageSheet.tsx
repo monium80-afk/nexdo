@@ -56,7 +56,7 @@ export function LanguageSheet({
                   }}
                   scaleTo={0.99}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: picked }}
+                  accessibilityState={{ checked: picked }}
                   style={{ height: 48.5, flexDirection: "row", alignItems: "center", gap: 12 }}
                 >
                   <Text style={{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 15.5, color: P.ink }}>{option.label}</Text>

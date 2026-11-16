@@ -2,6 +2,9 @@
 // notifications, analytics, reading attachments.
 export async function reconcileNotifications() {}
 export async function clearAllNotifications() {}
+export async function setTrialReminder() {
+  return true;
+}
 export function configureNotifications() {}
 export async function requestNotificationPermission() {
   return false;

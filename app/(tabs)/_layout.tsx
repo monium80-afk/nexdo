@@ -38,6 +38,10 @@ export default function TabsLayout() {
     }
   }, [user])
 
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) posthog.reset();
+  }, [isLoaded, isSignedIn])
+
   if (!isLoaded) return null;
   if (!isSignedIn) return <Redirect href="/onboarding" />;
 

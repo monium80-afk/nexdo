@@ -16,6 +16,8 @@ type UndoToast = {
   subtitle?: string;
   /** The gem beside the message: a task done that feeds it. */
   gem?: boolean;
+  /** The account whose task list these snapshots belong to. */
+  syncUserId: string | null;
   snapshots: Snapshot[];
 };
 
@@ -40,12 +42,13 @@ export const useUndoStore = create<UndoStore>()((set, get) => ({
   toast: null,
   show: (message, snapshots) => {
     if (snapshots.length === 0) return;
-    set({ toast: { id: nextId++, message, snapshots } });
+    set({ toast: { id: nextId++, message, syncUserId: useTaskStore.getState().syncUserId, snapshots } });
   },
   undo: () => {
     const toast = get().toast;
     if (!toast) return;
     set({ toast: null });
+    if (toast.syncUserId !== useTaskStore.getState().syncUserId) return;
     useTaskStore.getState().restoreSnapshots(toast.snapshots);
   },
   decorate: (look) => {

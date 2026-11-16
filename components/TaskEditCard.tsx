@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useMemo, useState, type ReactNode } from "react";
-import { Modal, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -92,12 +92,14 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
   const keyboardHeight = useKeyboardHeight(Boolean(task));
   const [cardHeight, setCardHeight] = useState(0);
   const visible = Boolean(task);
+  const highest = insets.top + 8;
+  const bottomGap = keyboardHeight > 0 ? keyboardHeight + 12 : insets.bottom + 16;
+  const maxCardHeight = Math.max(0, screenHeight - highest - bottomGap);
 
   // Where the card's top goes: on the tapped task (4 above it, as the card is
   // a touch bigger), or centred; never under the status bar, the keyboard or
   // off the bottom of the screen.
-  const lowest = screenHeight - (keyboardHeight > 0 ? keyboardHeight + 12 : insets.bottom + 16) - cardHeight;
-  const highest = insets.top + 8;
+  const lowest = screenHeight - bottomGap - cardHeight;
   const wanted = anchorY !== undefined ? anchorY - 4 : (screenHeight - cardHeight) / 2;
   const top = Math.max(highest, Math.min(wanted, lowest));
 
@@ -113,6 +115,7 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
             <TaskEditCard
               key={task.id}
               task={task}
+              maxHeight={maxCardHeight}
               onClose={onClose}
               onToggle={() => {
                 onClose();
@@ -132,7 +135,7 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
  * Duration, Repeat and Priority open the Add task sheet's own pickers. Done
  * saves it all; nothing changes before that.
  */
-export function TaskEditCard({ task, onClose, onToggle }: { task: Task; onClose: () => void; onToggle: () => void }) {
+export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Task; maxHeight: number; onClose: () => void; onToggle: () => void }) {
   const t = useTranslation();
   const rtl = useRtlText();
   const insets = useSafeAreaInsets();
@@ -141,15 +144,20 @@ export function TaskEditCard({ task, onClose, onToggle }: { task: Task; onClose:
   const deleteTask = useTaskStore((state) => state.deleteTask);
   const now = useMemo(() => new Date(), []);
 
-  const savedRepeat = task.recurrence ? ruleToInput(task.recurrence.rule) : null;
-  const savedLevel = priorityLevelOf(task.importance);
-  const [title, setTitle] = useState(task.title);
-  const [deadline, setDeadline] = useState<DeadlineInput | undefined>(task.deadline ? { ...task.deadline } : undefined);
-  const [minutes, setMinutes] = useState(task.estimatedMinutes);
-  const [repeat, setRepeat] = useState<RuleInput | null>(savedRepeat);
-  const [priority, setPriority] = useState<TaskPriorityLevel>(savedLevel);
-  const savedMuted = Boolean(task.reminders?.muted);
-  const [muted, setMuted] = useState(savedMuted);
+  const [baseline] = useState(() => ({
+    title: task.title,
+    deadline: task.deadline ? { ...task.deadline } : undefined,
+    minutes: task.estimatedMinutes,
+    repeat: task.recurrence ? ruleToInput(task.recurrence.rule) : null,
+    priority: priorityLevelOf(task.importance),
+    muted: Boolean(task.reminders?.muted),
+  }));
+  const [title, setTitle] = useState(baseline.title);
+  const [deadline, setDeadline] = useState<DeadlineInput | undefined>(baseline.deadline);
+  const [minutes, setMinutes] = useState(baseline.minutes);
+  const [repeat, setRepeat] = useState<RuleInput | null>(baseline.repeat);
+  const [priority, setPriority] = useState<TaskPriorityLevel>(baseline.priority);
+  const [muted, setMuted] = useState(baseline.muted);
   const [detail, setDetail] = useState<DetailKey | null>(null);
   // Whether reminders are on at all (Settings → Notifications → Reminders).
   const remindersEverywhere = useSettingsStore((state) => state.deadlineRemindersEnabled);
@@ -201,12 +209,12 @@ export function TaskEditCard({ task, onClose, onToggle }: { task: Task; onClose:
   const handleDone = () => {
     const trimmed = title.trim();
     const changes: TaskChanges = {};
-    if (trimmed && trimmed !== task.title) changes.title = trimmed;
-    if (minutes !== task.estimatedMinutes) changes.estimatedMinutes = minutes;
-    if (JSON.stringify(deadline ?? null) !== JSON.stringify(task.deadline ?? null)) changes.deadline = deadline ?? null;
-    if (priority !== savedLevel) changes.priority = priority;
-    if (muted !== savedMuted) changes.remindersMuted = muted;
-    const repeatChanged = JSON.stringify(repeat) !== JSON.stringify(savedRepeat);
+    if (trimmed && trimmed !== baseline.title) changes.title = trimmed;
+    if (minutes !== baseline.minutes) changes.estimatedMinutes = minutes;
+    if (JSON.stringify(deadline ?? null) !== JSON.stringify(baseline.deadline ?? null)) changes.deadline = deadline ?? null;
+    if (priority !== baseline.priority) changes.priority = priority;
+    if (muted !== baseline.muted) changes.remindersMuted = muted;
+    const repeatChanged = JSON.stringify(repeat) !== JSON.stringify(baseline.repeat);
 
     // The repeat after the rest, so it follows the deadline just set.
     const finish = (scope?: RecurrenceScope) => {
@@ -263,9 +271,15 @@ export function TaskEditCard({ task, onClose, onToggle }: { task: Task; onClose:
         paddingTop: 18,
         paddingHorizontal: 16,
         paddingBottom: 16,
+        maxHeight,
         ...shadow("0 16px 32px rgba(34, 28, 23, 0.28)", 12),
       }}
     >
+      <ScrollView
+        style={{ flexShrink: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       {/* The round box, the title being edited, and the score. */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <AnimatedPressable
@@ -402,6 +416,7 @@ export function TaskEditCard({ task, onClose, onToggle }: { task: Task; onClose:
           <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, color: "#FFFFFF", includeFontPadding: false }}>{t.common.done}</Text>
         </AnimatedPressable>
       </View>
+      </ScrollView>
 
       {/* A tile's picker: the Add task sheet's own, over the page. */}
       <Modal visible={detail !== null} transparent animationType="fade" statusBarTranslucent onRequestClose={closeDetail}>

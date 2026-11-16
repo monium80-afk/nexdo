@@ -165,6 +165,7 @@ export default function OnboardingDump() {
   const [leaving, setLeaving] = useState(false);
 
   const [typed, setTyped] = useState("");
+  const typedRevision = useRef(0);
   const [organizing, setOrganizing] = useState(false);
   const [remainingFragments, setRemainingFragments] = useState<number | null>(null);
 
@@ -269,7 +270,9 @@ export default function OnboardingDump() {
   // Typed: the same one free AI run reads it (as the old analyzing step did);
   // without AI consent, or once the run is used, the phone finds the tasks.
   const handleOrganize = async () => {
-    const text = typed.trim();
+    const submittedText = typed;
+    const submittedRevision = typedRevision.current;
+    const text = submittedText.trim();
     if (!text || organizing) return;
     setOrganizing(true);
     setRemainingFragments(null);
@@ -291,7 +294,7 @@ export default function OnboardingDump() {
     }
     const stamped = found.map((draft, index) => ({ ...draft, candidateId: draft.candidateId ?? `typed-${Date.now().toString(36)}-${index}` }));
     setDrafts([...useOnboardingStore.getState().drafts, ...stamped]);
-    setTyped("");
+    if (typedRevision.current === submittedRevision) setTyped("");
     setOrganizing(false);
     posthog.capture("onboarding_dump_typed", { task_count: stamped.length, ai: useAi });
   };
@@ -365,7 +368,10 @@ export default function OnboardingDump() {
           <FadeUp delay={120}>
             <TextInput
               value={typed}
-              onChangeText={setTyped}
+              onChangeText={(value) => {
+                typedRevision.current += 1;
+                setTyped(value);
+              }}
               placeholder={copy.placeholder}
               placeholderTextColor={ONB.faint}
               multiline

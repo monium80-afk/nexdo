@@ -66,7 +66,7 @@ describe("the score", () => {
     const task = due("d", "2026-10-03", { estimatedMinutes: 30 });
     const before = urgencyScore(task, local(2026, 9, 30, 23, 59));
     const after = urgencyScore(task, local(2026, 10, 1, 0, 1));
-    assert.ok(after - before <= 1, `${before} → ${after}`);
+    assert.ok(after >= before && after - before <= 1, `${before} → ${after}`);
     assert.ok(urgencyScore(task, local(2026, 10, 2, 12)) > after);
   });
 
@@ -176,6 +176,14 @@ describe("the plan", () => {
     const sooner = withDeadline(base, makeDeadline({ date: "2026-09-30" }));
     assert.equal(summarizePlan(sooner, NOW)!.daysLeft, 2);
     assert.equal(summarizePlan(sooner, NOW)!.minutesPerDay, 60);
+  });
+
+  it("counts the deadline day as it falls on this phone", () => {
+    const task = withDeadline(
+      makeTask({ id: "cross-zone", subtasks: steps(["step", 30, "current"]) }),
+      makeDeadline({ date: "2026-09-29", time: "20:30" }, "America/New_York"),
+    );
+    assert.equal(summarizePlan(task, NOW)!.daysLeft, 2);
   });
 
   it("an overdue plan says so, and a plan without a deadline makes no schedule up", () => {

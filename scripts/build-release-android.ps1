@@ -159,6 +159,13 @@ if ($testKey -and $js.Contains($testKey)) { throw "The bundle holds the RevenueC
 if (-not $js.Contains($env:EXPO_PUBLIC_API_URL)) { throw "The bundle doesn't point at $env:EXPO_PUBLIC_API_URL" }
 if (-not $js.Contains($clerkKey)) { throw "The bundle doesn't hold Clerk's production key from .env" }
 
+Set-Location $project
+$builtHead = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed after the build" }
+$uncommitted = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "git status failed after the build" }
+if ($builtHead -ne $head -or $uncommitted) { throw "Source changed while the release build was running; rebuild from a clean commit." }
+
 $config = Get-Content (Join-Path $project "app.json") -Raw | ConvertFrom-Json
 $name = "nexdo-$($config.expo.version)-$($config.expo.android.versionCode).aab"
 $releases = Join-Path $root "releases"
@@ -168,6 +175,11 @@ Copy-Item $aab (Join-Path $releases $name) -Force
 # Only once the bundle is built and checked: the tag marks what was uploaded.
 Set-Location $project
 if (-not $tagged) {
+  $builtHead = (git rev-parse HEAD).Trim()
+  if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed before tagging the build" }
+  $uncommitted = git status --porcelain
+  if ($LASTEXITCODE -ne 0) { throw "git status failed before tagging the build" }
+  if ($builtHead -ne $head -or $uncommitted) { throw "Source changed before the release tag could be created." }
   git tag $tag $head
   if ($LASTEXITCODE -ne 0) { throw "Built, but couldn't create the git tag $tag" }
 }

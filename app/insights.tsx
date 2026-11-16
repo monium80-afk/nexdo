@@ -237,7 +237,10 @@ function InsightsView() {
 
   const shownRange: InsightsRange = locked ? "week" : range;
   const week = shownRange === "week";
-  const insights = useMemo(() => buildInsights(entries, completions, tasks, shownRange), [entries, completions, tasks, shownRange]);
+  const insights = useMemo(
+    () => buildInsights(entries, completions, tasks, shownRange, keyToLocalDate(today)),
+    [entries, completions, tasks, shownRange, today],
+  );
   const pace = useMemo(() => computePace(entries), [entries]);
   const finishedInSession = useMemo(() => paceSamples(entries).length, [entries]);
   const longestStreak = useMemo(() => bestStreak(completions, tasks), [completions, tasks]);

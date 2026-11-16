@@ -6,6 +6,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { generatePlan } from "@/lib/ai/generatePlan";
 import type { PlanStep, StructuredAction } from "@/lib/ai/types";
 import { translate } from "@/lib/i18n";
+import { sameTaskField, sameTaskSnapshot, type MicTaskWrite } from "@/lib/magicMicChanges";
 import { clearAllNotifications } from "@/lib/notifications";
 import { describeOperationResult, describeTaskList } from "@/lib/operationMessages";
 import type { RecurrenceScope } from "@/lib/recurrence";
@@ -15,6 +16,7 @@ import {
   completeTaskDelta,
   expiredCompletedIds,
   matchesFilter,
+  nextTaskUpdatedAt,
   planOperation,
   skipMissedDelta,
   type OperationPlan,
@@ -45,6 +47,9 @@ let realtimeChannel: RealtimeChannel | null = null;
 // The latest read of an account's tasks from Supabase (hydrateFromSupabase),
 // in flight or done — what whenAccountRead waits on.
 let latestAccountRead: { userId: string; done: Promise<boolean> } | null = null;
+let accountGeneration = 0;
+// A same-account refresh during sign-out must supersede the pending cleanup.
+let signOutPending = false;
 
 /**
  * Whether the phone's list is the signed-in account's latest: resolves once
@@ -97,6 +102,28 @@ const pendingSaves = new Map<string, Promise<boolean>>();
 // otherwise an edit landing after the task's delete would bring its row back,
 // or a delete landing after an undo's save would remove it again.
 const lastRequest = new Map<string, Promise<void>>();
+
+const issuedTaskMutationTimes = new Map<string, number>();
+
+function issueTaskMutationVersion(taskId: string, previous: string | undefined, requestedAt: Date | string): string {
+  const requestedTime = requestedAt instanceof Date ? requestedAt.getTime() : Date.parse(requestedAt);
+  const previousTime = previous ? Date.parse(previous) : Number.NaN;
+  const issuedTime = issuedTaskMutationTimes.get(taskId) ?? Number.NaN;
+  const timestamp = Math.max(
+    Number.isFinite(requestedTime) ? requestedTime : Date.now(),
+    Number.isFinite(previousTime) ? previousTime + 1 : Number.NEGATIVE_INFINITY,
+    Number.isFinite(issuedTime) ? issuedTime + 1 : Number.NEGATIVE_INFINITY,
+  );
+  issuedTaskMutationTimes.set(taskId, timestamp);
+  return new Date(timestamp).toISOString();
+}
+
+function rememberTaskMutationVersion(taskId: string, updatedAt: string): void {
+  const timestamp = Date.parse(updatedAt);
+  if (!Number.isFinite(timestamp)) return;
+  const issuedTime = issuedTaskMutationTimes.get(taskId);
+  issuedTaskMutationTimes.set(taskId, issuedTime === undefined ? timestamp : Math.max(issuedTime, timestamp));
+}
 
 function inOrder<T>(taskIds: string[], send: () => Promise<T>): Promise<T> {
   const earlier = taskIds.map((id) => lastRequest.get(id)).filter((request): request is Promise<void> => !!request);
@@ -326,7 +353,7 @@ type TaskStore = {
   /** Commits a plan made by planOperation against the current list. */
   applyPlan: (plan: Pick<OperationPlan, "upserts" | "deletes">, now?: Date) => void;
   /** Undo for a whole operation: every task back to the version given, or removed where that's null. */
-  restoreSnapshots: (snapshots: { taskId: string; before: Task | null }[]) => void;
+  restoreSnapshots: (snapshots: { taskId: string; before: Task | null; micWrite?: MicTaskWrite }[]) => void;
   toggleTaskStatus: (id: string) => void;
   completeTask: (id: string) => void;
   reopenTask: (id: string) => void;
@@ -387,23 +414,35 @@ export const useTaskStore = create<TaskStore>()(
       // right here, so the row repairs itself instead of reverting the user's
       // edit on every launch.
       hydrateFromSupabase: (userId) => {
+        const previousSyncUserId = get().syncUserId;
+        // Same-account refreshes share a generation; account transitions invalidate old reads.
+        if (previousSyncUserId !== userId || signOutPending) {
+          accountGeneration += 1;
+          signOutPending = false;
+        }
+        const generation = accountGeneration;
+        const isCurrent = () => generation === accountGeneration && get().syncUserId === userId;
         set({ syncUserId: userId });
         const done = (async () => {
         try {
           await rehydrated;
-          if (get().syncUserId !== userId) return false;
+          if (!isCurrent()) return false;
 
           // A list another account left behind (its session ended without
           // signing out here) is set aside for that account, never merged in.
-          const { ownerId } = get();
-          if (ownerId && ownerId !== userId) {
-            await stashUnsynced(ownerId, get().tasks, get().unsynced, Object.keys(get().pendingDeletes));
+          const previousOwner = get().ownerId ?? previousSyncUserId;
+          if (previousOwner && previousOwner !== userId) {
+            const { tasks, unsynced, pendingDeletes } = get();
+            await stashUnsynced(previousOwner, tasks, unsynced, Object.keys(pendingDeletes));
+            if (!isCurrent()) return false;
             set({ tasks: [], unsynced: {}, pendingDeletes: {} });
           }
           // Changes this account had set aside when it last signed out here.
           const stashed = (await readStash<Task>(stashKey(userId))).filter((task) => !isSampleTask(task));
+          if (!isCurrent()) return false;
           if (stashed.length > 0) {
             set((state) => {
+              if (!isCurrent()) return {};
               const present = new Set(state.tasks.map((task) => task.id));
               const added = stashed.filter((task) => !present.has(task.id));
               return {
@@ -413,24 +452,29 @@ export const useTaskStore = create<TaskStore>()(
             });
           }
           const stashedDeletes = (await readStash<string>(deletesStashKey(userId))).filter((id) => typeof id === "string");
+          if (!isCurrent()) return false;
           if (stashedDeletes.length > 0) {
             const deletedAt = new Date().toISOString();
             set((state) => ({
               pendingDeletes: { ...state.pendingDeletes, ...Object.fromEntries(stashedDeletes.map((id) => [id, deletedAt])) },
             }));
           }
+          if (!isCurrent()) return false;
           set({ ownerId: userId });
           await AsyncStorage.removeItem(stashKey(userId));
+          if (!isCurrent()) return false;
           await AsyncStorage.removeItem(deletesStashKey(userId));
+          if (!isCurrent()) return false;
 
           const fetchStartedAt = Date.now();
+          const unsyncedAtFetchStart = { ...get().unsynced };
           const fetched = await fetchTasks(userId);
-          if (get().syncUserId !== userId) return false;
+          if (!isCurrent()) return false;
           // A task deleted here whose delete never reached Supabase stays
           // deleted: its row is left out, and the delete goes out again below.
           const { pendingDeletes } = get();
           const remoteTasks = fetched.filter((task) => !isSampleTask(task) && !(task.id in pendingDeletes));
-          const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, get().unsynced, fetchStartedAt);
+          const { tasks: merged, toPush } = mergeRemoteTasks(remoteTasks, get().tasks, unsyncedAtFetchStart, fetchStartedAt);
           const tasks = normalizePersistedTasks(merged);
           // Everything not being pushed now matches Supabase; syncUpsert marks
           // the rest unsynced again until their saves are confirmed.
@@ -504,6 +548,9 @@ export const useTaskStore = create<TaskStore>()(
       // for the next sign-in, and any this phone never managed to save are set
       // aside for this account (see stashUnsynced) rather than thrown away.
       handleSignOut: async (options) => {
+        const generation = ++accountGeneration;
+        signOutPending = true;
+        const isCurrent = () => generation === accountGeneration;
         realtimeChannel?.unsubscribe();
         realtimeChannel = null;
         const { syncUserId, ownerId, tasks, unsynced, pendingDeletes } = get();
@@ -512,17 +559,23 @@ export const useTaskStore = create<TaskStore>()(
           // A deleted account has nothing to come back to.
           if (options?.accountDeleted) {
             await AsyncStorage.removeItem(stashKey(owner));
+            if (!isCurrent()) return;
             await AsyncStorage.removeItem(deletesStashKey(owner));
+            if (!isCurrent()) return;
             // Its focus sessions too (Insights) — they only ever lived on this phone.
             useFocusLogStore.getState().forget(owner);
           } else {
             await stashUnsynced(owner, tasks, unsynced, Object.keys(pendingDeletes));
+            if (!isCurrent()) return;
           }
         }
+        if (!isCurrent()) return;
         set({ tasks: [], syncUserId: null, unsynced: {}, pendingDeletes: {}, ownerId: null });
+        signOutPending = false;
         // The phone would otherwise keep firing reminders about the departing
         // account's tasks, titles and all.
         await clearAllNotifications();
+        if (!isCurrent()) return;
         await AsyncStorage.removeItem("nexdo-tasks");
       },
 
@@ -532,6 +585,7 @@ export const useTaskStore = create<TaskStore>()(
         if (input.id && get().tasks.some((t) => t.id === input.id)) return input.id;
         const now = new Date();
         const task = buildTask(input, now);
+        rememberTaskMutationVersion(task.id, task.updatedAt);
         set((state) => ({ tasks: recalcAll([task, ...state.tasks], now) }));
         syncUpsert(get().tasks.find((t) => t.id === task.id)!, get().syncUserId);
         return task.id;
@@ -606,18 +660,30 @@ export const useTaskStore = create<TaskStore>()(
 
       applyPlan: (plan, now = new Date()) => {
         if (plan.upserts.length === 0 && plan.deletes.length === 0) return;
+        const currentTasks = new Map(get().tasks.map((task) => [task.id, task]));
+        const upserts = plan.upserts.map((task) => {
+          const current = currentTasks.get(task.id);
+          if (!current) {
+            rememberTaskMutationVersion(task.id, task.updatedAt);
+            return task;
+          }
+          return {
+            ...task,
+            updatedAt: issueTaskMutationVersion(task.id, current.updatedAt, task.updatedAt),
+          };
+        });
         const doomed = new Set(plan.deletes);
-        const changed = new Map(plan.upserts.map((task) => [task.id, task]));
+        const changed = new Map(upserts.map((task) => [task.id, task]));
         set((state) => {
           const kept = state.tasks.filter((task) => !doomed.has(task.id)).map((task) => changed.get(task.id) ?? task);
           const present = new Set(kept.map((task) => task.id));
-          const created = plan.upserts.filter((task) => !present.has(task.id));
+          const created = upserts.filter((task) => !present.has(task.id));
           return { tasks: recalcAll([...created, ...kept], now) };
         });
         // The recalculated versions, so the saved scores match what's on screen.
         const current = new Map(get().tasks.map((task) => [task.id, task]));
         syncUpsertMany(
-          plan.upserts.map((task) => current.get(task.id)).filter((task): task is Task => !!task),
+          upserts.map((task) => current.get(task.id)).filter((task): task is Task => !!task),
           get().syncUserId,
         );
         syncDeleteMany(plan.deletes, get().syncUserId);
@@ -625,12 +691,54 @@ export const useTaskStore = create<TaskStore>()(
 
       restoreSnapshots: (snapshots) => {
         const now = new Date();
+        const current = new Map(get().tasks.map((task) => [task.id, task]));
+        const upserts: Task[] = [];
+        const deletes: string[] = [];
+        for (const entry of snapshots) {
+          const task = current.get(entry.taskId);
+          if (!entry.micWrite) {
+            if (entry.before) {
+              upserts.push({
+                ...entry.before,
+                updatedAt: nextTaskUpdatedAt(task?.updatedAt ?? entry.before.updatedAt, now),
+              });
+            } else {
+              deletes.push(entry.taskId);
+            }
+            continue;
+          }
+
+          const write = entry.micWrite;
+          if (write.before === null) {
+            if (task && write.lastWritten && sameTaskSnapshot(task, write.lastWritten)) deletes.push(entry.taskId);
+          } else if (write.lastWritten === null) {
+            if (!task && !write.conflicted) {
+              upserts.push({
+                ...write.before,
+                updatedAt: nextTaskUpdatedAt(write.before.updatedAt, now),
+              });
+            }
+          } else if (task) {
+            const patch: Partial<Task> = {};
+            for (const [field, change] of write.fields) {
+              if (change.conflicted || field === "updatedAt") continue;
+              if (sameTaskField(task[field as keyof Task], change.lastWritten)) {
+                Object.assign(patch, { [field]: change.before });
+              }
+            }
+            if (Object.keys(patch).length > 0) {
+              upserts.push({
+                ...task,
+                ...patch,
+                updatedAt: nextTaskUpdatedAt(task.updatedAt, now),
+              });
+            }
+          }
+        }
         get().applyPlan(
           {
-            // A fresh updatedAt: the restored version is the newest edit now,
-            // so other devices (last-write-wins) take it instead of ignoring it.
-            upserts: snapshots.flatMap((entry) => (entry.before ? [{ ...entry.before, updatedAt: now.toISOString() }] : [])),
-            deletes: snapshots.filter((entry) => !entry.before).map((entry) => entry.taskId),
+            upserts,
+            deletes,
           },
           now,
         );
@@ -698,7 +806,7 @@ export const useTaskStore = create<TaskStore>()(
                     subtasks: finalSubtasks,
                     currentStepId: nextPending?.id,
                     estimatedMinutes: remainingMinutes(finalSubtasks),
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -737,7 +845,7 @@ export const useTaskStore = create<TaskStore>()(
                     estimatedMinutes: remainingMinutes(subtasks),
                     status: "pending",
                     completedAt: undefined,
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -760,7 +868,7 @@ export const useTaskStore = create<TaskStore>()(
                   subtasks: t.subtasks?.map((subtask) =>
                     subtask.id === subtaskId ? { ...subtask, label: trimmed } : subtask,
                   ),
-                  updatedAt: now.toISOString(),
+                  updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                 }
               : t,
           ),
@@ -797,7 +905,7 @@ export const useTaskStore = create<TaskStore>()(
                     subtasks,
                     currentStepId: subtasks.find((subtask) => subtask.status === "current")?.id,
                     estimatedMinutes: hasUnfinished ? remainingMinutes(subtasks) : t.estimatedMinutes,
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -827,7 +935,7 @@ export const useTaskStore = create<TaskStore>()(
                     ...t,
                     aiContext: { ...t.aiContext, notes: [...t.aiContext.notes, note] },
                     estimatedMinutes: estimatedMinutesOverride ?? t.estimatedMinutes,
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -844,7 +952,9 @@ export const useTaskStore = create<TaskStore>()(
         set((state) => ({
           tasks: recalcAll(
             state.tasks.map((t) =>
-              t.id === taskId ? { ...t, aiContext: { ...t.aiContext, notes }, updatedAt: now.toISOString() } : t,
+              t.id === taskId
+                ? { ...t, aiContext: { ...t.aiContext, notes }, updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now) }
+                : t,
             ),
             now,
           ),
@@ -886,20 +996,38 @@ export const useTaskStore = create<TaskStore>()(
             return { ok: false, reason: "missing" };
           }
           const built = build(current);
-          const [next, ...others] = Array.isArray(built) ? built : [built];
+          const [builtNext, ...builtOthers] = Array.isArray(built) ? built : [built];
+          const next = {
+            ...builtNext,
+            updatedAt: issueTaskMutationVersion(current.id, current.updatedAt, builtNext.updatedAt),
+          };
+          const existingTasks = new Map(get().tasks.map((task) => [task.id, task]));
+          const sourceVersions = new Map([[next.id, current.updatedAt]]);
+          const others = builtOthers.map((task) => {
+            const existing = existingTasks.get(task.id);
+            if (existing) sourceVersions.set(task.id, existing.updatedAt);
+            if (!existing) {
+              rememberTaskMutationVersion(task.id, task.updatedAt);
+              return task;
+            }
+            return { ...task, updatedAt: issueTaskMutationVersion(task.id, existing.updatedAt, task.updatedAt) };
+          });
           const ids = [taskId, ...others.map((task) => task.id)];
           const userId = get().syncUserId;
           if (userId) {
             createdBy = userId;
             try {
               // The insert result identifies new rows; the bulk upsert writes their final versions.
-              await inOrder(ids, () =>
-                upsertTaskRows([next, ...others], userId, others, (insertedIds) => {
+              await inOrder(ids, async () => {
+                await upsertTaskRows([next, ...others], userId, others, (insertedIds) => {
                   for (const task of others) {
                     if (insertedIds.includes(task.id)) createdRows.set(task.id, task.updatedAt);
                   }
-                }),
-              );
+                });
+                for (const task of others) {
+                  if (createdRows.has(task.id)) createdRows.set(task.id, task.updatedAt);
+                }
+              });
             } catch (error) {
               console.warn("[useTaskStore] save failed", error);
               discardCreated(new Set());
@@ -939,13 +1067,23 @@ export const useTaskStore = create<TaskStore>()(
             const kept = state.tasks.map((task) => changed.get(task.id) ?? task);
             const present = new Set(kept.map((task) => task.id));
             const created = others.filter((task) => !present.has(task.id));
+            const saved = [...changed.values()]
+              .filter((task) => {
+                const unsyncedVersion = state.unsynced[task.id];
+                return (
+                  unsyncedVersion !== undefined &&
+                  (unsyncedVersion === task.updatedAt || unsyncedVersion === sourceVersions.get(task.id))
+                );
+              })
+              .map((task) => task.id);
             return {
               tasks: recalcAll([...created, ...kept], now),
               // Signed out, the phone's copy is the save — kept as unsynced
               // until an account uploads it, like any other change.
               unsynced: userId
-                ? withoutKeys(state.unsynced, ids)
+                ? withoutKeys(state.unsynced, saved)
                 : { ...state.unsynced, ...Object.fromEntries([...changed.values()].map((task) => [task.id, task.updatedAt])) },
+              pendingDeletes: withoutKeys(state.pendingDeletes, ids),
             };
           });
           return { ok: true, task: get().tasks.find((task) => task.id === taskId) ?? next };
@@ -960,7 +1098,11 @@ export const useTaskStore = create<TaskStore>()(
           tasks: recalcAll(
             state.tasks.map((task) =>
               task.id === taskId
-                ? { ...task, skip: createSkipRecord(reason, now), updatedAt: now.toISOString() }
+                ? {
+                    ...task,
+                    skip: createSkipRecord(reason, now),
+                    updatedAt: issueTaskMutationVersion(task.id, task.updatedAt, now),
+                  }
                 : task,
             ),
             now,
@@ -989,7 +1131,7 @@ export const useTaskStore = create<TaskStore>()(
                     ...t,
                     subtasks,
                     currentStepId: subtasks?.find((s) => s.status === "current")?.id,
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -1021,7 +1163,7 @@ export const useTaskStore = create<TaskStore>()(
                     subtasks,
                     currentStepId: subtasks[0]?.id,
                     estimatedMinutes: remainingMinutes(subtasks),
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -1060,7 +1202,7 @@ export const useTaskStore = create<TaskStore>()(
                     subtasks,
                     currentStepId: subtasks.find((subtask) => subtask.status === "current")?.id,
                     estimatedMinutes: remainingMinutes(subtasks),
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -1107,7 +1249,7 @@ export const useTaskStore = create<TaskStore>()(
                     currentStepId: subtasks[firstOpen]?.id,
                     // No steps left to time it by: the task keeps its own length.
                     estimatedMinutes: firstOpen === -1 ? t.estimatedMinutes : remainingMinutes(subtasks),
-                    updatedAt: now.toISOString(),
+                    updatedAt: issueTaskMutationVersion(t.id, t.updatedAt, now),
                   }
                 : t,
             ),
@@ -1123,9 +1265,12 @@ export const useTaskStore = create<TaskStore>()(
         const copy = translate().assistant;
         switch (action.type) {
           case "CREATE_TASK": {
-            const ids = action.drafts.map((draft) =>
-              get().addTask({
-                id: draft.candidateId ? taskIdForCandidate(draft.candidateId) : undefined,
+            const createdIds = new Set<string>();
+            const ids = action.drafts.map((draft) => {
+              const candidateId = draft.candidateId ? taskIdForCandidate(draft.candidateId) : undefined;
+              const alreadyExists = candidateId !== undefined && get().tasks.some((task) => task.id === candidateId);
+              const id = get().addTask({
+                id: candidateId,
                 title: draft.title,
                 estimatedMinutes: draft.estimatedMinutes,
                 dueDate: draft.dueDate,
@@ -1137,13 +1282,20 @@ export const useTaskStore = create<TaskStore>()(
                   estimatedMinutes: step.estimatedMinutes,
                 })),
                 recurrence: draft.recurrence,
-              }),
-            );
+              });
+              if (!alreadyExists) createdIds.add(id);
+              return id;
+            });
             const message =
               action.drafts.length === 1
                 ? copy.added(action.drafts[0].title)
                 : copy.addedMany(action.drafts.length, action.drafts.map((d) => d.title).join(", "));
-            return { message, taskId: ids[0], taskIds: ids, undo: ids.map((taskId) => ({ taskId, before: null })) };
+            return {
+              message,
+              taskId: ids[0],
+              taskIds: ids,
+              undo: [...createdIds].map((taskId) => ({ taskId, before: null })),
+            };
           }
           case "OPERATE": {
             // The message is written from what the plan actually did, task by

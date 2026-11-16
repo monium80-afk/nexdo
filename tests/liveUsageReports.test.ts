@@ -83,7 +83,9 @@ describe("Magic mic usage reports", () => {
 
     assert.equal(await flushLiveUsageReports("user_b"), false);
     assert.equal(reports().length, sentBefore);
+    const attemptsBeforeFlush = reports().length;
     await flushLiveUsageReports("user_a");
-    assert.equal(reports().length, sentBefore + 1);
+    assert.equal(reports().length, attemptsBeforeFlush + 1);
+    assert.deepEqual(reports().at(-1), { sessionId: SESSION, seconds: 42 });
   });
 });

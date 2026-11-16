@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import { createLiveToolRunner, type LiveToolCall } from "@/lib/liveVoiceTools";
+import { discardSnapshots } from "@/lib/magicMicChanges";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 
@@ -100,6 +101,21 @@ describe("live voice tools", () => {
     assert.deepEqual(echo, first, "the echo gets the first answer, not 'already completed'");
     assert.equal(tasks().find((task) => task.id === gym)?.status, "completed");
     assert.equal(runner.undoCount(), 2, "two changes, not three");
+  });
+
+  it("a successful bulk change invalidates earlier echoes and keeps its own result", () => {
+    const { runner, gym } = withGym();
+    const complete = call("complete_task", { taskId: "t1" });
+    runner.run(complete);
+    const reopen = call("change_tasks", { action: "reopen", filter: { status: "completed" } });
+    const reopened = runner.run(reopen);
+    assert.deepEqual(reopened, { ok: true, count: 1 });
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "pending");
+
+    runner.run(complete);
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed", "the old completion result wasn't replayed");
+    assert.deepEqual(runner.run(call("change_tasks", reopen.args)), reopened, "the bulk call's own result is still an echo");
+    assert.equal(tasks().find((task) => task.id === gym)?.status, "completed", "the bulk echo didn't run again");
   });
 
   it("adds a task again after it was undone, however soon — that's not an echo", () => {
@@ -288,6 +304,41 @@ describe("show_task", () => {
     const callMom = byTitle("Call mom")!.id;
     assert.deepEqual(runner.touchedIds(), [callMom]);
     assert.deepEqual(runner.shownTasks().map((entry) => entry.taskId), [gym]);
+  });
+
+  it("tracks mic-written fields so discard preserves unrelated edits", () => {
+    const { gym, runner } = withGym();
+    const before = tasks().find((task) => task.id === gym)!;
+    const result = runner.run(call("update_task", { taskId: "t1", estimatedMinutesDelta: 10 }));
+    assert.deepEqual(result, { ok: true, taskId: "t1" });
+    assert.equal(tasks().find((task) => task.id === gym)?.estimatedMinutes, before.estimatedMinutes + 10);
+    const write = runner.micWrites().get(gym)!;
+    assert.equal(write.before?.estimatedMinutes, before.estimatedMinutes);
+    assert.equal(write.lastWritten?.estimatedMinutes, before.estimatedMinutes + 10);
+    assert.deepEqual(write.fields.get("estimatedMinutes"), {
+      before: before.estimatedMinutes,
+      lastWritten: before.estimatedMinutes + 10,
+      conflicted: false,
+    });
+
+    assert.equal(runner.undo(), true);
+    assert.equal(runner.micWrites().get(gym)?.fields.has("estimatedMinutes"), false);
+    runner.run(call("update_task", { taskId: "t1", estimatedMinutesDelta: 10 }));
+    const updatedWrite = runner.micWrites().get(gym)!;
+    assert.deepEqual(updatedWrite.fields.get("estimatedMinutes"), {
+      before: before.estimatedMinutes,
+      lastWritten: before.estimatedMinutes + 10,
+      conflicted: false,
+    });
+
+    const micTask = tasks().find((task) => task.id === gym)!;
+    useTaskStore.setState({ tasks: [{ ...micTask, notes: "Edited elsewhere" }] });
+    const snapshots = discardSnapshots(tasks(), runner.touchedIds(), runner.micWrites());
+    useTaskStore.getState().restoreSnapshots(snapshots);
+
+    const restored = tasks().find((task) => task.id === gym)!;
+    assert.equal(restored.estimatedMinutes, before.estimatedMinutes);
+    assert.equal(restored.notes, "Edited elsewhere");
   });
 });
 

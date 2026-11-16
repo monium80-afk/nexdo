@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { taskCount } from "@/components/schedule/scheduleParts";
+import { makeDeadline, withDeadline } from "@/lib/deadline";
 import { normalizeRule, startSeries } from "@/lib/recurrence";
 import { buildSchedule } from "@/lib/schedule";
 import type { RecurrenceRule, Task } from "@/types/task";
@@ -62,6 +63,23 @@ describe("coming repeats on the Calendar", () => {
     assert.equal(days[0].planned.length, 0);
     assert.equal(days[0].routines.length, 1);
     assert.equal(days[1].planned.length, 1);
+  });
+
+  it("does not project onto the displayed day of a moved real occurrence", () => {
+    const water = series("water", rule({ frequency: "daily", anchorDate: "2026-11-14" }));
+    const moved = withDeadline(
+      {
+        ...water,
+        id: "series-water@2026-11-15",
+        recurrence: { ...water.recurrence!, occurrenceDate: "2026-11-15" },
+      },
+      makeDeadline({ date: "2026-11-16", time: "18:00" })!,
+    );
+    const days = buildSchedule([water, moved], { now, from: "2026-11-15", until: "2026-11-16", planAhead: true });
+
+    assert.equal(days[0].planned.length, 0);
+    assert.equal(days[1].planned.length, 0);
+    assert.equal(days[1].routines.length, 1);
   });
 
   it("a series with nothing open (archived or ended) isn't carried on", () => {

@@ -162,7 +162,11 @@ export function GemMascot({
       resumedThisRender = true;
     }
   }
-  if (step) {
+  if (!animate) {
+    if (step) setStep(null);
+    if (shown !== level) setShown(level);
+    if (resumeAfterHold) setResumeAfterHold(false);
+  } else if (step) {
     // Gone back down mid-rise (a task un-done): stop it there and fade from it.
     if (step.kind === "up" && level < step.to) {
       setStep(null);
@@ -193,7 +197,7 @@ export function GemMascot({
   return (
     <Animated.View style={[{ width, height }, bobStyle]} pointerEvents="none">
       {step ? (
-        <GemLevelStep key={step.key} step={step} width={width} moving={moving} onDone={finishStep} />
+        <GemLevelStep key={step.key} step={step} width={width} moving={moving} active={animate} onDone={finishStep} />
       ) : (
         <GemArt level={shown} width={width} moving={moving} />
       )}
@@ -253,11 +257,13 @@ function GemLevelStep({
   step,
   width,
   moving,
+  active,
   onDone,
 }: {
   step: LevelStep;
   width: number;
   moving: boolean;
+  active: boolean;
   onDone: (to: GemLevel) => void;
 }) {
   const { from, to, kind, ms } = step;
@@ -283,10 +289,12 @@ function GemLevelStep({
 
     if (!up) {
       fade.set(withTiming(1, timing(ms)));
-      if (to > from) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      if (active && to > from) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      at(LU.hopAt, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}));
+      if (active) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        at(LU.hopAt, () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}));
+      }
       // tBody: squash, back, then the hop: up, land, rest.
       body.set(
         withSequence(
@@ -317,7 +325,7 @@ function GemLevelStep({
     }
     at(ms, () => onDone(to));
     return () => timers.forEach(clearTimeout);
-  }, [body, fade, flash, from, ms, onDone, reveal, shoot, shootOpacity, to, up, wave, waveOpacity]);
+  }, [active, body, fade, flash, from, ms, onDone, reveal, shoot, shootOpacity, to, up, wave, waveOpacity]);
 
   // tBody: translateY +4 / scale 1.06 × 0.92, back, −18 / 0.96 × 1.06, 1.04 × 0.96, rest.
   const bodyStyle = useAnimatedStyle(() => ({
