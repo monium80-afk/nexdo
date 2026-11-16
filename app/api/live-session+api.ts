@@ -363,12 +363,15 @@ export function liveSetup(body: LiveSessionRequestBody, onboarding = false): Rec
     tools,
     contextWindowCompression,
     realtimeInputConfig: {
-      // A short pause is enough to end a turn, so each instruction is acted
-      // on as soon as the user draws breath rather than when they stop. This
-      // wait is most of the delay before a change appears; it was 400 ms until
-      // the user asked for faster adds. Much shorter and a mid-sentence
-      // hesitation would split one instruction in two.
-      automaticActivityDetection: { endOfSpeechSensitivity: "END_SENSITIVITY_HIGH", silenceDurationMs: 250 },
+      // How long a pause ends a turn. Google re-reads (and bills) the whole
+      // session every turn, so each turn costs about the same whether it
+      // holds one instruction or ten. 750 ms since 2026-11-16 (was 250, and
+      // 400 before that), measured: at a to-do every ~5 s with real pauses
+      // it behaves as before, ~0.4 s later (still faster than Todoist's
+      // Ramble, ~1.3 s); when someone chains to-dos without pausing, they
+      // arrive together at the next breath — 24 of 24 for 1/14 of the cost,
+      // where 250 ms caught only 13 of 25.
+      automaticActivityDetection: { endOfSpeechSensitivity: "END_SENSITIVITY_HIGH", silenceDurationMs: 750 },
       // Talking on doesn't cancel the model's work on the sentence before.
       // By default it does: "the bank call is urgent" followed quickly by the
       // next sentence was only acted on 3 s later, with that one (2026-09-29).
