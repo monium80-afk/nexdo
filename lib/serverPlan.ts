@@ -9,7 +9,7 @@
 // usage is counted in Supabase (supabase/schema.sql, ai_plan_usage), so it
 // holds across server instances and devices.
 import { METERS, PLAN_HEADER, PLAN_LIMITS, PRO_ENTITLEMENT, type Meter, type Plan, type PlanLimitBody } from "@/lib/plan";
-import { callServerRpc, RpcConfigError, selectServerRows } from "@/lib/serverRpc";
+import { callServerRpc, deleteServerRows, RpcConfigError, selectServerRows } from "@/lib/serverRpc";
 
 // RevenueCat answers "what does this customer own?" to the same public SDK
 // keys the app ships with — it is the request the SDK itself makes — so no
@@ -256,6 +256,39 @@ export async function settleLiveSession(userId: string, sessionId: string, secon
     // The session stays counted in full.
     console.error("[serverPlan] couldn't settle a Live voice session", error);
     throw error;
+  }
+}
+
+/**
+ * Undoes a session startLiveSession opened that never got to listen (turned
+ * away by a later check, or Google couldn't be reached): its time goes back,
+ * and the session itself goes, so it isn't counted as one of the month's
+ * uses (countLiveSessions). If the delete fails it just counts as a use.
+ */
+export async function cancelLiveSession(userId: string, sessionId: string): Promise<void> {
+  await settleLiveSession(userId, sessionId, 0);
+  try {
+    await deleteServerRows("ai_live_sessions", { id: `eq.${sessionId}`, user_id: `eq.${userId}` });
+  } catch (error) {
+    console.error("[serverPlan] couldn't remove an unused Live voice session", error);
+  }
+}
+
+/**
+ * How many Live voice sessions ("uses") this account has opened this month
+ * (UTC), or null when that can't be read. Each one is a row in
+ * ai_live_sessions, so no table of its own is needed.
+ */
+export async function countLiveSessions(userId: string): Promise<number | null> {
+  try {
+    const rows = await selectServerRows<{ id: string }>("ai_live_sessions", "id", {
+      user_id: `eq.${userId}`,
+      month: `eq.${usageMonth(new Date())}`,
+    });
+    return rows.length;
+  } catch (error) {
+    console.error("[serverPlan] couldn't count Live voice sessions", error);
+    return null;
   }
 }
 

@@ -376,8 +376,8 @@ export async function generateStructuredJson(params: {
 // Google's docs create tokens on v1beta while its own JS SDK still uses
 // v1alpha, so both are tried; the socket must use the version that answered.
 const LIVE_TOKEN_VERSIONS = ["v1beta", "v1alpha"] as const;
-/** How long the phone has to open the socket once it has the token. */
-const LIVE_CONNECT_WINDOW_MS = 60 * 1000;
+/** How long the phone has to open the socket once it has the token (the app itself gives up after 15 s). */
+const LIVE_CONNECT_WINDOW_MS = 20 * 1000;
 
 export async function createLiveSessionToken(params: {
   /** The BidiGenerateContent setup — model, transcription options — the session is locked to. */

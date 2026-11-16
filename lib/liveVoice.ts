@@ -12,12 +12,20 @@ import { PlanLimitError } from "@/lib/plan";
 // socket and task tools), so tests/liveVoice.test.ts can drive it with
 // stand-ins.
 
-/** Live voice stops on its own after this. The server's token dies a minute later (app/api/live-session+api.ts). */
-export const MAX_LIVE_SECONDS = 5 * 60;
 /**
- * Nobody has spoken for this long: stop, rather than keep paying for the
- * microphone streaming silence. Counted from when listening began or Google
- * heard the last sentence end — never while someone is talking.
+ * One use of Live voice lasts at most this long, counted from when it first
+ * listens — pauses included. Then it stops, and Talk again is a new use. The
+ * server's token dies 20 s later (app/api/live-session+api.ts). 2 minutes
+ * since 2026-11-15 (was 5): with the server's 120 uses a month, that is what
+ * bounds an app that lies about its minutes.
+ */
+export const MAX_LIVE_SECONDS = 2 * 60;
+/**
+ * Nobody has spoken for this long: pause, rather than keep streaming
+ * silence. Counted from when listening began or Google heard the last
+ * sentence end — never while someone is talking. A pause keeps the
+ * connection: Talk again carries on in the same use (the user's call,
+ * 2026-11-15), so stopping to think costs no extra use.
  */
 export const SILENCE_STOP_SECONDS = 5;
 /** After Stop, the longest to wait for Google to act on the last sentence. */
@@ -31,9 +39,20 @@ export const CONNECT_TIMEOUT_MS = 15_000;
 /** WebSocket.OPEN — a number here so the test stand-in doesn't need the class. */
 const SOCKET_OPEN = 1;
 
-export type LiveVoiceStatus = "idle" | "connecting" | "listening" | "finishing" | "stopped" | "error";
+/** "paused": quiet for a moment — the microphone is off, the connection stays open for Talk again. */
+export type LiveVoiceStatus = "idle" | "connecting" | "listening" | "paused" | "finishing" | "stopped" | "error";
 /** "planLimit": Live voice isn't in the account's plan, or the month's minutes are used up (lib/plan.ts). */
-export type LiveVoiceProblem = "permission" | "unavailable" | "connection" | "timeLimit" | "silence" | "planLimit";
+export type LiveVoiceProblem =
+  | "permission"
+  | "unavailable"
+  | "connection"
+  | "timeLimit"
+  | "silence"
+  | "planLimit"
+  /** The day's sessions are used up (lib/aiUsageLimit.ts) — back tomorrow. */
+  | "dailyLimit"
+  /** The month's uses are used up (app/api/live-session+api.ts) — back next month. */
+  | "usesLimit";
 
 export type LiveVoiceState = {
   status: LiveVoiceStatus;
@@ -147,15 +166,35 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   let unreported: { sessionId: string | undefined } | null = null;
   // When the microphone started streaming (ms), until its time is reported.
   let listeningSince: number | null = null;
+  // Listening time from before a pause, in this same use (ms).
+  let listenedMs = 0;
+  // Talk again after a pause is turning the microphone back on.
+  let resuming = false;
+  // What this session has cost so far, summed over its turns — logged in
+  // development when it ends, to see how Google bills a whole session.
+  let spent = { turns: 0, textIn: 0, audioIn: 0, out: 0 };
+
+  // Google's prices for this model (USD per token, checked 2026-11-15): text
+  // in $0.75/M, audio in $3/M, output at most $12/M (audio; text is $4.50/M).
+  const logSessionCost = () => {
+    if (spent.turns === 0) return;
+    const dollars = spent.textIn * 0.75e-6 + spent.audioIn * 3e-6 + spent.out * 12e-6;
+    deps.log?.(
+      `SESSION TOTAL: ${spent.turns} turns, ${spent.textIn} text in, ${spent.audioIn} audio in, ${spent.out} out ≈ $${dollars.toFixed(4)}`,
+    );
+    spent = { turns: 0, textIn: 0, audioIn: 0, out: 0 };
+  };
 
   // Called wherever the microphone stops or a session ends; reports the
   // session once, with 0 if it never got to listen.
   const reportListened = () => {
     if (!unreported) return;
-    const seconds = listeningSince === null ? 0 : Math.ceil((Date.now() - listeningSince) / 1000);
+    const ms = listenedMs + (listeningSince === null ? 0 : Date.now() - listeningSince);
+    const seconds = Math.ceil(ms / 1000);
     const { sessionId } = unreported;
     unreported = null;
     listeningSince = null;
+    listenedMs = 0;
     deps.onListened?.(seconds, sessionId);
   };
 
@@ -195,6 +234,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     stopMicrophone(current);
     deps.onLevel?.(0);
     reportListened();
+    logSessionCost();
     closeSocket();
     setState({ status, problem, startedAt: null, hearing: false });
   };
@@ -202,6 +242,11 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   const stop = (problem: LiveVoiceProblem | null = null) => {
     if (state.status === "connecting") {
       end("stopped", problem);
+      return;
+    }
+    // Paused: the microphone is already off and the last sentence was acted on.
+    if (state.status === "paused") {
+      end("stopped", problem ?? state.problem);
       return;
     }
     if (state.status !== "listening") return;
@@ -233,8 +278,58 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     if (state.status !== "listening" || deps.stopOnSilence === false) return;
     const current = session;
     silenceTimer = setTimeout(() => {
-      if (current === session) stop("silence");
+      if (current === session) pause();
     }, SILENCE_STOP_SECONDS * 1000);
+  };
+
+  /**
+   * Quiet for a moment: the microphone goes off, but the connection stays
+   * open, so Talk again carries on in the same use. Only listening time
+   * counts towards the month's minutes, so a pause costs nothing; the use's
+   * own time (limitTimer) keeps running.
+   */
+  const pause = () => {
+    if (state.status !== "listening") return;
+    if (socket?.readyState !== SOCKET_OPEN) {
+      stop("silence");
+      return;
+    }
+    streaming = false;
+    stopMicrophone(session);
+    deps.onLevel?.(0);
+    clearTimeout(silenceTimer);
+    if (listeningSince !== null) listenedMs += Date.now() - listeningSince;
+    listeningSince = null;
+    // Tells Google the audio has paused, so it acts on anything left now.
+    socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+    setState({ status: "paused", problem: "silence", hearing: false });
+  };
+
+  /** Talk again after a pause: the microphone back on, in the same use. */
+  const resume = async () => {
+    if (resuming) return;
+    const current = session;
+    resuming = true;
+    try {
+      if (microphoneStart) await microphoneStart;
+      await deps.startMicrophone();
+    } catch (error) {
+      console.warn("[liveVoice] microphone didn't start again", error);
+      deps.stopMicrophone();
+      if (current === session) end("error", "unavailable");
+      return;
+    } finally {
+      resuming = false;
+    }
+    if (current !== session || state.status !== "paused") {
+      deps.stopMicrophone();
+      return;
+    }
+    microphoneGeneration = current;
+    streaming = true;
+    listeningSince = Date.now();
+    setState({ status: "listening", problem: null, hearing: true });
+    waitForSpeech();
   };
 
   /** The microphone is on and Google is ready: send what was held, and listen. */
@@ -350,7 +445,13 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
         deps.log?.(`heard: "${event.text}"`);
         return;
       case "usage":
-        deps.log?.(`turn: ${event.promptTokens} in, ${event.responseTokens} out, ${event.thoughtsTokens} thinking`);
+        spent.turns += 1;
+        spent.textIn += event.promptTokens - event.audioPromptTokens;
+        spent.audioIn += event.audioPromptTokens;
+        spent.out += event.responseTokens + event.thoughtsTokens;
+        deps.log?.(
+          `turn: ${event.promptTokens} in (${event.audioPromptTokens} audio), ${event.responseTokens} out, ${event.thoughtsTokens} thinking`,
+        );
         return;
     }
   };
@@ -371,12 +472,21 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
 
   const start = async () => {
     if (state.status === "connecting" || state.status === "listening" || state.status === "finishing") return;
+    if (state.status === "paused") {
+      if (socket?.readyState === SOCKET_OPEN) {
+        await resume();
+        return;
+      }
+      // The connection went while paused: this use is over, start a new one.
+      end("stopped", null);
+    }
     session += 1;
     const current = session;
     turnOpen = false;
     audioSinceTurnComplete = false;
     ready = false;
     held = [];
+    listenedMs = 0;
     setState({ status: "connecting", problem: null, startedAt: null, changes: 0, undoable: 0, hearing: false });
 
     const granted = await deps.requestPermission();
@@ -403,6 +513,16 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       // The user said no to AI: simply not listening.
       if (error instanceof AiConsentError) {
         end("stopped", null);
+        return;
+      }
+      // The server's 429 for the day's sessions (lib/aiUsageLimit.ts).
+      if (error instanceof Error && error.message.includes("daily_limit")) {
+        end("error", "dailyLimit");
+        return;
+      }
+      // The server's 429 for the month's uses (app/api/live-session+api.ts).
+      if (error instanceof Error && error.message.includes("uses_limit")) {
+        end("error", "usesLimit");
         return;
       }
       console.warn("[liveVoice] couldn't start a session", error);
@@ -434,7 +554,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     opened.onclose = (event) => {
       if (current !== session) return;
       deps.log?.(`socket closed: ${event.code} ${event.reason}`);
-      if (state.status === "finishing") end("stopped", state.problem);
+      if (state.status === "finishing" || state.status === "paused") end("stopped", state.problem);
       // Closed before listening began: the token or setup was turned away.
       else end("error", state.status === "connecting" ? "unavailable" : "connection");
     };
@@ -468,7 +588,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     },
     /** The screen is going away: end any session. Changes already made stay. */
     dispose: () => {
-      if (state.status === "connecting" || state.status === "listening" || state.status === "finishing") {
+      if (state.status === "connecting" || state.status === "listening" || state.status === "paused" || state.status === "finishing") {
         end("stopped", null);
       }
     },

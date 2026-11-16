@@ -18,8 +18,19 @@ export type LiveEvent =
   | { type: "goAway" }
   /** What Google heard — never shown, only logged in development. */
   | { type: "transcript"; text: string }
-  /** Tokens the turn cost — logged in development. */
-  | { type: "usage"; promptTokens: number; responseTokens: number; thoughtsTokens: number };
+  /**
+   * Tokens the turn cost — logged in development. promptTokens is everything
+   * Google read for this turn (audio included); audioPromptTokens is the
+   * audio part of it, which costs four times as much as text.
+   */
+  | { type: "usage"; promptTokens: number; audioPromptTokens: number; responseTokens: number; thoughtsTokens: number };
+
+/** How many of a turn's prompt tokens were audio, from usageMetadata.promptTokensDetails. */
+function audioTokensOf(details: unknown): number {
+  if (!Array.isArray(details)) return 0;
+  const audio = details.map(asRecord).find((detail) => detail?.modality === "AUDIO");
+  return Number(audio?.tokenCount) || 0;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -72,6 +83,7 @@ export function parseServerMessage(message: unknown): LiveEvent[] {
     events.push({
       type: "usage",
       promptTokens: Number(usage.promptTokenCount) || 0,
+      audioPromptTokens: audioTokensOf(usage.promptTokensDetails),
       responseTokens: Number(usage.responseTokenCount) || 0,
       thoughtsTokens: Number(usage.thoughtsTokenCount) || 0,
     });

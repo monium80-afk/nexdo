@@ -616,8 +616,11 @@ export const de: Translations = {
       permission: "Nexdo braucht das Mikrofon, um dich zu hören. Du kannst es in den Einstellungen erlauben.",
       unavailable: "Das Magische Mikro konnte nicht starten. Prüfe deine Verbindung und versuch es noch einmal.",
       connection: "Die Verbindung ist abgebrochen. Was du schon gesagt hast, zählt trotzdem.",
-      timeLimit: "Das Magische Mikro stoppt nach 5 Minuten — tippe auf Weitersprechen, um weiterzumachen.",
-      silence: "Zuhören nach einer stillen Pause beendet — tippe auf Weitersprechen, um weiterzumachen.",    },
+      timeLimit: "Das Magische Mikro stoppt nach 2 Minuten — tippe auf Weitersprechen, um weiterzumachen.",
+      dailyLimit: "Du hast das Magische Mikro heute schon 10-mal benutzt. Morgen geht es wieder.",
+      usesLimit: "Du hast das Magische Mikro diesen Monat schon 120-mal benutzt. Ab dem 1. geht es wieder.",
+      silence: "Zuhören nach einer stillen Pause beendet — tippe auf Weitersprechen, um weiterzumachen.",
+    },
   },
 
   tour: {

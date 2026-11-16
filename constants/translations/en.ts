@@ -640,8 +640,11 @@ export const en = {
       permission: "Nexdo needs the microphone to hear you. You can allow it in Settings.",
       unavailable: "Couldn't start Magic mic. Check your connection and try again.",
       connection: "The connection dropped. What you'd already said still counts.",
-      timeLimit: "Magic mic stops after 5 minutes — tap Talk again to keep going.",
-      silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",    },
+      timeLimit: "Magic mic stops after 2 minutes — tap Talk again to keep going.",
+      dailyLimit: "You've used Magic mic 10 times today. It's back tomorrow.",
+      usesLimit: "You've used Magic mic 120 times this month. It's back on the 1st.",
+      silence: "Stopped listening after a quiet moment — tap Talk again to keep going.",
+    },
   },
 
   /** The first-run tour over the tab bar (components/AppTour.tsx) — a sentence or two per stop, no more. */

@@ -29,9 +29,13 @@ const TRIAL_ALLOWANCE: Record<TrialRoute, number> = { "extract-text": 3, inbox: 
 // A household or a classroom shares one IP, so this is a few rather than one.
 const NEW_TRIALS_PER_IP_PER_DAY = 5;
 
-// The ceiling on signed-out spending. A normal run costs about a cent; one
-// built to be as expensive as the caps allow, about five. 300 a day is
-// roughly $3 a day of real use and $15 at the very worst.
+// The ceiling on signed-out spending. A normal run (the 60-second Magic mic
+// brain dump and the advice after it) costs about 1–5 cents. One built to be
+// as expensive as the caps allow — both Magic mic sessions run to the end of
+// their tokens, three 15-minute voice notes, the longest inbox message —
+// about 50 cents (re-estimated 2026-11-15, when the Magic mic was added to
+// onboarding; it said five cents before). 300 a day is roughly $3–15 a day of
+// real use and about $150 at the very worst.
 const NEW_TRIALS_PER_DAY = 300;
 
 const TRIAL_ID_PATTERN = /^[a-zA-Z0-9-]{16,64}$/;

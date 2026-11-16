@@ -1,12 +1,13 @@
-import { LIVE_VOICE_SYSTEM_PROMPT } from "@/data/liveVoicePrompt";
+import { LIVE_VOICE_SYSTEM_PROMPT, ONBOARDING_LIVE_PROMPT } from "@/data/liveVoicePrompt";
 import type { TaskContext } from "@/lib/ai/context";
 import { createLiveSessionToken } from "@/lib/ai/gemini";
 import { languageName } from "@/lib/ai/language";
 import { claimUserCall } from "@/lib/aiUsageLimit";
+import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate } from "@/lib/serverAuth";
-import { settleLiveSession, startLiveSession } from "@/lib/serverPlan";
+import { cancelLiveSession, countLiveSessions, startLiveSession, usageUnavailable } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -62,15 +63,24 @@ export type LiveSessionResponseBody = {
 const LIVE_MODEL = "models/gemini-3.1-flash-live-preview";
 
 // The app stops listening once the session's time is up (lib/liveVoice.ts);
-// the token dies a minute after that — time to connect, and for Google to act
-// on the last sentence — so a client that ignored the limit still can't keep
-// a session running on this key.
-const TOKEN_GRACE_SECONDS = 60;
+// the token dies shortly after that — time to connect (the app gives up after
+// 15 s, CONNECT_TIMEOUT_MS) and for Google to act on the last sentence (3 s)
+// — so a client that ignored the limit still can't keep a session running
+// on this key for long. A minute until 2026-11-15, which let onboarding's
+// 60-second session run for two.
+const TOKEN_GRACE_SECONDS = 20;
+
+// Magic mic sessions ("uses") per account per month — 120 since 2026-11-15
+// (the user's call). Each lasts at most MAX_LIVE_SECONDS (2 min), so an app
+// that lies about its minutes gets about 4½ hours a month at the very most;
+// an honest one runs out of its 90 minutes first.
+const LIVE_USES_PER_MONTH = 120;
 
 const MAX_BODY_BYTES = 256 * 1024;
 // More than /api/inbox's 30: a live session can't ask for a different slice
-// halfway through, so it gets the whole open list up front.
-const MAX_TASKS = 80;
+// halfway through, so it gets the whole open list up front: 80 open tasks
+// and the 5 most recently finished (hooks/useLiveVoice.ts).
+const MAX_TASKS = 85;
 
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -127,7 +137,7 @@ const MINUTES_DELTA = {
 const DETAILS = {
   dueDatePhrase: {
     type: "STRING",
-    description: 'The deadline as the user said it, translated to English ("tomorrow at 6 pm", "next friday"). Never a computed date.',
+    description: "The user's deadline words in English (see DATES). Never a computed date.",
   },
   priority: {
     type: "STRING",
@@ -142,14 +152,14 @@ const UPDATE_SCOPE = {
   type: "STRING",
   enum: ["this", "future", "series"],
   description:
-    'Repeating tasks only. "this" = just this occurrence ("only today", "push today\'s gym to tonight"). "future" = this one and every later repeat ("from now on", or a change to the task itself: rename it, it takes 45 minutes, it\'s important). "series" = also rename past ones. Moving one day\'s date or time is "this" unless they say "from now on".',
+    'Repeating tasks only (see REPEATING TASKS). "this" = just this occurrence. "future" = this one and every later repeat. "series" = also rename past ones.',
 };
 
 const DELETE_SCOPE = {
   type: "STRING",
   enum: ["series", "future"],
   description:
-    'Repeating tasks only. "series" (the default) = delete it completely, every repeat. "future" = stop it from now on but keep the times it was already done. To skip just one day, use skip_occurrence instead.',
+    'Repeating tasks only. "series" (default) = every repeat. "future" = from now on, keeping the times already done.',
 };
 
 // Declared in Gemini's OpenAPI subset, like the inbox's response schema. The
@@ -172,8 +182,7 @@ const FUNCTIONS = [
             // "brush my teeth" came out at 30 minutes.
             estimatedMinutes: {
               type: "NUMBER",
-              description:
-                "How long the task takes, in minutes: what the user said, or else your realistic estimate (brushing teeth 3, a quick call 10, an essay 120). 0 for a goal kept up through the day rather than one sitting of work (drink 2 L of water, 10,000 steps, no sugar today).",
+              description: "Minutes it takes: what the user said, or your realistic estimate (see LENGTH).",
             },
             ...DETAILS,
           },
@@ -182,8 +191,7 @@ const FUNCTIONS = [
       },
       {
         name: "update_task",
-        description:
-          "Change an existing task: rename it, move or remove its deadline, change its length or importance, make it repeat or stop repeating, turn it into a routine or a recurring task.",
+        description: "Change one existing task (see WHICH TOOL).",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -206,8 +214,7 @@ const FUNCTIONS = [
       },
       {
         name: "complete_task",
-        description:
-          "Mark a task as done (\"I did it\", \"finished\", \"done\"). For a repeating task this ticks off the current one and the next repeat comes in. NEVER use it to delete or skip.",
+        description: "Mark a task done; on a repeating task, the current one. NEVER to delete or skip.",
         parameters: { type: "OBJECT", properties: { taskId: TASK_ID }, required: ["taskId"] },
       },
       {
@@ -217,20 +224,17 @@ const FUNCTIONS = [
       },
       {
         name: "delete_task",
-        description:
-          "Delete a task for good (\"delete\", \"remove\", \"get rid of\", \"cancel\", \"I don't need it any more\"). A repeating task or routine is deleted completely, every repeat, unless the scope says otherwise.",
+        description: "Delete a task for good; a repeating task completely, unless scope says otherwise.",
         parameters: { type: "OBJECT", properties: { taskId: TASK_ID, scope: DELETE_SCOPE }, required: ["taskId"] },
       },
       {
         name: "skip_occurrence",
-        description:
-          "Repeating tasks and routines only: skip just the current one (\"skip the gym today\", \"not reading tonight\", \"skip this week's report\"). It is not done and not deleted; the next repeat takes its place.",
+        description: "Repeating tasks only: skip just the current one, not done and not deleted.",
         parameters: { type: "OBJECT", properties: { taskId: TASK_ID }, required: ["taskId"] },
       },
       {
         name: "change_tasks",
-        description:
-          "Do the same thing to several tasks at once: \"mark everything due today as done\", \"delete all my completed tasks\", \"move all overdue tasks to tomorrow\", \"make the gym and the essay high priority\".",
+        description: "The same change to several tasks at once, by ids or by filter.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -247,8 +251,7 @@ const FUNCTIONS = [
       },
       {
         name: "set_steps",
-        description:
-          "Give a task its steps, as the user lists them (\"break the essay into research, outline, write\"). mode \"add\" keeps the steps it has and adds these after them.",
+        description: "Give a task its steps, as the user lists them.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -264,7 +267,7 @@ const FUNCTIONS = [
                 required: ["title", "estimatedMinutes"],
               },
             },
-            mode: { type: "STRING", enum: ["replace", "add"], description: "replace (default) or add." },
+            mode: { type: "STRING", enum: ["replace", "add"], description: "replace (default), or add after its steps." },
           },
           required: ["taskId", "steps"],
         },
@@ -295,8 +298,7 @@ const FUNCTIONS = [
         // The overlay hides the list behind a blur: naming a task brings its
         // card up, so it can be seen before it's changed (the user's ask, 2026-11-02).
         name: "show_task",
-        description:
-          "Put existing tasks on screen, changing nothing: the user named them or asked about them without saying what to change yet (\"the report…\", \"what about the gym?\", \"show me the essay and the dentist\"), or asked to see a group (\"all my tasks\", \"what's due today?\", \"show me what's overdue\") — then use filter instead of listing ids.",
+        description: "Put existing tasks on screen, changing nothing (see WHICH TOOL): by ids, or a filter for a group.",
         parameters: {
           type: "OBJECT",
           properties: {
@@ -326,8 +328,9 @@ const ONBOARDING_TOOLS = [
   },
 ];
 export const ONBOARDING_LIVE_SECONDS = 60;
-const ONBOARDING_NOTE =
-  "SETUP\nThis is the user's first brain dump while setting up Nexdo: they are listing everything on their mind. Their list starts empty. Call add_task once for each separate thing they mention, as soon as they finish saying it. add_task is the only tool here.";
+// How much of the talk itself a session remembers (see liveSetup).
+const LIVE_TALK_TOKENS_KEPT_MAX = 3_500;
+const LIVE_TALK_TOKENS_KEPT_MIN = 1_800;
 
 /** One line per task: "t3 | Call the bank | open, Due tomorrow at 6:00 PM, 30 min, high priority". */
 function taskLine(task: TaskContext): string {
@@ -346,16 +349,34 @@ function taskLine(task: TaskContext): string {
 export function liveSetup(body: LiveSessionRequestBody, onboarding = false): Record<string, unknown> {
   const language = body.language && body.language !== "en" ? languageName(body.language) : null;
   const instruction = [
-    LIVE_VOICE_SYSTEM_PROMPT,
-    onboarding ? ONBOARDING_NOTE : "",
+    // Onboarding has its own, much shorter prompt: only adding is possible
+    // there, and the list is always empty.
+    onboarding ? ONBOARDING_LIVE_PROMPT : LIVE_VOICE_SYSTEM_PROMPT,
     language
       ? `LANGUAGE\nThe app is set to ${language}: write titles and notes in ${language}, unless the user is clearly speaking another language — then use theirs. dueDatePhrase is still always English.`
       : "",
     `NOW\n${body.today}`,
-    `TASKS\n${body.tasks.length > 0 ? body.tasks.map(taskLine).join("\n") : "(none yet)"}`,
+    onboarding ? "" : `TASKS\n${body.tasks.length > 0 ? body.tasks.map(taskLine).join("\n") : "(none yet)"}`,
   ]
     .filter(Boolean)
     .join("\n\n");
+  const tools = onboarding ? ONBOARDING_TOOLS : TOOLS;
+
+  // Google bills everything the session remembers again on every turn — the
+  // instructions, the task list and all the audio so far — so a long session
+  // with many short sentences costs far more than its minutes. Past the
+  // trigger, Google forgets the oldest talk down to the target. The
+  // instructions and task list are always kept (Google never drops them);
+  // above them, about two minutes of talk (~1,700 audio tokens a minute) at
+  // most, and never less than about one, so "make that one urgent" still
+  // finds the task just added. Google's default only starts forgetting at
+  // 80% of the model's whole window, which a 5-minute session never reaches.
+  // Sizes are a rough count, 4 characters to a token.
+  const setupTokens = Math.ceil((instruction.length + JSON.stringify(tools).length) / 4);
+  const contextWindowCompression = {
+    triggerTokens: setupTokens + LIVE_TALK_TOKENS_KEPT_MAX,
+    slidingWindow: { targetTokens: setupTokens + LIVE_TALK_TOKENS_KEPT_MIN },
+  };
 
   return {
     model: LIVE_MODEL,
@@ -372,7 +393,8 @@ export function liveSetup(body: LiveSessionRequestBody, onboarding = false): Rec
     // (thinkingLevel is refused by this model; thinkingBudget works.)
     generationConfig: { responseModalities: ["AUDIO"], temperature: 0, thinkingConfig: { thinkingBudget: 0 } },
     systemInstruction: { parts: [{ text: instruction }] },
-    tools: onboarding ? ONBOARDING_TOOLS : TOOLS,
+    tools,
+    contextWindowCompression,
     realtimeInputConfig: {
       // A short pause is enough to end a turn, so each instruction is acted
       // on as soon as the user draws breath rather than when they stop. This
@@ -406,6 +428,10 @@ export function parseBody(raw: unknown): LiveSessionRequestBody {
  * (lib/anonymousTrial.ts). About half a cent of audio at most.
  */
 async function startOnboardingSession(request: Request, raw: unknown): Promise<Response> {
+  // The same per-IP burst filter as the other routes open to signed-out
+  // callers, before anything reaches Supabase or Google.
+  const rateLimitResponse = anonymousRateLimit(request, "live-session");
+  if (rateLimitResponse) return rateLimitResponse;
   const body = parseBody(raw);
   // Nothing to change before an account exists: never a task list.
   const setup = liveSetup({ ...body, tasks: [] }, true);
@@ -447,12 +473,18 @@ export async function POST(request: Request) {
   const session = await startLiveSession(request, auth.userId, MAX_LIVE_SECONDS);
   if ("refused" in session) return session.refused;
 
-  // The stop behind the app's reports: a tampered app could say a session
-  // used nothing, but it can only open so many a day. Over that, the time
-  // just taken goes back.
+  // The stops behind the app's reports: a tampered app could say a session
+  // used nothing, but it can only open so many a month and a day, each no
+  // longer than its token. Over either, the session is undone: its time goes
+  // back and it isn't counted as a use.
+  const uses = await countLiveSessions(auth.userId);
+  if (uses === null || uses > LIVE_USES_PER_MONTH) {
+    await cancelLiveSession(auth.userId, session.sessionId);
+    return uses === null ? usageUnavailable() : Response.json({ error: "uses_limit" }, { status: 429 });
+  }
   const limitResponse = await claimUserCall(auth.userId, "live-session");
   if (limitResponse) {
-    await settleLiveSession(auth.userId, session.sessionId, 0);
+    await cancelLiveSession(auth.userId, session.sessionId);
     return limitResponse;
   }
 
@@ -471,7 +503,7 @@ export async function POST(request: Request) {
     // Logged in full here (a missing key, a quota, a rejected setup); the
     // phone only needs to know it can't start. Nothing was listened to.
     console.error("[api/live-session]", error instanceof Error ? error.message : error);
-    await settleLiveSession(auth.userId, session.sessionId, 0);
+    await cancelLiveSession(auth.userId, session.sessionId);
     return Response.json({ error: "live_unavailable" }, { status: 502 });
   }
 }

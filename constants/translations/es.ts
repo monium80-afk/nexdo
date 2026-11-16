@@ -608,8 +608,11 @@ export const es: Translations = {
       permission: "Nexdo necesita el micrófono para oírte. Puedes activarlo en Ajustes.",
       unavailable: "No se pudo iniciar el micro mágico. Revisa tu conexión e inténtalo de nuevo.",
       connection: "Se cortó la conexión. Lo que ya habías dicho sigue contando.",
-      timeLimit: "El micro mágico se detiene a los 5 minutos — toca Hablar de nuevo para seguir.",
-      silence: "Dejé de escuchar tras un momento de silencio — toca Hablar de nuevo para seguir.",    },
+      timeLimit: "El micro mágico se detiene a los 2 minutos — toca Hablar de nuevo para seguir.",
+      dailyLimit: "Ya usaste el micro mágico 10 veces hoy. Vuelve mañana.",
+      usesLimit: "Ya usaste el micro mágico 120 veces este mes. Vuelve el día 1.",
+      silence: "Dejé de escuchar tras un momento de silencio — toca Hablar de nuevo para seguir.",
+    },
   },
 
   tour: {

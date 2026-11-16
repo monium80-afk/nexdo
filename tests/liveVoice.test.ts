@@ -304,14 +304,50 @@ describe("live voice session", () => {
     assert.equal(voice.getState().problem, "timeLimit");
   });
 
-  it("stops when nobody speaks after it starts listening", async () => {
+  it("pauses when nobody speaks, keeping the connection for Talk again", async () => {
     const { voice, socket, microphone } = await listening();
     mock.timers.tick(SILENCE_STOP_SECONDS * 1000 - 1);
     assert.equal(voice.getState().status, "listening");
     mock.timers.tick(1);
-    assert.equal(voice.getState().status, "stopped");
+    assert.equal(voice.getState().status, "paused");
     assert.equal(voice.getState().problem, "silence");
     assert.equal(microphone.running, false);
+    assert.equal(socket.closed, false, "a pause keeps the connection");
+    assert.ok(
+      socket.sent.some((message) => JSON.stringify(message).includes("audioStreamEnd")),
+      "Google acts on what was said",
+    );
+  });
+
+  it("carries on in the same use after a pause, and reports it once", async () => {
+    const listened: [number, string | undefined][] = [];
+    const { voice, sockets, microphone } = await listening({
+      onListened: (seconds, sessionId) => listened.push([seconds, sessionId]),
+    });
+    mock.timers.tick(SILENCE_STOP_SECONDS * 1000);
+    assert.equal(voice.getState().status, "paused");
+
+    await voice.start();
+    await flush();
+    assert.equal(sockets.length, 1, "Talk again after a pause opens no new session");
+    assert.equal(voice.getState().status, "listening");
+    assert.equal(voice.getState().problem, null);
+    assert.equal(microphone.running, true);
+    assert.deepEqual(listened, [], "nothing reported yet: it's the same use");
+
+    voice.stop();
+    voice.dispose();
+    assert.equal(listened.length, 1);
+    assert.equal(listened[0][1], SESSION.sessionId);
+  });
+
+  it("ends a paused use when its time is up", async () => {
+    const { voice, socket } = await listening();
+    mock.timers.tick(SILENCE_STOP_SECONDS * 1000);
+    assert.equal(voice.getState().status, "paused");
+    mock.timers.tick(MAX_LIVE_SECONDS * 1000);
+    assert.equal(voice.getState().status, "stopped");
+    assert.equal(voice.getState().problem, "timeLimit");
     assert.equal(socket.closed, true);
   });
 

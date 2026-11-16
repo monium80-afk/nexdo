@@ -17,9 +17,11 @@ import { usageUnavailable } from "@/lib/serverPlan";
 
 export type AiRoute = "live-session";
 
-// Calls per account per UTC day — far above a busy day of real use.
+// Sessions per account per UTC day. 10 since 2026-11-15 (was 30, the user's
+// call): with 120 uses a month (app/api/live-session+api.ts) it is what
+// bounds an app that lies about its minutes.
 const DAILY_LIMITS: Record<AiRoute, number> = {
-  "live-session": 30,
+  "live-session": 10,
 };
 
 /**

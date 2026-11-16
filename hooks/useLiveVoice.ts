@@ -17,10 +17,13 @@ import { useTaskStore } from "@/store/useTaskStore";
 // What Gemini Live reads natively — asking the microphone for it directly
 // means nothing gets resampled on either end.
 const SAMPLE_RATE = 16_000;
-// Must match MAX_TASKS in app/api/live-session+api.ts. Open tasks first, by
-// priority, then the most recently finished ("I didn't finish the report
-// after all" needs to find it).
-const MAX_TASKS = 80;
+// The tasks a session is given: the open ones by priority, then only the few
+// most recently finished ("I didn't finish the report after all" needs to
+// find it). Gemini Live re-reads the whole list after every sentence, so old
+// finished tasks filling up the rest only cost money (measured 2026-11-15).
+// Together they must stay within MAX_TASKS in app/api/live-session+api.ts.
+const MAX_OPEN_TASKS = 80;
+const MAX_FINISHED_TASKS = 5;
 
 /**
  * Live voice for components/MagicMicOverlay.tsx: the microphone, the socket and the task
@@ -66,7 +69,11 @@ export function useLiveVoice() {
       },
       requestSession: () => {
         const now = new Date();
-        const tasks = selectRelevantTasks("", useTaskStore.getState().tasks, [], undefined, MAX_TASKS);
+        const all = useTaskStore.getState().tasks;
+        const tasks = [
+          ...selectRelevantTasks("", all.filter((task) => task.status !== "completed"), [], undefined, MAX_OPEN_TASKS),
+          ...selectRelevantTasks("", all.filter((task) => task.status === "completed"), [], undefined, MAX_FINISHED_TASKS),
+        ];
         // Short ids instead of real ones, as for /api/inbox: fewer tokens,
         // and an id the model makes up can't match a real task by accident.
         runner = createLiveToolRunner(new Map(tasks.map((task, index) => [`t${index + 1}`, task.id])));

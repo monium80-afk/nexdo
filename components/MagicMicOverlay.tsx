@@ -406,7 +406,8 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
   }, [startedAt]);
 
   const isActive = status === "connecting" || status === "listening" || status === "finishing";
-  const isStopped = status === "stopped" || status === "error";
+  // Paused after a quiet moment looks the same: Talk again carries on in the same use.
+  const isStopped = status === "stopped" || status === "error" || status === "paused";
   const statusLabel = looksListening
     ? t.live.listening(formatClock(startedAt === null ? 0 : Math.max(0, now - startedAt)))
     : status === "connecting" || status === "idle"
@@ -670,7 +671,13 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
     };
   });
 
-  const isError = !!problem && problem !== "timeLimit" && problem !== "silence" && problem !== "planLimit";
+  const isError =
+    !!problem &&
+    problem !== "timeLimit" &&
+    problem !== "silence" &&
+    problem !== "planLimit" &&
+    problem !== "dailyLimit" &&
+    problem !== "usesLimit";
 
   return (
     <View

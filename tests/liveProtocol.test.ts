@@ -49,11 +49,19 @@ describe("parseServerMessage", () => {
     assert.deepEqual(
       parseServerMessage({
         serverContent: { turnComplete: true },
-        usageMetadata: { promptTokenCount: 2706, responseTokenCount: 24, thoughtsTokenCount: 56 },
+        usageMetadata: {
+          promptTokenCount: 2706,
+          promptTokensDetails: [
+            { modality: "TEXT", tokenCount: 2306 },
+            { modality: "AUDIO", tokenCount: 400 },
+          ],
+          responseTokenCount: 24,
+          thoughtsTokenCount: 56,
+        },
       }),
       [
         { type: "turnComplete" },
-        { type: "usage", promptTokens: 2706, responseTokens: 24, thoughtsTokens: 56 },
+        { type: "usage", promptTokens: 2706, audioPromptTokens: 400, responseTokens: 24, thoughtsTokens: 56 },
       ],
     );
   });

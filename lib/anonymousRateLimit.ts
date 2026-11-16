@@ -1,6 +1,6 @@
 // A per-IP cap on the routes that stay open to signed-out callers
-// (app/api/inbox+api.ts, app/api/extract-text+api.ts and app/api/next+api.ts,
-// all for onboarding).
+// (app/api/inbox+api.ts, app/api/extract-text+api.ts, app/api/next+api.ts and
+// app/api/live-session+api.ts, all for onboarding).
 //
 // Known limits, because this is the only thing between the open internet and
 // the project's Gemini quota and it should not be mistaken for more than it is:

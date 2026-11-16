@@ -606,8 +606,11 @@ export const fr: Translations = {
       permission: "Nexdo a besoin du micro pour vous entendre. Vous pouvez l'autoriser dans les Réglages.",
       unavailable: "Impossible de lancer le micro magique. Vérifiez votre connexion et réessayez.",
       connection: "La connexion a été coupée. Ce que vous aviez déjà dit est bien pris en compte.",
-      timeLimit: "Le micro magique s'arrête après 5 minutes — touchez Reparler pour continuer.",
-      silence: "Écoute arrêtée après un moment de silence — touchez Reparler pour continuer.",    },
+      timeLimit: "Le micro magique s'arrête après 2 minutes — touchez Reparler pour continuer.",
+      dailyLimit: "Vous avez utilisé le micro magique 10 fois aujourd'hui. Il revient demain.",
+      usesLimit: "Vous avez utilisé le micro magique 120 fois ce mois-ci. Il revient le 1er du mois.",
+      silence: "Écoute arrêtée après un moment de silence — touchez Reparler pour continuer.",
+    },
   },
 
   tour: {
