@@ -78,20 +78,13 @@ export function useLiveVoice() {
         // and an id the model makes up can't match a real task by accident.
         runner = createLiveToolRunner(new Map(tasks.map((task, index) => [`t${index + 1}`, task.id])));
         return apiPost<LiveSessionResponseBody>("/api/live-session", {
-          // Without their context notes: the live prompt names each task in
-          // one line and never reads them, and a note can hold a whole
-          // photo's or document's text — 80 of those would outgrow the request.
-          // Steps go too, so "I finished the second step" can be ticked off.
+          // Without their context notes or steps: the live prompt names each
+          // task in one line, and Magic mic doesn't change steps (since
+          // 2026-11-16). A note can hold a whole photo's or document's text.
           tasks: tasks.map((task, index) => ({
             ...taskToContext(task, now),
             contextNotes: [],
             id: `t${index + 1}`,
-            steps: task.subtasks?.length
-              ? task.subtasks
-                  .slice()
-                  .sort((a, b) => a.order - b.order)
-                  .map((step) => `${step.status === "completed" ? "✓ " : ""}${step.label}`)
-              : undefined,
           })),
           today: describeNow(now),
           language: getLanguage(),

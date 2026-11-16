@@ -249,42 +249,9 @@ const FUNCTIONS = [
           required: ["action"],
         },
       },
-      {
-        name: "set_steps",
-        description: "Give a task its steps, as the user lists them.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            taskId: TASK_ID,
-            steps: {
-              type: "ARRAY",
-              items: {
-                type: "OBJECT",
-                properties: {
-                  title: { type: "STRING", description: "Short, in the user's words." },
-                  estimatedMinutes: { type: "NUMBER", description: "What the user said, or your realistic estimate." },
-                },
-                required: ["title", "estimatedMinutes"],
-              },
-            },
-            mode: { type: "STRING", enum: ["replace", "add"], description: "replace (default), or add after its steps." },
-          },
-          required: ["taskId", "steps"],
-        },
-      },
-      {
-        name: "check_step",
-        description: "Tick one of a task's steps off (\"I finished the outline\"), or back on with done false. Ticking the last one finishes the task.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            taskId: TASK_ID,
-            step: { type: "NUMBER", description: "The step's number in the task's list, starting at 1." },
-            done: { type: "BOOLEAN", description: "false to mark it not done again. Default true." },
-          },
-          required: ["taskId", "step"],
-        },
-      },
+      // No set_steps / check_step since 2026-11-16 (the user's call): steps
+      // are made and ticked in the app, never by voice — and every tool
+      // declared here is re-read (and billed) after every sentence.
       {
         name: "add_note",
         description: "Save something the user said about a task: why, who, where, what's blocking it, how big it really is.",
@@ -340,7 +307,7 @@ function taskLine(task: TaskContext): string {
     task.estimatedMinutes > 0 ? `${task.estimatedMinutes} min` : "no duration",
     task.priority ? `${task.priority} priority` : undefined,
     task.repeats ? `repeats ${task.repeats}` : undefined,
-    task.steps ? `steps: ${task.steps.map((step, index) => `${index + 1}. ${step}`).join("; ")}` : undefined,
+    // No steps: Magic mic can't change them, and this list is re-read after every sentence.
   ].filter(Boolean);
   return `${task.id} | ${task.title} | ${details.join(", ")}`;
 }
