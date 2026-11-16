@@ -1,0 +1,469 @@
+import type { LiveSessionResponseBody } from "@/app/api/live-session+api";
+import { AiConsentError } from "@/lib/aiConsent";
+import { audioLevel, decodeUtf8, encodeBase64, parseServerMessage, toMonoPcm16, type LiveEvent } from "@/lib/liveProtocol";
+import type { LiveToolCall, LiveToolResult } from "@/lib/liveVoiceTools";
+import { PlanLimitError } from "@/lib/plan";
+
+// One live voice session, start to finish: open a socket to Gemini Live,
+// stream the microphone into it, and carry out every tool call it makes the
+// moment it arrives — while the user keeps talking. Plain JS with everything
+// native passed in (hooks/useLiveVoice.ts supplies the real microphone,
+// socket and task tools), so tests/liveVoice.test.ts can drive it with
+// stand-ins.
+
+/** Live voice stops on its own after this. The server's token dies a minute later (app/api/live-session+api.ts). */
+export const MAX_LIVE_SECONDS = 5 * 60;
+/**
+ * Nobody has spoken for this long: stop, rather than keep paying for the
+ * microphone streaming silence. Counted from when listening began or Google
+ * heard the last sentence end — never while someone is talking.
+ */
+export const SILENCE_STOP_SECONDS = 5;
+/** After Stop, the longest to wait for Google to act on the last sentence. */
+const LAST_TURN_WAIT_MS = 3000;
+/**
+ * The longest from opening the socket to listening (socket open, setup
+ * accepted, microphone on). A connection that stalls without closing would
+ * otherwise stay "connecting" until the user gave up.
+ */
+export const CONNECT_TIMEOUT_MS = 15_000;
+/** WebSocket.OPEN — a number here so the test stand-in doesn't need the class. */
+const SOCKET_OPEN = 1;
+
+export type LiveVoiceStatus = "idle" | "connecting" | "listening" | "finishing" | "stopped" | "error";
+/** "planLimit": Live voice isn't in the account's plan, or the month's minutes are used up (lib/plan.ts). */
+export type LiveVoiceProblem = "permission" | "unavailable" | "connection" | "timeLimit" | "silence" | "planLimit";
+
+export type LiveVoiceState = {
+  status: LiveVoiceStatus;
+  problem: LiveVoiceProblem | null;
+  /** When listening began (ms since epoch), for the clock. */
+  startedAt: number | null;
+  /** Changes made this session so far. */
+  changes: number;
+  /** How many of them Undo can still reverse. */
+  undoable: number;
+  /**
+   * The ids of every task a change from the mic has touched since it was
+   * created — kept across sessions, never reset by start(). Magic mic's cards
+   * are only ever about these: the list also changes under it on its own (a
+   * background re-read of the account's tasks rebuilds every task), and that
+   * is never something the user said.
+   */
+  touched: readonly string[];
+  /** Tasks the user only named (show_task), with when — kept across sessions like `touched`. */
+  shown: readonly ShownTask[];
+  /**
+   * The microphone is on. It starts while the session is still connecting,
+   * so the user can talk straight away: what they say is held until Google is
+   * ready, then sent.
+   */
+  hearing: boolean;
+};
+
+export type ShownTask = { taskId: string; at: number };
+
+export type LiveAudioBuffer = { data: ArrayBuffer; sampleRate: number; channels: number };
+
+export type LiveVoiceDeps = {
+  requestPermission: () => Promise<boolean>;
+  /** A fresh single-use token and setup from /api/live-session. */
+  requestSession: () => Promise<LiveSessionResponseBody>;
+  openSocket: (url: string) => WebSocket;
+  startMicrophone: () => Promise<void>;
+  /** Safe to call when the microphone isn't running. */
+  stopMicrophone: () => void;
+  /** Carries out one tool call on the task list (lib/liveVoiceTools.ts). */
+  runTool: (call: LiveToolCall) => LiveToolResult;
+  undo: () => boolean;
+  undoCount: () => number;
+  /** The tasks the current session's changes have touched (lib/liveVoiceTools.ts touchedIds). */
+  touchedIds?: () => readonly string[];
+  /** The tasks the current session only named (lib/liveVoiceTools.ts shownTasks). */
+  shownTasks?: () => readonly ShownTask[];
+  /** How loud the microphone is (0–1) with every buffer sent, then 0 once it stops — for the sound waves. */
+  onLevel?: (level: number) => void;
+  /**
+   * How long a session listened, once it stops — once for every session the
+   * server opened, 0 for one that never got to listen. The server took the
+   * session's time from the month's Live voice minutes up front; this
+   * report, with the session's id, gives back what wasn't used.
+   */
+  onListened?: (seconds: number, sessionId: string | undefined) => void;
+  /** Development only: what was heard and done, for checking it in the terminal. */
+  log?: (message: string) => void;
+  /**
+   * false: don't stop after SILENCE_STOP_SECONDS of quiet — the session runs
+   * until stopped or out of time. Onboarding's brain dump (07) has no mic
+   * button to start again after a pause, and its server session is capped at
+   * 60 s anyway. Defaults to true.
+   */
+  stopOnSilence?: boolean;
+};
+
+export type LiveVoice = ReturnType<typeof createLiveVoice>;
+
+const INITIAL_STATE: LiveVoiceState = { status: "idle", problem: null, startedAt: null, changes: 0, undoable: 0, touched: [], shown: [], hearing: false };
+/** At most this much speech is held while connecting (the microphone sends 100 ms chunks). */
+const MAX_HELD_CHUNKS = 150;
+
+export function createLiveVoice(deps: LiveVoiceDeps) {
+  let state = INITIAL_STATE;
+  const listeners = new Set<() => void>();
+  const setState = (patch: Partial<LiveVoiceState>) => {
+    state = { ...state, ...patch };
+    listeners.forEach((listener) => listener());
+  };
+
+  // Bumped whenever a session starts or ends. Every callback checks it, so a
+  // late message from a session that's already over changes nothing.
+  let session = 0;
+  let microphoneGeneration: number | null = null;
+  const startingMicrophones = new Set<number>();
+  let microphoneStart: Promise<void> | null = null;
+  let socket: WebSocket | null = null;
+  let streaming = false;
+  // Google has accepted the setup (setupComplete): audio can go out.
+  let ready = false;
+  // Audio from before that, sent the moment it is.
+  let held: string[] = [];
+  // Google heard speech it hasn't finished acting on yet (ACTIVITY_START
+  // without a turnComplete after it) — what Stop has to wait for.
+  let turnOpen = false;
+  let finishTimer: ReturnType<typeof setTimeout> | undefined;
+  let connectTimer: ReturnType<typeof setTimeout> | undefined;
+  let limitTimer: ReturnType<typeof setTimeout> | undefined;
+  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  // How long this session may listen: MAX_LIVE_SECONDS, or what is left of
+  // the month's minutes when the server says that is less.
+  let sessionSeconds = MAX_LIVE_SECONDS;
+  // The session the server has given time to, until it's told how much of
+  // it was used.
+  let unreported: { sessionId: string | undefined } | null = null;
+  // When the microphone started streaming (ms), until its time is reported.
+  let listeningSince: number | null = null;
+
+  // Called wherever the microphone stops or a session ends; reports the
+  // session once, with 0 if it never got to listen.
+  const reportListened = () => {
+    if (!unreported) return;
+    const seconds = listeningSince === null ? 0 : Math.ceil((Date.now() - listeningSince) / 1000);
+    const { sessionId } = unreported;
+    unreported = null;
+    listeningSince = null;
+    deps.onListened?.(seconds, sessionId);
+  };
+
+  const closeSocket = () => {
+    const current = socket;
+    socket = null;
+    if (!current) return;
+    current.onopen = null;
+    current.onmessage = null;
+    current.onclose = null;
+    current.onerror = null;
+    try {
+      current.close();
+    } catch {
+      // Already closed.
+    }
+  };
+
+  const stopMicrophone = (current: number) => {
+    if (microphoneGeneration !== current) return;
+    microphoneGeneration = null;
+    deps.stopMicrophone();
+  };
+
+  const end = (status: "stopped" | "error", problem: LiveVoiceProblem | null) => {
+    const current = session;
+    session += 1;
+    clearTimeout(finishTimer);
+    clearTimeout(connectTimer);
+    clearTimeout(limitTimer);
+    clearTimeout(silenceTimer);
+    streaming = false;
+    turnOpen = false;
+    ready = false;
+    held = [];
+    stopMicrophone(current);
+    deps.onLevel?.(0);
+    reportListened();
+    closeSocket();
+    setState({ status, problem, startedAt: null, hearing: false });
+  };
+
+  const stop = (problem: LiveVoiceProblem | null = null) => {
+    if (state.status === "connecting") {
+      end("stopped", problem);
+      return;
+    }
+    if (state.status !== "listening") return;
+    const current = session;
+    streaming = false;
+    stopMicrophone(current);
+    deps.onLevel?.(0);
+    reportListened();
+    setState({ hearing: false });
+    clearTimeout(limitTimer);
+    clearTimeout(silenceTimer);
+    // Everything said has been acted on: nothing to wait for.
+    if (!turnOpen || socket?.readyState !== SOCKET_OPEN) {
+      end("stopped", problem);
+      return;
+    }
+    // Mid-sentence: tell Google the audio is over, so it acts on what it has
+    // now instead of waiting for a pause that won't come.
+    socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+    setState({ status: "finishing", problem });
+    finishTimer = setTimeout(() => {
+      if (current === session) end("stopped", problem);
+    }, LAST_TURN_WAIT_MS);
+  };
+
+  // (Re)starts the silence countdown; speech starting cancels it.
+  const waitForSpeech = () => {
+    clearTimeout(silenceTimer);
+    if (state.status !== "listening" || deps.stopOnSilence === false) return;
+    const current = session;
+    silenceTimer = setTimeout(() => {
+      if (current === session) stop("silence");
+    }, SILENCE_STOP_SECONDS * 1000);
+  };
+
+  /** The microphone is on and Google is ready: send what was held, and listen. */
+  const startListening = (current: number) => {
+    if (current !== session || state.status !== "connecting") return;
+    clearTimeout(connectTimer);
+    if (socket?.readyState === SOCKET_OPEN) held.forEach((message) => socket?.send(message));
+    held = [];
+    listeningSince = Date.now();
+    setState({ status: "listening", startedAt: listeningSince });
+    limitTimer = setTimeout(() => {
+      // Cut short by the month's minutes running out, or by the usual limit.
+      if (current === session) stop(sessionSeconds < MAX_LIVE_SECONDS ? "planLimit" : "timeLimit");
+    }, sessionSeconds * 1000);
+    waitForSpeech();
+  };
+
+  /** Turns the microphone on — while still connecting, so nobody waits to talk. */
+  const beginListening = async (current: number) => {
+    if (microphoneGeneration === current || startingMicrophones.has(current)) return;
+    startingMicrophones.add(current);
+    const earlierStart = microphoneStart;
+    const start = (async () => {
+      if (earlierStart) await earlierStart;
+      if (current !== session) return;
+      try {
+        await deps.startMicrophone();
+      } catch (error) {
+        console.warn("[liveVoice] microphone didn't start", error);
+        deps.stopMicrophone();
+        if (current === session) end("error", "unavailable");
+        return;
+      }
+      if (current !== session) {
+        // Starts are serialized, so no newer session can own the shared mic yet.
+        deps.stopMicrophone();
+        return;
+      }
+      microphoneGeneration = current;
+      streaming = true;
+      setState({ hearing: true });
+      if (ready) startListening(current);
+    })();
+    let tracked: Promise<void>;
+    tracked = start.finally(() => {
+      startingMicrophones.delete(current);
+      if (microphoneStart === tracked) microphoneStart = null;
+    });
+    microphoneStart = tracked;
+    await tracked;
+  };
+
+  const runTools = (calls: LiveToolCall[]) => {
+    const functionResponses = calls.map((call) => {
+      const result = deps.runTool(call);
+      deps.log?.(`${call.name}(${JSON.stringify(call.args)}) → ${JSON.stringify(result)}`);
+      // SILENT, on the response and inside it: without it Gemini Live took
+      // each answer as a cue for another turn and made the same call again
+      // (checked 2026-09-29). With it, it just goes back to listening.
+      return { id: call.id, name: call.name, scheduling: "SILENT", response: { ...result, scheduling: "SILENT" } };
+    });
+    if (socket?.readyState === SOCKET_OPEN) socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+    // Showing a task changes nothing, so it isn't counted as a change.
+    const done = functionResponses.filter((entry) => entry.response.ok && entry.name !== "show_task").length;
+    setState({ changes: state.changes + done, undoable: deps.undoCount(), touched: withTouched(), shown: withShown() });
+  };
+
+  /** The tasks named so far, with this session's latest namings. */
+  const withShown = (): readonly ShownTask[] => {
+    const latest = deps.shownTasks?.() ?? [];
+    const fresh = latest.filter((entry) => !state.shown.some((old) => old.taskId === entry.taskId && old.at === entry.at));
+    if (fresh.length === 0) return state.shown;
+    const freshIds = new Set(fresh.map((entry) => entry.taskId));
+    return [...state.shown.filter((old) => !freshIds.has(old.taskId)), ...fresh];
+  };
+
+  /** What the mic has touched so far, with the current session's latest. */
+  const withTouched = (): readonly string[] => {
+    const latest = deps.touchedIds?.() ?? [];
+    const added = latest.filter((id) => !state.touched.includes(id));
+    return added.length === 0 ? state.touched : [...state.touched, ...added];
+  };
+
+  const handleEvent = (event: LiveEvent) => {
+    switch (event.type) {
+      case "ready":
+        ready = true;
+        if (microphoneGeneration === session) startListening(session);
+        return;
+      case "speechStart":
+        turnOpen = true;
+        clearTimeout(silenceTimer);
+        return;
+      case "speechEnd":
+        waitForSpeech();
+        return;
+      case "toolCalls":
+        runTools(event.calls);
+        return;
+      case "turnComplete":
+        turnOpen = false;
+        if (state.status === "finishing") end("stopped", state.problem);
+        else waitForSpeech();
+        return;
+      case "goAway":
+        stop();
+        return;
+      case "transcript":
+        deps.log?.(`heard: "${event.text}"`);
+        return;
+      case "usage":
+        deps.log?.(`turn: ${event.promptTokens} in, ${event.responseTokens} out, ${event.thoughtsTokens} thinking`);
+        return;
+    }
+  };
+
+  const handleMessage = (current: number, data: unknown) => {
+    let message: unknown;
+    try {
+      const text = typeof data === "string" ? data : data instanceof ArrayBuffer ? decodeUtf8(new Uint8Array(data)) : "";
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    for (const event of parseServerMessage(message)) {
+      if (current !== session) return;
+      handleEvent(event);
+    }
+  };
+
+  const start = async () => {
+    if (state.status === "connecting" || state.status === "listening" || state.status === "finishing") return;
+    session += 1;
+    const current = session;
+    turnOpen = false;
+    ready = false;
+    held = [];
+    setState({ status: "connecting", problem: null, startedAt: null, changes: 0, undoable: 0, hearing: false });
+
+    const granted = await deps.requestPermission();
+    if (current !== session) return;
+    if (!granted) {
+      end("error", "permission");
+      return;
+    }
+
+    // The microphone and the connection start together: turning the mic on
+    // takes a moment of its own, and the user shouldn't wait for both in a row.
+    void beginListening(current);
+
+    let live: LiveSessionResponseBody;
+    try {
+      live = await deps.requestSession();
+    } catch (error) {
+      if (current !== session) return;
+      // Not in the plan, or out of minutes — nothing is broken.
+      if (error instanceof PlanLimitError) {
+        end("error", "planLimit");
+        return;
+      }
+      // The user said no to AI: simply not listening.
+      if (error instanceof AiConsentError) {
+        end("stopped", null);
+        return;
+      }
+      console.warn("[liveVoice] couldn't start a session", error);
+      end("error", "unavailable");
+      return;
+    }
+    if (current !== session) {
+      // Stopped while the server was opening it: none of its time was used.
+      deps.onListened?.(0, live.sessionId);
+      return;
+    }
+    unreported = { sessionId: live.sessionId };
+    sessionSeconds = Math.min(MAX_LIVE_SECONDS, Math.max(1, live.maxSeconds ?? MAX_LIVE_SECONDS));
+
+    // Stalled before listening began: close it, give the session's time back
+    // (none was used), and let the user try again.
+    connectTimer = setTimeout(() => {
+      if (current === session && state.status === "connecting") end("error", "connection");
+    }, CONNECT_TIMEOUT_MS);
+    const opened = deps.openSocket(live.url);
+    // Google sends its JSON as binary frames; React Native would otherwise
+    // hand them over as Blobs, which can't be read synchronously.
+    opened.binaryType = "arraybuffer";
+    socket = opened;
+    opened.onopen = () => opened.send(JSON.stringify(live.setup));
+    opened.onmessage = (event) => {
+      if (current === session) handleMessage(current, event.data);
+    };
+    opened.onclose = (event) => {
+      if (current !== session) return;
+      deps.log?.(`socket closed: ${event.code} ${event.reason}`);
+      if (state.status === "finishing") end("stopped", state.problem);
+      // Closed before listening began: the token or setup was turned away.
+      else end("error", state.status === "connecting" ? "unavailable" : "connection");
+    };
+  };
+
+  return {
+    start,
+    stop: () => stop(),
+    /** The Undo button: the latest change this session, as "undo" said out loud. */
+    undo: () => {
+      if (deps.undo()) setState({ undoable: deps.undoCount() });
+    },
+    /** Every microphone buffer lands here; only sent while listening. */
+    sendAudio: (buffer: LiveAudioBuffer) => {
+      if (!streaming) return;
+      const pcm = toMonoPcm16(buffer.data, buffer.channels);
+      deps.onLevel?.(audioLevel(pcm));
+      const message = JSON.stringify({
+        realtimeInput: { audio: { data: encodeBase64(pcm), mimeType: `audio/pcm;rate=${buffer.sampleRate}` } },
+      });
+      // Still connecting: held, and sent the moment Google is ready.
+      if (state.status === "connecting") {
+        held.push(message);
+        if (held.length > MAX_HELD_CHUNKS) held.shift();
+        return;
+      }
+      if (socket?.readyState === SOCKET_OPEN) socket.send(message);
+    },
+    /** The screen is going away: end any session. Changes already made stay. */
+    dispose: () => {
+      if (state.status === "connecting" || state.status === "listening" || state.status === "finishing") {
+        end("stopped", null);
+      }
+    },
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    getState: () => state,
+  };
+}
