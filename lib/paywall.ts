@@ -1,0 +1,37 @@
+import { router } from "expo-router";
+
+import { showAlert } from "@/lib/alert";
+import { translate } from "@/lib/i18n";
+import type { Meter, ProFeatureId } from "@/lib/plan";
+import { planLimitMessage } from "@/lib/planLimit";
+import { isPurchasesEnabled, prefetchProPlans } from "@/lib/purchases";
+import { useSubscriptionStore } from "@/store/useSubscriptionStore";
+
+/** What the paywall was opened from: an allowance, or one of the Pro extras (focus sounds, Insights). */
+export type PaywallReason = ProFeatureId;
+
+/**
+ * Opens the Nexdo Pro paywall (app/paywall.tsx). With a `reason`, that
+ * feature's card — or the allowance that just ran out — comes to the front,
+ * outlined in orange.
+ */
+export function openPaywall(reason?: PaywallReason) {
+  // The prices start loading now, while the screen builds.
+  if (isPurchasesEnabled) prefetchProPlans();
+  router.push(reason ? { pathname: "/paywall", params: { reason } } : "/paywall");
+}
+
+/**
+ * What the app does when a month's allowance is used up. On Free the paywall
+ * opens, saying which one ran out. Pro has nothing to upgrade to, so it's
+ * told when the allowance starts again — unless the caller has `alreadySaid`
+ * so itself (Task Details' context-note notice does).
+ */
+export function showPlanLimit(meter: Meter, alreadySaid = false) {
+  const isPro = useSubscriptionStore.getState().pro !== null;
+  if (!isPro && isPurchasesEnabled) {
+    openPaywall(meter);
+    return;
+  }
+  if (!alreadySaid) showAlert(translate().plan.limitTitle, planLimitMessage(meter));
+}
