@@ -45,11 +45,12 @@ export async function POST(request: Request) {
   if (!sessionId || seconds === undefined) return badRequest();
 
   // The report is the app's word: an app changed to always say "0" gets every
-  // session back. What bounds it is the number of sessions instead — 120 a
-  // month (app/api/live-session+api.ts) and 10 a day (lib/aiUsageLimit.ts),
-  // each at most 2 minutes — about 4½ hours a month at the very most. (A
-  // 30-second minimum charge was tried on 2026-11-15 and dropped the next
-  // day: the use cap already bounds this, and it only cost honest users.)
+  // session back. What bounds it is the number of sessions a day
+  // (lib/aiUsageLimit.ts), each at most 2 minutes. Cheating needs a paid
+  // account and only buys more Magic mic, so nothing stricter is in place:
+  // a 30-second minimum charge and a cap of 120 sessions a month were both
+  // tried on 2026-11-15 and dropped the next day (the user's call), since
+  // they could only cost honest users.
   await settleLiveSession(auth.userId, sessionId, Math.ceil(seconds));
   return Response.json({ ok: true });
 }

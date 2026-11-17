@@ -23,7 +23,7 @@ const SAMPLE_RATE = 16_000;
 // finished tasks filling up the rest only cost money (measured 2026-11-15).
 // Together they must stay within MAX_TASKS in app/api/live-session+api.ts.
 const MAX_OPEN_TASKS = 80;
-const MAX_FINISHED_TASKS = 5;
+const MAX_FINISHED_TASKS = 10;
 
 /**
  * Live voice for components/MagicMicOverlay.tsx: the microphone, the socket and the task

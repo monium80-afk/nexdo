@@ -16,7 +16,7 @@ import { PlanLimitError } from "@/lib/plan";
  * One use of Live voice lasts at most this long, counted from when it first
  * listens — pauses included. Then it stops, and Talk again is a new use. The
  * server's token dies 20 s later (app/api/live-session+api.ts). 2 minutes
- * since 2026-11-15 (was 5): with the server's 120 uses a month, that is what
+ * since 2026-11-15 (was 5): with the day's session limit, that is what
  * bounds an app that lies about its minutes.
  */
 export const MAX_LIVE_SECONDS = 2 * 60;
@@ -50,9 +50,7 @@ export type LiveVoiceProblem =
   | "silence"
   | "planLimit"
   /** The day's sessions are used up (lib/aiUsageLimit.ts) — back tomorrow. */
-  | "dailyLimit"
-  /** The month's uses are used up (app/api/live-session+api.ts) — back next month. */
-  | "usesLimit";
+  | "dailyLimit";
 
 export type LiveVoiceState = {
   status: LiveVoiceStatus;
@@ -518,11 +516,6 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       // The server's 429 for the day's sessions (lib/aiUsageLimit.ts).
       if (error instanceof Error && error.message.includes("daily_limit")) {
         end("error", "dailyLimit");
-        return;
-      }
-      // The server's 429 for the month's uses (app/api/live-session+api.ts).
-      if (error instanceof Error && error.message.includes("uses_limit")) {
-        end("error", "usesLimit");
         return;
       }
       console.warn("[liveVoice] couldn't start a session", error);

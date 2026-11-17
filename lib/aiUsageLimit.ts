@@ -17,11 +17,12 @@ import { usageUnavailable } from "@/lib/serverPlan";
 
 export type AiRoute = "live-session";
 
-// Sessions per account per UTC day. 10 since 2026-11-15 (was 30, the user's
-// call): with 120 uses a month (app/api/live-session+api.ts) it is what
-// bounds an app that lies about its minutes.
+// Sessions per account per UTC day — a fuse, far above a busy day of real
+// use: it stops an app that lies about its minutes, or a bug reopening Magic
+// mic in a loop, from running all day. 30 (briefly 10 on 2026-11-15; back to
+// 30 the next day, the user's call, so honest heavy users are never blocked).
 const DAILY_LIMITS: Record<AiRoute, number> = {
-  "live-session": 10,
+  "live-session": 30,
 };
 
 /**

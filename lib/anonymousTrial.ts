@@ -1,10 +1,11 @@
 // Server-only: imported exclusively by app/api/**/+api.ts route handlers.
 //
-// The one free AI run a signed-out person gets during onboarding. The three
-// routes onboarding uses (inbox, extract-text, next) stay open to signed-out
-// callers so a new user can see what the AI does before making an account —
-// but only once. After that, keeping their tasks and using the AI again means
-// signing in.
+// The one free AI run a signed-out person gets during onboarding. The two
+// routes onboarding uses (live-session for the Magic mic brain dump, inbox
+// for typing it instead) stay open to signed-out callers so a new user can
+// see what the AI does before making an account — but only once. After that,
+// keeping their tasks and using the AI again means signing in. (extract-text
+// and next were open too, for the old onboarding, until 2026-11-16.)
 //
 // The app makes up a random id the first time it runs (lib/aiTrial.ts) and
 // sends it as X-Nexdo-Trial on every signed-out request. Supabase counts what
@@ -17,25 +18,21 @@ import { getClientIp } from "@/lib/anonymousRateLimit";
 import { serverMisconfigured } from "@/lib/serverAuth";
 import { callServerRpc, RpcConfigError } from "@/lib/serverRpc";
 
-export type TrialRoute = "inbox" | "extract-text" | "next" | "live-session";
+export type TrialRoute = "inbox" | "live-session";
 
-// What one honest onboarding run needs: a few voice notes for the brain dump,
-// one read of it, and the advice on the task it picks — twice, for someone who
-// steps back past that screen and forward again. Since 2026-11-12 the brain
-// dump listens live (app/onboarding/dump.tsx): one 60-second session, plus one
-// more for a connection that dropped.
-const TRIAL_ALLOWANCE: Record<TrialRoute, number> = { "extract-text": 3, inbox: 1, next: 2, "live-session": 2 };
+// What one honest onboarding run needs: the brain dump, spoken live
+// (app/onboarding/dump.tsx) — one 60-second session, plus one more for a
+// connection that dropped — or typed, read once.
+const TRIAL_ALLOWANCE: Record<TrialRoute, number> = { inbox: 1, "live-session": 2 };
 
 // A household or a classroom shares one IP, so this is a few rather than one.
 const NEW_TRIALS_PER_IP_PER_DAY = 5;
 
 // The ceiling on signed-out spending. A normal run (the 60-second Magic mic
-// brain dump and the advice after it) costs about 1–5 cents. One built to be
-// as expensive as the caps allow — both Magic mic sessions run to the end of
-// their tokens, three 15-minute voice notes, the longest inbox message —
-// about 50 cents (re-estimated 2026-11-15, when the Magic mic was added to
-// onboarding; it said five cents before). 300 a day is roughly $3–15 a day of
-// real use and about $150 at the very worst.
+// brain dump) costs about 3–4 cents (measured 2026-11-16). One built to be as
+// expensive as the caps allow — both Magic mic sessions run to the end of
+// their 80-second tokens, plus the longest inbox message — about 20 cents.
+// 300 a day is roughly $10 a day of real use and about $60 at the very worst.
 const NEW_TRIALS_PER_DAY = 300;
 
 const TRIAL_ID_PATTERN = /^[a-zA-Z0-9-]{16,64}$/;

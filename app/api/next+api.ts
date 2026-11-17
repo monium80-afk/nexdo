@@ -2,9 +2,7 @@ import { EXECUTION_COACH_INTEGRATION_NOTES, EXECUTION_COACH_SYSTEM_PROMPT } from
 import type { TaskContext } from "@/lib/ai/context";
 import { generateStructuredJson, type GeminiJsonSchema } from "@/lib/ai/gemini";
 import { aiUnavailableMessage, languageInstruction } from "@/lib/ai/language";
-import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
-import { claimTrialCall } from "@/lib/anonymousTrial";
-import { authenticate } from "@/lib/serverAuth";
+import { authenticate, unauthorized } from "@/lib/serverAuth";
 import { claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
@@ -120,19 +118,15 @@ function normalizeResponse(raw: unknown, language: AppLanguage | undefined): Nex
   };
 }
 
-// Open to signed-out callers only for onboarding's free run: the decision
-// screen (app/onboarding-focus.tsx) shows the AI's advice on the picked task
-// BEFORE the user signs up. lib/anonymousTrial.ts allows a signed-out install
-// only that; past it, generateAdvice quietly shows its offline heuristic.
-// Signed in, each answer is one of the account's breakdowns-and-advice for
-// the month (lib/serverPlan.ts).
+// Signed-in only since 2026-11-16: it was open to signed-out callers for the
+// old onboarding's advice screen, which the current onboarding no longer
+// has — an open door nothing in the app used. Signed out, generateAdvice
+// quietly shows its offline heuristic. Signed in, each answer is one of the
+// account's breakdowns-and-advice for the month (lib/serverPlan.ts).
 export async function POST(request: Request) {
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
-  if (!auth.userId) {
-    const rateLimitResponse = anonymousRateLimit(request, "next");
-    if (rateLimitResponse) return rateLimitResponse;
-  }
+  if (!auth.userId) return unauthorized();
 
   let raw: unknown;
   try {
@@ -147,9 +141,7 @@ export async function POST(request: Request) {
   if (!task) return badRequest();
 
   const claimedAt = new Date();
-  const limitResponse = auth.userId
-    ? await claimPlanUsage(request, auth.userId, "assist")
-    : await claimTrialCall(request, "next");
+  const limitResponse = await claimPlanUsage(request, auth.userId, "assist");
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -167,11 +159,11 @@ export async function POST(request: Request) {
     });
     const response = normalizeResponse(result, language);
     // No advice came back: that isn't one of the month's answers.
-    if (response.unavailable && auth.userId) await refundPlanUsage(auth.userId, "assist", claimedAt);
+    if (response.unavailable) await refundPlanUsage(auth.userId, "assist", claimedAt);
     return Response.json(response);
   } catch (error) {
     console.error("[api/next]", error);
-    if (auth.userId) await refundPlanUsage(auth.userId, "assist", claimedAt);
+    await refundPlanUsage(auth.userId, "assist", claimedAt);
     return Response.json(fallbackResponse(language));
   }
 }

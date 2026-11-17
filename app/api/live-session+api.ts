@@ -7,7 +7,7 @@ import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate } from "@/lib/serverAuth";
-import { cancelLiveSession, countLiveSessions, startLiveSession, usageUnavailable } from "@/lib/serverPlan";
+import { settleLiveSession, startLiveSession } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -70,17 +70,11 @@ const LIVE_MODEL = "models/gemini-3.1-flash-live-preview";
 // 60-second session run for two.
 const TOKEN_GRACE_SECONDS = 20;
 
-// Magic mic sessions ("uses") per account per month — 120 since 2026-11-15
-// (the user's call). Each lasts at most MAX_LIVE_SECONDS (2 min), so an app
-// that lies about its minutes gets about 4½ hours a month at the very most;
-// an honest one runs out of its 90 minutes first.
-const LIVE_USES_PER_MONTH = 120;
-
 const MAX_BODY_BYTES = 256 * 1024;
 // More than /api/inbox's 30: a live session can't ask for a different slice
 // halfway through, so it gets the whole open list up front: 80 open tasks
-// and the 5 most recently finished (hooks/useLiveVoice.ts).
-const MAX_TASKS = 85;
+// and the 10 most recently finished (hooks/useLiveVoice.ts).
+const MAX_TASKS = 90;
 
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -443,18 +437,15 @@ export async function POST(request: Request) {
   const session = await startLiveSession(request, auth.userId, MAX_LIVE_SECONDS);
   if ("refused" in session) return session.refused;
 
-  // The stops behind the app's reports: a tampered app could say a session
-  // used nothing, but it can only open so many a month and a day, each no
-  // longer than its token. Over either, the session is undone: its time goes
-  // back and it isn't counted as a use.
-  const uses = await countLiveSessions(auth.userId);
-  if (uses === null || uses > LIVE_USES_PER_MONTH) {
-    await cancelLiveSession(auth.userId, session.sessionId);
-    return uses === null ? usageUnavailable() : Response.json({ error: "uses_limit" }, { status: 429 });
-  }
+  // The stop behind the app's reports: a tampered app could say a session
+  // used nothing, but it can only open so many a day, each no longer than its
+  // token. Over that, the session is undone: its time goes back. (A cap of
+  // 120 a month was tried on 2026-11-15 and dropped the next day, the user's
+  // call: cheating needs a paid account and only buys more Magic mic, while
+  // the cap could have blocked honest heavy users.)
   const limitResponse = await claimUserCall(auth.userId, "live-session");
   if (limitResponse) {
-    await cancelLiveSession(auth.userId, session.sessionId);
+    await settleLiveSession(auth.userId, session.sessionId, 0);
     return limitResponse;
   }
 
@@ -473,7 +464,7 @@ export async function POST(request: Request) {
     // Logged in full here (a missing key, a quota, a rejected setup); the
     // phone only needs to know it can't start. Nothing was listened to.
     console.error("[api/live-session]", error instanceof Error ? error.message : error);
-    await cancelLiveSession(auth.userId, session.sessionId);
+    await settleLiveSession(auth.userId, session.sessionId, 0);
     return Response.json({ error: "live_unavailable" }, { status: 502 });
   }
 }

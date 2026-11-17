@@ -1,7 +1,5 @@
 import { extractTextFromMedia, measureAudioSeconds } from "@/lib/ai/gemini";
-import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
-import { claimTrialCall } from "@/lib/anonymousTrial";
-import { authenticate } from "@/lib/serverAuth";
+import { authenticate, unauthorized } from "@/lib/serverAuth";
 import { checkPlanAllowance, claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
   asObject,
@@ -148,13 +146,13 @@ async function voiceSeconds(params: { mimeType: string; base64: string }): Promi
   return seconds > MAX_VOICE_SECONDS ? null : Math.max(1, Math.ceil(seconds));
 }
 
-// Open to signed-out callers only for onboarding's free run: the brain dump
-// can be spoken (app/onboarding-dump.tsx) before the user signs up. The body
-// is an arbitrary media file plus an instruction — the shape of a general LLM
-// proxy — so the MIME allowlist and MAX_BODY_BYTES limit what one request can
-// be, and lib/anonymousTrial.ts allows a signed-out install only a few.
-// Signed in, a photo or document is one of the account's files for the month
-// and a voice note uses its length in voice minutes (lib/serverPlan.ts).
+// Signed-in only since 2026-11-16: it was open to signed-out callers for the
+// old onboarding's recorded brain dump, which is Magic mic now — an open door
+// nothing in the app used. The body is an arbitrary media file plus an
+// instruction — the shape of a general LLM proxy — so the MIME allowlist and
+// MAX_BODY_BYTES limit what one request can be. A photo or document is one
+// of the account's files for the month and a voice note uses its length in
+// voice minutes (lib/serverPlan.ts).
 export async function POST(request: Request) {
   // The app's 30 s wait (lib/api.ts) began before it sent the file, so the
   // reading has to be done within this of the request arriving — upload,
@@ -165,10 +163,7 @@ export async function POST(request: Request) {
   // falling through to the anonymous path.
   const auth = await authenticate(request);
   if ("failed" in auth) return auth.failed;
-  if (!auth.userId) {
-    const rateLimitResponse = anonymousRateLimit(request, "extract-text");
-    if (rateLimitResponse) return rateLimitResponse;
-  }
+  if (!auth.userId) return unauthorized();
 
   let raw: unknown;
   try {
@@ -193,17 +188,11 @@ export async function POST(request: Request) {
 
   // What this file uses of the account's month — given back below if the
   // model then can't read it.
-  // Measuring a voice note sends it to Google, so whether this caller may use
-  // anything at all is settled first: a signed-out trial counts calls, so it
-  // is claimed outright; an account is only checked for voice time left, and
-  // then charged the measured length.
-  const { userId } = auth;
+  // Measuring a voice note sends it to Google, so whether this account has
+  // voice time left is checked first; it is then charged the measured length.
+  const userId = auth.userId;
   let usage: { meter: "voice" | "media"; amount: number } = { meter: "media", amount: 1 };
-  const earlyLimitResponse = !userId
-    ? await claimTrialCall(request, "extract-text")
-    : kind === "voice"
-      ? await checkPlanAllowance(request, userId, "voice")
-      : null;
+  const earlyLimitResponse = kind === "voice" ? await checkPlanAllowance(request, userId, "voice") : null;
   if (earlyLimitResponse) return earlyLimitResponse;
 
   if (kind === "voice") {
@@ -215,7 +204,7 @@ export async function POST(request: Request) {
   }
 
   const claimedAt = new Date();
-  const limitResponse = userId ? await claimPlanUsage(request, userId, usage.meter, usage.amount) : null;
+  const limitResponse = await claimPlanUsage(request, userId, usage.meter, usage.amount);
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -244,7 +233,7 @@ export async function POST(request: Request) {
     // caller's catch branch runs and says "couldn't transcribe" instead.
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[api/extract-text] ${kind} ${mimeType} ${bytes}B failed:`, reason);
-    if (userId) await refundPlanUsage(userId, usage.meter, claimedAt, usage.amount);
+    await refundPlanUsage(userId, usage.meter, claimedAt, usage.amount);
     return Response.json({ text: "", error: "extraction_failed" } satisfies ExtractTextResponseBody, { status: 502 });
   }
 }

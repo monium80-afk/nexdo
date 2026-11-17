@@ -676,8 +676,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
     problem !== "timeLimit" &&
     problem !== "silence" &&
     problem !== "planLimit" &&
-    problem !== "dailyLimit" &&
-    problem !== "usesLimit";
+    problem !== "dailyLimit";
 
   return (
     <View
