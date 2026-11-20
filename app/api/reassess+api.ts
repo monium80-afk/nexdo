@@ -271,6 +271,10 @@ export function normalizeReassessment(raw: unknown): ReassessResponseBody {
   };
 }
 
+export function normalizeReassessmentResult(raw: unknown, stepsCut?: true): ReassessResponseBody {
+  return normalizeReassessment(stepsCut ? { ...asObject(raw), steps: null, estimatedMinutes: null } : raw);
+}
+
 const MAX_BODY_BYTES = 64 * 1024;
 // A note can carry what was read from an attached photo or document
 // (lib/contextFile.ts) as well as the user's own words.
@@ -330,7 +334,7 @@ export async function reassessTask(body: ReassessRequestBody): Promise<ReassessR
     userContent: JSON.stringify(userContent),
     responseSchema: RESPONSE_SCHEMA,
   });
-  return normalizeReassessment(stepsCut ? { ...asObject(result), steps: null } : result);
+  return normalizeReassessmentResult(result, stepsCut);
 }
 
 // Signed-in only, like the breakdown route: it changes a saved task, and there
@@ -353,8 +357,8 @@ export async function POST(request: Request) {
 
   // A note for the AI is a message to it: it counts as one of the month's AI
   // chat messages.
-  const claimedAt = new Date();
-  const limitResponse = await claimPlanUsage(request, auth.userId, "chat");
+  const claimId = crypto.randomUUID();
+  const limitResponse = await claimPlanUsage(request, auth.userId, "chat", 1, claimId);
   if (limitResponse) return limitResponse;
 
   try {
@@ -364,7 +368,7 @@ export async function POST(request: Request) {
     // made-up reassessment would change the task on a guess. The app keeps
     // the task as it is, keeps the note in the box, and offers a retry.
     console.error("[api/reassess]", error);
-    await refundPlanUsage(auth.userId, "chat", claimedAt);
+    await refundPlanUsage(auth.userId, "chat", claimId);
     return Response.json({ error: "Reassessment unavailable" }, { status: 502 });
   }
 }

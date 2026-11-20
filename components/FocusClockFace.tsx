@@ -17,7 +17,7 @@ import Animated, {
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { FOCUS_FINISH } from "@/constants/focusFinish";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import type { SessionCountdown } from "@/hooks/useSessionCountdown";
 import { useTranslation } from "@/hooks/useTranslation";
 import { sessionElapsedMs, type ActiveSession } from "@/store/useSessionStore";
@@ -264,6 +264,8 @@ export function FocusClockFace({
    */
   finish?: FocusFinish | null;
 }) {
+  const colors = useColors();
+  const P = colors.palette;
   const t = useTranslation();
   const reduceMotion = useReducedMotion();
   const finishing = finish !== null;
@@ -452,7 +454,7 @@ export function FocusClockFace({
   // had — until the task is done, when the ring closes in orange.
   const overtimeRing = phase === "done" && countdown.isOvertime && !finishing;
   const clock = phase === "celebrating" ? "00:00" : countdown.clock;
-  const clockColor = countdown.isOvertime && phase === "done" ? colors.overdue[500] : "#221C17";
+  const clockColor = countdown.isOvertime && phase === "done" ? colors.overdue[500] : P.ink;
   const clockSize = clock.length > 6 ? 42 : 52;
 
   // "18 min of focus · 12 min early" — or "… · 4 min over".
@@ -481,7 +483,7 @@ export function FocusClockFace({
           </>
         ) : null}
         <Svg width={RING} height={RING} style={{ position: "absolute" }}>
-          <Circle cx={RING / 2} cy={RING / 2} r={R} fill="#FCF7EF" stroke="#EFE3D4" strokeWidth={STROKE} />
+          <Circle cx={RING / 2} cy={RING / 2} r={R} fill={P.paperCard} stroke={P.chip} strokeWidth={STROKE} />
           {overtimeRing ? (
             <Circle cx={RING / 2} cy={RING / 2} r={R} fill="none" stroke={colors.overdue[300]} strokeOpacity={0.55} strokeWidth={STROKE} />
           ) : (
@@ -560,7 +562,7 @@ export function FocusClockFace({
           {/* "of 30 mins · Step 2: write the introduction"; past the time, "over your 30m". */}
           <Text
             numberOfLines={2}
-            style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 19, color: "#7A6E64", textAlign: "center", paddingHorizontal: 8 }}
+            style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 19, color: P.inkMuted, textAlign: "center", paddingHorizontal: 8 }}
           >
             {phase === "done" && countdown.isOvertime ? countdown.caption : caption}
           </Text>
@@ -574,15 +576,15 @@ export function FocusClockFace({
           >
             <Text
               numberOfLines={1}
-              style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 52, lineHeight: 54, letterSpacing: -1.56, color: "#221C17" }}
+              style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 52, lineHeight: 54, letterSpacing: -1.56, color: P.ink }}
             >
               {t.common.done}
             </Text>
             <Text
               numberOfLines={2}
-              style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 19, color: "#7A6E64", textAlign: "center", paddingHorizontal: 8 }}
+              style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 14, lineHeight: 19, color: P.inkMuted, textAlign: "center", paddingHorizontal: 8 }}
             >
-              <Text style={{ fontFamily: "SpaceGrotesk-Bold", color: "#221C17" }}>{t.focusPage.doneMinutes(finish.focusedMinutes)}</Text>
+              <Text style={{ fontFamily: "SpaceGrotesk-Bold", color: P.ink }}>{t.focusPage.doneMinutes(finish.focusedMinutes)}</Text>
               {` ${t.focusPage.doneOfFocus} · ${doneTiming}`}
             </Text>
           </Animated.View>

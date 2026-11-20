@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker's names, and the words shown before the app has handed
+     over its own (in the app language, lib/widgetData.ts). -->
+<resources>
+  <string name="nexdo_widget_small_name">Next task</string>
+  <string name="nexdo_widget_medium_name">Next task + quick add</string>
+  <string name="nexdo_widget_description">Your next task, with Add and Magic mic.</string>
+  <string name="nexdo_widget_next">Next</string>
+  <string name="nexdo_widget_today">Today</string>
+  <string name="nexdo_widget_overdue">Overdue</string>
+  <string name="nexdo_widget_all_clear">All clear</string>
+  <string name="nexdo_widget_all_clear_body">Tap + to add a task</string>
+  <string name="nexdo_widget_add">Add</string>
+  <string name="nexdo_widget_mic">Mic</string>
+  <string name="nexdo_widget_sign_in">Open Nexdo to get started</string>
+</resources>

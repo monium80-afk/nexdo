@@ -140,8 +140,8 @@ export async function POST(request: Request) {
   const task = parseTaskContext(parsed.task);
   if (!task) return badRequest();
 
-  const claimedAt = new Date();
-  const limitResponse = await claimPlanUsage(request, auth.userId, "assist");
+  const claimId = crypto.randomUUID();
+  const limitResponse = await claimPlanUsage(request, auth.userId, "assist", 1, claimId);
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -159,11 +159,11 @@ export async function POST(request: Request) {
     });
     const response = normalizeResponse(result, language);
     // No advice came back: that isn't one of the month's answers.
-    if (response.unavailable) await refundPlanUsage(auth.userId, "assist", claimedAt);
+    if (response.unavailable) await refundPlanUsage(auth.userId, "assist", claimId);
     return Response.json(response);
   } catch (error) {
     console.error("[api/next]", error);
-    await refundPlanUsage(auth.userId, "assist", claimedAt);
+    await refundPlanUsage(auth.userId, "assist", claimId);
     return Response.json(fallbackResponse(language));
   }
 }

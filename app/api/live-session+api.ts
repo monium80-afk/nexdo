@@ -7,7 +7,7 @@ import { anonymousRateLimit } from "@/lib/anonymousRateLimit";
 import { claimTrialCall } from "@/lib/anonymousTrial";
 import { MAX_LIVE_SECONDS } from "@/lib/liveVoice";
 import { authenticate } from "@/lib/serverAuth";
-import { settleLiveSession, startLiveSession } from "@/lib/serverPlan";
+import { markLiveSessionTokenIssued, settleLiveSession, startLiveSession } from "@/lib/serverPlan";
 import {
     asObject,
     badRequest,
@@ -142,6 +142,24 @@ const DETAILS = {
   repeat: REPEAT,
 };
 
+const REMINDER = {
+  type: "OBJECT",
+  description:
+    'Only when the user asks how THIS task should remind them (see REMINDERS): "remind me 10 minutes before", "set an alarm", "no reminder for it".',
+  properties: {
+    type: {
+      type: "STRING",
+      enum: ["notification", "alarm", "off"],
+      description: '"alarm" for an alarm / "ring me" / "wake me up"; "off" for no reminder; otherwise "notification".',
+    },
+    minutesBefore: {
+      type: "NUMBER",
+      description: 'How long before the task\'s time: "at the time" 0, "10 minutes before" 10, "an hour before" 60, "the day before" 1440. Leave out if not said.',
+    },
+  },
+  required: ["type"],
+};
+
 const UPDATE_SCOPE = {
   type: "STRING",
   enum: ["this", "future", "series"],
@@ -179,6 +197,7 @@ const FUNCTIONS = [
               description: "Minutes it takes: what the user said, or your realistic estimate (see LENGTH).",
             },
             ...DETAILS,
+            reminder: REMINDER,
           },
           required: ["title", "estimatedMinutes"],
         },
@@ -194,6 +213,7 @@ const FUNCTIONS = [
             estimatedMinutes: { type: "NUMBER", description: "The new length in minutes, only when the user changes it." },
             estimatedMinutesDelta: MINUTES_DELTA,
             ...DETAILS,
+            reminder: REMINDER,
             dueDateShift: SHIFT,
             removeDeadline: { type: "BOOLEAN", description: 'true when the task should have no deadline any more ("no due date", "whenever").' },
             repeatType: {
@@ -282,10 +302,12 @@ const TOOLS = [{ functionDeclarations: FUNCTIONS.map((declaration) => ({ ...decl
 // session can only add tasks — and only for a minute.
 const ONBOARDING_TOOLS = [
   {
-    functionDeclarations: FUNCTIONS.filter((declaration) => declaration.name === "add_task").map((declaration) => ({
-      ...declaration,
-      behavior: "NON_BLOCKING",
-    })),
+    // Without the reminder field: the brain dump only captures tasks, and
+    // every token here is billed again on every turn.
+    functionDeclarations: FUNCTIONS.filter((declaration) => declaration.name === "add_task").map((declaration) => {
+      const { reminder: _reminder, ...properties } = (declaration.parameters as { properties: Record<string, unknown> }).properties;
+      return { ...declaration, parameters: { ...declaration.parameters, properties }, behavior: "NON_BLOCKING" };
+    }),
   },
 ];
 export const ONBOARDING_LIVE_SECONDS = 60;
@@ -301,6 +323,7 @@ function taskLine(task: TaskContext): string {
     task.estimatedMinutes > 0 ? `${task.estimatedMinutes} min` : "no duration",
     task.priority ? `${task.priority} priority` : undefined,
     task.repeats ? `repeats ${task.repeats}` : undefined,
+    task.status === "completed" ? undefined : task.reminder,
     // No steps: Magic mic can't change them, and this list is re-read after every sentence.
   ].filter(Boolean);
   return `${task.id} | ${task.title} | ${details.join(", ")}`;
@@ -454,6 +477,7 @@ export async function POST(request: Request) {
       setup,
       sessionSeconds: session.seconds + TOKEN_GRACE_SECONDS,
     });
+    await markLiveSessionTokenIssued(auth.userId, session.sessionId);
     return Response.json({
       url: websocketUrl,
       setup: { setup },

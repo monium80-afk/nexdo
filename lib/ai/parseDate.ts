@@ -69,6 +69,7 @@ const MONTH_ALTERNATIVES = [
 ];
 
 type TimeOfDay = { hour: number; minute: number };
+const INVALID_TIME = Symbol("invalid time");
 
 // French deadline wording ("vendredi prochain à 19h", "dans trois jours") is
 // rewritten into the English phrasing the rules below already understand,
@@ -513,16 +514,19 @@ function toCount(word: string | undefined): number | undefined {
 // "at 5", "5pm", "17:30", "noon", "tomorrow morning" — the time rides along
 // with whichever day the phrase resolves to, so "today at 3pm" and "friday
 // at 9am" both keep the hour the user actually said.
-function extractTimeOfDay(lower: string): TimeOfDay | undefined {
+function extractTimeOfDay(lower: string): TimeOfDay | typeof INVALID_TIME | undefined {
   if (/\b(noon|midday)\b/.test(lower)) return { hour: 12, minute: 0 };
   if (/\bmidnight\b/.test(lower)) return { hour: 0, minute: 0 };
 
   const meridiem = lower.match(MERIDIEM_PATTERN);
   if (meridiem) {
-    const hour12 = Number.parseInt(meridiem[1], 10) % 12;
+    const hour = Number.parseInt(meridiem[1], 10);
+    const minute = meridiem[2] ? Number.parseInt(meridiem[2], 10) : 0;
+    if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return INVALID_TIME;
+    const hour12 = hour % 12;
     return {
       hour: meridiem[3].startsWith("p") ? hour12 + 12 : hour12,
-      minute: meridiem[2] ? Number.parseInt(meridiem[2], 10) : 0,
+      minute,
     };
   }
 
@@ -717,6 +721,7 @@ export function parseDatePhrase(text: string, now: Date = new Date(), language?:
   const time = extractTimeOfDay(lower);
 
   const resolve = (date: Date, fallbackHour = DEFAULT_HOUR): string | undefined => {
+    if (time === INVALID_TIME) return undefined;
     date.setHours(time?.hour ?? fallbackHour, time?.minute ?? 0, 0, 0);
     return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
   };

@@ -9,6 +9,7 @@ import type { RecurrenceScope, RuleInput } from "@/lib/recurrence";
 import { matchesFilter } from "@/lib/taskOperations";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { RecurrenceKind, RecurrenceRule, StepDraft, Task } from "@/types/task";
+import { applyReminderChange, type ReminderChange } from "@/lib/taskReminder";
 
 // Live voice's hands: Gemini Live calls the tools declared in
 // app/api/live-session+api.ts, and each call is carried out here, on the
@@ -23,7 +24,7 @@ export type LiveToolCall = { id: string; name: string; args: Record<string, unkn
 /** What the model hears back: whether it worked, and the id to use for "that" next time. */
 export type LiveToolResult = { ok: boolean; taskId?: string; note?: string; error?: string; count?: number };
 
-type Snapshot = { taskId: string; before: Task | null };
+type Snapshot = { taskId: string; before: Task | null; after?: Task | null };
 
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const FREQUENCIES = ["daily", "weekly", "monthly", "yearly", "none"] as const;
@@ -147,6 +148,21 @@ function inboxAction(
   return { type, taskId, taskIds: bulk.taskIds ?? null, filter: bulk.filter ?? null, fields, confirmationRequired: false };
 }
 
+/**
+ * A reminder argument as the task's reminder change: its type (notification,
+ * alarm or off) and how many minutes before. Null when nothing usable was said.
+ * An alarm on Free stays a notification when it rings (lib/reminders.ts), and
+ * Magic mic itself is Pro, so no separate check is needed here.
+ */
+function reminderOf(value: unknown): ReminderChange | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const mode = raw.type === "alarm" ? "alarm" : raw.type === "off" ? "off" : raw.type === "notification" ? "notify" : null;
+  if (!mode) return null;
+  const minutes = typeof raw.minutesBefore === "number" && Number.isFinite(raw.minutesBefore) ? Math.max(0, Math.round(raw.minutesBefore)) : undefined;
+  return minutes === undefined || mode === "off" ? { mode } : { mode, lead: minutes };
+}
+
 const pad = (value: number) => String(value).padStart(2, "0");
 
 /**
@@ -261,7 +277,8 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
   const shown = new Map<string, number>();
   const remember = (snapshots: Snapshot[]) => {
     const current = new Map(useTaskStore.getState().tasks.map((task) => [task.id, task]));
-    for (const snapshot of snapshots) {
+    const recorded = snapshots.map((snapshot) => ({ ...snapshot, after: current.get(snapshot.taskId) ?? null }));
+    for (const snapshot of recorded) {
       touched.add(snapshot.taskId);
       const after = current.get(snapshot.taskId) ?? null;
       const previous = micWrites.get(snapshot.taskId);
@@ -273,7 +290,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
             if (field === "updatedAt") continue;
             const before = snapshot.before[field as keyof Task];
             const lastWritten = after[field as keyof Task];
-            if (!sameTaskField(before, lastWritten)) fields.set(field, { before, lastWritten, conflicted: false });
+            if (!sameTaskField(before, lastWritten, field)) fields.set(field, { before, lastWritten, conflicted: false });
           }
         }
         micWrites.set(snapshot.taskId, { before: snapshot.before, lastWritten: after, fields, conflicted: false });
@@ -287,7 +304,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
         if (before && previous.lastWritten && !sameTaskSnapshot(before, previous.lastWritten)) conflicted = true;
       } else if (before && previous.lastWritten) {
         for (const [field, write] of fields) {
-          if (!sameTaskField(before[field as keyof Task], write.lastWritten)) {
+          if (!sameTaskField(before[field as keyof Task], write.lastWritten, field)) {
             fields.set(field, { ...write, conflicted: true });
           }
         }
@@ -302,20 +319,20 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
           if (field === "updatedAt") continue;
           const beforeValue = before[field as keyof Task];
           const afterValue = after[field as keyof Task];
-          if (sameTaskField(beforeValue, afterValue)) continue;
+          if (sameTaskField(beforeValue, afterValue, field)) continue;
           const existing = fields.get(field);
           if (!existing) {
             fields.set(field, { before: beforeValue, lastWritten: afterValue, conflicted: false });
             continue;
           }
-          const fieldConflicted = existing.conflicted || !sameTaskField(beforeValue, existing.lastWritten);
-          if (!fieldConflicted && sameTaskField(afterValue, existing.before)) fields.delete(field);
+          const fieldConflicted = existing.conflicted || !sameTaskField(beforeValue, existing.lastWritten, field);
+          if (!fieldConflicted && sameTaskField(afterValue, existing.before, field)) fields.delete(field);
           else fields.set(field, { ...existing, lastWritten: afterValue, conflicted: fieldConflicted });
         }
       }
       micWrites.set(snapshot.taskId, { ...previous, lastWritten: after, fields, conflicted });
     }
-    undoStack.push(snapshots);
+    undoStack.push(recorded);
   };
   // Recent calls, with the task each was about (the model's id for it).
   let recent: { key: string; at: number; taskId?: string; result: LiveToolResult }[] = [];
@@ -347,7 +364,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
       if (after) {
         for (const [field, write] of fields) {
           const value = after[field as keyof Task];
-          if (!write.conflicted && sameTaskField(value, write.before)) fields.delete(field);
+          if (!write.conflicted && sameTaskField(value, write.before, field)) fields.delete(field);
           else fields.set(field, { ...write, lastWritten: value });
         }
       }
@@ -403,6 +420,8 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
 
   const dispatch = (call: LiveToolCall): LiveToolResult => {
     const { args } = call;
+    // "Remind me 10 minutes before" / "set an alarm" / "no reminder" (2026-11-18).
+    const reminder = reminderOf(args.reminder);
     const taskId = text(args.taskId) ?? null;
     const recurrence = recurrenceOf(args.repeat);
     const details = {
@@ -416,6 +435,13 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
       ? oneOf((args.repeat as Record<string, unknown>).kind, KINDS)
       : undefined;
     const withKind = (structured: StructuredAction) => {
+      if (reminder) {
+        if (structured.type === "CREATE_TASK") {
+          for (const draft of structured.drafts) draft.reminders = applyReminderChange(undefined, reminder);
+        } else if (structured.type === "OPERATE" && structured.operation.kind === "update") {
+          structured.operation.changes.reminder = reminder;
+        }
+      }
       if (!repeatKind) return;
       if (structured.type === "CREATE_TASK") {
         for (const draft of structured.drafts) if (draft.recurrence) draft.recurrence = { ...draft.recurrence, kind: repeatKind };
@@ -441,7 +467,7 @@ export function createLiveToolRunner(aliases: Map<string, string>) {
         const existing = useTaskStore.getState().tasks.find((task) => task.status === "pending" && titleKey(task.title) === titleKey(title));
         if (existing) {
           const alias = aliasFor(existing.id);
-          if (Object.values(details).every((value) => value === undefined)) {
+          if (Object.values(details).every((value) => value === undefined) && !reminder) {
             return { ok: true, taskId: alias, note: "Already on the list — nothing added." };
           }
           // Not ok when it changed nothing (it already looked like that) or

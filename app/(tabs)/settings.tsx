@@ -17,7 +17,7 @@ import { GemMascot } from "@/components/GemMascot";
 import { LanguageSheet, LANGUAGE_OPTIONS } from "@/components/LanguageSheet";
 import { useTabBarHeight } from "@/components/TabBar";
 import { SUPPORT_LINKS } from "@/constants/support";
-import { colors } from "@/constants/theme";
+import { useIsDark, usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useToday } from "@/hooks/useToday";
@@ -29,7 +29,7 @@ import { buildInsights } from "@/lib/pace";
 import { openPaywall } from "@/lib/paywall";
 import { displayLimit, isTimeMeter, PLAN_LIMITS, type Meter } from "@/lib/plan";
 import { posthog } from "@/lib/posthog";
-import { REMINDER_LEAD_OPTIONS, reminderLead } from "@/lib/reminders";
+import { LeadSlider, leadText } from "@/components/ReminderParts";
 import {
   isPurchasesEnabled,
   openStoreSubscriptions,
@@ -40,17 +40,15 @@ import {
 } from "@/lib/purchases";
 import { entriesFor, useFocusLogStore } from "@/store/useFocusLogStore";
 import { usePlanUsageStore } from "@/store/usePlanUsageStore";
-import { useSettingsStore } from "@/store/useSettingsStore";
+import { defaultReminderLead, useSettingsStore } from "@/store/useSettingsStore";
 import { useSubscriptionStore } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { AppLanguage } from "@/types/settings";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
-const P = colors.palette;
 const APP_VERSION = Constants.expoConfig?.version ?? "2.0.0";
 const TIGHT = { includeFontPadding: false } as const;
 const CARD_SHADOW = SOFT_SHADOW;
-const RULE = "#EADFD1";
 /** On the dark plan card. */
 const ON_DARK_MUTED = "#C9BDB2";
 const ON_DARK_FAINT = "#A99D92";
@@ -85,6 +83,7 @@ function initials(name: string): string {
 
 /** A small uppercase section label, in Space Mono. */
 function Eyebrow({ children }: { children: ReactNode }) {
+  const P = usePalette();
   return (
     <Text style={[{ fontFamily: "SpaceMono-Bold", fontSize: 10, lineHeight: 12, letterSpacing: 2, color: P.inkMuted }, TIGHT]}>
       {children}
@@ -93,7 +92,8 @@ function Eyebrow({ children }: { children: ReactNode }) {
 }
 
 /** A list row on the page itself: label, an optional value, a ›. */
-function Row({ label, value, onPress, disabled = false }: { label: string; value?: string; onPress: () => void; disabled?: boolean }) {
+function Row({ label, value, onPress, disabled = false, toggle }: { label: string; value?: string; onPress: () => void; disabled?: boolean; toggle?: boolean }) {
+  const P = usePalette();
   const rtl = useRtlText();
   return (
     <AnimatedPressable
@@ -107,35 +107,44 @@ function Row({ label, value, onPress, disabled = false }: { label: string; value
       <Text numberOfLines={1} style={[{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 16, color: P.ink }, TIGHT, rtl]}>
         {label}
       </Text>
-      {value ? <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, color: P.inkMuted }, TIGHT]}>{value}</Text> : null}
-      <SheetIcon name="chevronRight" size={17} color={P.inkFaint} />
+      {toggle !== undefined ? (
+        // A switch instead of a value and a › (Dark mode).
+        <MiniSwitch value={toggle} onChange={onPress} label={label} />
+      ) : (
+        <>
+          {value ? <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, color: P.inkMuted }, TIGHT]}>{value}</Text> : null}
+          <SheetIcon name="chevronRight" size={17} color={P.inkFaint} />
+        </>
+      )}
     </AnimatedPressable>
   );
 }
 
-function RowList({ rows }: { rows: { key: string; label: string; value?: string; onPress: () => void; disabled?: boolean }[] }) {
+function RowList({ rows }: { rows: { key: string; label: string; value?: string; onPress: () => void; disabled?: boolean; toggle?: boolean }[] }) {
+  const P = usePalette();
   return (
     <View>
       {rows.map((row, index) => (
         <Fragment key={row.key}>
-          {index > 0 ? <View style={{ height: 1, backgroundColor: RULE }} /> : null}
-          <Row label={row.label} value={row.value} onPress={row.onPress} disabled={row.disabled} />
+          {index > 0 ? <View style={{ height: 1, backgroundColor: P.rule }} /> : null}
+          <Row label={row.label} value={row.value} onPress={row.onPress} disabled={row.disabled} toggle={row.toggle} />
         </Fragment>
       ))}
     </View>
   );
 }
 
-/** The icon tiles' tints in the notifications card. */
-const REMINDER_TINT = { bg: "#FCE3D3", fg: "#D9561C" };
-const OVERDUE_TINT = { bg: "#F7DCD6", fg: "#D4402A" };
-const MORNING_TINT = { bg: "#FBE7C6", fg: "#B8640F" };
+/** The notifications card's corner and padding: the panel inside it is rounded by their difference. */
+const NOTIFY_CARD_RADIUS = 24;
+const NOTIFY_CARD_PADDING = 12;
 
-/** The orange switch (the screenshot's 48 × 28); `size` "small" inside the open Reminders. */
+/** The orange switch (the screenshot's 48 × 28); `size` "small" inside the notifications panel. */
 function MiniSwitch({ value, onChange, label, size = "large" }: { value: boolean; onChange: (next: boolean) => unknown; label: string; size?: "large" | "small" }) {
-  const width = size === "large" ? 48 : 40;
-  const height = size === "large" ? 28 : 24;
+  const P = usePalette();
+  const width = size === "large" ? 48 : 44;
+  const height = size === "large" ? 28 : 26;
   const knob = height - 6;
+  const dark = useIsDark();
   return (
     <Pressable
       onPress={() => void onChange(!value)}
@@ -143,176 +152,77 @@ function MiniSwitch({ value, onChange, label, size = "large" }: { value: boolean
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityState={{ checked: value }}
-      style={{ width, height, borderRadius: height / 2, padding: 3, backgroundColor: value ? P.accent : "#E7DCCF", alignItems: value ? "flex-end" : "flex-start" }}
+      style={{ width, height, borderRadius: height / 2, padding: 3, backgroundColor: value ? P.accent : P.track, alignItems: value ? "flex-end" : "flex-start" }}
     >
-      <View style={{ width: knob, height: knob, borderRadius: knob / 2, backgroundColor: "#FFFFFF" }} />
+      {/* In dark mode an "on" knob is dark, as in the user's dark screenshot. */}
+      <View style={{ width: knob, height: knob, borderRadius: knob / 2, backgroundColor: dark && value ? P.inkCard : "#FFFFFF" }} />
     </Pressable>
   );
 }
 
 /**
- * A row of the notifications card: a tinted icon, the name with a line under
- * it, and its switch. With `expanded` set, the line ends in a chevron and
- * tapping the row opens or closes what's under it.
+ * One kind of notification in the panel: its name, a line under it, and its
+ * switch. With `expanded` set (it has settings of its own and is on), a
+ * chevron next to the switch folds those settings away or opens them, and so
+ * does tapping the name — so the whole card isn't open every time (2026-11-18).
  */
-function NotificationRow({
-  icon,
-  tint,
+function SubSwitchRow({
   title,
-  subtitle,
-  expanded,
-  onPress,
+  hint,
   value,
   onChange,
+  expanded,
+  onToggleExpanded,
 }: {
-  icon: FeatherIconName;
-  tint: { bg: string; fg: string };
   title: string;
-  subtitle: string;
-  expanded?: boolean;
-  onPress?: () => void;
+  hint: string;
   value: boolean;
   onChange: (next: boolean) => unknown;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 }) {
+  const P = usePalette();
+  const rtl = useRtlText();
+  const foldable = expanded !== undefined && onToggleExpanded !== undefined;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 18 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 16 }}>
       <Pressable
-        onPress={onPress}
-        disabled={!onPress}
-        accessibilityRole={onPress ? "button" : undefined}
-        accessibilityState={onPress ? { expanded } : undefined}
-        accessibilityLabel={`${title}. ${subtitle}`}
-        style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 14 }}
+        onPress={onToggleExpanded}
+        disabled={!foldable}
+        accessibilityRole={foldable ? "button" : undefined}
+        accessibilityState={foldable ? { expanded } : undefined}
+        accessibilityLabel={`${title}. ${hint}`}
+        style={{ flex: 1 }}
       >
-        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: tint.bg, alignItems: "center", justifyContent: "center" }}>
-          <Feather name={icon} size={16} color={tint.fg} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: P.ink }, TIGHT]}>{title}</Text>
-          <View style={{ marginTop: 2, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={[{ flexShrink: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 17, color: P.inkMuted }, TIGHT]}>{subtitle}</Text>
-            {expanded !== undefined ? <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={P.accentInk} /> : null}
-          </View>
-        </View>
+        <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 16, lineHeight: 20, color: P.ink }, TIGHT, rtl]}>{title}</Text>
+        <Text style={[{ marginTop: 2, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 17, color: P.inkMuted }, TIGHT, rtl]}>{hint}</Text>
       </Pressable>
-      <MiniSwitch value={value} onChange={onChange} label={title} />
+      {foldable ? (
+        <Pressable onPress={onToggleExpanded} hitSlop={10} accessibilityElementsHidden importantForAccessibility="no" style={{ width: 28, height: 28, alignItems: "center", justifyContent: "center" }}>
+          <Feather name={expanded ? "chevron-up" : "chevron-down"} size={18} color={P.inkMuted} />
+        </Pressable>
+      ) : null}
+      <MiniSwitch value={value} onChange={onChange} label={title} size="small" />
     </View>
   );
 }
 
-/** A time as a cream pill with a clock — "🕘 9:00 AM" — that opens the time picker. */
-function TimeChip({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
-  return (
-    <AnimatedPressable
-      onPress={onPress}
-      scaleTo={0.96}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}, ${value}`}
-      style={{ flexDirection: "row", alignItems: "center", gap: 7, height: 36, paddingHorizontal: 13, borderRadius: 18, backgroundColor: P.chip }}
-    >
-      <Feather name="clock" size={14} color={P.ink} />
-      <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: P.ink }, TIGHT]}>{value}</Text>
-    </AnimatedPressable>
-  );
-}
-
-/** A setting's name with a line under it, and what to set on the right. */
-function SettingLine({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+/** A setting's name and its value in orange ("Time — 8:00 AM ›"); tappable when it opens something. */
+function ValueRow({ label, value, icon, onPress }: { label: string; value: string; icon?: FeatherIconName; onPress?: () => void }) {
+  const P = usePalette();
   const rtl = useRtlText();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 16 }}>
-      <View style={{ flex: 1 }}>
-        <Text style={[{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, lineHeight: 19, color: P.ink }, TIGHT, rtl]}>{title}</Text>
-        <Text style={[{ marginTop: 2, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16.5, color: P.inkMuted }, TIGHT, rtl]}>{hint}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-/**
- * What a reminder will look like with the lead chosen (the screenshot's dark
- * card): "Dentist in 15 min · Starts at 3:00 PM", marked as a preview.
- */
-function ReminderPreview({ title, body, label }: { title: string; body: string; label: string }) {
-  return (
-    <View
-      accessibilityLabel={`${label}: ${title}. ${body}`}
-      style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: P.ink }}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={`${label}, ${value}`}
+      style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 2, paddingBottom: 16 }}
     >
-      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: P.accent, alignItems: "center", justifyContent: "center" }}>
-        <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: "#FFFFFF", transform: [{ rotate: "45deg" }] }} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text numberOfLines={1} style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14.5, lineHeight: 19, color: "#FFFFFF" }, TIGHT]}>{title}</Text>
-        <Text numberOfLines={1} style={[{ marginTop: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 16, color: ON_DARK_MUTED }, TIGHT]}>{body}</Text>
-      </View>
-      <Text style={[{ fontFamily: "SpaceGrotesk-Medium", fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase", color: ON_DARK_FAINT }, TIGHT]}>{label}</Text>
-    </View>
-  );
-}
-
-/**
- * "How long before" as a row of stops on a line (the screenshot's slider):
- * the line and dots orange up to the chosen stop, which wears a halo; its
- * label in bold. Each stop is a tap target.
- */
-function LeadSlider({
-  options,
-  value,
-  labelFor,
-  onChange,
-}: {
-  options: readonly number[];
-  value: number;
-  labelFor: (minutes: number) => string;
-  onChange: (minutes: number) => void;
-}) {
-  const [width, setWidth] = useState(0);
-  const selectedIndex = Math.max(0, options.indexOf(value));
-  const column = options.length > 0 ? width / options.length : 0;
-  const DOT_ROW = 26;
-  return (
-    <View accessibilityRole="radiogroup" onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      {width > 0 ? (
-        <View pointerEvents="none" style={{ position: "absolute", top: DOT_ROW / 2 - 1.5, left: column / 2, right: column / 2, height: 3, borderRadius: 1.5, backgroundColor: "#E7DCCF" }}>
-          <View style={{ width: column * selectedIndex, height: 3, borderRadius: 1.5, backgroundColor: P.accent }} />
-        </View>
-      ) : null}
-      <View style={{ flexDirection: "row" }}>
-        {options.map((minutes, index) => {
-          const selected = index === selectedIndex;
-          const reached = index <= selectedIndex;
-          return (
-            <Pressable
-              key={minutes}
-              onPress={() => onChange(minutes)}
-              hitSlop={{ top: 8, bottom: 8 }}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
-              accessibilityLabel={labelFor(minutes)}
-              style={{ flex: 1, alignItems: "center" }}
-            >
-              <View style={{ height: DOT_ROW, alignItems: "center", justifyContent: "center" }}>
-                {selected ? (
-                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(242,106,46,0.22)", alignItems: "center", justifyContent: "center" }}>
-                    <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: P.accent }} />
-                  </View>
-                ) : (
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: reached ? P.accent : "#D9CCBD" }} />
-                )}
-              </View>
-              <Text
-                numberOfLines={1}
-                style={[{ marginTop: 8, fontFamily: selected ? "SpaceGrotesk-Bold" : "SpaceGrotesk-Medium", fontSize: 12.5, color: selected ? P.ink : P.inkMuted }, TIGHT]}
-              >
-                {labelFor(minutes)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
+      <Text style={[{ flex: 1, fontFamily: "SpaceGrotesk-Medium", fontSize: 15, color: P.ink }, TIGHT, rtl]}>{label}</Text>
+      <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: P.accentInk }, TIGHT]}>{value}</Text>
+      {icon ? <Feather name={icon} size={16} color={P.inkMuted} /> : null}
+    </Pressable>
   );
 }
 
@@ -323,6 +233,7 @@ function LeadSlider({
  * Preferences and Support as plain lists, and Sign out at the foot.
  */
 export default function Settings() {
+  const P = usePalette();
   const router = useRouter();
   const t = useTranslation();
   const rtl = useRtlText();
@@ -332,9 +243,11 @@ export default function Settings() {
   const saveUnsyncedTasks = useTaskStore((state) => state.saveUnsyncedTasks);
   const language = useSettingsStore((state) => state.language);
   const setLanguage = useSettingsStore((state) => state.setLanguage);
-  const dayReminderTime = useSettingsStore((state) => state.dayReminderTime);
-  const setDayReminderTime = useSettingsStore((state) => state.setDayReminderTime);
-  const lead = useSettingsStore((state) => reminderLead({ beforeOffsets: state.reminderOffsets }));
+  const setTheme = useSettingsStore((state) => state.setTheme);
+  const dark = useIsDark();
+  const notificationsEnabled = useSettingsStore((state) => state.notificationsEnabled);
+  const setNotificationsEnabled = useSettingsStore((state) => state.setNotificationsEnabled);
+  const lead = useSettingsStore(defaultReminderLead);
   const setReminderLead = useSettingsStore((state) => state.setReminderLead);
   const overdueAlertsEnabled = useSettingsStore((state) => state.overdueAlertsEnabled);
   const setOverdueAlertsEnabled = useSettingsStore((state) => state.setOverdueAlertsEnabled);
@@ -359,9 +272,11 @@ export default function Settings() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-  const [timePicker, setTimePicker] = useState<"day" | "morning" | null>(null);
-  const [remindersOpen, setRemindersOpen] = useState(false);
+  // Whether the morning summary's time picker is open.
+  const [timePicker, setTimePicker] = useState(false);
+  // Which parts of the notifications panel are open (folded by default, 2026-11-18).
   const [morningOpen, setMorningOpen] = useState(false);
+  const [timedOpen, setTimedOpen] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>("undetermined");
 
   // Checked again whenever Settings comes into view — the user may have just
@@ -401,10 +316,7 @@ export default function Settings() {
   const name = user?.fullName?.trim() || user?.primaryEmailAddress?.emailAddress?.split("@")[0] || "";
   const firstName = name.split(/\s+/)[0] ?? "";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const dayTimeLabel = timeToDate(dayReminderTime).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
   const morningTimeLabel = timeToDate(morningNudgeTime).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
-  // The preview's made-up task starts at 3 PM, written the phone's way.
-  const previewTime = timeToDate("15:00").toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
   const languageName = LANGUAGE_OPTIONS.find((option) => option.value === language)?.label ?? "";
 
   const handleSelectLanguage = (value: AppLanguage) => {
@@ -412,13 +324,11 @@ export default function Settings() {
     posthog.capture("language_changed", { language: value });
   };
 
-  // The time for reminders on tasks with only a date, or the morning nudge's own time.
+  // The morning summary's time.
   const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
-    const target = timePicker;
-    if (Platform.OS === "android") setTimePicker(null);
+    if (Platform.OS === "android") setTimePicker(false);
     if (event.type === "dismissed" || !selected) return;
-    if (target === "day") setDayReminderTime(dateToTime(selected));
-    if (target === "morning") setMorningNudgeTime(dateToTime(selected));
+    setMorningNudgeTime(dateToTime(selected));
   };
 
   // A tile turns on the moment it's tapped (waiting on the phone's answer
@@ -546,7 +456,7 @@ export default function Settings() {
 
         {/* The plan: Pro with this month's allowances, or Free and the way to Pro. */}
         {isPurchasesEnabled ? (
-          <View style={{ marginTop: 14, borderRadius: 24, backgroundColor: P.ink, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, ...shadow("0 10px 24px rgba(34, 28, 23, 0.22)", 8) }}>
+          <View style={{ marginTop: 14, borderRadius: 24, backgroundColor: P.inkCard, paddingTop: 18, paddingHorizontal: 18, paddingBottom: 18, ...shadow("0 10px 24px rgba(34, 28, 23, 0.22)", 8) }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               {/* Pro shows the blazing gem. The plain gem sits low in its drawing (room
                   is kept above it for the flame), so it's lifted to the row's middle. */}
@@ -626,118 +536,90 @@ export default function Settings() {
               return bar.tasksDone > 0 ? (
                 <View
                   key={bar.start}
-                  style={{ width: 10, height: Math.max(12, (bar.tasksDone / weekMax) * 56), borderRadius: 5, backgroundColor: isToday ? P.accent : "#EDE2D5" }}
+                  style={{ width: 10, height: Math.max(12, (bar.tasksDone / weekMax) * 56), borderRadius: 5, backgroundColor: isToday ? P.accent : P.bar }}
                 />
               ) : (
-                <View key={bar.start} style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: isToday ? P.accent : "#EDE2D5", marginHorizontal: 0.5 }} />
+                <View key={bar.start} style={{ width: 9, height: 9, borderRadius: 4.5, backgroundColor: isToday ? P.accent : P.bar, marginHorizontal: 0.5 }} />
               );
             })}
           </View>
         </AnimatedPressable>
 
-        {/* Notifications: the three switches, then the time they use — named
-            and explained, since a bare "at 9 AM" said nothing about what for. */}
+        {/* Notifications (2026-11-18, the user's Claude Design screenshots):
+            one main switch, and under it — only while it's on — the three
+            kinds Nexdo sends. Turning any of them off never touches a task's
+            own reminder choice: it's all there again when switched back on. */}
         <View style={{ marginTop: 25 }}>
           <Eyebrow>{t.redesign.notifications}</Eyebrow>
         </View>
-        {/* One card (the 2026-11-09 screenshots): Reminders, with when they
-            ring under its name — tapping the row opens the timing (and the
-            daily plan) — then Overdue. */}
-        <View style={[{ marginTop: 12, borderRadius: 24, backgroundColor: P.paperCard, paddingHorizontal: 16 }, CARD_SHADOW]}>
-          {/* The morning nudge (2026-11-12): once a day, the task to start
-              with. Open: what it looks like, and its time. */}
-          <NotificationRow
-            icon="sunrise"
-            tint={MORNING_TINT}
-            title={t.redesign.morningNudge}
-            subtitle={morningNudgeEnabled ? t.redesign.morningAt(morningTimeLabel) : t.redesign.dailyPlanHint}
-            expanded={morningNudgeEnabled ? morningOpen : undefined}
-            onPress={morningNudgeEnabled ? () => setMorningOpen((open) => !open) : undefined}
-            value={morningNudgeEnabled}
-            onChange={switchWith((on) => {
-              setMorningNudgeEnabled(on);
-              // Opens on its own when turned on, so the time is seen, not hidden behind the chevron.
-              setMorningOpen(on);
-            })}
-          />
-          {morningNudgeEnabled && morningOpen ? (
-            <View style={{ marginBottom: 4 }}>
-              <ReminderPreview
-                label={t.redesign.previewLabel}
-                title={t.notifications.dailyTitle(t.redesign.previewMorningTask)}
-                body={t.notifications.dailyDueBody(2)}
-              />
-              <SettingLine title={t.redesign.dailyTimeTitle} hint={t.redesign.dailyPlanHint}>
-                <TimeChip label={t.redesign.dailyTimeTitle} value={morningTimeLabel} onPress={() => setTimePicker((open) => (open === "morning" ? null : "morning"))} />
-              </SettingLine>
-              {timePicker === "morning" ? (
-                <DateTimePicker value={timeToDate(morningNudgeTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} themeVariant="light" onChange={handleTimeChange} />
-              ) : null}
+        {/* Nested corners follow inner radius = outer radius − padding
+            (24 − 12 = 12), so the panel's curve runs parallel to the card's. */}
+        <View style={[{ marginTop: 12, borderRadius: NOTIFY_CARD_RADIUS, backgroundColor: P.paperCard, padding: NOTIFY_CARD_PADDING }, CARD_SHADOW]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 6, paddingVertical: 6 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 19, lineHeight: 24, color: P.ink }, TIGHT, rtl]}>{t.reminderUi.title}</Text>
+              <Text style={[{ marginTop: 3, fontFamily: "SpaceGrotesk-Regular", fontSize: 13.5, lineHeight: 18, color: P.inkMuted }, TIGHT, rtl]}>
+                {notificationsEnabled ? t.reminderUi.notificationsOn : t.reminderUi.notificationsOff}
+              </Text>
             </View>
-          ) : null}
-          <View style={{ height: 1, backgroundColor: RULE }} />
-          <NotificationRow
-            icon="bell"
-            tint={REMINDER_TINT}
-            title={t.redesign.reminders}
-            subtitle={deadlineRemindersEnabled ? t.redesign.remindersPinged : t.redesign.remindersHint}
-            expanded={deadlineRemindersEnabled ? remindersOpen : undefined}
-            onPress={deadlineRemindersEnabled ? () => setRemindersOpen((open) => !open) : undefined}
-            value={deadlineRemindersEnabled}
-            onChange={switchWith((on) => {
-              setDeadlineRemindersEnabled(on);
-              // Opens on its own when turned on, so the timing choices are seen, not hidden behind the chevron.
-              setRemindersOpen(on);
-            })}
-          />
-          {/* Open (the 2026-11 screenshot): a preview of the reminder, the
-              lead as stops on a line, then the date-only time — and the
-              daily plan, which keeps its own switch and time. */}
-          {deadlineRemindersEnabled && remindersOpen ? (
-            <View>
-              <ReminderPreview
-                label={t.redesign.previewLabel}
-                title={
-                  lead === 0
-                    ? t.redesign.previewNow(t.redesign.previewTask)
-                    : lead >= 1440
-                      ? t.redesign.previewTomorrow(t.redesign.previewTask)
-                      : t.redesign.previewIn(t.redesign.previewTask, t.redesign.leadShort(lead))
-                }
-                body={t.redesign.previewStarts(previewTime)}
+            <MiniSwitch value={notificationsEnabled} onChange={switchWith(setNotificationsEnabled)} label={t.reminderUi.title} />
+          </View>
+
+          {notificationsEnabled ? (
+            <View style={{ marginTop: 12, borderRadius: NOTIFY_CARD_RADIUS - NOTIFY_CARD_PADDING, backgroundColor: P.tile, paddingHorizontal: 14 }}>
+              <SubSwitchRow
+                title={t.reminderUi.morningSummary}
+                hint={t.reminderUi.morningSummaryHint}
+                value={morningNudgeEnabled}
+                onChange={switchWith((on) => {
+                  setMorningNudgeEnabled(on);
+                  // Opens when turned on, so its time is seen; folds away when off.
+                  setMorningOpen(on);
+                })}
+                expanded={morningNudgeEnabled ? morningOpen : undefined}
+                onToggleExpanded={() => setMorningOpen((open) => !open)}
               />
-
-              <View style={{ marginTop: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <Text style={[{ flexShrink: 1, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14.5, lineHeight: 19, color: P.ink }, TIGHT, rtl]}>{t.redesign.timedTitle}</Text>
-                <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: P.accentInk }, TIGHT]}>
-                  {lead === 0 ? t.redesign.leadAtStart : t.redesign.leadBefore(t.redesign.leadShort(lead))}
-                </Text>
-              </View>
-              <View style={{ marginTop: 18, marginBottom: 18 }}>
-                <LeadSlider options={REMINDER_LEAD_OPTIONS} value={lead} labelFor={t.redesign.leadStop} onChange={setReminderLead} />
-              </View>
-
-              <View style={{ height: 1, backgroundColor: RULE }} />
-              {/* With the morning nudge on, date-only tasks are counted in it instead. */}
-              <SettingLine title={t.redesign.dateOnlyLabel} hint={morningNudgeEnabled ? t.redesign.inMorningNudge : t.redesign.dateOnlyHint}>
-                {morningNudgeEnabled ? null : (
-                  <TimeChip label={t.redesign.dateOnlyLabel} value={dayTimeLabel} onPress={() => setTimePicker((open) => (open === "day" ? null : "day"))} />
-                )}
-              </SettingLine>
-              {timePicker === "day" && !morningNudgeEnabled ? (
-                <DateTimePicker value={timeToDate(dayReminderTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} themeVariant="light" onChange={handleTimeChange} />
+              {morningNudgeEnabled && morningOpen ? (
+                <>
+                  <ValueRow label={t.reminderUi.time} value={morningTimeLabel} icon="chevron-right" onPress={() => setTimePicker((open) => !open)} />
+                  {timePicker ? (
+                    <DateTimePicker value={timeToDate(morningNudgeTime)} mode="time" display={Platform.OS === "ios" ? "spinner" : "default"} accentColor={P.accent} themeVariant={dark ? "dark" : "light"} onChange={handleTimeChange} />
+                  ) : null}
+                </>
               ) : null}
+              <View style={{ height: 1, backgroundColor: P.rule }} />
+              <SubSwitchRow
+                title={t.reminderUi.timedTitle}
+                hint={t.reminderUi.timedHint}
+                value={deadlineRemindersEnabled}
+                onChange={switchWith((on) => {
+                  setDeadlineRemindersEnabled(on);
+                  setTimedOpen(on);
+                })}
+                expanded={deadlineRemindersEnabled ? timedOpen : undefined}
+                onToggleExpanded={() => setTimedOpen((open) => !open)}
+              />
+              {deadlineRemindersEnabled && timedOpen ? (
+                <View style={{ paddingBottom: 18 }}>
+                  <ValueRow label={t.reminderUi.defaultReminder} value={leadText(lead, t)} />
+                  <View style={{ marginTop: 4 }}>
+                    <LeadSlider value={lead} onChange={setReminderLead} />
+                  </View>
+                </View>
+              ) : null}
+              <View style={{ height: 1, backgroundColor: P.rule }} />
+              <SubSwitchRow
+                title={t.reminderUi.overdueAlert}
+                hint={t.reminderUi.overdueHint}
+                value={overdueAlertsEnabled}
+                onChange={switchWith(setOverdueAlertsEnabled)}
+              />
             </View>
-          ) : null}
-          <View style={{ height: 1, backgroundColor: RULE }} />
-          <NotificationRow
-            icon="alert-circle"
-            tint={OVERDUE_TINT}
-            title={t.redesign.overdue}
-            subtitle={t.redesign.overdueHint}
-            value={overdueAlertsEnabled}
-            onChange={switchWith(setOverdueAlertsEnabled)}
-          />
+          ) : (
+            <Text style={[{ marginTop: 8, paddingHorizontal: 6, paddingBottom: 4, fontFamily: "SpaceGrotesk-Regular", fontSize: 12.5, lineHeight: 17, color: P.inkMuted }, TIGHT, rtl]}>
+              {t.reminderUi.keptNote}
+            </Text>
+          )}
         </View>
         {permission === "denied" ? (
           <AnimatedPressable onPress={() => Linking.openSettings()} accessibilityRole="button" style={{ marginTop: 10 }}>
@@ -754,6 +636,8 @@ export default function Settings() {
           <RowList
             rows={[
               { key: "language", label: t.redesign.language, value: languageName, onPress: () => setLanguageOpen(true) },
+              // Dark mode (2026-11-17): follows the phone until it is switched here.
+              { key: "dark", label: t.redesign.darkMode, toggle: dark, onPress: () => setTheme(dark ? "light" : "dark") },
               { key: "tour", label: t.redesign.appTour, onPress: () => setTourSeen(false) },
               {
                 key: "analytics",

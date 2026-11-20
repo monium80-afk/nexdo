@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// The reminder policy (lib/reminders.ts): which notifications the phone should
-// hold, and what the reconciler changes to get there.
+// The reminder policy (lib/reminders.ts, reworked 2026-11-18): which
+// notifications the phone should hold, and what the reconciler changes to get there.
 process.env.TZ = "Europe/Paris";
 
 import assert from "node:assert/strict";
@@ -17,14 +17,17 @@ import {
   nextReminderFor,
   planNotifications,
   planTaskReminders,
+  reminderBadge,
   shouldDismissPresentedNotification,
   type ReminderPreferences,
 } from "@/lib/reminders";
+import { applyReminderChange } from "@/lib/taskReminder";
 import { archiveTaskDelta, completeTaskDelta, editTaskDelta } from "@/lib/taskOperations";
 import type { Task } from "@/types/task";
 
 import { local, makeTask } from "./helpers";
 
+// Tuesday 29 September 2026, 10:00.
 const NOW = local(2026, 9, 29, 10);
 const PREFS: ReminderPreferences = { ...DEFAULT_REMINDER_PREFERENCES };
 
@@ -32,180 +35,205 @@ function dueTask(id: string, date: string, time?: string, extra: Partial<Task> =
   return withDeadline(makeTask({ id, title: id, ...extra }), makeDeadline({ date, time }));
 }
 
+/** A daily routine whose open occurrence is due on `date`. */
+function routine(id: string, date: string, time?: string, extra: Partial<Task> = {}): Task {
+  const [hour, minute] = time ? time.split(":").map(Number) : [0, 0];
+  return dueTask(id, date, time, {
+    recurrence: {
+      seriesId: `series-${id}`,
+      occurrenceDate: date,
+      rule: { frequency: "daily", interval: 1, anchorDate: date, hour, minute, allDay: !time, kind: "routine" },
+      template: { title: id, estimatedMinutes: 30, importance: 50 },
+    },
+    ...extra,
+  });
+}
+
+function at(ms: number): string {
+  return new Date(ms).toString().slice(0, 21);
+}
+
 function times(task: Task, prefs = PREFS, now = NOW) {
-  return planTaskReminders(task, prefs, now, en).map((entry) => ({
-    kind: entry.kind,
-    at: new Date(entry.fireAt).toString().slice(0, 21),
-  }));
+  return planTaskReminders(task, prefs, now, en).map((entry) => ({ kind: entry.kind, at: at(entry.fireAt) }));
 }
 
 describe("presented notification cleanup", () => {
   it("clears every app-owned notification only in explicit clear mode", () => {
     const openTaskIds = new Set(["open-task"]);
-    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}daily`, undefined, openTaskIds), false);
-    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}daily`, undefined, openTaskIds, true), true);
+    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}summary`, undefined, openTaskIds), false);
+    assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}summary`, undefined, openTaskIds, true), true);
     assert.equal(shouldDismissPresentedNotification(`${NOTIFICATION_ID_PREFIX}task`, "open-task", openTaskIds, true), true);
     assert.equal(shouldDismissPresentedNotification(`${LEGACY_NOTIFICATION_ID_PREFIX}old`, undefined, openTaskIds), true);
     assert.equal(shouldDismissPresentedNotification("trial-end", undefined, openTaskIds, true), false);
   });
 });
 
-describe("default reminder policy", () => {
-  it("no deadline: no task reminder", () => {
-    assert.deepEqual(planTaskReminders(makeTask({ id: "read" }), PREFS, NOW, en), []);
-  });
-
-  it("date-only deadline: 9:00 on the day, and nothing that claims a time", () => {
-    const [reminder, ...rest] = planTaskReminders(dueTask("essay", "2026-10-15"), PREFS, NOW, en);
-    assert.equal(rest.length, 0);
-    assert.equal(reminder.kind, "due-day");
-    const at = new Date(reminder.fireAt);
-    assert.deepEqual([at.getDate(), at.getHours(), at.getMinutes()], [15, 9, 0]);
-    assert.equal(reminder.title, "Due today: essay");
-    assert.equal(reminder.body, "No set time — any time today works.");
-    assert.equal(reminder.data.url, "/task/essay");
-  });
-
-  it("exact deadline: one reminder at the deadline itself, not at the morning reminder time", () => {
+describe("tasks with a time", () => {
+  it("one reminder at the start by default, saying when it starts and for how long", () => {
     const [reminder, ...rest] = planTaskReminders(dueTask("exam", "2026-10-15", "19:00"), PREFS, NOW, en);
     assert.equal(rest.length, 0);
-    assert.equal(reminder.kind, "due-day");
-    const at = new Date(reminder.fireAt);
-    assert.deepEqual([at.getDate(), at.getHours(), at.getMinutes()], [15, 19, 0]);
-    assert.equal(reminder.title, "Due now: exam");
-    assert.match(reminder.body, /^Set for 7:00/);
-    // Due before the morning reminder time — still reminded, at 8:00.
-    assert.deepEqual(times(dueTask("early", "2026-10-15", "08:00")), [{ kind: "due-day", at: "Thu Oct 15 2026 08:00" }]);
+    assert.equal(reminder.kind, "reminder");
+    assert.equal(at(reminder.fireAt), "Thu Oct 15 2026 19:00");
+    assert.equal(reminder.title, "exam starts now");
+    assert.match(reminder.body, /^Starts at 7:00/);
+    assert.equal(reminder.data.url, "/task/exam");
   });
 
-  it("a task due later today, added after the reminder time, is still reminded at its time", () => {
-    // What the phone test hit: before, this got nothing at all.
-    assert.deepEqual(times(dueTask("call", "2026-09-29", "18:00")), [{ kind: "due-day", at: "Tue Sep 29 2026 18:00" }]);
+  it("the Settings default lead applies, a task's own lead wins, and \"use my default\" goes back to it", () => {
+    const task = dueTask("dentist", "2026-10-15", "15:00");
+    assert.deepEqual(times(task, { ...PREFS, defaultLead: 15 }), [{ kind: "reminder", at: "Thu Oct 15 2026 14:45" }]);
+    const own = { ...task, reminders: applyReminderChange(undefined, { lead: 1440 }) };
+    assert.deepEqual(times(own, { ...PREFS, defaultLead: 15 }), [{ kind: "reminder", at: "Wed Oct 14 2026 15:00" }]);
+    assert.equal(planTaskReminders(own, PREFS, NOW, en)[0].title, "dentist tomorrow");
+    const back = { ...own, reminders: applyReminderChange(own.reminders, { lead: null }) };
+    assert.deepEqual(times(back, { ...PREFS, defaultLead: 15 }), [{ kind: "reminder", at: "Thu Oct 15 2026 14:45" }]);
   });
 
-  it("a date-only task added after 9:00 on its day gets no reminder — never a late burst", () => {
-    assert.deepEqual(planTaskReminders(dueTask("today", "2026-09-29"), PREFS, NOW, en), []);
+  it("an alarm rings as an alarm — and without Pro, as a notification, its choice kept", () => {
+    const task = dueTask("gym", "2026-10-15", "07:00", { reminders: { alarm: true, lead: 15 } });
+    const [alarm] = planTaskReminders(task, PREFS, NOW, en);
+    assert.equal(alarm.kind, "alarm");
+    assert.equal(alarm.channel, "alarms");
+    assert.equal(alarm.data.taskTitle, "gym");
+    assert.equal(at(alarm.fireAt), "Thu Oct 15 2026 06:45");
+    const [plain] = planTaskReminders(task, { ...PREFS, alarmsAllowed: false }, NOW, en);
+    assert.equal(plain.kind, "reminder");
+    assert.deepEqual(task.reminders, { alarm: true, lead: 15 });
   });
 
-  it("a deadline already passed gets nothing more", () => {
+  it("a task set to Off gets nothing", () => {
+    assert.deepEqual(planTaskReminders(dueTask("exam", "2026-10-15", "19:00", { reminders: { muted: true } }), PREFS, NOW, en), []);
+  });
+
+  it("a deadline already passed gets nothing more, and completed or archived tasks get none", () => {
     assert.deepEqual(planTaskReminders(dueTask("late", "2026-09-20", "18:00"), { ...PREFS, overdueAlerts: true }, NOW, en), []);
-  });
-
-  it("completed, archived and muted tasks get none", () => {
-    const task = dueTask("essay", "2026-10-15");
+    const task = dueTask("exam", "2026-10-15", "19:00");
     assert.deepEqual(planTaskReminders({ ...task, status: "completed" }, PREFS, NOW, en), []);
     assert.deepEqual(planTaskReminders({ ...task, status: "archived" }, PREFS, NOW, en), []);
-    assert.deepEqual(planTaskReminders({ ...task, reminders: { muted: true } }, PREFS, NOW, en), []);
-    assert.deepEqual(planTaskReminders(task, { ...PREFS, deadlineReminders: false }, NOW, en), []);
+  });
+
+  it("the overdue alert comes when the task should have been finished", () => {
+    const task = dueTask("call", "2026-10-15", "15:00", { estimatedMinutes: 60 });
+    assert.deepEqual(times(task, { ...PREFS, overdueAlerts: true }), [
+      { kind: "reminder", at: "Thu Oct 15 2026 15:00" },
+      { kind: "late", at: "Thu Oct 15 2026 16:00" },
+    ]);
+    const noLength = dueTask("pills", "2026-10-15", "15:00", { estimatedMinutes: 0 });
+    assert.equal(times(noLength, { ...PREFS, overdueAlerts: true })[1].at, "Thu Oct 15 2026 15:15");
+  });
+
+  it("a daily routine with a time gets its next days' reminders too, under their own ids", () => {
+    const plan = planTaskReminders(routine("read", "2026-09-29", "20:00", { reminders: { alarm: true } }), PREFS, NOW, en);
+    assert.equal(plan.length, 8, "today plus a week ahead");
+    assert.ok(plan.every((entry) => entry.kind === "alarm"));
+    assert.equal(new Set(plan.map((entry) => entry.id)).size, plan.length);
+    assert.equal(plan[0].taskId, "read");
+    assert.equal(plan[1].taskId, undefined, "a day ahead isn't a task yet");
+    assert.equal(plan[1].completable, false);
   });
 });
 
-describe("user preferences", () => {
-  it("one reminder so long before an exact deadline, in place of the one at the start; the reminder time only moves date-only reminders", () => {
-    const prefs = { ...PREFS, dayReminderTime: "07:30", beforeOffsets: [60] };
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [{ kind: "before", at: "Thu Oct 15 2026 18:00" }]);
-    assert.deepEqual(times(dueTask("essay", "2026-10-15"), prefs), [{ kind: "due-day", at: "Thu Oct 15 2026 07:30" }]);
-    // Several saved by an older version: only the first counts.
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), { ...PREFS, beforeOffsets: [15, 1440] }), [
-      { kind: "before", at: "Thu Oct 15 2026 18:45" },
-    ]);
+describe("tasks without a time: the morning summary", () => {
+  it("never a notification of their own", () => {
+    assert.deepEqual(planTaskReminders(dueTask("essay", "2026-10-15"), PREFS, NOW, en), []);
   });
 
-  it("an early reminder still comes with overdue alerts on: the alert keeps the deadline itself", () => {
-    const prefs = { ...PREFS, overdueAlerts: true, beforeOffsets: [30] };
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [
-      { kind: "before", at: "Thu Oct 15 2026 18:30" },
-      { kind: "overdue", at: "Thu Oct 15 2026 19:00" },
-    ]);
+  it("five of them on one day are ONE summary, with the one to start with", () => {
+    const tasks = ["Pay rent", "Call mom", "Buy groceries", "Laundry", "Email Sam"].map((title, index) =>
+      dueTask(title, "2026-09-30", undefined, { importance: index === 0 ? 100 : 50 }),
+    );
+    const plan = planNotifications(tasks, PREFS, NOW, en).filter((entry) => entry.fireAt < local(2026, 10, 1).getTime());
+    assert.equal(plan.length, 1);
+    const [summary] = plan;
+    assert.equal(summary.kind, "summary");
+    assert.equal(at(summary.fireAt), "Wed Sep 30 2026 08:00");
+    assert.equal(summary.title, "Your day is sorted. Start with Pay rent");
+    assert.match(summary.body, /^Then .+ \+1\. The rest can wait\.$/);
   });
 
-  it("offsets only apply to deadlines with a time", () => {
-    assert.deepEqual(times(dueTask("essay", "2026-10-15"), { ...PREFS, beforeOffsets: [15, 60] }), [
-      { kind: "due-day", at: "Thu Oct 15 2026 09:00" },
-    ]);
+  it("lists the day's routines, and a day with only routines still gets one", () => {
+    // Today's 8:00 has passed: the first summary is tomorrow's.
+    const tasks = [dueTask("Pay rent", "2026-10-01"), routine("Vitamins", "2026-09-29")];
+    const [sep30, oct1, oct2] = planNotifications(tasks, PREFS, NOW, en);
+    assert.equal(sep30.title, "1 routine today");
+    assert.equal(sep30.body, "Routines: Vitamins.");
+    assert.equal(oct1.title, "Just one thing today: Pay rent");
+    assert.equal(oct1.body, "Routines: Vitamins.");
+    assert.equal(oct2.title, "Just one thing today: Pay rent", "still open the next morning, so still listed");
   });
 
-  it("an extra reminder the day before, for high priority only", () => {
-    const prefs = { ...PREFS, importantDayBefore: true };
-    assert.deepEqual(times(dueTask("big", "2026-10-15", undefined, { importance: 75 }), prefs), [
-      { kind: "day-before", at: "Wed Oct 14 2026 09:00" },
-      { kind: "due-day", at: "Thu Oct 15 2026 09:00" },
-    ]);
-    assert.equal(times(dueTask("small", "2026-10-15", undefined, { importance: 50 }), prefs).length, 1);
+  it("Off leaves a task out; the summary switch off sends none", () => {
+    const off = dueTask("Pay rent", "2026-09-30", undefined, { reminders: { muted: true } });
+    assert.deepEqual(planNotifications([off], PREFS, NOW, en), []);
+    assert.deepEqual(planNotifications([dueTask("Pay rent", "2026-09-30")], { ...PREFS, morningSummary: false }, NOW, en), []);
   });
 
-  it("overdue alerts fire as an exact deadline passes — never for a date-only one (no midnight alerts)", () => {
-    const prefs = { ...PREFS, deadlineReminders: false, overdueAlerts: true };
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [{ kind: "overdue", at: "Thu Oct 15 2026 19:00" }]);
-    assert.deepEqual(times(dueTask("essay", "2026-10-15"), prefs), []);
-  });
-
-  it("with overdue alerts on, the alert takes the reminder's place at the deadline — one notification, not two", () => {
-    const prefs = { ...PREFS, overdueAlerts: true };
-    assert.deepEqual(times(dueTask("exam", "2026-10-15", "19:00"), prefs), [{ kind: "overdue", at: "Thu Oct 15 2026 19:00" }]);
-  });
-
-  it("two reminders for one task minutes apart are one too many", () => {
-    // The day before at 9:00, and a day before 9:03 — three minutes apart.
-    const prefs = { ...PREFS, importantDayBefore: true, beforeOffsets: [1440] };
-    assert.deepEqual(times(dueTask("call", "2026-10-15", "09:03", { importance: 75 }), prefs), [
-      { kind: "day-before", at: "Wed Oct 14 2026 09:00" },
-    ]);
+  it("Task Details shows the summary's time for a task without one", () => {
+    const task = dueTask("essay", "2026-10-15");
+    assert.equal(at(nextReminderFor(task, PREFS, NOW, en)!), "Thu Oct 15 2026 08:00");
+    assert.equal(nextReminderFor(task, { ...PREFS, morningSummary: false }, NOW, en), null);
   });
 });
 
-describe("daily planning note", () => {
-  it("a week of notes at the chosen time, with what's due and where to start — separate from any deadline", () => {
-    const tasks = [dueTask("Essay", "2026-09-30", undefined, { importance: 75 }), makeTask({ id: "Read" })];
-    const notes = planNotifications(tasks, { ...PREFS, deadlineReminders: false, dailyPlanning: true, dailyPlanningTime: "08:00" }, NOW, en);
-    assert.equal(notes.length, 6, "today's 08:00 has passed; the next six days");
-    assert.ok(notes.every((note) => note.kind === "daily" && new Date(note.fireAt).getHours() === 8));
-    assert.equal(notes[0].title, "Start with: Essay");
-    assert.equal(notes[0].body, "One thing at a time. Tap to begin.");
-    // No reminder was invented for the task without a deadline.
-    assert.ok(!notes.some((note) => note.taskId === "Read"));
-  });
-
-  it("counts the others due that day, and replaces the date-only ping", () => {
+describe("Settings switches", () => {
+  it("the main switch off sends nothing — and on again brings back every task's own choice", () => {
     const tasks = [
-      dueTask("Essay", "2026-09-30", undefined, { importance: 100 }),
-      dueTask("Dentist", "2026-09-30"),
-      dueTask("Bill", "2026-09-30"),
-      dueTask("Call", "2026-09-30", "15:00"),
+      dueTask("gym", "2026-10-15", "07:00", { reminders: { alarm: true, lead: 15 } }),
+      dueTask("call", "2026-10-15", "18:00", { reminders: { lead: 60 } }),
+      dueTask("rent", "2026-10-15"),
     ];
-    const prefs = { ...PREFS, dailyPlanning: true, dailyPlanningTime: "08:30" };
-    const notes = planNotifications(tasks, prefs, NOW, en);
-    const nudge = notes.find((note) => note.kind === "daily" && new Date(note.fireAt).getDate() === 30)!;
-    assert.match(nudge.title, /^Start with: /);
-    assert.equal(nudge.body, "+ 3 more due today");
-    // The date-only tasks get no ping of their own; the timed one keeps its reminder.
-    assert.ok(!notes.some((note) => note.kind === "due-day" && note.taskId !== "Call"));
-    assert.ok(notes.some((note) => note.taskId === "Call"));
-    // Their next reminder is that morning's nudge.
-    assert.equal(nextReminderFor(tasks[1], prefs, NOW, en), nudge.fireAt);
+    const before = planNotifications(tasks, PREFS, NOW, en);
+    assert.deepEqual(planNotifications(tasks, { ...PREFS, enabled: false }, NOW, en), []);
+    assert.deepEqual(planNotifications(tasks, PREFS, NOW, en), before);
+    assert.deepEqual(tasks[0].reminders, { alarm: true, lead: 15 });
   });
 
-  it("with the nudge off, the date-only ping comes back", () => {
-    assert.deepEqual(times(dueTask("Dentist", "2026-09-30")), [{ kind: "due-day", at: "Wed Sep 30 2026 09:00" }]);
+  it("\"Tasks with a time\" off stops their reminders but not the summary", () => {
+    const tasks = [dueTask("gym", "2026-09-30", "07:00"), dueTask("rent", "2026-09-30")];
+    const plan = planNotifications(tasks, { ...PREFS, timedReminders: false }, NOW, en);
+    assert.ok(plan.every((entry) => entry.kind === "summary"));
+    assert.equal(plan[0].title, "Your day is sorted. Start with gym");
   });
 
-  it("nothing open, no note", () => {
-    assert.deepEqual(planNotifications([], { ...PREFS, dailyPlanning: true }, NOW, en), []);
+  it("the card's sign: a bell, an alarm clock, or nothing", () => {
+    assert.equal(reminderBadge(dueTask("a", "2026-10-15", "07:00"), PREFS), "notify");
+    assert.equal(reminderBadge(dueTask("b", "2026-10-15", "07:00", { reminders: { alarm: true } }), PREFS), "alarm");
+    assert.equal(reminderBadge(dueTask("b", "2026-10-15", "07:00", { reminders: { alarm: true } }), { ...PREFS, alarmsAllowed: false }), "notify");
+    assert.equal(reminderBadge(dueTask("c", "2026-10-15"), PREFS), null);
+    assert.equal(reminderBadge(dueTask("d", "2026-10-15", "07:00", { reminders: { muted: true } }), PREFS), null);
+    assert.equal(reminderBadge(dueTask("e", "2026-10-15", "07:00"), { ...PREFS, enabled: false }), null);
+  });
+});
+
+describe("reminders at the same minute", () => {
+  it("become one notification naming the tasks; an alarm still rings on its own", () => {
+    const tasks = [
+      dueTask("Team call", "2026-10-15", "14:00"),
+      dueTask("Send the invoice", "2026-10-15", "14:00"),
+      dueTask("Pick up the package", "2026-10-15", "14:00"),
+      dueTask("Gym", "2026-10-15", "14:00", { reminders: { alarm: true } }),
+    ];
+    const plan = planNotifications(tasks, { ...PREFS, morningSummary: false }, NOW, en);
+    assert.equal(plan.length, 2);
+    const group = plan.find((entry) => entry.kind === "group")!;
+    assert.equal(group.title, "3 tasks at 2:00 PM");
+    assert.equal(group.body, "Team call, Send the invoice, Pick up the package");
+    assert.ok(plan.some((entry) => entry.kind === "alarm"));
   });
 });
 
 describe("reconciling with what's scheduled", () => {
   it("the same plan twice changes nothing — no duplicates", () => {
-    const plan = planNotifications([dueTask("essay", "2026-10-15")], PREFS, NOW, en);
+    const plan = planNotifications([dueTask("essay", "2026-10-15", "19:00")], PREFS, NOW, en);
     const scheduled = plan.map((entry) => ({ id: entry.id, signature: entry.data.signature }));
     assert.deepEqual(diffNotifications(plan, scheduled), { cancel: [], schedule: [] });
   });
 
   it("a moved deadline cancels the old reminder and schedules the new one, under the same id", () => {
-    const task = dueTask("essay", "2026-10-15");
-    const before = planNotifications([task], PREFS, NOW, en);
-    const moved = editTaskDelta(task, { deadline: { date: "2026-10-20" } }, undefined, NOW, []).upserts[0];
-    const after = planNotifications([moved], PREFS, NOW, en);
+    const task = dueTask("essay", "2026-10-15", "19:00");
+    const before = planTaskReminders(task, PREFS, NOW, en);
+    const moved = editTaskDelta(task, { deadline: { date: "2026-10-20", time: "19:00" } }, undefined, NOW, []).upserts[0];
+    const after = planTaskReminders(moved, PREFS, NOW, en);
     const { cancel, schedule } = diffNotifications(after, before.map((entry) => ({ id: entry.id, signature: entry.data.signature })));
     assert.deepEqual(cancel, [before[0].id]);
     assert.equal(schedule.length, 1);
@@ -213,23 +241,34 @@ describe("reconciling with what's scheduled", () => {
     assert.equal(new Date(schedule[0].fireAt).getDate(), 20);
   });
 
+  it("switching a task to an alarm reschedules it", () => {
+    const task = dueTask("gym", "2026-10-15", "07:00");
+    const before = planTaskReminders(task, PREFS, NOW, en).map((entry) => ({ id: entry.id, signature: entry.data.signature }));
+    const alarm = editTaskDelta(task, { reminder: { mode: "alarm" } }, undefined, NOW, []).upserts[0];
+    assert.deepEqual(alarm.reminders, { alarm: true });
+    const { cancel, schedule } = diffNotifications(planTaskReminders(alarm, PREFS, NOW, en), before);
+    assert.deepEqual(cancel, [before[0].id]);
+    assert.equal(schedule[0].kind, "alarm");
+  });
+
   it("completing, archiving or deleting a task cancels its reminders", () => {
-    const task = dueTask("essay", "2026-10-15");
-    const scheduled = planNotifications([task], PREFS, NOW, en).map((entry) => ({ id: entry.id, signature: entry.data.signature }));
+    const task = dueTask("essay", "2026-10-15", "19:00");
+    const scheduled = planTaskReminders(task, PREFS, NOW, en).map((entry) => ({ id: entry.id, signature: entry.data.signature }));
     const completed = completeTaskDelta(task, NOW, [task]).upserts[0];
-    assert.deepEqual(diffNotifications(planNotifications([completed], PREFS, NOW, en), scheduled).cancel, [scheduled[0].id]);
+    assert.deepEqual(diffNotifications(planTaskReminders(completed, PREFS, NOW, en), scheduled).cancel, [scheduled[0].id]);
     const archived = archiveTaskDelta(task, NOW).upserts[0];
-    assert.deepEqual(diffNotifications(planNotifications([archived], PREFS, NOW, en), scheduled).cancel, [scheduled[0].id]);
-    assert.deepEqual(diffNotifications(planNotifications([], PREFS, NOW, en), scheduled).cancel, [scheduled[0].id]);
+    assert.deepEqual(diffNotifications(planTaskReminders(archived, PREFS, NOW, en), scheduled).cancel, [scheduled[0].id]);
   });
 
   it("clears the overdue alerts scheduled before this engine, and leaves anything else alone", () => {
-    const { cancel } = diffNotifications([], [{ id: "overdue-task-1" }, { id: "someone-elses" }]);
+    const { cancel } = diffNotifications([], [{ id: "overdue-task-1" }, { id: "someone-elses" }, { id: "alarm-snooze-x" }]);
     assert.deepEqual(cancel, ["overdue-task-1"]);
   });
 
   it("stays within the platform's limit, soonest first", () => {
-    const tasks = Array.from({ length: 80 }, (_, index) => dueTask(`t${index}`, `2026-10-${String(1 + (index % 28)).padStart(2, "0")}`));
+    const tasks = Array.from({ length: 80 }, (_, index) =>
+      dueTask(`t${index}`, `2026-10-${String(1 + (index % 28)).padStart(2, "0")}`, `${String(8 + (index % 12)).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}`),
+    );
     const plan = planNotifications(tasks, PREFS, NOW, en);
     assert.equal(plan.length, MAX_SCHEDULED);
     assert.ok(plan.every((entry, index) => index === 0 || plan[index - 1].fireAt <= entry.fireAt));

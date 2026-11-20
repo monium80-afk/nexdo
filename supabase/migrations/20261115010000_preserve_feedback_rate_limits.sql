@@ -9,6 +9,18 @@ create index if not exists feedback_account_rate_limits_user_idx
 alter table public.feedback_account_rate_limits enable row level security;
 revoke all on public.feedback_account_rate_limits from anon, authenticated;
 
+create extension if not exists pg_cron;
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'delete-expired-feedback-account-rate-limits';
+
+select cron.schedule(
+  'delete-expired-feedback-account-rate-limits',
+  '5 * * * *',
+  $$delete from public.feedback_account_rate_limits where created_at < now() - interval '1 hour';$$
+);
+
 insert into public.feedback_account_rate_limits (user_id, created_at)
 select user_id, created_at
 from public.feedback

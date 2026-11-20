@@ -145,6 +145,7 @@ export function parseTaskContext(raw: unknown): TaskContext | null {
     overdue: task.overdue === true ? true : undefined,
     completedLabel: clampString(task.completedLabel, 100),
     repeats: clampString(task.repeats, 160),
+    reminder: clampString(task.reminder, 60),
     steps: optionalSteps(task.steps),
   };
 }

@@ -1,7 +1,7 @@
 import type { RuleInput } from "@/lib/recurrence";
 import type { ImportanceLevel } from "@/lib/scoring";
 import type { TaskFilter, TaskOperation } from "@/lib/taskOperations";
-import type { Task, TaskComplexity } from "@/types/task";
+import type { Task, TaskComplexity, TaskReminderSettings } from "@/types/task";
 
 // Every "AI" function in this directory is a heuristic today, but shaped
 // exactly like a real LLM call's input/output — swapping in a real backend
@@ -33,6 +33,8 @@ export type ExtractedTaskDraft = {
   steps?: PlanStep[];
   // "gym every Monday at 7" — saved as the first occurrence of a series.
   recurrence?: RuleInput;
+  // "Remind me 15 minutes before" / "set an alarm" said to Magic mic.
+  reminders?: TaskReminderSettings;
 };
 
 export type ComplexityAnalysis = {

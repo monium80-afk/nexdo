@@ -37,4 +37,11 @@ describe("resolveTaskReference", () => {
     );
     assert.deepEqual(result, { status: "resolved", taskId: "open" });
   });
+
+  it("matches complete title words without matching substrings inside other words", () => {
+    const tasks = [makeTask({ id: "read", title: "Read a book" })];
+    const ctx = { recentTaskIds: [], tasks };
+    assert.deepEqual(resolveTaskReference("please read a book", ctx), { status: "resolved", taskId: "read" });
+    assert.deepEqual(resolveTaskReference("bread is on the table", ctx), { status: "none" });
+  });
 });

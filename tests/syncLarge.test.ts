@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import { useTaskStore } from "@/store/useTaskStore";
+import { fetchTasks } from "@/lib/supabaseSync";
 
 import { fakeDb } from "./stubs/supabase";
 
@@ -38,6 +39,22 @@ function taskRow(id: string, updatedAt: string) {
   };
 }
 
+function localTask(id: string, updatedAt: string) {
+  return {
+    id,
+    title: `Task ${id}`,
+    status: "pending" as const,
+    estimatedMinutes: 30,
+    createdAt: updatedAt,
+    updatedAt,
+    priorityScore: 0,
+    suitabilityScore: 0,
+    importance: 50,
+    complexity: "simple" as const,
+    aiContext: { notes: [] },
+  };
+}
+
 function seedTable(name: string, rows: { id: string }[]) {
   fakeDb.tables.set(name, new Map(rows.map((row) => [row.id, row])));
 }
@@ -53,13 +70,36 @@ describe("more rows than one request returns", () => {
     const at = new Date(Date.now() - 60_000).toISOString();
     const rows = Array.from({ length: 1205 }, (_, index) => taskRow(`t-${String(index).padStart(5, "0")}`, at));
     seedTable("tasks", rows);
-    // Already on the phone, and saved long ago: if its row were missing from
-    // the read, the merge would drop it as deleted on another device.
+    // A cold device starts empty; all rows should download.
     useTaskStore.setState({ tasks: [], unsynced: {} });
 
     assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
     assert.equal(useTaskStore.getState().tasks.length, 1205);
     assert.ok(useTaskStore.getState().tasks.some((task) => task.id === "t-01204"));
+  });
+
+  it("keeps all old, synced local tasks beyond the first page", async () => {
+    const at = new Date(Date.now() - 3_600_000).toISOString();
+    const rows = Array.from({ length: 1205 }, (_, index) => taskRow(`t-${String(index).padStart(5, "0")}`, at));
+    seedTable("tasks", rows);
+    useTaskStore.setState({ tasks: rows.map((row) => localTask(row.id, at)), unsynced: {} });
+
+    assert.equal(await useTaskStore.getState().hydrateFromSupabase(USER), true);
+    assert.equal(useTaskStore.getState().tasks.length, 1205);
+    assert.ok(useTaskStore.getState().tasks.some((task) => task.id === "t-01204"));
+  });
+
+  it("does not skip rows when an earlier task is deleted between pages", async () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const rows = Array.from({ length: 1205 }, (_, index) => taskRow(`t-${String(index).padStart(5, "0")}`, at));
+    rows.push({ ...taskRow("t-foreign", at), user_id: "another_user" });
+    seedTable("tasks", rows);
+    fakeDb.onRead = () => fakeDb.tables.get("tasks")?.delete("t-00000");
+
+    const tasks = await fetchTasks(USER);
+
+    assert.ok(tasks.some((task) => task.id === "t-01000"));
+    assert.ok(!tasks.some((task) => task.id === "t-foreign"));
   });
 });
 

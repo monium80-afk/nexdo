@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Medium widget: the next task, then + (Add task) and the Magic mic (NexdoWidgetRenderer.kt). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/nexdo_widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/nexdo_widget_card"
+  android:orientation="vertical"
+  android:padding="14dp">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:orientation="vertical">
+
+    <TextView
+      android:id="@+id/nexdo_widget_label"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:ellipsize="end"
+      android:fontFamily="monospace"
+      android:maxLines="1"
+      android:text="NEXDO"
+      android:textColor="#FFB089"
+      android:textSize="11sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/nexdo_widget_title"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="4dp"
+      android:ellipsize="end"
+      android:fontFamily="sans-serif-medium"
+      android:maxLines="2"
+      android:text="@string/nexdo_widget_sign_in"
+      android:textColor="#FAF1E4"
+      android:textSize="17sp" />
+  </LinearLayout>
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+      android:id="@+id/nexdo_widget_detail"
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:ellipsize="end"
+      android:maxLines="1"
+      android:textColor="#A89A8E"
+      android:textSize="13sp"
+      android:visibility="gone" />
+
+    <LinearLayout
+      android:id="@+id/nexdo_widget_buttons"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:visibility="gone">
+
+      <LinearLayout
+        android:id="@+id/nexdo_widget_add"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:background="@drawable/nexdo_widget_pill_accent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+          android:layout_width="16dp"
+          android:layout_height="16dp"
+          android:importantForAccessibility="no"
+          android:src="@drawable/nexdo_widget_ic_plus" />
+
+        <TextView
+          android:id="@+id/nexdo_widget_add_text"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginStart="4dp"
+          android:fontFamily="sans-serif-medium"
+          android:maxLines="1"
+          android:text="@string/nexdo_widget_add"
+          android:textColor="#FFFFFF"
+          android:textSize="14sp" />
+      </LinearLayout>
+
+      <LinearLayout
+        android:id="@+id/nexdo_widget_mic"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/nexdo_widget_pill_glass"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+          android:id="@+id/nexdo_widget_mic_icon"
+          android:layout_width="16dp"
+          android:layout_height="16dp"
+          android:importantForAccessibility="no"
+          android:src="@drawable/nexdo_widget_ic_mic" />
+
+        <TextView
+          android:id="@+id/nexdo_widget_mic_text"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginStart="4dp"
+          android:fontFamily="sans-serif-medium"
+          android:maxLines="1"
+          android:text="@string/nexdo_widget_mic"
+          android:textColor="#FAF1E4"
+          android:textSize="14sp" />
+      </LinearLayout>
+    </LinearLayout>
+  </LinearLayout>
+</LinearLayout>

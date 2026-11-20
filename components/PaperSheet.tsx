@@ -6,9 +6,9 @@ import { scheduleOnRN } from "react-native-worklets";
 
 import { useBlurBehind } from "@/components/BlurBackdropHost";
 import { useKeyboardHeight } from "@/components/BottomSheet";
-import { MOTION, colors } from "@/constants/theme";
+import { MOTION } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 
-const P = colors.palette;
 
 /**
  * The 2026-11 redesign's sheet (Settings → Account, Language): a paper panel
@@ -27,6 +27,7 @@ export function PaperSheet({
   blur?: boolean;
   children: ReactNode;
 }) {
+  const P = usePalette();
   useBlurBehind(blur && visible);
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();

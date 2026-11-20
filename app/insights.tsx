@@ -7,7 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { GemGlow, GemMascot } from "@/components/GemMascot";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
@@ -32,7 +32,6 @@ export default function InsightsScreen() {
   return <InsightsView />;
 }
 
-const P = colors.palette;
 const TIGHT = { includeFontPadding: false } as const;
 const DIAMOND = { transform: [{ rotate: "45deg" }] };
 const DARK_SHADOW = shadow("0 10px 24px rgba(34, 28, 23, 0.25)", 8);
@@ -41,8 +40,6 @@ const ON_DARK = "#D5C9BD";
 const ON_DARK_FAINT = "#8A7F76";
 const ON_DARK_RULE = "#3A322C";
 /** The chart's bars: peach, this week/day in full orange, a flat line for none. */
-const BAR = "#F6BC9A";
-const BAR_EMPTY = "#EADFD1";
 const CHART_HEIGHT = 124;
 /** A day's gem, by how much of it got done (as on the Schedule's Year view). */
 const GEM_COLORS: Record<GemLevel, string> = { 1: "#000000", 2: "#5C3A24", 3: "#D9561C", 4: "#FF8A3A", 5: "#FFC93F" };
@@ -55,8 +52,9 @@ function useBudget() {
   return (minutes: number) => t.format.budget(Math.floor(minutes / 60), Math.round(minutes % 60));
 }
 
-function Eyebrow({ children, color = P.inkMuted }: { children: ReactNode; color?: string }) {
-  return <Text style={[{ fontFamily: "SpaceMono-Bold", fontSize: 10, lineHeight: 13, letterSpacing: 2, color }, TIGHT]}>{children}</Text>;
+function Eyebrow({ children, color }: { children: ReactNode; color?: string }) {
+  const P = usePalette();
+  return <Text style={[{ fontFamily: "SpaceMono-Bold", fontSize: 10, lineHeight: 13, letterSpacing: 2, color: color ?? P.inkMuted }, TIGHT]}>{children}</Text>;
 }
 
 function Gem({ level, size = 13 }: { level: GemLevel | null; size?: number }) {
@@ -87,6 +85,7 @@ function dayLevels(tasks: Task[], from: LocalDate, until: LocalDate): Map<LocalD
 }
 
 function RangeSwitch({ range, locked, onChange }: { range: InsightsRange; locked: boolean; onChange: (range: InsightsRange) => void }) {
+  const P = usePalette();
   const t = useTranslation();
   const options: { value: InsightsRange; label: string }[] = [
     { value: "week", label: t.insights.week },
@@ -107,7 +106,7 @@ function RangeSwitch({ range, locked, onChange }: { range: InsightsRange; locked
             accessibilityLabel={isLocked ? `${option.label} — ${t.plan.proOnly}` : option.label}
             style={{ flex: 1, borderRadius: 18, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", backgroundColor: selected ? P.ink : "transparent" }}
           >
-            <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14.5, color: selected ? "#FFFFFF" : P.ink }, TIGHT]}>{option.label}</Text>
+            <Text style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14.5, color: selected ? P.inverse : P.ink }, TIGHT]}>{option.label}</Text>
             {isLocked ? <Feather name="lock" size={12} color={P.inkMuted} /> : null}
           </AnimatedPressable>
         );
@@ -118,8 +117,9 @@ function RangeSwitch({ range, locked, onChange }: { range: InsightsRange; locked
 
 /** One of the three numbers in the stats card. */
 function Stat({ value, label, divider }: { value: string; label: string; divider: boolean }) {
+  const P = usePalette();
   return (
-    <View style={{ flex: 1, alignItems: "center", gap: 6, borderLeftWidth: divider ? 1 : 0, borderLeftColor: BAR_EMPTY }}>
+    <View style={{ flex: 1, alignItems: "center", gap: 6, borderLeftWidth: divider ? 1 : 0, borderLeftColor: P.rule }}>
       <Text numberOfLines={1} adjustsFontSizeToFit style={[{ fontFamily: "SpaceGrotesk-Bold", fontSize: 24, letterSpacing: -0.5, color: P.ink }, TIGHT]}>
         {value}
       </Text>
@@ -132,6 +132,7 @@ function Stat({ value, label, divider }: { value: string; label: string; divider
 
 /** Focus time per bar: days (last 7 days) or weeks (all time); the latest in full orange. */
 function FocusChart({ bars, range, total }: { bars: InsightsBar[]; range: InsightsRange; total: number }) {
+  const P = usePalette();
   const t = useTranslation();
   const budget = useBudget();
   const max = Math.max(...bars.map((bar) => bar.focusMinutes), 0);
@@ -177,7 +178,7 @@ function FocusChart({ bars, range, total }: { bars: InsightsBar[]; range: Insigh
                 flex: week ? undefined : 1,
                 height,
                 borderRadius: week ? 13 : 9,
-                backgroundColor: bar.focusMinutes === 0 ? BAR_EMPTY : latest ? P.accent : BAR,
+                backgroundColor: bar.focusMinutes === 0 ? P.rule : latest ? P.accent : P.barSoft,
               }}
             />
           );
@@ -218,6 +219,7 @@ function FocusChart({ bars, range, total }: { bars: InsightsBar[]; range: Insigh
  * phone from the focus log and the task list; nothing is sent anywhere.
  */
 function InsightsView() {
+  const P = usePalette();
   useStatusBarStyle("dark");
   const t = useTranslation();
   const rtl = useRtlText();
@@ -319,7 +321,7 @@ function InsightsView() {
         </View>
 
         {/* Today's gem, then its days: the last seven, or how many of each so far. */}
-        <View style={[{ marginTop: 14, borderRadius: 24, backgroundColor: P.ink, paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18 }, DARK_SHADOW]}>
+        <View style={[{ marginTop: 14, borderRadius: 24, backgroundColor: P.inkCard, paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18 }, DARK_SHADOW]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
             <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
               {gemLevel >= 3 ? (
@@ -427,7 +429,7 @@ function InsightsView() {
               <>
                 <View style={{ marginTop: 14, flexDirection: "row", gap: 5 }}>
                   {Array.from({ length: MIN_PACE_SAMPLES }, (_, index) => (
-                    <View key={index} style={{ flex: 1, height: 7, borderRadius: 3.5, backgroundColor: index < finishedInSession ? P.accent : BAR_EMPTY }} />
+                    <View key={index} style={{ flex: 1, height: 7, borderRadius: 3.5, backgroundColor: index < finishedInSession ? P.accent : P.rule }} />
                   ))}
                 </View>
                 <Text style={[{ marginTop: 12, fontFamily: "SpaceGrotesk-Regular", fontSize: 13, lineHeight: 17.5, color: P.inkMuted }, TIGHT, rtl]}>

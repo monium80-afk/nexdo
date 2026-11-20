@@ -5,6 +5,7 @@ import { useSharedValue, withTiming } from "react-native-reanimated";
 
 import type { LiveSessionRequestBody, LiveSessionResponseBody } from "@/app/api/live-session+api";
 import { describeNow } from "@/lib/ai/context";
+import { AiConsentError, hasAiConsent } from "@/lib/aiConsent";
 import { markTrialUsed } from "@/lib/aiTrial";
 import { apiPost } from "@/lib/api";
 import { getLanguage } from "@/lib/i18n";
@@ -64,6 +65,7 @@ export function useOnboardingLiveVoice() {
       // No mic button on 07 to start again after a pause: listen for the whole minute.
       stopOnSilence: false,
       requestPermission: async () => {
+        if (!hasAiConsent()) return false;
         if ((await getRecordingPermissionsAsync()).granted) return true;
         askingPermission.current = true;
         try {
@@ -73,6 +75,7 @@ export function useOnboardingLiveVoice() {
         }
       },
       requestSession: async () => {
+        if (!hasAiConsent()) throw new AiConsentError();
         let session: LiveSessionResponseBody;
         try {
           session = await apiPost<LiveSessionResponseBody>("/api/live-session", {

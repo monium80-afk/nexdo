@@ -793,6 +793,8 @@ export const en = {
     nowRepeats: (title: string, rule: string) => `"${title}" now repeats (${rule}).`,
     completedMany: (n: number) => `Marked ${n} ${plural(n, "task", "tasks")} as done.`,
     reopenedMany: (n: number) => `Reopened ${n} ${plural(n, "task", "tasks")}.`,
+    archivedMany: (n: number) => `Archived ${n} ${plural(n, "task", "tasks")}.`,
+    restoredMany: (n: number) => `Restored ${n} ${plural(n, "task", "tasks")}.`,
     updatedMany: (n: number) => `Updated ${n} ${plural(n, "task", "tasks")}.`,
     shiftedMany: (n: number, amount: number, unit: "minutes" | "hours" | "days" | "weeks" | "months") => {
       const size = Math.abs(amount);
@@ -1064,8 +1066,27 @@ export const en = {
     /** Android lists these under Nexdo's notification settings. */
     overdueChannel: "Overdue tasks",
     remindersChannel: "Task reminders",
-    planningChannel: "Morning nudge",
+    planningChannel: "Morning summary",
     completeAction: "Mark as done",
+    /** 2026-11-18 rework (lib/reminders.ts). */
+    alarmsChannel: "Alarms",
+    startsNowTitle: (title: string) => `${title} starts now`,
+    startsInTitle: (title: string, offset: string) => `${title} in ${offset}`,
+    startsTomorrowTitle: (title: string) => `${title} tomorrow`,
+    startsAt: (time: string) => `Starts at ${time}`,
+    startsAtWithLength: (time: string, length: string) => `Starts at ${time} · ${length}`,
+    lateTitle: (title: string) => `Still open: ${title}`,
+    lateBody: (time: string) => `It was meant to be done by ${time}. No stress: finish it now or give it a new time.`,
+    groupTitle: (count: number, time: string) => `${count} tasks at ${time}`,
+    /**
+     * The morning summary speaks to the feeling Nexdo answers — a head too
+     * full to think straight (2026-11-18, the user's pick from the "addictive
+     * apps" video review): the day is already sorted, nothing to hold on to.
+     */
+    summaryTitle: (count: number, top: string) => (count === 1 ? `Just one thing today: ${top}` : `Your day is sorted. Start with ${top}`),
+    summaryThen: (names: string, more: number) => `Then ${names}${more > 0 ? ` +${more}` : ""}. The rest can wait.`,
+    summaryRoutines: (names: string) => `Routines: ${names}.`,
+    summaryRoutinesTitle: (count: number) => (count === 1 ? "1 routine today" : `${count} routines today`),
     dueTodayTitle: (title: string) => `Due today: ${title}`,
     dueTodayBody: "No set time — any time today works.",
     /** At an exact deadline, the moment it arrives. */
@@ -1081,10 +1102,10 @@ export const en = {
     dueTomorrowTitle: (title: string) => `Due tomorrow: ${title}`,
     dueTomorrowBody: "Tomorrow, no set time.",
     dueTomorrowAtBody: (time: string) => `Due tomorrow at ${time}.`,
-    /** The morning nudge (lib/reminders.ts): the task to start with, and how many more are due that day. */
-    dailyTitle: (top: string) => `Start with: ${top}`,
-    dailyDueBody: (count: number) => `+ ${count} more due today`,
-    dailyOpenBody: "One thing at a time. Tap to begin.",
+    /** The morning nudge as onboarding shows it, and the summary's line when there's nothing after the first task. */
+    dailyTitle: (top: string) => `Your day is sorted. Start with ${top}`,
+    dailyDueBody: (count: number) => `+ ${count} more today. The rest can wait.`,
+    dailyOpenBody: "Nothing else to keep in your head.",
     /** Two days before a free trial turns into a paid plan (lib/trialReminder.ts). */
     trialEndingTitle: "Your free trial ends in 2 days",
     trialEndingBody: (date: string) =>
@@ -1093,6 +1114,42 @@ export const en = {
     sessionEndTitle: "Time's up",
     sessionEndBody: (title: string) =>
       title ? `Your session on "${title}" is done. Finish it or keep going.` : "Your focus session is done.",
+  },
+
+  /** Reminders, 2026-11-18: a task's "Remind me" sheet, Settings → Notifications and the alarm screen. */
+  reminderUi: {
+    title: "Notifications",
+    remindMe: "Remind me",
+    notification: "Notification",
+    notificationHint: "A ping on your phone",
+    alarm: "Alarm",
+    alarmHint: "A loud alarm that's hard to miss",
+    off: "Off",
+    offHint: "No reminder for this task",
+    pro: "PRO",
+    when: "When",
+    defaultNote: "Starts on your default from Settings. Changing it here only affects this task.",
+    useDefault: "Use my default",
+    dateOnlyNote: "This task has no time, so it's listed in your morning summary. Give it a time to get its own reminder or alarm.",
+    inSummary: "In the morning summary",
+    notInSummary: "No reminder",
+    notificationsOn: "Choose what Nexdo sends you",
+    notificationsOff: "Nexdo won't send you anything",
+    keptNote: "Your tasks keep their own reminders while this is off.",
+    morningSummary: "Morning summary",
+    morningSummaryHint: "Untimed tasks and routines",
+    time: "Time",
+    timedTitle: "Tasks with a time",
+    timedHint: "Their own reminder",
+    defaultReminder: "Default reminder",
+    overdueAlert: "Overdue alert",
+    overdueHint: "When a task runs late",
+    alarmLabel: "Nexdo alarm",
+    stop: "Stop",
+    snooze: "Snooze 5 min",
+    startsAtIn: (time: string, offset: string) => `Starts at ${time} · in ${offset}`,
+    startedAt: (time: string) => `Starts at ${time}`,
+    snoozedTitle: (title: string) => `Snoozed: ${title}`,
   },
 
   profile: {
@@ -1128,6 +1185,7 @@ export const en = {
     preferences: "PREFERENCES",
     language: "Language",
     appTour: "App tour",
+    darkMode: "Dark mode",
     support: "SUPPORT",
     help: "Help & FAQ",
     changePhoto: "Change photo",
@@ -1508,5 +1566,16 @@ export const en = {
       newHere: "New to Nexdo?",
       createAccount: "Create an account",
     },
+  },
+  /** The home screen widget (widgets/NextTaskWidget.tsx, modules/nexdo-widget). */
+  widget: {
+    next: "Next",
+    today: "Today",
+    overdue: "Overdue",
+    allClear: "All clear",
+    allClearBody: "Tap + to add a task",
+    add: "Add",
+    mic: "Mic",
+    signIn: "Open Nexdo to get started",
   },
 };

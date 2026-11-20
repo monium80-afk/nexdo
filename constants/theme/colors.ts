@@ -104,8 +104,97 @@ export const colors = {
     menu: "#FFFFFF",
     /** The dark veil over the blurred page behind a sheet. */
     veil: "rgba(34, 28, 23, 0.42)",
+    // ---- Added for dark mode (2026-11-17). In light mode each is the colour
+    // these places already used; dark mode gives them their own. ----
+    /** A dark card on the page (Today's card, the tab bar, the plan card, a toast). */
+    inkCard: "#221C17",
+    /** Text and icons on an inkCard — light in both modes. */
+    onInk: "#FAF1E4",
+    /** A card lifted over the page: the edit card, a menu. */
+    raised: "#FCF7EF",
+    /** A rule between rows on a light card. */
+    rule: "#EADFD1",
+    /** An idle switch track, an empty slider track. */
+    track: "#E7DCCF",
+    /** An idle bar in a small chart. */
+    bar: "#EDE2D5",
+    /** An open dot on a light card (a slider stop). */
+    dot: "#D9CCBD",
+    /** Text on an ink-filled pill or button (a picked tab, the round +): ink's opposite. */
+    inverse: "#FFFFFF",
+    /** A soft orange bar in a chart (past days). */
+    barSoft: "#F6BC9A",
+    /** A finished task's greyed text, strike and icons. */
+    doneGrey: "#A79C92",
+    /** A finished task's greyed pill. */
+    donePill: "#EFE3D4",
   },
 } as const;
+
+export type Palette = { readonly [K in keyof typeof colors.palette]: string };
+
+/**
+ * Dark mode (2026-11-17, from the user's dark screenshots). The same names as
+ * `colors.palette`, so a component reads `usePalette()` (hooks/useTheme.ts)
+ * and never asks which mode it is in. The page is a warm near-black, cards
+ * are one step lighter, and what was ink (text, picked pills, the round +
+ * button) turns cream. Mirrored in global.css's dark block.
+ */
+export const darkPalette: Palette = {
+  paper: "#15100D",
+  paperCard: "#211A15",
+  paperDim: "#E9DFD5",
+  paperFaint: "#8F8379",
+  ink: "#F2E8DC",
+  inkMuted: "#9E9186",
+  accent: "#F26A2E",
+  accentInk: "#F5884F",
+  peach: "#3F2416",
+  peachOnDark: "#FFB089",
+  alert: "#D93A2B",
+  line: "#3B322B",
+  lineSoft: "#2E251F",
+  ring: "#4A3E35",
+  ringSoft: "#4A3F37",
+  chip: "#2A221C",
+  handle: "#382D25",
+  tile: "#2A221C",
+  inkFaint: "#6E625A",
+  lineWarm: "#3B322B",
+  onAccentSoft: "#FFE1D2",
+  menu: "#2E2620",
+  veil: "rgba(0, 0, 0, 0.55)",
+  inkCard: "#2B231D",
+  onInk: "#FAF1E4",
+  raised: "#2E2620",
+  rule: "#2A221C",
+  track: "#3A322C",
+  bar: "#3A2E26",
+  dot: "#4A3E35",
+  inverse: "#15100D",
+  barSoft: "#7A4A30",
+  doneGrey: "#6E625A",
+  donePill: "#2A221C",
+};
+
+/**
+ * The older Warm Signal tokens (cream / charcoal / ink-cream…) in dark mode,
+ * for the pages that still use them. Same shape as `colors`.
+ */
+export const darkColors = {
+  ...colors,
+  cream: { 50: "#211A15", 100: "#15100D", 200: "#2E251F", 300: "#3B322B" },
+  charcoal: { 900: "#2B231D", 800: "#2D261F", 600: "#4D4338", 400: "#8F8474" },
+  orange: { ...colors.orange, 50: "#2A1A12", 100: "#3F2416", 200: "#5A3220", 600: "#F0773A" },
+  amber: { 500: "#E0A53A", 100: "#3A2B10" },
+  olive: { 500: "#9CB06A", 100: "#26301A" },
+  overdue: { ...colors.overdue, 50: "#2E1510", 100: "#3E1A12", 200: "#6A2A1C" },
+  success: { ...colors.success, 100: "#15301F" },
+  ink: { cream: "#F2E8DC", creamMuted: "#9E9186", creamSubtle: "#776A61", charcoal: "#FBF5EA", charcoalMuted: "#B1A796" },
+  logoInk: "#F2E8DC",
+  scrim: "rgba(0, 0, 0, 0.6)",
+  palette: darkPalette,
+} as unknown as typeof colors;
 
 // Onboarding uses these values for shadow contrast. Keep the alias while the
 // app's active palette remains the shared Warm Signal token set.

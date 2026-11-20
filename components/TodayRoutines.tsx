@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { Checkbox } from "@/components/Checkbox";
 import { gradients } from "@/constants/theme";
+import { useIsDark } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { deadlineInstant, deadlineOnThisPhone } from "@/lib/deadline";
@@ -47,6 +48,7 @@ export function TodayRoutines({
   inset?: boolean;
 }) {
   const t = useTranslation();
+  const dark = useIsDark();
   const rtl = useRtlText();
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const done = useMemo(() => routines.filter((task) => task.status === "completed").length, [routines]);
@@ -67,7 +69,7 @@ export function TodayRoutines({
         <Text className="eyebrow text-ink-cream-muted">{t.next.routinesTitle}</Text>
         <Text className="font-grotesk-semibold text-[13px] text-ink-cream-muted">{t.next.doneOfTotal(done, routines.length)}</Text>
       </View>
-      <View className="card card--cream-soft px-1.5 py-1.5" style={gradients.card}>
+      <View className="card card--cream-soft px-1.5 py-1.5" style={dark ? undefined : gradients.card}>
         {routines.map((task, index) => {
           const checked = task.status === "completed";
           const time = task.deadline?.time

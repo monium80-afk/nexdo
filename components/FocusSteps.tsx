@@ -4,12 +4,11 @@ import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AppIcon } from "@/components/icons/AppIcons";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { Subtask, Task } from "@/types/task";
 
-const P = colors.palette;
 // How long a tap shows on its own before it's handed to the store (saving
 // re-renders the whole Today page, so it waits until the tick has drawn).
 const HAND_OVER_MS = 160;
@@ -76,6 +75,7 @@ export function FocusSteps({
   /** The task is being finished: a tap now would be drawn but never saved. */
   locked: boolean;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();

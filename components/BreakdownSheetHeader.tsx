@@ -2,10 +2,9 @@ import { Feather } from "@expo/vector-icons";
 import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 
-const P = colors.palette;
 
 /**
  * Break it down's sheets (the user's screenshots, 2026-11-10): a spaced-out
@@ -24,6 +23,7 @@ export function BreakdownSheetHeader({
   closeLabel: string;
   onClose: () => void;
 }) {
+  const P = usePalette();
   const rtl = useRtlText();
   return (
     <View>

@@ -19,7 +19,9 @@ describe("undo toast account ownership", () => {
       tasks: [{ ...before, title: "Changed in account A", updatedAt: "2026-11-15T12:00:00.000Z" }],
       syncUserId: "account-a",
     });
-    useUndoStore.getState().show("Undo change", [{ taskId: before.id, before }]);
+    useUndoStore.getState().show("Undo change", [
+      { taskId: before.id, before, after: useTaskStore.getState().tasks[0] },
+    ]);
 
     useTaskStore.setState({
       tasks: [makeTask({ id: "shared-id", title: "Account B task" })],
@@ -37,7 +39,9 @@ describe("undo toast account ownership", () => {
       tasks: [{ ...before, title: "After", updatedAt: "2026-11-15T12:00:00.000Z" }],
       syncUserId: "account-a",
     });
-    useUndoStore.getState().show("Undo change", [{ taskId: before.id, before }]);
+    useUndoStore.getState().show("Undo change", [
+      { taskId: before.id, before, after: useTaskStore.getState().tasks[0] },
+    ]);
     useUndoStore.getState().undo();
 
     assert.equal(useTaskStore.getState().tasks[0].title, "Before");

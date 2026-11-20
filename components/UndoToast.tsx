@@ -85,12 +85,12 @@ export function UndoToast() {
         entering={reduceMotion ? undefined : TOAST_IN}
         exiting={reduceMotion ? undefined : FadeOut.duration(160)}
         accessibilityLiveRegion="polite"
-        className="min-h-[52px] w-full max-w-[440px] flex-row items-center gap-[10px] rounded-full bg-ink py-[6px] pl-[12px] pr-[7px]"
+        className="min-h-[52px] w-full max-w-[440px] flex-row items-center gap-[10px] rounded-full bg-ink-card py-[6px] pl-[12px] pr-[7px]"
         style={TOAST_SHADOW}
       >
         {toast.gem ? <HoppingGem /> : null}
         <View className="flex-1">
-          <Text numberOfLines={2} className="font-grotesk-bold text-[13px] text-paper" style={rtl}>
+          <Text numberOfLines={2} className="font-grotesk-bold text-[13px] text-on-ink" style={rtl}>
             {toast.message}
           </Text>
           {toast.subtitle ? (
@@ -103,12 +103,12 @@ export function UndoToast() {
           onPress={undo}
           hitSlop={8}
           accessibilityRole="button"
-          className="h-[38px] flex-row items-center gap-[6px] rounded-full bg-paper/12 px-[13px]"
+          className="h-[38px] flex-row items-center gap-[6px] rounded-full bg-on-ink/12 px-[13px]"
         >
           <Svg width={13} height={13} viewBox="0 0 24 24">
             <Path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" stroke="#FAF1E4" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
           </Svg>
-          <Text className="font-grotesk-bold text-[12.5px] text-paper">{t.undoToast.undo}</Text>
+          <Text className="font-grotesk-bold text-[12.5px] text-on-ink">{t.undoToast.undo}</Text>
         </AnimatedPressable>
       </Animated.View>
     </View>

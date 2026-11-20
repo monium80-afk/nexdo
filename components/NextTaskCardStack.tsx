@@ -406,7 +406,7 @@ function StackSlot({
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
       style={[
         styles.card,
-        { backgroundColor: colors.palette.ink },
+        { backgroundColor: colors.palette.inkCard },
         active ? null : styles.waiting,
         placeStyle,
       ]}
@@ -958,7 +958,7 @@ export function NextTaskCardStack({
           styles.stack,
           styles.card,
           // Its opacity, focus session included, is singleCardDoneStyle's.
-          { backgroundColor: colors.palette.ink },
+          { backgroundColor: colors.palette.inkCard },
           singleCardDoneStyle,
         ]}
       >

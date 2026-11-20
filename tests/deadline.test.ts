@@ -70,6 +70,9 @@ describe("reading a deadline phrase (device-side, explicit reference time)", () 
     // Already past at 10:00: tomorrow.
     assert.deepEqual(parseDeadlinePhrase("standup 09:15", NOW), { date: "2026-09-30", time: "09:15" });
     assert.deepEqual(parseDeadlinePhrase("call mom at 7", NOW), { date: "2026-09-29", time: "19:00" });
+    assert.deepEqual(parseDeadlinePhrase("tomorrow at 9:45am", NOW), { date: "2026-09-30", time: "09:45" });
+    assert.equal(parseDeadlinePhrase("tomorrow at 13:15pm", NOW), undefined);
+    assert.equal(parseDeadlinePhrase("tomorrow at 9:75am", NOW), undefined);
   });
 
   it('a lone "3:16" with no day is a reference, not a deadline', () => {

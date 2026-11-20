@@ -1,0 +1,16 @@
+// The app's own Android home screen widget (modules/nexdo-widget).
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.nexdowidget'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.nexdowidget"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}

@@ -100,7 +100,7 @@ function MagicMicButton({
         {/* The padlock: ringed in the bar's colour, so it reads as sitting on
             the disc rather than cut into it. */}
         {locked ? (
-          <View className="absolute -right-[2px] -top-[2px] h-[20px] w-[20px] items-center justify-center rounded-full border-2 border-ink bg-charcoal-600">
+          <View className="absolute -right-[2px] -top-[2px] h-[20px] w-[20px] items-center justify-center rounded-full border-2 border-ink-card bg-charcoal-600">
             <Feather name="lock" size={10} color={colors.ink.charcoal} />
           </View>
         ) : null}
@@ -281,7 +281,7 @@ export function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
     >
       <Animated.View
         entering={fadeInMs > 0 ? FadeIn.duration(fadeInMs).easing(FOCUS_FINISH.ease) : undefined}
-        className="absolute rounded-full bg-ink"
+        className="absolute rounded-full bg-ink-card"
         style={[{ left: BAR_SIDE, right: BAR_SIDE, bottom, height: BAR_HEIGHT }, BAR_SHADOW]}
       >
         <View className="flex-1 flex-row items-center px-[8px]">

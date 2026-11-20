@@ -16,6 +16,7 @@ import { AppIcon } from "@/components/icons/AppIcons";
 import { gradients } from "@/constants/theme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { deadlineInstant } from "@/lib/deadline";
+import { useIsDark, usePalette } from "@/hooks/useTheme";
 import { playSound } from "@/lib/sounds";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -91,6 +92,8 @@ export function RoutineTimeline({
   /** Off while the page isn't on screen: the pulse stops. */
   animate?: boolean;
 }) {
+  const P = usePalette();
+  const dark = useIsDark();
   const t = useTranslation();
   const toggleTaskStatus = useTaskStore((state) => state.toggleTaskStatus);
   const now = useNowMinutes();
@@ -117,8 +120,8 @@ export function RoutineTimeline({
             accessibilityRole="button"
             className="h-[32px] flex-row items-center gap-[5px] rounded-full bg-ink px-[12px]"
           >
-            <AppIcon name="plus" size={14} strokeWidth={2.4} color="#FFFFFF" />
-            <Text className="font-grotesk-semibold text-[12.5px] text-white">{t.next.addRoutine}</Text>
+            <AppIcon name="plus" size={14} strokeWidth={2.4} color={P.inverse} />
+            <Text className="font-grotesk-semibold text-[12.5px] text-inverse">{t.next.addRoutine}</Text>
           </AnimatedPressable>
         </View>
       </View>
@@ -244,7 +247,7 @@ export function RoutineTimeline({
             </View>
           </ScrollView>
           {/* The line runs off the right edge into the page (the mockup's mask). */}
-          <View pointerEvents="none" className="absolute bottom-0 right-0 top-0 w-[15%]" style={gradients.paperFadeRight} />
+          <View pointerEvents="none" className="absolute bottom-0 right-0 top-0 w-[15%]" style={dark ? gradients.paperFadeRightDark : gradients.paperFadeRight} />
         </View>
       ) : null}
 

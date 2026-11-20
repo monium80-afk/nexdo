@@ -6,16 +6,17 @@ import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { PostHogProvider } from "posthog-react-native";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { ActivityIndicator, Appearance, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { CrashScreen } from "@/components/CrashScreen";
 import { UndoToast } from "@/components/UndoToast";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useAuthSync } from "@/hooks/useAuthSync";
 import { useFocusSound } from "@/hooks/useFocusSound";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useSessionAlarm } from "@/hooks/useSessionAlarm";
+import { useWidgetSync } from "@/hooks/useWidgetSync";
 import { publishableKey, resourceCache, tokenCache } from "@/lib/clerk";
 import { watchCompletions } from "@/lib/focusLog";
 import { configureNotifications } from "@/lib/notifications";
@@ -24,8 +25,7 @@ import { posthog } from "@/lib/posthog";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import "../global.css";
 
-SystemUI.setBackgroundColorAsync(colors.cream[100]);
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 configureNotifications();
 // The AI chat was removed (2026-10-08). Its conversation was cached on the
 // phone under this key; nothing reads it any more, so it isn't left behind.
@@ -59,6 +59,7 @@ const SPLASH_MAX_MS = 6_000;
  */
 function AccountSetup({ children }: { children: ReactNode }) {
   const { isLoaded } = useAuth();
+  const colors = useColors();
 
   // The splash stays up until Clerk knows who's signed in, not just until the
   // fonts are in — otherwise a blank page showed in between. If Clerk takes
@@ -93,6 +94,8 @@ function AccountSetup({ children }: { children: ReactNode }) {
 function AccountSync() {
   useAuthSync();
   useNotifications();
+  // The home screen widget's next task (widgets/, modules/nexdo-widget).
+  useWidgetSync();
   return null;
 }
 
@@ -103,7 +106,27 @@ function AccountSync() {
 // this is a no-op there.
 const WEB_FRAME_MAX_WIDTH = 480;
 
+/**
+ * Settings → Dark mode, applied to the whole app (2026-11-17). React Native's
+ * Appearance carries it: useColorScheme() (hooks/useTheme.ts) and NativeWind's
+ * dark block in global.css both read it, and so do the phone's own pickers
+ * and keyboard. "system" hands the choice back to the phone.
+ */
+function useAppTheme() {
+  const theme = useSettingsStore((state) => state.theme);
+  const colors = useColors();
+  useEffect(() => {
+    Appearance.setColorScheme(theme === "system" ? "unspecified" : theme);
+  }, [theme]);
+  // The window behind the app (seen while a screen opens or the keyboard moves).
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.cream[100]).catch(() => {});
+  }, [colors]);
+  return colors;
+}
+
 export default function RootLayout() {
+  const colors = useAppTheme();
   const [fontsLoaded, fontError] = useFonts({
     "SpaceGrotesk-Light": require("../assets/fonts/SpaceGrotesk-Light.ttf"),
     "SpaceGrotesk-Regular": require("../assets/fonts/SpaceGrotesk-Regular.ttf"),
@@ -131,7 +154,7 @@ export default function RootLayout() {
   // is remembered by PostHog itself, so nothing is sent from the next launch on.
   const analyticsEnabled = useSettingsStore((state) => state.analyticsEnabled);
   useEffect(() => {
-    void (analyticsEnabled ? posthog.optIn() : posthog.optOut());
+    void (analyticsEnabled ? posthog.optIn() : posthog.optOut()).catch(() => {});
   }, [analyticsEnabled]);
 
   // Manual screen tracking for Expo Router
@@ -211,6 +234,15 @@ export default function RootLayout() {
                   presentation: "fullScreenModal",
                   animation: "slide_from_bottom",
                   contentStyle: { backgroundColor: PAYWALL_BG },
+                }}
+              />
+              {/* A task's alarm ringing (2026-11-18), over everything. */}
+              <Stack.Screen
+                name="alarm"
+                options={{
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                  contentStyle: { backgroundColor: "#1C1511" },
                 }}
               />
             </Stack>

@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { CARD_SHADOW, DARK_CARD_SHADOW, TIGHT_TEXT, taskCount } from "@/components/schedule/scheduleParts";
+import { useIsDark } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { gemLevelFor, type GemLevel } from "@/lib/gemLevel";
 import { daysInMonth, keyToLocalDate, pad, weekdayOf, type LocalDate } from "@/lib/localDate";
@@ -67,7 +68,9 @@ const MonthCard = memo(function MonthCard({
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks = Array.from({ length: cells.length / 7 }, (_, row) => cells.slice(row * 7, row * 7 + 7));
   const current = today.startsWith(`${year}-${pad(month)}`);
-  const tone = current ? "dark" : "light";
+  // In dark mode every month card is dark, so all take the dark tones.
+  const dark = useIsDark();
+  const tone = current || dark ? "dark" : "light";
   const name = keyToLocalDate(first).toLocaleDateString(t.locale, { month: "short" }).replace(/\.$/, "");
   const monthLabel = keyToLocalDate(first).toLocaleDateString(t.locale, { month: "long", year: "numeric" });
   const gemLabels: Partial<Record<GemLevel, string>> = {
@@ -82,7 +85,7 @@ const MonthCard = memo(function MonthCard({
     <Pressable
       onPress={onPress}
       accessible={false}
-      className={`flex-1 rounded-[15px] px-[8px] pb-[7.25px] pt-[10.75px] ${current ? "bg-ink" : "bg-paper-card"}`}
+      className={`flex-1 rounded-[15px] px-[8px] pb-[7.25px] pt-[10.75px] ${current ? "bg-ink-card" : "bg-paper-card"}`}
       style={current ? DARK_CARD_SHADOW : CARD_SHADOW}
     >
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={monthLabel}>
@@ -115,7 +118,7 @@ const MonthCard = memo(function MonthCard({
                   })}${level ? `, ${gemLabels[level]}` : ""}`}
                   className="flex-1 items-center justify-center"
                 >
-                  <DayGem color={color} edged={current && date < today && (level === 1 || level === 2)} today={date === today} />
+                  <DayGem color={color} edged={tone === "dark" && date < today && (level === 1 || level === 2)} today={date === today} />
                 </View>
               );
             })}

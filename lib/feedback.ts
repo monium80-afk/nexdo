@@ -37,11 +37,14 @@ export function toFeedbackScreenshot(asset: { uri: string; mimeType?: string; fi
 }
 
 async function uploadScreenshot(userId: string, screenshot: FeedbackScreenshot): Promise<string> {
+  const { data: canWrite, error: barrierError } = await supabase.rpc("account_write_allowed");
+  if (barrierError) throw barrierError;
+  if (canWrite !== true) throw new Error("This account is being deleted");
   const bytes = await readFileBytes(screenshot.uri);
   if (bytes.byteLength === 0) throw new Error("Screenshot is empty");
   if (bytes.byteLength > SCREENSHOT_MAX_BYTES) throw new Error("Screenshot is too large");
 
-  // The first segment is what storage RLS checks against the token's user id.
+  // Storage RLS checks both the token's user id and the account-deletion barrier.
   const path = `${userId}/${Date.now()}-screenshot.${SCREENSHOT_EXTENSIONS[screenshot.mimeType]}`;
   const { error } = await supabase.storage.from(SCREENSHOT_BUCKET).upload(path, bytes, {
     contentType: screenshot.mimeType,

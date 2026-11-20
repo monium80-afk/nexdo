@@ -42,7 +42,8 @@ export default function OnboardingSave() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const rtl = useIsRtl();
-  useStatusBarStyle("dark");
+  // Onboarding keeps its light design in dark mode too.
+  useStatusBarStyle("dark", { followTheme: false });
   const [emailOpen, setEmailOpen] = useState(false);
   const [now] = useState(() => new Date());
   const drafts = useOnboardingStore((state) => state.drafts);

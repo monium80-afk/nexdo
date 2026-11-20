@@ -16,6 +16,7 @@ import Animated, {
 import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 
 import { colors, gradients } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -134,6 +135,7 @@ function Ripple({ progress }: { progress: SharedValue<number> }) {
  * `origin` the flood starts from the middle.
  */
 export function CompletedOverlay({ title, origin }: { title: string; origin?: OverlayOrigin }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();

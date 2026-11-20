@@ -137,6 +137,90 @@
   --shadow-glow: 0 10px 20px -8px rgba(236, 86, 28, 0.6);
   /* Under a charcoal card on the cream page. */
   --shadow-float: 0 24px 40px -18px rgba(30, 16, 6, 0.6);
+
+  /* ---- Added for dark mode (2026-11-17) — see the dark block below. ---- */
+  --color-ink-card: #221c17; /* a dark card on the page (Today's card, the tab bar, a toast) */
+  --color-on-ink: #faf1e4; /* text on an ink-card, light in both modes */
+  --color-raised: #fcf7ef; /* a card lifted over the page (the edit card, a menu) */
+  --color-inverse: #ffffff; /* text on an ink-filled pill or button: ink's opposite */
+}
+
+/* =============================================================
+ * Dark mode (2026-11-17), from the user's dark screenshots.
+ * Settings → Dark mode sets the app's appearance (app/_layout.tsx);
+ * NativeWind reads it as prefers-color-scheme. The page turns a warm
+ * near-black, cards one step lighter, and what was ink (text, picked
+ * pills, the round + button) turns cream. Mirrored in JS as
+ * `darkPalette` / `darkColors` (constants/theme/colors.ts).
+ * ============================================================= */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: #15100d;
+    --color-paper-card: #211a15;
+    --color-paper-faint: #8f8379;
+    --color-ink: #f2e8dc;
+    --color-ink-muted: #9e9186;
+    --color-accent-ink: #f5884f;
+    --color-peach: #3f2416;
+    --color-line: #3b322b;
+    --color-line-soft: #2e251f;
+    --color-chip: #2a221c;
+    --color-ring: #4a3e35;
+    --color-ring-soft: #4a3f37;
+    --color-handle: #382d25;
+    --color-tile: #2a221c;
+    --color-ink-faint: #6e625a;
+    --color-line-warm: #3b322b;
+    --color-ink-card: #2b231d;
+    --color-raised: #2e2620;
+    --color-inverse: #15100d;
+
+    /* The older Warm Signal tokens, for the pages that still use them. */
+    --color-cream-50: #211a15;
+    --color-cream-100: #15100d;
+    --color-cream-200: #2e251f;
+    --color-cream-300: #3b322b;
+    --color-charcoal-900: #2b231d;
+    --color-orange-50: #2a1a12;
+    --color-orange-100: #3f2416;
+    --color-orange-200: #5a3220;
+    --color-orange-600: #f0773a;
+    --color-amber-500: #e0a53a;
+    --color-amber-100: #3a2b10;
+    --color-olive-500: #9cb06a;
+    --color-olive-100: #26301a;
+    --color-overdue-50: #2e1510;
+    --color-overdue-100: #3e1a12;
+    --color-overdue-200: #6a2a1c;
+    --color-success-100: #15301f;
+    --color-ink-cream: #f2e8dc;
+    --color-ink-cream-muted: #9e9186;
+    --color-ink-cream-subtle: #776a61;
+  }
+
+  /* The older recipes lit their top edge with a white hairline and warm
+     shadows — on the dark page that reads as a bright scratch, so dark
+     mode keeps them flat with a quiet edge instead. */
+  .card--cream-soft,
+  .card--cream-elevated,
+  .btn--secondary-cream,
+  .chip--idle,
+  .tile--orange,
+  .tile--red,
+  .tile--green,
+  .tile--neutral {
+    border-color: #3b322b;
+    box-shadow: none;
+  }
+  .card--cream-inset,
+  .input,
+  .field {
+    box-shadow: none;
+  }
+  .panel {
+    border-color: #2e251f;
+    background-color: rgb(255 255 255 / 0.03);
+  }
 }
 
 /* =============================================================

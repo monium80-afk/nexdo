@@ -39,10 +39,11 @@ import { openPaywall, showPlanLimit } from "@/lib/paywall";
 import { summarizePlan } from "@/lib/planning";
 import { describeRule, recurrenceKind, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
 import type { Translations } from "@/lib/i18n";
-import { nextReminderFor, type ReminderPreferences } from "@/lib/reminders";
+import { nextReminderFor } from "@/lib/reminders";
+import { reminderModeOf } from "@/lib/taskReminder";
+import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 import { getDueInfo } from "@/lib/taskMeta";
 import { useReassessStore, type ContextAttachment } from "@/store/useReassessStore";
-import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import { withUndo } from "@/store/useUndoStore";
 import type { RecurrenceRule, Task } from "@/types/task";
@@ -130,8 +131,8 @@ export default function TaskDetail() {
   const deleteSubtask = useTaskStore((state) => state.deleteSubtask);
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
   const restoreTask = useTaskStore((state) => state.restoreTask);
-  // As a string, so the page re-renders when a reminder setting changes but not on every store write.
-  const reminderPrefsKey = useSettingsStore((state) => JSON.stringify(reminderPreferences(state)));
+  // Settings → Notifications, kept current (and whether alarms are on this plan).
+  const reminderPrefs = useReminderPreferences();
   // What Nexdo made of the latest note. Lives in a store, not here, so a
   // reassessment that finishes after the user has left still has its report
   // waiting when they come back.
@@ -229,13 +230,13 @@ export default function TaskDetail() {
 
   // The reminder is its own thing, not the deadline: "Oct 15" with a 9:00
   // reminder is still due Oct 15, not at 9:00.
-  const reminderPrefs = JSON.parse(reminderPrefsKey) as ReminderPreferences;
   const reminderAt = nextReminderFor(task, reminderPrefs, now, t);
+  const reminderOff = reminderModeOf(task.reminders) === "off";
   const reminderLine = !task.deadline
     ? t.taskDetail.reminderNoDeadline
-    : task.reminders?.muted
+    : reminderOff
       ? t.taskDetail.reminderMuted
-      : !reminderPrefs.deadlineReminders
+      : !reminderPrefs.enabled || (task.deadline.time ? !reminderPrefs.timedReminders : !reminderPrefs.morningSummary)
         ? t.taskDetail.reminderOffInSettings
         : reminderAt
           ? t.taskDetail.reminderAt(
@@ -591,9 +592,9 @@ export default function TaskDetail() {
                       </Text>
                       {task.deadline ? (
                         <TextButton
-                          label={task.reminders?.muted ? t.taskDetail.unmuteReminders : t.taskDetail.muteReminders}
+                          label={reminderOff ? t.taskDetail.unmuteReminders : t.taskDetail.muteReminders}
                           tone="accent"
-                          onPress={() => updateTask(task.id, { remindersMuted: !task.reminders?.muted }, task.recurrence ? "future" : undefined)}
+                          onPress={() => updateTask(task.id, { reminder: { mode: reminderOff ? "notify" : "off" } }, task.recurrence ? "future" : undefined)}
                         />
                       ) : null}
                     </View>

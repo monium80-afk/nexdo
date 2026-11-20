@@ -6,6 +6,7 @@ import { Platform, Text, View } from "react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { Chip } from "@/components/Chip";
 import { colors, gradients } from "@/constants/theme";
+import { useColors, useIsDark } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { deadlineToLocalDate, makeDeadline, type DeadlineInput } from "@/lib/deadline";
@@ -108,13 +109,14 @@ export function PriorityCard({
   onPress: () => void;
 }) {
   const style = PRIORITY_STYLES[level];
+  const dark = useIsDark();
 
   return (
     <AnimatedPressable
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      style={selected ? undefined : gradients.card}
+      style={selected || dark ? undefined : gradients.card}
       className={`card flex-1 gap-2 p-[14px] ${selected ? style.selected : "chip--idle"}`}
     >
       <Ionicons name={PRIORITY_ICONS[level]} size={18} color={style.color} />
@@ -139,6 +141,7 @@ function isInPast(draft: DeadlineDraft): boolean {
  * its native dialogs and shows the result as a tappable row.
  */
 export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; onChange: (next: DeadlineDraft) => void }) {
+  const colors = useColors();
   const t = useTranslation();
   // Android opens onto the date dialog straight away — the reason this
   // calendar was opened — and the time dialog only when asked for.
@@ -207,7 +210,6 @@ export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; 
           mode="time"
           display="compact"
           accentColor={colors.orange[500]}
-          themeVariant="light"
           onChange={(event, selected) => {
             if (event.type !== "dismissed" && selected) setTime(selected);
           }}
@@ -238,7 +240,6 @@ export function DeadlineDatePicker({ value, onChange }: { value: DeadlineDraft; 
             display="inline"
             minimumDate={new Date()}
             accentColor={colors.orange[500]}
-            themeVariant="light"
             onChange={(event, selected) => {
               if (event.type !== "dismissed" && selected) setDay(selected);
             }}

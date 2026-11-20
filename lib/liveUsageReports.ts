@@ -21,22 +21,36 @@ const MAX_PENDING = 50;
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const RETRY_DELAYS_MS = [5_000, 30_000, 120_000];
 
+let volatileReports: PendingReport[] = [];
+
+function mergeReports(...lists: PendingReport[][]): PendingReport[] {
+  const reports = new Map<string, PendingReport>();
+  for (const list of lists) {
+    for (const report of list) reports.set(report.sessionId, report);
+  }
+  return [...reports.values()];
+}
+
 async function load(): Promise<PendingReport[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? (parsed as PendingReport[]) : [];
+    if (!Array.isArray(parsed)) throw new Error("saved reports were not a list");
+    return mergeReports(parsed as PendingReport[], volatileReports);
   } catch (error) {
     console.warn("[liveUsageReports] couldn't read the saved reports", error);
-    return [];
+    throw error;
   }
 }
 
-async function save(reports: PendingReport[]) {
+async function save(reports: PendingReport[]): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+    volatileReports = [];
   } catch (error) {
     console.warn("[liveUsageReports] couldn't save the reports", error);
+    volatileReports = mergeReports(volatileReports, reports);
+    throw error;
   }
 }
 
@@ -75,11 +89,29 @@ export function flushLiveUsageReports(userId: string): Promise<boolean> {
 export async function reportLiveUsage(userId: string, report: LiveUsageRequestBody): Promise<void> {
   await serial(async () => {
     const others = (await load()).filter((pending) => pending.sessionId !== report.sessionId);
-    await save([...others, { ...report, userId, at: Date.now() }].slice(-MAX_PENDING));
+    const reports = [...others, { ...report, userId, at: Date.now() }].slice(-MAX_PENDING);
+    volatileReports = mergeReports(volatileReports, reports);
+    try {
+      await save(reports);
+    } catch {
+      // Keep sending from memory; the write failure is retried by later flushes.
+    }
   });
-  if (!(await flushLiveUsageReports(userId))) return;
+  let flushError: unknown;
+  const flush = async () => {
+    try {
+      const pending = await flushLiveUsageReports(userId);
+      flushError = undefined;
+      return pending;
+    } catch (error) {
+      flushError = error;
+      return true;
+    }
+  };
+  if (!(await flush())) return;
   for (const delay of RETRY_DELAYS_MS) {
     await new Promise((resolve) => setTimeout(resolve, delay));
-    if (!(await flushLiveUsageReports(userId))) return;
+    if (!(await flush())) return;
   }
+  if (flushError) throw flushError;
 }

@@ -1,12 +1,12 @@
 import { useClerk, useUser } from "@clerk/expo";
 import * as ImagePicker from "expo-image-picker";
-import { useRef, useState, type ComponentRef } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
 import { PaperSheet } from "@/components/PaperSheet";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { DeleteAccountResponseBody } from "@/app/api/delete-account+api";
@@ -18,7 +18,6 @@ import { useIsPro } from "@/store/useSubscriptionStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** How long the keyboard takes to open, roughly — on Android the sheet only moves once it has. */
@@ -38,6 +37,7 @@ type AccountSheetProps = {
  * so they follow the account to every device it signs in on.
  */
 export function AccountSheet({ visible, onClose }: AccountSheetProps) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const { user } = useUser();
@@ -59,6 +59,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const [passwordStatus, setPasswordStatus] = useState<string | null>(null);
 
   const [deleting, setDeleting] = useState(false);
+  const sheetGeneration = useRef(0);
 
   // With the keyboard up the sheet sits on top of it and shrinks
   // (BottomSheet), so the field being typed in is scrolled into what's left:
@@ -72,6 +73,9 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   // any half-finished edit from last time: derived-from-props state, no
   // effect needed.
   const [prevVisible, setPrevVisible] = useState(visible);
+  useLayoutEffect(() => {
+    sheetGeneration.current += 1;
+  }, [visible]);
   if (visible !== prevVisible) {
     setPrevVisible(visible);
     if (visible) {
@@ -84,6 +88,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
       setConfirmPassword("");
       setPasswordError(null);
       setPasswordStatus(null);
+      setSavingPassword(false);
     }
   }
 
@@ -118,7 +123,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
 
   // The name saves when the field is left, so the sheet keeps the design's
   // clean two-field layout instead of growing a Save button.
-  const handleSaveName = async (): Promise<boolean> => {
+  const handleSaveName = async (generation: number): Promise<boolean> => {
     if (!user) return false;
     const trimmed = name.trim();
     if (trimmed === (user.fullName ?? "")) return true;
@@ -134,9 +139,11 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
       // The whole name goes in Clerk's firstName — it works on every Clerk
       // instance, unlike the `username` attribute which must be enabled first.
       await user.update({ firstName: trimmed, lastName: "" });
+      if (generation !== sheetGeneration.current) return false;
       setNameStatus("saved");
       return true;
     } catch (saveError) {
+      if (generation !== sheetGeneration.current) return false;
       console.warn("[AccountSheet] name update failed", saveError);
       setError(t.account.nameError);
       setNameStatus(null);
@@ -144,7 +151,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
     }
   };
 
-  const handleSavePassword = async () => {
+  const handleSavePassword = async (generation: number) => {
     if (!user) return;
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
       setPasswordError(t.account.passwordHint);
@@ -164,17 +171,24 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
         newPassword,
         signOutOfOtherSessions: true,
       });
+      if (generation !== sheetGeneration.current) return;
       setEditingPassword(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setPasswordStatus(t.account.passwordUpdated);
     } catch (updateError) {
+      if (generation !== sheetGeneration.current) return;
       console.warn("[AccountSheet] password update failed", updateError);
       setPasswordError(t.account.passwordError);
     } finally {
-      setSavingPassword(false);
+      if (generation === sheetGeneration.current) setSavingPassword(false);
     }
+  };
+
+  const closeSheet = () => {
+    sheetGeneration.current += 1;
+    onClose();
   };
 
   // The server deletes the account and everything stored for it
@@ -228,19 +242,20 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
 
   // Save keeps the name (and a new password, when one is being set), then closes.
   const handleSave = async () => {
-    if (!(await handleSaveName())) return;
+    const generation = sheetGeneration.current;
+    if (!(await handleSaveName(generation)) || generation !== sheetGeneration.current) return;
     if (editingPassword) {
-      await handleSavePassword();
+      await handleSavePassword(generation);
       return;
     }
-    onClose();
+    if (generation === sheetGeneration.current) closeSheet();
   };
 
   const fieldStyle = {
     height: 49,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#EADFD1",
+    borderColor: P.rule,
     backgroundColor: P.paperCard,
     paddingHorizontal: 17,
     fontFamily: "SpaceGrotesk-Regular",
@@ -267,13 +282,13 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
   const initials = (fullName.split(/\s+/).filter(Boolean).map((part) => part[0]).slice(0, 1).join("") + (fullName.split(/\s+/).length > 1 ? fullName.split(/\s+/).slice(-1)[0][0] : "")).toUpperCase();
 
   return (
-    <PaperSheet visible={visible} onClose={onClose}>
+    <PaperSheet visible={visible} onClose={closeSheet}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <Text accessibilityRole="header" style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 22, letterSpacing: -0.3, color: P.ink }}>
           {t.account.title}
         </Text>
         <AnimatedPressable
-          onPress={onClose}
+          onPress={closeSheet}
           scaleTo={0.92}
           accessibilityRole="button"
           accessibilityLabel={t.account.close}
@@ -319,6 +334,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
           {label(t.redesign.name)}
           <TextInput
             value={name}
+            editable={nameStatus !== "saving"}
             onChangeText={(value) => {
               setName(value);
               setNameStatus(null);
@@ -338,7 +354,7 @@ export function AccountSheet({ visible, onClose }: AccountSheetProps) {
         <View style={{ marginTop: 18 }}>
           {label(t.redesign.email)}
           {/* Read-only: changing the sign-in email needs its own verification flow. */}
-          <View style={[fieldStyle, { backgroundColor: "#F2E9DE", flexDirection: "row", alignItems: "center", gap: 10 }]}>
+          <View style={[fieldStyle, { backgroundColor: P.tile, flexDirection: "row", alignItems: "center", gap: 10 }]}>
             <Text numberOfLines={1} style={{ flex: 1, fontFamily: "SpaceGrotesk-Regular", fontSize: 16, color: P.inkMuted }}>
               {user?.primaryEmailAddress?.emailAddress ?? t.account.noEmail}
             </Text>

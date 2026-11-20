@@ -112,6 +112,7 @@ export const useSessionStore = create<SessionStore>()(
         // Starting one session ends any other.
         logEnd(get().session);
         const now = Date.now();
+        const firstTask = useTaskStore.getState().tasks.find((task) => task.id === taskIds[0]);
         set({
           session: {
             taskIds,
@@ -126,7 +127,7 @@ export const useSessionStore = create<SessionStore>()(
             taskStartedAt: now,
             taskEstimateMinutes: plannedMinutes,
             startedAt: now,
-            estimateMinutes: plannedMinutes,
+            estimateMinutes: firstTask?.estimatedMinutes ?? plannedMinutes,
           },
         });
       },

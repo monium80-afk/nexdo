@@ -11,6 +11,7 @@ import { beforeEach, describe, it } from "node:test";
 
 import {
   normalizeReassessment,
+  normalizeReassessmentResult,
   parseReassessBody,
   type ReassessRequestBody,
   type ReassessResponseBody,
@@ -59,6 +60,10 @@ function seed(overrides: Partial<Task> & { id: string }): Task {
   const [scored] = recalcAll([task]);
   useTaskStore.setState({ tasks: [scored] });
   return scored;
+}
+
+function snapshotSeed(overrides: Partial<Task> & { id: string }): Task {
+  return structuredClone(seed(overrides));
 }
 
 const task = (id: string) => useTaskStore.getState().tasks.find((entry) => entry.id === id)!;
@@ -162,7 +167,7 @@ describe("a photo or document as context", () => {
   });
 
   it("nothing readable in it: nothing changes, nothing is asked of the AI, and the file waits for a retry", async () => {
-    const before = seed({ id: "blur", title: "Fill in the form" });
+    const before = snapshotSeed({ id: "blur", title: "Fill in the form" });
 
     await useReassessStore.getState().submit("blur", { text: "", file: PHOTO });
 
@@ -272,7 +277,7 @@ describe("reassessing a task for new context", () => {
   });
 
   it("more work raises the score — the longer a task takes, the more it counts", async () => {
-    const before = seed({ id: "essay", title: "Essay", dueDate: at(2), estimatedMinutes: 90, importance: 50 });
+    const before = snapshotSeed({ id: "essay", title: "Essay", dueDate: at(2), estimatedMinutes: 90, importance: 50 });
     modelAnswers({ outcome: "update", estimatedMinutes: 150, summary: "Two more sources to read." });
 
     await submit("essay", "I still need to read two more sources.");
@@ -287,7 +292,7 @@ describe("reassessing a task for new context", () => {
 
   it("reports a score change when the new workload no longer fits before the deadline", async () => {
     const dueSoon = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-    const before = seed({ id: "slides", title: "Slides", dueDate: dueSoon, estimatedMinutes: 60, importance: 50 });
+    const before = snapshotSeed({ id: "slides", title: "Slides", dueDate: dueSoon, estimatedMinutes: 60, importance: 50 });
     modelAnswers({ outcome: "update", estimatedMinutes: 180, summary: "The deck needs three more sections." });
 
     await submit("slides", "I still have three more sections to build.");
@@ -302,7 +307,7 @@ describe("reassessing a task for new context", () => {
 
   it("a new deadline: moves it, keeps its time of day, rescores — and touches nothing else", async () => {
     // Due yesterday, so "next Monday" is a move whatever day the test runs.
-    const before = seed({
+    const before = snapshotSeed({
       id: "hist",
       title: "History essay",
       dueDate: at(-1, 23, 59),
@@ -326,7 +331,7 @@ describe("reassessing a task for new context", () => {
   });
 
   it("one property: only the priority changes (and the score it drives)", async () => {
-    const before = seed({
+    const before = snapshotSeed({
       id: "pitch",
       title: "Client pitch",
       dueDate: at(6),
@@ -352,7 +357,7 @@ describe("reassessing a task for new context", () => {
   });
 
   it("\"this is really important\" makes it critical — above High, and said so", async () => {
-    const before = seed({ id: "visa", title: "Visa form", dueDate: at(6), estimatedMinutes: 45, importance: 80 });
+    const before = snapshotSeed({ id: "visa", title: "Visa form", dueDate: at(6), estimatedMinutes: 45, importance: 80 });
     modelAnswers({ outcome: "update", priority: "critical", summary: "The whole trip depends on it." });
 
     await submit("visa", "This is really important, the whole trip depends on it.");
@@ -367,7 +372,7 @@ describe("reassessing a task for new context", () => {
   });
 
   it("an answer that repeats current values reports nothing as changed", async () => {
-    const before = seed({ id: "rep", title: "Report", dueDate: at(4, 17), estimatedMinutes: 60, importance: 50 });
+    const before = snapshotSeed({ id: "rep", title: "Report", dueDate: at(4, 17), estimatedMinutes: 60, importance: 50 });
     modelAnswers({ outcome: "update", title: "Report", estimatedMinutes: 60, priority: "medium", summary: "Same as before." });
 
     await submit("rep", "It's the usual monthly report.");
@@ -381,7 +386,7 @@ describe("reassessing a task for new context", () => {
   });
 
   it("context that changes nothing: the note is kept, the task isn't touched, and the user is told", async () => {
-    const before = seed({
+    const before = snapshotSeed({
       id: "exam",
       title: "History essay",
       dueDate: at(3, 23, 59),
@@ -505,7 +510,7 @@ describe("reassessing a task for new context", () => {
 describe("unclear context", () => {
   it("asks instead of guessing, changes nothing, and reassesses the note with the answer", async () => {
     // 9:00, so "Friday at 5pm" is a change whichever weekday the test runs on.
-    const before = seed({ id: "q", title: "Quarterly report", dueDate: at(3, 9), estimatedMinutes: 90 });
+    const before = snapshotSeed({ id: "q", title: "Quarterly report", dueDate: at(3, 9), estimatedMinutes: 90 });
     modelAnswers({ outcome: "clarify", question: "When is the quarterly report due now?" });
 
     await submit("q", "The deadline changed.");
@@ -532,7 +537,7 @@ describe("unclear context", () => {
   });
 
   it("a deadline phrase the app can't read becomes a question, not a guessed date", async () => {
-    const before = seed({ id: "lab", title: "Lab report", dueDate: at(5) });
+    const before = snapshotSeed({ id: "lab", title: "Lab report", dueDate: at(5) });
     modelAnswers({ outcome: "update", dueDatePhrase: "whenever the professor decides", summary: "" });
 
     await submit("lab", "The professor will tell us the new deadline.");
@@ -555,7 +560,7 @@ describe("unclear context", () => {
 
 describe("failures never leave the task half-changed", () => {
   it("the AI failing changes nothing; trying again works", async () => {
-    const before = seed({ id: "f", title: "Groceries", estimatedMinutes: 30 });
+    const before = snapshotSeed({ id: "f", title: "Groceries", estimatedMinutes: 30 });
     setApiHandler(() => {
       throw new Error("/api/reassess failed: 502");
     });
@@ -574,7 +579,7 @@ describe("failures never leave the task half-changed", () => {
   });
 
   it("an answer the route can't use is a failure, not a change", async () => {
-    const before = seed({ id: "u", title: "Groceries" });
+    const before = snapshotSeed({ id: "u", title: "Groceries" });
     setApiHandler(() => normalizeReassessment({ outcome: "clarify", question: null }));
 
     await submit("u", "Something about the groceries.");
@@ -584,7 +589,7 @@ describe("failures never leave the task half-changed", () => {
   });
 
   it("the database refusing the save changes nothing on the phone either", async () => {
-    const before = seed({ id: "d", title: "Essay", estimatedMinutes: 60, dueDate: at(3) });
+    const before = snapshotSeed({ id: "d", title: "Essay", estimatedMinutes: 60, dueDate: at(3) });
     modelAnswers({ outcome: "update", estimatedMinutes: 120, summary: "Double the length." });
     fakeDb.nextError = { code: "57014", message: "canceling statement due to statement timeout" };
 
@@ -866,6 +871,15 @@ describe("the route's boundary", () => {
     assert.equal(parseReassessBody({ ...base, steps: steps(30) })?.stepsCut, undefined);
     assert.equal(parseReassessBody({ ...base, steps: steps(31) })?.stepsCut, true);
     assert.equal(parseReassessBody({ ...base, steps: [...steps(2), { id: "s3", title: " " }] })?.stepsCut, true);
+  });
+
+  it("keeps the existing total when the request's steps were truncated", () => {
+    const result = normalizeReassessmentResult(
+      { outcome: "update", steps: [{ id: "s1", title: "A", estimatedMinutes: 10 }], estimatedMinutes: 75, summary: "" },
+      true,
+    );
+    assert.equal(result.steps, null);
+    assert.equal(result.estimatedMinutes, null);
   });
 });
 

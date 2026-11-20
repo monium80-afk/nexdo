@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { posthog } from "@/lib/posthog";
 
@@ -15,6 +16,7 @@ import { posthog } from "@/lib/posthog";
  */
 export function CrashScreen({ error, retry }: ErrorBoundaryProps) {
   const t = useTranslation();
+  const P = usePalette();
 
   useEffect(() => {
     console.error("[CrashScreen]", error);
@@ -22,10 +24,10 @@ export function CrashScreen({ error, retry }: ErrorBoundaryProps) {
   }, [error]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#FAF1E4" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: P.paper }}>
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 12 }}>
-        <Text style={{ fontSize: 24, fontWeight: "700", color: "#221C17", textAlign: "center" }}>{t.crash.title}</Text>
-        <Text style={{ fontSize: 16, lineHeight: 23, color: "#7A6E64", textAlign: "center" }}>{t.crash.body}</Text>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: P.ink, textAlign: "center" }}>{t.crash.title}</Text>
+        <Text style={{ fontSize: 16, lineHeight: 23, color: P.inkMuted, textAlign: "center" }}>{t.crash.body}</Text>
         <Pressable
           onPress={() => void retry()}
           accessibilityRole="button"

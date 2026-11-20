@@ -4,6 +4,7 @@ import { Text } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { colors, gradients } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 
 export type FeatherIconName = ComponentProps<typeof Feather>["name"];
 
@@ -30,6 +31,7 @@ type ButtonProps = {
 
 /** The glowing orange pill: the one action a screen is for. */
 export function PrimaryButton({ label, onPress, icon, size = "md", disabled = false, className = "" }: ButtonProps) {
+  const colors = useColors();
   const s = SIZES[size];
   return (
     <AnimatedPressable
@@ -51,6 +53,7 @@ export function PrimaryButton({ label, onPress, icon, size = "md", disabled = fa
 
 /** Same shape as PrimaryButton, as a lifted cream pill — for a second, lesser action. */
 export function SecondaryButton({ label, onPress, icon, size = "md", disabled = false, className = "" }: ButtonProps) {
+  const colors = useColors();
   const s = SIZES[size];
   return (
     <AnimatedPressable
@@ -131,6 +134,7 @@ export function IconButton({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const colors = useColors();
   const style = ICON_BUTTONS[variant];
   // A primary button with nothing to add yet sinks into the page instead of
   // just fading, so it doesn't read as an orange button that's broken. The

@@ -2,17 +2,17 @@ import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 
 // Floating over the blurred page, so a deeper shadow than a card in a list.
 const FLOAT_SHADOW = shadow("0 14px 30px rgba(20, 12, 6, 0.28), 0 2px 8px rgba(20, 12, 6, 0.12)", 10);
 
 function Meta({ icon, label }: { icon: "calendar" | "clock"; label: string }) {
+  const P = usePalette();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
       <SheetIcon name={icon} size={14} color={P.inkMuted} strokeWidth={1.8} />
@@ -45,6 +45,7 @@ export function TaskPreviewCard({
   kept?: boolean;
   onToggleKeep?: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const found = kept !== undefined;

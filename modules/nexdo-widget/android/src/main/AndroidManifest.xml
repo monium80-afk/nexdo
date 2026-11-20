@@ -1,0 +1,27 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- The home screen widget, small and medium (NexdoWidgetProviders.kt). -->
+    <receiver
+      android:name="expo.modules.nexdowidget.NextTaskSmallWidget"
+      android:label="@string/nexdo_widget_small_name"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/nexdo_widget_small_info" />
+    </receiver>
+    <receiver
+      android:name="expo.modules.nexdowidget.NextTaskMediumWidget"
+      android:label="@string/nexdo_widget_medium_name"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/nexdo_widget_medium_info" />
+    </receiver>
+  </application>
+</manifest>

@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useMemo, useState, type ReactNode } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,27 +7,32 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { DateDetail, DurationDetail, PriorityDetail, RepeatDetail, type DetailKey } from "@/components/addSheet/AddSheetDetails";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
 import { useKeyboardHeight } from "@/components/BottomSheet";
-import { nextReminderFor, type ReminderPreferences } from "@/lib/reminders";
-import { reminderPreferences, useSettingsStore } from "@/store/useSettingsStore";
+import { ReminderDetail, reminderSummary } from "@/components/ReminderParts";
+import { useAlarmLocked, useReminderPreferences } from "@/hooks/useReminderPreferences";
+import { openPaywall } from "@/lib/paywall";
+import { applyReminderChange, effectiveLead, normalizeReminder, reminderModeOf, sameReminder, type ReminderMode } from "@/lib/taskReminder";
 import { formatTime, longDay } from "@/components/addSheet/sheetFormat";
-import { colors } from "@/constants/theme";
+import { useIsDark, usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import type { DeadlineInput } from "@/lib/deadline";
 import { formatTaskLength } from "@/lib/formatDuration";
 import { buildRule, describeRule, recurrenceKind, type RecurrenceScope, type RuleInput } from "@/lib/recurrence";
-import { makeDeadline } from "@/lib/deadline";
+import { deadlineInstant, makeDeadline } from "@/lib/deadline";
 import { priorityLevelOf, type TaskChanges } from "@/lib/taskOperations";
 import { type LocalDate } from "@/lib/localDate";
 import { useTaskStore } from "@/store/useTaskStore";
 import { withUndo } from "@/store/useUndoStore";
-import type { RecurrenceRule, Task, TaskPriorityLevel } from "@/types/task";
+import type { RecurrenceRule, Task, TaskPriorityLevel, TaskReminderSettings } from "@/types/task";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 /** The card's tiles and the delete button: a step up from the dark card. */
+// The card and its tiles: ink in light mode; in dark mode a raised card one
+// step lighter than the page, with lighter tiles (the user's dark screenshot).
 const TILE = "#342C26";
+const DARK_CARD = "#2E2620";
+const DARK_TILE = "#3D342E";
 const LABEL = "#A99D92";
 const CHEVRON = "#8A7F76";
 const DATE_VALUE = "#F7A16C";
@@ -53,15 +58,19 @@ function ruleToInput(rule: RecurrenceRule): RuleInput {
 
 const PRIORITY_DIAMONDS: Record<TaskPriorityLevel, number> = { high: 3, medium: 2, low: 1 };
 
+/** What the card's detail sheet can show: one of the Add sheet's pickers, or the task's reminder. */
+type EditDetail = DetailKey | "reminder";
+
 /** One of the four tiles: a small label with its ›, and the value under it. */
 function Tile({ label, onPress, accessibilityValue, children }: { label: string; onPress: () => void; accessibilityValue: string; children: ReactNode }) {
+  const tile = useIsDark() ? DARK_TILE : TILE;
   return (
     <AnimatedPressable
       onPress={onPress}
       scaleTo={0.97}
       accessibilityRole="button"
       accessibilityLabel={`${label}, ${accessibilityValue}`}
-      style={{ flex: 1, height: 65, borderRadius: 16, backgroundColor: TILE, paddingTop: 13, paddingLeft: 12, paddingRight: 13 }}
+      style={{ flex: 1, height: 65, borderRadius: 16, backgroundColor: tile, paddingTop: 13, paddingLeft: 12, paddingRight: 13 }}
     >
       <View style={{ height: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Text style={{ fontFamily: "SpaceMono-Bold", fontSize: 10, lineHeight: 12, letterSpacing: 1.5, textTransform: "uppercase", color: LABEL, includeFontPadding: false }}>
@@ -76,6 +85,7 @@ function Tile({ label, onPress, accessibilityValue, children }: { label: string;
 
 /** Over the page while a task is edited: the page shows through, faded. */
 const PAGE_FADE = "rgba(250, 241, 228, 0.68)";
+const DARK_PAGE_FADE = "rgba(21, 16, 13, 0.72)";
 
 /**
  * The edit card over the page (Tasks, Today). The page stays exactly as it
@@ -90,6 +100,7 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
   const insets = useSafeAreaInsets();
   const { height: screenHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight(Boolean(task));
+  const dark = useIsDark();
   const [cardHeight, setCardHeight] = useState(0);
   const visible = Boolean(task);
   const highest = insets.top + 8;
@@ -106,7 +117,7 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <View style={{ flex: 1 }}>
-        <Pressable onPress={onClose} accessibilityLabel={t.common.close} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: PAGE_FADE }} />
+        <Pressable onPress={onClose} accessibilityLabel={t.common.close} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: dark ? DARK_PAGE_FADE : PAGE_FADE }} />
         {task ? (
           <View
             onLayout={(event) => setCardHeight(event.nativeEvent.layout.height)}
@@ -136,9 +147,13 @@ export function TaskEditModal({ taskId, anchorY, onClose }: { taskId: string | n
  * saves it all; nothing changes before that.
  */
 export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Task; maxHeight: number; onClose: () => void; onToggle: () => void }) {
+  const P = usePalette();
+  const dark = useIsDark();
+  const tile = dark ? DARK_TILE : TILE;
   const t = useTranslation();
   const rtl = useRtlText();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const tasks = useTaskStore((state) => state.tasks);
   const updateTask = useTaskStore((state) => state.updateTask);
   const deleteTask = useTaskStore((state) => state.deleteTask);
@@ -150,40 +165,48 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
     minutes: task.estimatedMinutes,
     repeat: task.recurrence ? ruleToInput(task.recurrence.rule) : null,
     priority: priorityLevelOf(task.importance),
-    muted: Boolean(task.reminders?.muted),
+    reminders: normalizeReminder(task.reminders),
   }));
   const [title, setTitle] = useState(baseline.title);
   const [deadline, setDeadline] = useState<DeadlineInput | undefined>(baseline.deadline);
   const [minutes, setMinutes] = useState(baseline.minutes);
   const [repeat, setRepeat] = useState<RuleInput | null>(baseline.repeat);
   const [priority, setPriority] = useState<TaskPriorityLevel>(baseline.priority);
-  const [muted, setMuted] = useState(baseline.muted);
-  const [detail, setDetail] = useState<DetailKey | null>(null);
-  // Whether reminders are on at all (Settings → Notifications → Reminders).
-  const remindersEverywhere = useSettingsStore((state) => state.deadlineRemindersEnabled);
-  // As a string, so this re-renders when a reminder setting changes but not on every store write.
-  const reminderPrefsKey = useSettingsStore((state) => JSON.stringify(reminderPreferences(state)));
-  const remindersOn = Boolean(deadline) && !muted && remindersEverywhere;
-  // When it will actually ring, worked out from the date being edited.
-  const reminderAt = useMemo(() => {
-    if (!deadline || muted || !remindersEverywhere) return null;
-    const draft: Task = { ...task, status: "pending", deadline: makeDeadline(deadline), reminders: { muted: false } };
-    return nextReminderFor(draft, JSON.parse(reminderPrefsKey) as ReminderPreferences, new Date(), t);
-  }, [deadline, muted, remindersEverywhere, reminderPrefsKey, task, t]);
+  const [reminders, setReminders] = useState<TaskReminderSettings | undefined>(baseline.reminders);
+  const [detail, setDetail] = useState<EditDetail | null>(null);
+  // Settings → Notifications, and whether alarms are on this plan (Pro).
+  const prefs = useReminderPreferences();
+  const alarmLocked = useAlarmLocked();
+  const mode = reminderModeOf(reminders);
+  const lead = effectiveLead(reminders, prefs.defaultLead);
+  const hasTime = Boolean(deadline?.time);
+  // Settings has this kind of reminder switched off: the task's own choice is
+  // kept, but nothing will come of it until the switch is on again.
+  const offInSettings = !prefs.enabled || (hasTime ? !prefs.timedReminders : !prefs.morningSummary);
+  const startsAt = deadline?.time ? deadlineInstant(makeDeadline(deadline)!).getTime() : null;
   const reminderText = !deadline
     ? t.redesign.taskNeedsDate
-    : !remindersEverywhere
+    : offInSettings
       ? t.redesign.turnOnInSettings
-      : muted
-        ? t.redesign.off
-        : reminderAt
-          ? new Date(reminderAt).toLocaleString(t.locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
-          : t.redesign.remindersBody;
+      : mode === "off"
+        ? t.reminderUi.off
+        : !hasTime
+          ? t.reminderUi.inSummary
+          : reminderSummary(mode, lead, t);
+  const reminderIcon = !deadline || offInSettings || mode === "off" ? "off" : hasTime && mode === "alarm" && prefs.alarmsAllowed ? "alarm" : "bell";
 
   const handleReminderPress = () => {
     if (!deadline) setDetail("date");
-    else if (!remindersEverywhere) showAlert(t.redesign.remindersOffEverywhere);
-    else setMuted((current) => !current);
+    else if (offInSettings) showAlert(t.redesign.remindersOffEverywhere);
+    else setDetail("reminder");
+  };
+  const changeReminder = (change: { mode?: ReminderMode; lead?: number | null }) =>
+    setReminders((current) => applyReminderChange(current, change));
+  // Alarms are Pro: the card closes (unsaved) and the plans open.
+  const handleUnlockAlarm = () => {
+    setDetail(null);
+    onClose();
+    openPaywall();
   };
 
   // How many open tasks fall on each day: the dots under the date picker's days.
@@ -213,7 +236,7 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
     if (minutes !== baseline.minutes) changes.estimatedMinutes = minutes;
     if (JSON.stringify(deadline ?? null) !== JSON.stringify(baseline.deadline ?? null)) changes.deadline = deadline ?? null;
     if (priority !== baseline.priority) changes.priority = priority;
-    if (muted !== baseline.muted) changes.remindersMuted = muted;
+    if (!sameReminder(reminders, baseline.reminders)) changes.reminder = { mode, lead: reminders?.lead ?? null };
     const repeatChanged = JSON.stringify(repeat) !== JSON.stringify(baseline.repeat);
 
     // The repeat after the rest, so it follows the deadline just set.
@@ -267,7 +290,7 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
       style={{
         marginHorizontal: -4,
         borderRadius: 22,
-        backgroundColor: P.ink,
+        backgroundColor: dark ? DARK_CARD : P.ink,
         paddingTop: 18,
         paddingHorizontal: 16,
         paddingBottom: 16,
@@ -343,49 +366,24 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
         </View>
       </View>
 
-      {/* This task's reminder, switched on and off right here (no page of its
-          own since 2026-11-09). Without a date there's nothing to remind
-          about: it opens the date picker instead. */}
-      <Pressable
-        onPress={handleReminderPress}
-        accessibilityRole={deadline && remindersEverywhere ? "switch" : "button"}
-        accessibilityState={deadline && remindersEverywhere ? { checked: !muted } : undefined}
-        accessibilityLabel={`${t.redesign.reminders}, ${reminderText}`}
-        style={({ pressed }) => ({
-          marginTop: 8.5,
-          height: 52,
-          borderRadius: 16,
-          backgroundColor: TILE,
-          paddingLeft: 12,
-          paddingRight: 13,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          opacity: pressed ? 0.8 : 1,
-        })}
-      >
-        <Feather name={remindersOn ? "bell" : "bell-off"} size={15} color={remindersOn ? DATE_VALUE : LABEL} />
-        {/* The bell says what the row is (the "REMINDERS" label cut off the time, 2026-11-09). */}
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: remindersOn ? "#FFFFFF" : QUIET_VALUE, includeFontPadding: false }}>
-          {reminderText}
-        </Text>
-        {deadline && remindersEverywhere ? (
-          <View
-            style={{
-              width: 36,
-              height: 22,
-              borderRadius: 11,
-              padding: 2,
-              backgroundColor: muted ? RING : P.accent,
-              alignItems: muted ? "flex-start" : "flex-end",
-            }}
+      {/* This task's reminder (2026-11-18): how it reminds and when, in its
+          own sheet. Without a date there's nothing to remind about: it opens
+          the date picker instead. */}
+      <View style={{ marginTop: 8.5, flexDirection: "row" }}>
+        <Tile label={t.reminderUi.remindMe} onPress={handleReminderPress} accessibilityValue={reminderText}>
+          {reminderIcon === "alarm" ? (
+            <MaterialCommunityIcons name="alarm" size={17} color={DATE_VALUE} />
+          ) : (
+            <Feather name={reminderIcon === "bell" ? "bell" : "bell-off"} size={15} color={reminderIcon === "bell" ? DATE_VALUE : LABEL} />
+          )}
+          <Text
+            numberOfLines={1}
+            style={{ flexShrink: 1, marginLeft: 8, fontFamily: "SpaceGrotesk-Bold", fontSize: 16, color: reminderIcon === "off" ? QUIET_VALUE : "#FFFFFF", includeFontPadding: false }}
           >
-            <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: "#FFFFFF" }} />
-          </View>
-        ) : (
-          <SheetIcon name="chevronRight" size={13} color={CHEVRON} strokeWidth={2.2} />
-        )}
-      </Pressable>
+            {reminderText}
+          </Text>
+        </Tile>
+      </View>
 
       {/* Delete on the left, Done on the right. */}
       <View style={{ marginTop: 14.5, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -394,7 +392,7 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
           scaleTo={0.92}
           accessibilityRole="button"
           accessibilityLabel={t.taskDetail.deleteTask}
-          style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: TILE, alignItems: "center", justifyContent: "center" }}
+          style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: tile, alignItems: "center", justifyContent: "center" }}
         >
           <Feather name="trash-2" size={18} color={DELETE_RED} />
         </AnimatedPressable>
@@ -422,11 +420,30 @@ export function TaskEditCard({ task, maxHeight, onClose, onToggle }: { task: Tas
       <Modal visible={detail !== null} transparent animationType="fade" statusBarTranslucent onRequestClose={closeDetail}>
         <View style={{ flex: 1, justifyContent: "flex-end" }}>
           <Pressable onPress={closeDetail} accessibilityLabel={t.common.close} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: P.veil }} />
-          <View style={{ paddingHorizontal: 12, paddingBottom: insets.bottom + 12 }}>
+          <View style={{ paddingHorizontal: 12, paddingBottom: insets.bottom + 12, maxHeight: Math.max(0, windowHeight - insets.top - 12) }}>
             {detail === "date" ? <DateDetail deadline={deadline} onChange={setDeadline} busy={busy} now={now} onBack={closeDetail} /> : null}
             {detail === "duration" ? <DurationDetail minutes={minutes} onChange={setMinutes} onBack={closeDetail} /> : null}
-            {detail === "repeat" ? <RepeatDetail repeat={repeat} onChange={setRepeat} deadline={deadline} now={now} onBack={closeDetail} /> : null}
+            {detail === "repeat" ? (
+              <ScrollView bounces={false} contentContainerStyle={{ flexGrow: 1 }}>
+                <RepeatDetail repeat={repeat} onChange={setRepeat} deadline={deadline} now={now} onBack={closeDetail} />
+              </ScrollView>
+            ) : null}
             {detail === "priority" ? <PriorityDetail value={priority} onChange={setPriority} onBack={closeDetail} /> : null}
+            {detail === "reminder" ? (
+              <ReminderDetail
+                mode={mode}
+                lead={lead}
+                customLead={reminders?.lead !== undefined}
+                hasTime={hasTime}
+                startsAt={startsAt}
+                alarmLocked={alarmLocked}
+                onChangeMode={(next) => changeReminder({ mode: next })}
+                onChangeLead={(minutes) => changeReminder({ lead: minutes })}
+                onUseDefault={() => changeReminder({ lead: null })}
+                onUnlockAlarm={handleUnlockAlarm}
+                onBack={closeDetail}
+              />
+            ) : null}
           </View>
         </View>
       </Modal>

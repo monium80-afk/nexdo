@@ -1,4 +1,4 @@
-import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { MOTION } from "@/constants/theme";
@@ -27,7 +27,9 @@ type AnimatedPressableProps = Omit<PressableProps, "style"> & {
 export function AnimatedPressable({ scaleTo = 0.96, onPressIn, onPressOut, style, ...rest }: AnimatedPressableProps) {
   const scale = useSharedValue(1);
   const reduceMotion = useReducedMotion();
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const callerTransform = StyleSheet.flatten(style)?.transform;
+  const callerTransforms = typeof callerTransform === "string" ? [] : (callerTransform ?? []);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [...callerTransforms, { scale: scale.value }] }));
 
   return (
     <ReanimatedPressable

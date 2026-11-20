@@ -358,3 +358,30 @@ describe("show_task with a group", () => {
     assert.equal(runner.run(call("show_task", { filter: { status: "completed" } })).ok, false);
   });
 });
+
+describe("live voice reminders (2026-11-18)", () => {
+  it("adds a task with an alarm 15 minutes before", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "Dentist", estimatedMinutes: 60, dueDatePhrase: "tomorrow at 3 pm", reminder: { type: "alarm", minutesBefore: 15 } }));
+    assert.equal(result.ok, true);
+    assert.deepEqual(byTitle("Dentist")!.reminders, { alarm: true, lead: 15 });
+  });
+
+  it("changes only the reminder of a task already on the list", () => {
+    const { runner } = withGym();
+    runner.run(call("update_task", { taskId: "t1", dueDatePhrase: "tomorrow at 7 am" }));
+    const result = runner.run(call("update_task", { taskId: "t1", reminder: { type: "notification", minutesBefore: 5 } }));
+    assert.deepEqual(result, { ok: true, taskId: "t1" });
+    assert.deepEqual(byTitle("Gym")!.reminders, { lead: 5 });
+    runner.run(call("update_task", { taskId: "t1", reminder: { type: "off" } }));
+    assert.deepEqual(byTitle("Gym")!.reminders, { muted: true });
+  });
+
+  it("an add_task naming a task already there sets its reminder instead of doing nothing", () => {
+    const { runner } = withGym();
+    const result = runner.run(call("add_task", { title: "Gym", reminder: { type: "alarm" } }));
+    assert.equal(result.ok, true);
+    assert.equal(tasks().length, 1);
+    assert.deepEqual(byTitle("Gym")!.reminders, { alarm: true });
+  });
+});

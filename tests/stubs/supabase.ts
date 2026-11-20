@@ -6,7 +6,7 @@ type Row = Record<string, unknown> & { id: string };
 
 /** Supabase's default cap on the rows one request returns. */
 const MAX_ROWS = 1000;
-type Filter = { column: string; values: unknown[] };
+type Filter = { column: string; values: unknown[]; greaterThan?: unknown };
 type Listener = { table: string; handler: (payload: unknown) => void };
 
 export const fakeDb = {
@@ -23,6 +23,8 @@ export const fakeDb = {
   upsertGate: null as Promise<void> | null,
   /** While set, reads answer only once it resolves — with the rows as they were when sent (see holdReads). */
   readGate: null as Promise<void> | null,
+  /** Runs once after a read snapshot is taken. */
+  onRead: null as (() => void) | null,
   /** Realtime subscriptions still open. */
   listeners: [] as Listener[],
   reset() {
@@ -33,6 +35,7 @@ export const fakeDb = {
     this.missingColumns.clear();
     this.upsertGate = null;
     this.readGate = null;
+    this.onRead = null;
   },
   rows(table: string): Row[] {
     return [...(this.tables.get(table)?.values() ?? [])];
@@ -81,7 +84,11 @@ function takeError() {
 }
 
 function matches(row: Row, filters: Filter[]) {
-  return filters.every((filter) => filter.values.includes(row[filter.column]));
+  return filters.every((filter) =>
+    filter.greaterThan === undefined
+      ? filter.values.includes(row[filter.column])
+      : String(row[filter.column]) > String(filter.greaterThan),
+  );
 }
 
 function query(name: string) {
@@ -95,8 +102,8 @@ function query(name: string) {
   let window: { from: number; to: number } | null = null;
   const builder = {
     select() {
-      if (mode !== "upsert") mode = "select";
-      else returning = true;
+      if (mode === "upsert" || mode === "delete") returning = true;
+      else mode = "select";
       return builder;
     },
     delete() {
@@ -105,6 +112,10 @@ function query(name: string) {
     },
     eq(column: string, value: unknown) {
       filters.push({ column, values: [value] });
+      return builder;
+    },
+    gt(column: string, value: unknown) {
+      filters.push({ column, values: [], greaterThan: value });
       return builder;
     },
     in(column: string, values: unknown[]) {
@@ -125,7 +136,7 @@ function query(name: string) {
     },
     upsert(input: Row | Row[], options?: { ignoreDuplicates?: boolean }) {
       mode = "upsert";
-      upsertRows = Array.isArray(input) ? input : [input];
+      upsertRows = structuredClone(Array.isArray(input) ? input : [input]);
       ignoreDuplicates = options?.ignoreDuplicates ?? false;
       return builder;
     },
@@ -151,7 +162,7 @@ function query(name: string) {
         const doomed = [...table(name).values()].filter((row) => matches(row, filters));
         doomed.forEach((row) => table(name).delete(row.id));
         fakeDb.writes.push({ table: name, kind: "delete", ids: doomed.map((row) => row.id) });
-        return resolve({ error: null });
+        return resolve({ data: returning ? doomed.map((row) => structuredClone(row)) : null, error: null });
       }
       let data = [...table(name).values()].filter((row) => matches(row, filters));
       if (sort) {
@@ -161,6 +172,9 @@ function query(name: string) {
       // Like a real Supabase project, never more than 1,000 rows a request.
       const from = window?.from ?? 0;
       data = data.slice(from, Math.min(window ? window.to + 1 : Infinity, from + MAX_ROWS)).map((row) => structuredClone(row));
+      const onRead = fakeDb.onRead;
+      fakeDb.onRead = null;
+      onRead?.();
       if (fakeDb.readGate) return void fakeDb.readGate.then(() => resolve({ data, error: null }));
       return resolve({ data, error: null });
     },

@@ -37,7 +37,8 @@ export default function OnboardingMic() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const rtl = useRtlText();
-  useStatusBarStyle("dark");
+  // Onboarding keeps its light design in dark mode too.
+  useStatusBarStyle("dark", { followTheme: false });
   const [busy, setBusy] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(420);
 

@@ -14,3 +14,6 @@ export type AppLanguage = "en" | "fr" | "es" | "ar" | "de" | "zh" | "hi" | "pt" 
 export const FOCUS_SOUND_CHOICES = ["off", "rain", "waves", "thunder", "stream", "forest", "fireplace"] as const;
 
 export type FocusSound = (typeof FOCUS_SOUND_CHOICES)[number];
+
+/** Settings → Dark mode: follow the phone, or always light / always dark (2026-11-17). */
+export type AppTheme = "system" | "light" | "dark";

@@ -83,6 +83,8 @@ export const gradients = {
   routineLine: fill("linear-gradient(90deg, #FFB089 0%, #F26A2E 100%)"),
   /** The page colour fading in over a sideways list's right edge, so it runs off into the page. */
   paperFadeRight: fill("linear-gradient(90deg, rgba(250, 241, 228, 0) 0%, #FAF1E4 100%)"),
+  /** The same fade onto dark mode's page (2026-11-17). */
+  paperFadeRightDark: fill("linear-gradient(90deg, rgba(21, 16, 13, 0) 0%, #15100D 100%)"),
   /** The Next card's "#1 Priority" pill. */
   rankPill: fill("linear-gradient(135deg, rgba(242, 101, 42, 0.38) 0%, rgba(242, 101, 42, 0.18) 100%)"),
 } satisfies Record<string, ViewStyle>;

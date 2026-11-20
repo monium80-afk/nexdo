@@ -25,9 +25,9 @@ function withWaitingNote(task: Task): Task {
   // A file not read yet has no text to give.
   if (pending.file || !pending.noteText.trim()) return task;
   const replaced = pending.submission.replacesNote;
-  const notes = task.aiContext.notes.filter((note) => note !== replaced);
-  if (notes.includes(pending.noteText)) return task;
-  return { ...task, aiContext: { ...task.aiContext, notes: [...notes, pending.noteText] } };
+  const notes = [...new Set([...task.aiContext.notes.filter((note) => note !== replaced), pending.noteText])];
+  if (notes.length === task.aiContext.notes.length && notes.every((note, index) => note === task.aiContext.notes[index])) return task;
+  return { ...task, aiContext: { ...task.aiContext, notes } };
 }
 
 /**

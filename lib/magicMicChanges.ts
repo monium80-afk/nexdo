@@ -34,21 +34,33 @@ function stepsKey(task: Task): string {
  * account's tasks rebuilds both).
  */
 function hasChanged(before: Task, after: Task): boolean {
-  return (
-    before.status !== after.status ||
-    Date.parse(before.updatedAt) !== Date.parse(after.updatedAt) ||
-    (before.subtasks !== after.subtasks && stepsKey(before) !== stepsKey(after))
-  );
+  if (before.status !== after.status || Date.parse(before.updatedAt) !== Date.parse(after.updatedAt)) return true;
+  if (stepsKey(before) !== stepsKey(after)) return true;
+  const ignored = new Set(["status", "updatedAt", "subtasks", "priorityScore", "suitabilityScore"]);
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    if (ignored.has(key)) continue;
+    if (!sameTaskField(before[key as keyof Task], after[key as keyof Task], key)) return true;
+  }
+  return false;
 }
 
-export function sameTaskField(left: unknown, right: unknown): boolean {
+const TIMESTAMP_FIELDS = new Set(["createdAt", "updatedAt", "completedAt", "dueDate", "pinnedAt", "closedAt"]);
+
+export function sameTaskField(left: unknown, right: unknown, field?: string): boolean {
+  if (field && TIMESTAMP_FIELDS.has(field) && typeof left === "string" && typeof right === "string") {
+    const leftTime = Date.parse(left);
+    const rightTime = Date.parse(right);
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime === rightTime;
+  }
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function sameTaskSnapshot(left: Task, right: Task): boolean {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
   for (const key of keys) {
-    if (!sameTaskField(left[key as keyof Task], right[key as keyof Task])) return false;
+    if (key === "priorityScore" || key === "suitabilityScore") continue;
+    if (!sameTaskField(left[key as keyof Task], right[key as keyof Task], key)) return false;
   }
   return true;
 }
@@ -148,7 +160,7 @@ export function discardSnapshots(
       const fields = new Map(
         [...micWrite.fields].filter(
           ([field, write]) =>
-            !write.conflicted && sameTaskField(task[field as keyof Task], write.lastWritten),
+            !write.conflicted && sameTaskField(task[field as keyof Task], write.lastWritten, field),
         ),
       );
       if (fields.size > 0) {

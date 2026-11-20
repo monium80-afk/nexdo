@@ -20,6 +20,8 @@ export const DARK_CARD_SHADOW = shadow("0 10px 24px rgba(34, 28, 23, 0.25)", 8);
 
 /** A thin rule between two rows of a day's list. */
 export const ROW_RULE = "#EADFD1";
+/** ROW_RULE in dark mode. */
+export const ROW_RULE_DARK = "#2A221C";
 
 /** One line of a day's list: a task or a routine, open or done. */
 export type DayEntry = {

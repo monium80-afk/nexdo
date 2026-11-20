@@ -40,7 +40,7 @@ import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useSessionCountdown } from "@/hooks/useSessionCountdown";
 import { useTaskAiAssist } from "@/hooks/useTaskAiAssist";
-import { useColors } from "@/hooks/useTheme";
+import { useColors, usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { showAlert } from "@/lib/alert";
 import { formatTaskLength } from "@/lib/formatDuration";
@@ -322,9 +322,10 @@ function DonePill({ onPress, flex }: { onPress: () => void; flex: number }) {
 
 /** A quiet text link under the session's buttons: Cancel session, End session. */
 function QuietLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const P = usePalette();
   return (
     <AnimatedPressable onPress={onPress} scaleTo={0.97} accessibilityRole="button" style={{ height: 36, justifyContent: "center", paddingHorizontal: 8 }}>
-      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14, color: "#7A6E64" }}>{label}</Text>
+      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 14, color: P.inkMuted }}>{label}</Text>
     </AnimatedPressable>
   );
 }
@@ -353,6 +354,7 @@ function SessionPanel(props: SessionPanelProps) {
 
 /** A session on a task with no duration: no timer, just finishing it — or leaving. */
 function UntimedSessionPanel({ onComplete, finish, controlsStyle, steps }: SessionPanelProps) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   return (
@@ -360,7 +362,7 @@ function UntimedSessionPanel({ onComplete, finish, controlsStyle, steps }: Sessi
       pointerEvents={finish ? "none" : "auto"}
       style={[{ alignSelf: "stretch", alignItems: "center", gap: 14 }, controlsStyle]}
     >
-      <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, lineHeight: 21, color: "#7A6E64", textAlign: "center" }, rtl]}>
+      <Text style={[{ fontFamily: "SpaceGrotesk-Regular", fontSize: 15, lineHeight: 21, color: P.inkMuted, textAlign: "center" }, rtl]}>
         {t.session.noTimer}
       </Text>
       {steps ? <View style={{ alignSelf: "stretch", marginTop: 8, marginBottom: 10 }}>{steps}</View> : null}
@@ -373,6 +375,7 @@ function UntimedSessionPanel({ onComplete, finish, controlsStyle, steps }: Sessi
 
 /** The running clock of a session with a length: the ring and gem, then Pause · Done. */
 function TimedSessionPanel({ session, caption, onComplete, finish, controlsStyle, steps }: SessionPanelProps) {
+  const P = usePalette();
   const t = useTranslation();
   const countdown = useSessionCountdown(session);
   const pause = useSessionStore((state) => state.pause);
@@ -405,9 +408,9 @@ function TimedSessionPanel({ session, caption, onComplete, finish, controlsStyle
           scaleTo={0.97}
           accessibilityRole="button"
           accessibilityLabel={countdown.isRunning ? t.session.pauseA11y : t.session.resumeA11y}
-          style={{ flex: 1, height: 50, borderRadius: 25, backgroundColor: "#221C17", alignItems: "center", justifyContent: "center" }}
+          style={{ flex: 1, height: 50, borderRadius: 25, backgroundColor: P.ink, alignItems: "center", justifyContent: "center" }}
         >
-          <Text numberOfLines={1} style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 16, color: "#FFFFFF", includeFontPadding: false, textAlignVertical: "center", textAlign: "center", lineHeight: 20 }}>
+          <Text numberOfLines={1} style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 16, color: P.inverse, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", lineHeight: 20 }}>
             {countdown.isRunning ? t.session.pause : t.session.resume}
           </Text>
         </AnimatedPressable>
@@ -479,6 +482,7 @@ export function NextTaskCard({
   onDetails: () => void;
 }) {
   const colors = useColors();
+  const P = colors.palette;
   const tabBarHeight = useTabBarHeight();
   const cardRef = useRef<ComponentRef<typeof View>>(null);
   const completeButtonRef = useRef<ComponentRef<typeof View>>(null);
@@ -574,7 +578,7 @@ export function NextTaskCard({
     transform: [{ scale: interpolate(finishGlow.value, [0, 1, 2], [1, 1.25, 1.12]) }],
   }));
   const finishTitleStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(finishTitleTone.value, [0, 1], ["#221C17", "#A89B90"]),
+    color: interpolateColor(finishTitleTone.value, [0, 1], [P.ink, "#A89B90"]),
   }));
   const finishControlsStyle = useAnimatedStyle(() => ({
     opacity: 1 - finishControls.value,
@@ -775,7 +779,10 @@ export function NextTaskCard({
   // Ticking the last open step finishes the whole task (see completeStep), so
   // that tap gets the same send-off as the Complete button.
   const handleToggleStep = (stepId: string) => {
-    if (pendingCelebrationTaskIds.current.has(task.id)) return;
+    if (pendingCelebrationTaskIds.current.has(task.id)) {
+      completeStep(task.id, stepId);
+      return;
+    }
     // Read fresh: the checklist hands its ticks over a moment after the tap,
     // possibly several in a row, each seeing the one before it.
     const steps = useTaskStore.getState().tasks.find((entry) => entry.id === task.id)?.subtasks ?? [];
@@ -889,7 +896,7 @@ export function NextTaskCard({
     <Animated.View
       ref={cardRef}
       pointerEvents={preview ? "none" : "auto"}
-      className={focusMode ? "flex-1" : "overflow-hidden rounded-[28px] bg-ink"}
+      className={focusMode ? "flex-1" : "overflow-hidden rounded-[28px] bg-ink-card"}
       style={[style, focusMode ? { flex: 1 } : null]}
     >
       {/* Dimming and sizing a waiting card is the parent's job, so both can
@@ -926,15 +933,15 @@ export function NextTaskCard({
                     scaleTo={0.94}
                     accessibilityRole="button"
                     accessibilityLabel={t.focusPage.back}
-                    style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: "#E2D6C8", backgroundColor: "#FCF7EF", alignItems: "center", justifyContent: "center" }}
+                    style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: P.line, backgroundColor: P.paperCard, alignItems: "center", justifyContent: "center" }}
                   >
-                    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#221C17" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={P.ink} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                       <Path d="M15 5l-7 7 7 7" />
                     </Svg>
                   </AnimatedPressable>
                 ) : null}
               </View>
-              <Text style={{ fontFamily: "SpaceMono-Bold", fontSize: 11, letterSpacing: 1.54, textTransform: "uppercase", color: "#7A6E64" }}>
+              <Text style={{ fontFamily: "SpaceMono-Bold", fontSize: 11, letterSpacing: 1.54, textTransform: "uppercase", color: P.inkMuted }}>
                 {t.focusPage.eyebrow}
               </Text>
               <View style={{ flex: 1, alignItems: "flex-end" }}>
@@ -951,7 +958,7 @@ export function NextTaskCard({
                     numberOfLines={2}
                     onTextLayout={(event) => setFocusTitleLines(event.nativeEvent.lines)}
                     style={[
-                      { fontFamily: "SpaceGrotesk-Bold", fontSize: 23, lineHeight: 28, letterSpacing: -0.46, color: "#221C17", textAlign: "center" },
+                      { fontFamily: "SpaceGrotesk-Bold", fontSize: 23, lineHeight: 28, letterSpacing: -0.46, color: P.ink, textAlign: "center" },
                       finish ? finishTitleStyle : null,
                     ]}
                   >
@@ -1004,8 +1011,8 @@ export function NextTaskCard({
                       accessibilityLabel={aiLocked ? `${t.focusPage.breakIntoSteps} — ${t.plan.proOnly}` : t.focusPage.breakIntoSteps}
                       style={{ height: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 6 }}
                     >
-                      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: "#C4461A" }}>{t.focusPage.breakIntoSteps}</Text>
-                      {aiLocked ? <Feather name="lock" size={12} color="#C4461A" /> : null}
+                      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: P.accentInk }}>{t.focusPage.breakIntoSteps}</Text>
+                      {aiLocked ? <Feather name="lock" size={12} color={P.accentInk} /> : null}
                     </AnimatedPressable>
                   </View>
 
@@ -1164,7 +1171,7 @@ export function NextTaskCard({
                           : undefined
                       }
                       style={rtl}
-                      className="font-grotesk-bold text-[23px] leading-[25px] tracking-[-0.46px] text-paper"
+                      className="font-grotesk-bold text-[23px] leading-[25px] tracking-[-0.46px] text-on-ink"
                     >
                       {task.title}
                     </Text>
@@ -1198,14 +1205,14 @@ export function NextTaskCard({
                     </Text>
                   </View>
                 )}
-                <View className="h-[14px] w-[1.5px] bg-paper/20" />
+                <View className="h-[14px] w-[1.5px] bg-on-ink/20" />
                 <View className="shrink-0 flex-row items-center gap-[5px]">
                   <AppIcon name="clock" size={14} strokeWidth={2} color={colors.palette.paperDim} />
                   <Text numberOfLines={1} className="font-grotesk-semibold text-[13px] text-paper-dim">
                     {formatTaskLength(plannedMinutes)}
                   </Text>
                 </View>
-                <View className="h-[14px] w-[1.5px] bg-paper/20" />
+                <View className="h-[14px] w-[1.5px] bg-on-ink/20" />
                 <View className="shrink-0 flex-row items-center gap-[5px]">
                   <Text className="font-grotesk-medium text-[13px] text-paper-faint">{t.next.score}</Text>
                   <Text className="font-grotesk-semibold text-[13px] text-paper-dim">{task.priorityScore}</Text>

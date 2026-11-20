@@ -29,7 +29,8 @@ import { AppIcon } from "@/components/icons/AppIcons";
 import { MicTaskCard } from "@/components/MicTaskCard";
 import { MicWaves } from "@/components/MicWaves";
 import { TAB_BAR_HEIGHT, tabBarBottom } from "@/components/TabBar";
-import { MOTION, colors, listItemLayout } from "@/constants/theme";
+import { MOTION, listItemLayout } from "@/constants/theme";
+import { useColors, useIsDark } from "@/hooks/useTheme";
 import { useLiveVoice } from "@/hooks/useLiveVoice";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -195,6 +196,7 @@ function tiltStyle(index: number) {
 
 /** A pill of glass on the dark overlay. */
 function GlassButton({ label, icon, onPress }: { label: string; icon?: FeatherIconName; onPress: () => void }) {
+  const colors = useColors();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -262,6 +264,8 @@ export function MagicMicOverlay({ blurTarget }: { blurTarget: RefObject<Componen
 }
 
 function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof View> | null> }) {
+  const colors = useColors();
+  const dark = useIsDark();
   const t = useTranslation();
   const rtl = useRtlText();
   const insets = useSafeAreaInsets();
@@ -348,8 +352,8 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
   const labels = useSharedValue(1);
 
   useEffect(() => {
-    // The dimmed page behind is still light: dark status bar icons.
-    setStatusBarStyle("dark");
+    // The dimmed page behind is still light: dark status bar icons (light ones in dark mode).
+    setStatusBarStyle(dark ? "light" : "dark");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (reduceMotion) {
       emerge.set(1);
@@ -418,9 +422,9 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
 
   /** The overlay goes, and the screen behind shows the live list again. */
   const closeOverlay = useCallback(() => {
-    setStatusBarStyle(TAB_STATUS_BAR[originTab ?? ""] ?? "light");
+    setStatusBarStyle(dark ? "light" : (TAB_STATUS_BAR[originTab ?? ""] ?? "light"));
     useMagicMicStore.getState().close();
-  }, [originTab]);
+  }, [originTab, dark]);
 
   /** Everything fades and the mic sinks back into the tab bar — no cards travel. */
   const leaveQuietly = useCallback(
@@ -701,7 +705,8 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
       </Animated.View>
       <Animated.View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: colors.palette.ink }, scrimStyle]}
+        style={[StyleSheet.absoluteFill, // The veil is the dark card colour: a near-black in dark mode too.
+        { backgroundColor: dark ? "#050403" : colors.palette.inkCard }, scrimStyle]}
       />
 
       <View style={{ flex: 1, paddingTop: insets.top }}>
@@ -727,7 +732,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
                   <Text className="text-center font-grotesk-bold text-[19px] leading-[25px] text-white" style={MARK_SHADOW}>
                     {t.live.hintTitle}
                   </Text>
-                  <Text className="mt-2 text-center font-grotesk-medium text-[13px] leading-[19px] text-paper" style={MARK_SHADOW}>
+                  <Text className="mt-2 text-center font-grotesk-medium text-[13px] leading-[19px] text-on-ink" style={MARK_SHADOW}>
                     {t.live.hintBody}
                   </Text>
                 </Animated.View>
@@ -801,7 +806,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
       >
         <View className="h-[30px] flex-row items-center gap-[7px] rounded-full px-[13px]" style={{ backgroundColor: "rgba(34, 28, 23, 0.85)" }}>
           {looksListening ? <View className="h-[9px] w-[9px] rounded-full" style={{ backgroundColor: "#E5452B" }} /> : null}
-          <Text className="font-grotesk-medium text-[13px] text-paper">{statusLabel}</Text>
+          <Text className="font-grotesk-medium text-[13px] text-on-ink">{statusLabel}</Text>
         </View>
       </Animated.View>
 
@@ -848,7 +853,7 @@ function MagicMic({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof Vi
           className="items-center justify-center rounded-full bg-ink"
           style={[{ width: SIDE_BUTTON, height: SIDE_BUTTON }, SIDE_SHADOW]}
         >
-          <AppIcon name="check" size={22} strokeWidth={2.6} color="#FFFFFF" />
+          <AppIcon name="check" size={22} strokeWidth={2.6} color={colors.palette.inverse} />
         </AnimatedPressable>
         </Animated.View>
       </View>

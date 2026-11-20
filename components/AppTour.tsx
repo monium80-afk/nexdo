@@ -15,6 +15,7 @@ import Animated, {
 
 import { PrimaryButton, TextButton } from "@/components/Button";
 import { MOTION, colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -35,8 +36,10 @@ type MeasureTarget = (done: (rect: TourRect) => void) => void;
 // Today's + lives in the page, not the bar: Today hands the tour a way to
 // find it on screen (app/(tabs)/index.tsx), read when that stop comes up.
 let measureAddButton: MeasureTarget | null = null;
+const measureAddButtonListeners = new Set<() => void>();
 export function registerTourAddButton(measure: MeasureTarget | null) {
   measureAddButton = measure;
+  measureAddButtonListeners.forEach((listener) => listener());
 }
 
 // Today, then how to add a task (most of what a Free account does by hand),
@@ -100,6 +103,7 @@ export function AppTour({
   onShowTab: (tab: TourTab) => void;
   children: ReactNode;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const reduceMotion = useReducedMotion();
@@ -123,6 +127,7 @@ export function AppTour({
   const focused = useIsFocused();
 
   const [step, setStep] = useState<number | null>(null);
+  const [measureVersion, setMeasureVersion] = useState(0);
   // The tab the tour started on, to go back to at the end.
   const [startTab, setStartTab] = useState<TourTab>("index");
 
@@ -179,18 +184,27 @@ export function AppTour({
   // overlay (which covers the screen, but measuring both keeps it exact).
   // Kept with the stop it was measured for, so a later visit (the tour replayed) measures afresh.
   const overlay = useRef<ComponentRef<typeof View>>(null);
-  const [found, setFound] = useState<{ step: number; rect: TourRect } | null>(null);
+  const [found, setFound] = useState<{ step: number; version: number; rect: TourRect } | null>(null);
   const onAddStop = current?.anchor === "add";
+  useEffect(() => {
+    const listener = () => setMeasureVersion((version) => version + 1);
+    measureAddButtonListeners.add(listener);
+    return () => {
+      measureAddButtonListeners.delete(listener);
+    };
+  }, []);
   useEffect(() => {
     if (!onAddStop || step === null) return;
     const timer = setTimeout(() => {
       measureAddButton?.((rect) =>
-        overlay.current?.measureInWindow((x, y) => setFound({ step, rect: { ...rect, x: rect.x - x, y: rect.y - y } })),
+        overlay.current?.measureInWindow((x, y) =>
+          setFound({ step, version: measureVersion, rect: { ...rect, x: rect.x - x, y: rect.y - y } }),
+        ),
       );
     }, ADD_MEASURE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [onAddStop, step]);
-  const addRect = onAddStop && found?.step === step ? found.rect : null;
+  }, [measureVersion, onAddStop, step]);
+  const addRect = onAddStop && found?.step === step && found.version === measureVersion ? found.rect : null;
 
   // Where the ring and the card's tail go: a slot on the bar (the card above
   // it), or the + at the top of Today (the card under it).
@@ -212,7 +226,13 @@ export function AppTour({
         />
       ) : null}
 
-      {children}
+      <View
+        pointerEvents="box-none"
+        importantForAccessibility={current ? "no-hide-descendants" : "auto"}
+        style={StyleSheet.absoluteFill}
+      >
+        {children}
+      </View>
 
       {/* Measured against for the + stop; never in the way. */}
       <View ref={overlay} collapsable={false} pointerEvents="none" style={StyleSheet.absoluteFill} />
@@ -261,10 +281,10 @@ export function AppTour({
 
           {/* The card's tail, over its edge: down at a bar slot, or up at the +. */}
           {barX !== undefined ? (
-            <View pointerEvents="none" style={[TAIL_STYLE, { left: barX - TAIL / 2, bottom: barHeight + CARD_GAP - TAIL / 2, borderBottomRightRadius: 3 }]} />
+            <View pointerEvents="none" style={[TAIL_STYLE, { backgroundColor: colors.cream[50],  left: barX - TAIL / 2, bottom: barHeight + CARD_GAP - TAIL / 2, borderBottomRightRadius: 3 }]} />
           ) : null}
           {top ? (
-            <View pointerEvents="none" style={[TAIL_STYLE, { left: top.x - TAIL / 2, top: top.y + ADD_RING / 2 + CARD_GAP - TAIL / 2, borderTopLeftRadius: 3 }]} />
+            <View pointerEvents="none" style={[TAIL_STYLE, { backgroundColor: colors.cream[50],  left: top.x - TAIL / 2, top: top.y + ADD_RING / 2 + CARD_GAP - TAIL / 2, borderTopLeftRadius: 3 }]} />
           ) : null}
         </Animated.View>
       ) : null}
@@ -297,6 +317,7 @@ function stepCopy(t: ReturnType<typeof useTranslation>, anchor: TourStop, micLoc
  * plain style — only the ripple, which starts and ends invisible, animates.
  */
 function Spotlight({ x, top, bottom, size }: { x: number; size: number } & ({ top: number; bottom?: never } | { bottom: number; top?: never })) {
+  const colors = useColors();
   const reduceMotion = useReducedMotion();
   const pulse = useSharedValue(0);
 

@@ -15,7 +15,8 @@ it("recursively deletes storage objects without treating folder entries as files
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.includes("/storage/v1/object/list/")) {
+    const method = init?.method ?? "GET";
+    if (url === "https://supabase.example/storage/v1/object/list/test-bucket" && method === "POST") {
       const { prefix } = JSON.parse(String(init?.body)) as { prefix: string };
       const count = listed.get(prefix) ?? 0;
       listed.set(prefix, count + 1);
@@ -36,6 +37,9 @@ it("recursively deletes storage objects without treating folder entries as files
       return new Response(JSON.stringify(entries), { status: 200 });
     }
 
+    if (url !== "https://supabase.example/storage/v1/object/test-bucket" || method !== "DELETE") {
+      throw new Error(`unexpected storage request: ${method} ${url}`);
+    }
     const { prefixes } = JSON.parse(String(init?.body)) as { prefixes: string[] };
     deleted.push(prefixes);
     return new Response(JSON.stringify(prefixes), { status: 200 });

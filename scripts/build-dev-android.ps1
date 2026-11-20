@@ -52,9 +52,9 @@ if ($LASTEXITCODE -ne 0) { throw "Gradle build failed" }
 $apk = Join-Path $project "android\app\build\outputs\apk\debug\app-debug.apk"
 Write-Host "Built: $apk"
 
-$deviceOutput = adb devices
+$deviceOutput = adb devices -l
 if ($LASTEXITCODE -ne 0) { throw "adb devices failed" }
-$devices = @($deviceOutput | Select-String -Pattern "^\S+\s+device$" | Where-Object { $_.Line -notmatch "^emulator-" })
+$devices = @($deviceOutput | Select-String -Pattern "^\S+\s+device\b.*\busb:\S+" | Where-Object { $_.Line -notmatch "^emulator-" })
 if ($devices.Count -gt 0) {
   adb -d install -r $apk
   if ($LASTEXITCODE -ne 0) { throw "adb install failed for the connected USB device" }

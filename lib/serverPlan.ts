@@ -149,23 +149,36 @@ function logUsageError(error: unknown) {
   }
 }
 
+type PlanUsageClaim = { result: number; month: string; claim_id: string };
+
 /**
- * The month's total after spending, -1 when the amount doesn't fit in what
- * is left of the limit, or null when the count couldn't be read. Loud, so a
- * missing setup isn't missed.
+ * Claims an amount against this month's allowance. Repeating the same claim
+ * identifier is safe if the RPC committed but its answer was lost.
  */
-async function spend(userId: string, meter: Meter, amount: number, limit: number | null): Promise<number | null> {
-  try {
-    return await callServerRpc<number>("claim_ai_plan_usage", {
-      p_user_id: userId,
-      p_meter: meter,
-      p_amount: Math.round(amount),
-      p_limit: limit,
-    });
-  } catch (error) {
-    logUsageError(error);
-    return null;
+async function spend(userId: string, meter: Meter, amount: number, limit: number | null, claimId: string): Promise<number | null> {
+  const args = {
+    p_user_id: userId,
+    p_meter: meter,
+    p_amount: Math.round(amount),
+    p_limit: limit,
+    p_claim_id: claimId,
+  };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const claim = await callServerRpc<PlanUsageClaim>("claim_ai_plan_usage", args);
+      if (!Number.isFinite(claim?.result) || !claim.month || claim.claim_id !== claimId) {
+        throw new Error("claim_ai_plan_usage returned an invalid claim record");
+      }
+      return claim.result;
+    } catch (error) {
+      if (error instanceof RpcConfigError || attempt === 1) {
+        logUsageError(error);
+        return null;
+      }
+      console.warn("[serverPlan] plan-usage claim outcome unknown; retrying the same claim", error);
+    }
   }
+  return null;
 }
 
 /**
@@ -179,13 +192,19 @@ async function spend(userId: string, meter: Meter, amount: number, limit: number
  * allowance that switches itself off whenever Supabase is unreachable or
  * misconfigured bounds nothing, exactly when nobody is watching.
  */
-export async function claimPlanUsage(request: Request, userId: string, meter: Meter, amount = 1): Promise<Response | null> {
+export async function claimPlanUsage(
+  request: Request,
+  userId: string,
+  meter: Meter,
+  amount = 1,
+  claimId = crypto.randomUUID(),
+): Promise<Response | null> {
   const check = await checkPlan(request, userId);
   const limit = PLAN_LIMITS[check.plan][meter];
   // Not part of the plan at all (Live voice on Free): nothing to count.
   if (limit <= 0) return refusal(meter, check);
 
-  const used = await spend(userId, meter, amount, limit);
+  const used = await spend(userId, meter, amount, limit, claimId);
   if (used === null) return usageUnavailable();
   return used === -1 ? refusal(meter, check) : null;
 }
@@ -259,6 +278,20 @@ export async function settleLiveSession(userId: string, sessionId: string, secon
   }
 }
 
+/** Marks a minted token as issued so scheduled cleanup only cancels sessions that never got one. */
+export async function markLiveSessionTokenIssued(userId: string, sessionId: string): Promise<void> {
+  try {
+    const marked = await callServerRpc<boolean>("mark_ai_live_session_token_issued", {
+      p_user_id: userId,
+      p_session_id: sessionId,
+    });
+    if (!marked) throw new Error("Live session was not marked as issued");
+  } catch (error) {
+    console.error("[serverPlan] couldn't mark a Live voice token as issued", error);
+    throw error;
+  }
+}
+
 /** The UTC calendar month a time falls in ("2026-10-01"), as ai_plan_usage counts them. */
 function usageMonth(at: Date): string {
   return `${at.toISOString().slice(0, 7)}-01`;
@@ -287,13 +320,33 @@ export async function readPlanUsage(userId: string): Promise<Record<Meter, numbe
 }
 
 /**
- * Gives back what claimPlanUsage spent at `claimedAt`, when the AI then
- * failed to answer — an outage shouldn't cost someone one of their five
- * breakdowns. Not across the start of a month: the claim's month is over and
- * its allowance can't be used any more, while the new month's count — the
- * only one a refund now reaches — never had it taken.
+ * Gives back the exact database claim when the AI then failed to answer —
+ * an outage shouldn't cost someone one of their five breakdowns.
  */
-export async function refundPlanUsage(userId: string, meter: Meter, claimedAt: Date, amount = 1): Promise<void> {
-  if (usageMonth(claimedAt) !== usageMonth(new Date())) return;
-  await spend(userId, meter, -Math.abs(amount), null);
+export async function refundPlanUsage(userId: string, meter: Meter, claimId: string, amount = 1): Promise<void> {
+  const args = {
+    p_claim_id: claimId,
+    p_user_id: userId,
+    p_meter: meter,
+    p_amount: Math.round(Math.abs(amount)),
+  };
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let refunded: boolean;
+    try {
+      refunded = await callServerRpc<boolean>("refund_ai_plan_usage", args);
+    } catch (error) {
+      if (error instanceof RpcConfigError || attempt === 1) {
+        console.error("[serverPlan] couldn't refund plan usage", error);
+        throw error;
+      }
+      console.warn("[serverPlan] refund outcome unknown; retrying the same claim", error);
+      continue;
+    }
+    if (!refunded) {
+      const error = new Error("refund_ai_plan_usage could not find the matching claim");
+      console.error("[serverPlan] couldn't refund plan usage", error);
+      throw error;
+    }
+    return;
+  }
 }

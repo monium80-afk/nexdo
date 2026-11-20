@@ -44,6 +44,8 @@ export const isPurchasesEnabled = API_KEY !== null;
 export const isTestStore = __DEV__ && API_KEY !== null && API_KEY === process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 
 let configured = false;
+let accountGeneration = 0;
+let customerInfoListener: ((customerInfo: CustomerInfo) => void) | null = null;
 
 // logIn / logOut can't overlap (the SDK refuses one while another is still
 // running), so account changes run one after another. The chain carries on
@@ -60,6 +62,8 @@ function enqueue(task: () => Promise<void>, propagateFailure = false): Promise<v
 // What the phone's trial reminder is set for, so an unchanged trial isn't
 // rescheduled on every refresh. Undefined until it has been set once.
 let trialReminderAt: number | null | undefined;
+let trialReminderRequestedAt: number | null | undefined;
+let trialReminderWritePending = false;
 // The latest sync, so an older one finishing late doesn't record its time.
 let trialReminderSync = 0;
 let identificationFailed = false;
@@ -71,8 +75,13 @@ let identificationFailed = false;
  */
 function syncTrialReminder(pro: PurchasesEntitlementInfo | null) {
   const fireAt = trialReminderTime(pro, Date.now());
-  if (fireAt === trialReminderAt) return;
+  if (
+    fireAt === trialReminderRequestedAt &&
+    (fireAt === trialReminderAt || trialReminderWritePending)
+  ) return;
+  trialReminderRequestedAt = fireAt;
   const sync = ++trialReminderSync;
+  trialReminderWritePending = true;
   let reminder: Parameters<typeof setTrialReminder>[0] = null;
   if (fireAt !== null && pro?.expirationDate) {
     const t = translate();
@@ -83,7 +92,9 @@ function syncTrialReminder(pro: PurchasesEntitlementInfo | null) {
   // nothing was scheduled, and the next refresh — or resyncTrialReminder,
   // once permission is given — tries again.
   void setTrialReminder(reminder).then((done) => {
-    if (done && sync === trialReminderSync) trialReminderAt = fireAt;
+    if (sync !== trialReminderSync) return;
+    trialReminderWritePending = false;
+    if (done) trialReminderAt = fireAt;
   });
 }
 
@@ -92,10 +103,17 @@ export function resyncTrialReminder() {
   syncTrialReminder(useSubscriptionStore.getState().pro);
 }
 
-function publish(customerInfo: CustomerInfo | null) {
+function publish(customerInfo: CustomerInfo | null, generation = accountGeneration) {
+  if (generation !== accountGeneration) return;
   const pro = customerInfo?.entitlements.active[PRO_ENTITLEMENT] ?? null;
   useSubscriptionStore.setState({ customerInfo, pro });
   syncTrialReminder(pro);
+}
+
+function registerCustomerInfoListener(generation: number) {
+  if (customerInfoListener) Purchases.removeCustomerInfoUpdateListener(customerInfoListener);
+  customerInfoListener = (customerInfo) => publish(customerInfo, generation);
+  Purchases.addCustomerInfoUpdateListener(customerInfoListener);
 }
 
 function errorCode(error: unknown): PURCHASES_ERROR_CODE | undefined {
@@ -112,7 +130,7 @@ function configure(apiKey: string) {
   // Renewals, cancellations and purchases made elsewhere all arrive here
   // on iOS and Android. Expo Go and web never call it, which is why every
   // action below also refreshes by hand.
-  Purchases.addCustomerInfoUpdateListener(publish);
+  registerCustomerInfoListener(accountGeneration);
   configured = true;
 }
 
@@ -125,6 +143,7 @@ function configure(apiKey: string) {
 export function identifyPurchaser(userId: string) {
   if (!API_KEY) return Promise.resolve();
   const apiKey = API_KEY;
+  const generation = ++accountGeneration;
   return enqueue(
     async () => {
       try {
@@ -134,17 +153,25 @@ export function identifyPurchaser(userId: string) {
         // that bought Pro there. Starting it as this account straight away would
         // leave that purchase behind.
         if (!configured) configure(apiKey);
-        if ((await Purchases.getAppUserID()) !== userId) {
+        if (generation !== accountGeneration) return;
+        const appUserId = await Purchases.getAppUserID();
+        if (generation !== accountGeneration) return;
+        if (appUserId !== userId) {
           // From onboarding's anonymous user, logging in a new account carries a
           // subscription bought before sign-up over to it.
           const { customerInfo } = await Purchases.logIn(userId);
-          publish(customerInfo);
+          if (generation !== accountGeneration) return;
+          registerCustomerInfoListener(generation);
+          publish(customerInfo, generation);
         } else {
-          publish(await Purchases.getCustomerInfo());
+          const customerInfo = await Purchases.getCustomerInfo();
+          if (generation !== accountGeneration) return;
+          registerCustomerInfoListener(generation);
+          publish(customerInfo, generation);
         }
-        identificationFailed = false;
+        if (generation === accountGeneration) identificationFailed = false;
       } catch (error) {
-        identificationFailed = true;
+        if (generation === accountGeneration) identificationFailed = true;
         throw error;
       }
     },
@@ -161,10 +188,13 @@ export function identifyPurchaser(userId: string) {
 export function startAnonymousPurchaser() {
   if (!API_KEY) return Promise.resolve();
   const apiKey = API_KEY;
+  const generation = accountGeneration;
   return enqueue(async () => {
+    if (generation !== accountGeneration) return;
     if (configured) return;
     configure(apiKey);
-    publish(await Purchases.getCustomerInfo());
+    const customerInfo = await Purchases.getCustomerInfo();
+    publish(customerInfo, generation);
   });
 }
 
@@ -173,18 +203,26 @@ export function startAnonymousPurchaser() {
  * account on this phone doesn't inherit this one's Pro.
  */
 export function resetPurchaser() {
-  publish(null);
+  const generation = ++accountGeneration;
+  publish(null, generation);
+  if (customerInfoListener) {
+    Purchases.removeCustomerInfoUpdateListener(customerInfoListener);
+    customerInfoListener = null;
+  }
   return enqueue(async () => {
     if (!configured) return;
     if (!(await Purchases.isAnonymous())) await Purchases.logOut();
+    if (generation === accountGeneration) registerCustomerInfoListener(generation);
   });
 }
 
 /** Reads the account's customer info again. The SDK caches it, so this is cheap. */
 export async function refreshCustomerInfo() {
   if (!configured) return;
+  const generation = accountGeneration;
   try {
-    publish(await Purchases.getCustomerInfo());
+    const customerInfo = await Purchases.getCustomerInfo();
+    publish(customerInfo, generation);
   } catch (error) {
     console.warn("[purchases] couldn't refresh customer info", error);
   }
@@ -301,17 +339,20 @@ export type PurchaseOutcome = "purchased" | "cancelled" | "pending" | "offline" 
 export async function purchasePlan(plan: PurchasesPackage): Promise<PurchaseOutcome> {
   // An account change still on its way to RevenueCat finishes first, so the
   // purchase is made for — and its Pro shown to — the account now signed in.
+  const generation = accountGeneration;
   await queue;
-  if (!configured || identificationFailed) return "error";
+  if (generation !== accountGeneration || !configured || identificationFailed) return "error";
   try {
     const { customerInfo } = await Purchases.purchasePackage(plan);
-    publish(customerInfo);
+    if (generation !== accountGeneration) return "error";
+    publish(customerInfo, generation);
     if (customerInfo.entitlements.active[PRO_ENTITLEMENT]) return "purchased";
     // Paid for, but RevenueCat didn't unlock Pro: the product isn't attached
     // to the entitlement in the dashboard.
     console.warn(`[purchases] ${plan.product.identifier} bought, but "${PRO_ENTITLEMENT}" isn't active`);
     return "error";
   } catch (error) {
+    if (generation !== accountGeneration) return "error";
     const code = errorCode(error);
     if (code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR) return "cancelled";
     // Waiting on something outside the app (a parent's approval, a slow
@@ -330,13 +371,16 @@ export type RestoreOutcome = "restored" | "nothing" | "offline" | "error";
 
 /** Brings back Pro bought with this phone's App Store / Google Play account. */
 export async function restorePurchases(): Promise<RestoreOutcome> {
+  const generation = accountGeneration;
   await queue;
-  if (!configured || identificationFailed) return "error";
+  if (generation !== accountGeneration || !configured || identificationFailed) return "error";
   try {
     const customerInfo = await Purchases.restorePurchases();
-    publish(customerInfo);
+    if (generation !== accountGeneration) return "error";
+    publish(customerInfo, generation);
     return customerInfo.entitlements.active[PRO_ENTITLEMENT] ? "restored" : "nothing";
   } catch (error) {
+    if (generation !== accountGeneration) return "error";
     console.warn("[purchases] restore failed", error);
     return isOffline(errorCode(error)) ? "offline" : "error";
   }

@@ -48,7 +48,7 @@ export function useCardValue(feature: ProFeature) {
   return new Intl.NumberFormat(t.locale).format(feature.amount);
 }
 
-function Card({ feature, height, highlighted, hidden }: { feature: ProFeature; height: number; highlighted: boolean; hidden: boolean }) {
+function Card({ feature, height, highlighted, hidden, onOpen }: { feature: ProFeature; height: number; highlighted: boolean; hidden: boolean; onOpen: (feature: ProFeatureId) => void }) {
   const t = useTranslation();
   const copy = t.paywall;
   const rtl = useIsRtl();
@@ -64,6 +64,11 @@ function Card({ feature, height, highlighted, hidden }: { feature: ProFeature; h
       accessibilityElementsHidden={hidden}
       accessibilityLabel={`${name}: ${value} ${copy.units[feature.unit]}. ${line}`}
       accessibilityHint={copy.cardHint}
+      accessibilityActions={hidden ? undefined : [{ name: "activate", label: name }]}
+      onAccessibilityTap={hidden ? undefined : () => onOpen(feature.id)}
+      onAccessibilityAction={({ nativeEvent }) => {
+        if (!hidden && nativeEvent.actionName === "activate") onOpen(feature.id);
+      }}
       style={{
         width: CARD_W,
         height,
@@ -200,7 +205,7 @@ export function FeatureCarousel({
           <Animated.View style={[{ flexDirection: "row", width: LOOP * sets.length }, rowStyle]}>
             {sets.map((set) =>
               PRO_FEATURES.map((feature) => (
-                <Card key={`${set}-${feature.id}`} feature={feature} height={cardHeight} highlighted={feature.id === highlight} hidden={set !== 1} />
+                <Card key={`${set}-${feature.id}`} feature={feature} height={cardHeight} highlighted={feature.id === highlight} hidden={set !== 1} onOpen={onOpen} />
               )),
             )}
           </Animated.View>

@@ -6,8 +6,8 @@
 --
 --  - ai_trials / claim_ai_trial_call: the signed-out onboarding trial, in full
 --    (the table was first added to schema.sql only). The function now admits
---    new trial ids one at a time, so a burst of them can't all get past the
---    per-IP and per-day ceilings together.
+--     new trial ids one at a time, and counts every successful route claim
+--     against the shared per-IP and global daily spending ceilings.
 --  - ai_usage / claim_ai_user_call: new — a daily ceiling on each signed-in
 --    account's AI calls (lib/aiUsageLimit.ts).
 
@@ -32,14 +32,26 @@ create index if not exists ai_trials_ip_hash_created_at_idx on public.ai_trials 
 
 alter table public.ai_trials enable row level security;
 
+create table if not exists public.ai_trial_daily_usage (
+  usage_date date not null,
+  ip_hash text not null,
+  calls int not null default 0,
+  primary key (usage_date, ip_hash)
+);
+
+create index if not exists ai_trial_daily_usage_date_idx on public.ai_trial_daily_usage (usage_date);
+
+alter table public.ai_trial_daily_usage enable row level security;
+revoke all on public.ai_trial_daily_usage from public, anon, authenticated;
+
 -- Spends one call of p_route for this trial id. Returns 'ok', or why not:
 -- 'trial_used' (this id has used its allowance for the route), 'ip_limit'
--- (too many new ids from one IP today) or 'global_limit' (too many new ids
--- today overall). The row lock makes the per-id count exact under parallel
--- requests. New ids are admitted one at a time (the advisory lock below):
--- otherwise a burst of first requests from different ids could all count
--- today's rows before any of them was inserted, and all get past the two
--- daily ceilings together.
+-- (the IP's daily call budget or new-id admission limit is reached) or
+-- 'global_limit' (the shared daily call budget or new-id admission limit is
+-- reached). The row lock makes the per-id count exact under parallel requests.
+-- New ids are admitted one at a time (the advisory lock below): otherwise a
+-- burst of first requests from different ids could all count today's rows
+-- before any of them was inserted and pass the admission ceilings together.
 create or replace function public.claim_ai_trial_call(
   p_trial_id text,
   p_ip_hash text,
@@ -55,6 +67,9 @@ as $$
 declare
   v_calls jsonb;
   v_used int;
+  v_ip_calls int;
+  v_daily_calls int;
+  v_day date := (now() at time zone 'utc')::date;
 begin
   -- Rows are only needed while they can still limit someone; the privacy
   -- policy promises they go after 90 days. Cheap on the created_at index.
@@ -89,6 +104,26 @@ begin
   if v_used >= p_route_limit then
     return 'trial_used';
   end if;
+
+  -- Every admitted route call shares the same daily budget. The lock makes
+  -- the global count and per-IP increment atomic across existing and new ids.
+  perform pg_advisory_xact_lock(hashtext('claim_ai_trial_daily'));
+  select calls into v_ip_calls from ai_trial_daily_usage
+  where usage_date = v_day and ip_hash = p_ip_hash
+  for update;
+  if coalesce(v_ip_calls, 0) >= p_ip_daily_limit then
+    return 'ip_limit';
+  end if;
+  select coalesce(sum(calls), 0) into v_daily_calls
+  from ai_trial_daily_usage where usage_date = v_day;
+  if v_daily_calls >= p_global_daily_limit then
+    return 'global_limit';
+  end if;
+
+  insert into ai_trial_daily_usage (usage_date, ip_hash, calls)
+  values (v_day, p_ip_hash, 1)
+  on conflict (usage_date, ip_hash) do update
+    set calls = ai_trial_daily_usage.calls + 1;
 
   update ai_trials
   set calls = jsonb_set(calls, array[p_route], to_jsonb(v_used + 1))

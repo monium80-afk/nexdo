@@ -1,4 +1,5 @@
 import { extractTextFromMedia, measureAudioSeconds } from "@/lib/ai/gemini";
+import { languageName } from "@/lib/ai/language";
 import { authenticate, unauthorized } from "@/lib/serverAuth";
 import { checkPlanAllowance, claimPlanUsage, refundPlanUsage } from "@/lib/serverPlan";
 import {
@@ -88,12 +89,6 @@ export function contextInstruction(kind: "photo" | "document", taskTitle: string
 
 // Text that's already in the image/file stays in its own language; only what
 // the model writes in its own words (a description) follows the app language.
-const DESCRIPTION_LANGUAGE: Partial<Record<AppLanguage, string>> = {
-  fr: " Keep extracted text in its original language, but write any description of your own in French.",
-  es: " Keep extracted text in its original language, but write any description of your own in Spanish.",
-  de: " Keep extracted text in its original language, but write any description of your own in German.",
-};
-
 // The accompanying message steers what to look for, but must not become the
 // answer: the model reads the file, it doesn't act on the request. Acting on
 // it here would produce text that the layer above then reads as a new task.
@@ -203,13 +198,15 @@ export async function POST(request: Request) {
     usage = { meter: "voice", amount: seconds };
   }
 
-  const claimedAt = new Date();
-  const limitResponse = await claimPlanUsage(request, userId, usage.meter, usage.amount);
+  const claimId = crypto.randomUUID();
+  const limitResponse = await claimPlanUsage(request, userId, usage.meter, usage.amount, claimId);
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
   const userInstruction = clampString(parsed.userInstruction, MAX_INSTRUCTION_LENGTH);
-  const languageNote = kind === "voice" || !language ? "" : (DESCRIPTION_LANGUAGE[language] ?? "");
+  const languageNote = kind === "voice" || !language
+    ? ""
+    : ` Keep extracted text in its original language, but write any description of your own in ${languageName(language)}.`;
   const forTask = parsed.purpose === "context" && kind !== "voice";
   const instruction = forTask
     ? contextInstruction(kind, clampString(parsed.taskTitle, MAX_TITLE_LENGTH))
@@ -233,7 +230,7 @@ export async function POST(request: Request) {
     // caller's catch branch runs and says "couldn't transcribe" instead.
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[api/extract-text] ${kind} ${mimeType} ${bytes}B failed:`, reason);
-    await refundPlanUsage(userId, usage.meter, claimedAt, usage.amount);
+    await refundPlanUsage(userId, usage.meter, claimId, usage.amount);
     return Response.json({ text: "", error: "extraction_failed" } satisfies ExtractTextResponseBody, { status: 502 });
   }
 }

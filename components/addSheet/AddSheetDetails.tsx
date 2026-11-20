@@ -16,20 +16,21 @@ import {
 } from "@/components/addSheet/SheetParts";
 import { dayPeriods, formatTime, shortDay, uses24HourClock } from "@/components/addSheet/sheetFormat";
 import { NO_DURATION } from "@/components/TaskFormFields";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { DeadlineInput } from "@/lib/deadline";
 import { makeDeadline } from "@/lib/deadline";
 import { addDaysToKey, addMonthsToKey, keyParts, keyToLocalDate, pad, toLocalDateKey, type LocalDate } from "@/lib/localDate";
 import { buildRule, describeRule, weekdayName, weekdayOf, type RuleInput } from "@/lib/recurrence";
+import { showAlert } from "@/lib/alert";
 import type { RecurrenceFrequency, TaskPriorityLevel, Weekday } from "@/types/task";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
-const P = colors.palette;
 const CARD_SHADOW = SOFT_SHADOW;
 
 /** The card a detail's own screen sits in. */
 export function DetailCard({ children }: { children: ReactNode }) {
+  const P = usePalette();
   return (
     <View
       style={[
@@ -46,6 +47,7 @@ export type DetailKey = "date" | "duration" | "repeat" | "priority";
 
 /** Date · Duration · Repeat · Priority, each with its value and a ›. */
 export function DetailsList({ rows, onOpen }: { rows: { key: DetailKey; icon: SheetIconName; label: string; value: string }[]; onOpen: (key: DetailKey) => void }) {
+  const P = usePalette();
   return (
     <View style={[{ borderRadius: 18, backgroundColor: P.paperCard, overflow: "hidden" }, CARD_SHADOW]}>
       {rows.map((row, index) => (
@@ -75,7 +77,6 @@ export function DetailsList({ rows, onOpen }: { rows: { key: DetailKey; icon: Sh
 
 // ─── Time ─────────────────────────────────────────────────────────────────
 
-const MINUTE_STEPS = Array.from({ length: 12 }, (_, index) => index * 5);
 const TIME_MINUTES = Array.from({ length: 60 }, (_, index) => index);
 
 /** A time of day on wheels: hour, minutes (5 at a time) and AM/PM — or 24-hour where that's the custom. */
@@ -138,6 +139,7 @@ function TimeWheel({ time, onChange }: { time: string; onChange: (time: string) 
 
 /** A calendar for a day further out: the system's own (a dialog on Android, inline on iOS). */
 function DayCalendar({ value, minimum, onPick, onClose }: { value: LocalDate; minimum: LocalDate; onPick: (date: LocalDate) => void; onClose: () => void }) {
+  const P = usePalette();
   // A day picked closes it (the inline iOS calendar picks on a tap), and so does Cancel.
   const handle = (event: DateTimePickerEvent, picked?: Date) => {
     if (event.type === "set" && picked) onPick(toLocalDateKey(picked));
@@ -150,7 +152,6 @@ function DayCalendar({ value, minimum, onPick, onClose }: { value: LocalDate; mi
       mode="date"
       display={Platform.OS === "ios" ? "inline" : "default"}
       accentColor={P.accent}
-      themeVariant="light"
       onChange={handle}
     />
   );
@@ -160,10 +161,20 @@ function DayCalendar({ value, minimum, onPick, onClose }: { value: LocalDate; mi
 
 const DAY_TILES = 14;
 
-/** The time a deadline gets when "At a set time" is switched on: the next hour today, 9:00 another day. */
-function defaultTime(date: LocalDate, now: Date): string {
-  if (date !== toLocalDateKey(now)) return "09:00";
-  return `${pad(Math.min(23, now.getHours() + 1))}:00`;
+/** The time a deadline gets when "At a set time" is switched on: a future time today, 9:00 another day. */
+function defaultTime(date: LocalDate, now: Date): string | undefined {
+  const today = toLocalDateKey(now);
+  if (date > today) return "09:00";
+  if (date < today) return undefined;
+
+  const next = new Date(now);
+  next.setHours(Math.min(23, now.getHours() + 1), 0, 0, 0);
+  if (next <= now) {
+    const minute = Math.min(59, Math.ceil((now.getMinutes() + 1) / 5) * 5);
+    next.setHours(now.getHours(), minute, 0, 0);
+  }
+  if (next <= now || toLocalDateKey(next) !== date) return undefined;
+  return `${pad(next.getHours())}:${pad(next.getMinutes())}`;
 }
 
 export function DateDetail({
@@ -180,6 +191,7 @@ export function DateDetail({
   now: Date;
   onBack: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const today = toLocalDateKey(now);
   const days = useMemo(() => Array.from({ length: DAY_TILES }, (_, index) => addDaysToKey(today, index)), [today]);
@@ -268,7 +280,18 @@ export function DateDetail({
             <Toggle
               value={!!deadline.time}
               accessibilityLabel={t.addSheet.atSetTime}
-              onChange={(on) => onChange(on ? { date: deadline.date, time: defaultTime(deadline.date, now) } : { date: deadline.date })}
+              onChange={(on) => {
+                if (!on) {
+                  onChange({ date: deadline.date });
+                  return;
+                }
+                const time = defaultTime(deadline.date, new Date());
+                if (!time) {
+                  showAlert(t.form.deadlineInPast);
+                  return;
+                }
+                onChange({ date: deadline.date, time });
+              }}
             />
           </View>
           {deadline.time ? <TimeWheel time={deadline.time} onChange={(time) => onChange({ date: deadline.date, time })} /> : null}
@@ -285,10 +308,11 @@ const HOUR_STEPS = Array.from({ length: Math.floor(MAX_DURATION_MINUTES / 60) + 
 const DURATION_SHORTCUTS = [15, 30, 60, 120, NO_DURATION];
 
 export function DurationDetail({ minutes, onChange, onBack }: { minutes: number; onChange: (minutes: number) => void; onBack: () => void }) {
+  const P = usePalette();
   const t = useTranslation();
   const boundedMinutes = Math.min(MAX_DURATION_MINUTES, minutes);
   const hours = Math.floor(boundedMinutes / 60);
-  const minuteIndex = Math.min(11, Math.round((boundedMinutes % 60) / 5));
+  const minute = boundedMinutes % 60;
   const setDuration = (nextHours: number, nextMinutes: number) => onChange(Math.min(MAX_DURATION_MINUTES, nextHours * 60 + nextMinutes));
 
   return (
@@ -298,15 +322,15 @@ export function DurationDetail({ minutes, onChange, onBack }: { minutes: number;
         <Wheel
           items={HOUR_STEPS.map(String)}
           index={hours}
-          onChange={(index) => setDuration(index, MINUTE_STEPS[minuteIndex])}
+          onChange={(index) => setDuration(index, minute)}
           width={60}
           accessibilityLabel={t.addSheet.hoursShort}
         />
         <WheelUnit label={t.addSheet.hoursShort} />
         <Wheel
-          items={MINUTE_STEPS.map(pad)}
-          index={minuteIndex}
-          onChange={(index) => setDuration(hours, MINUTE_STEPS[index])}
+          items={TIME_MINUTES.map(pad)}
+          index={minute}
+          onChange={(index) => setDuration(hours, TIME_MINUTES[index])}
           width={60}
           accessibilityLabel={t.addSheet.minutesShort}
         />
@@ -338,6 +362,7 @@ const FREQUENCIES: RecurrenceFrequency[] = ["daily", "weekly", "monthly", "yearl
 const WEEK: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
 function RepeatRow({ label, children, first = false }: { label: string; children: ReactNode; first?: boolean }) {
+  const P = usePalette();
   return (
     <View
       style={{
@@ -357,6 +382,7 @@ function RepeatRow({ label, children, first = false }: { label: string; children
 }
 
 function RoundStep({ label, onPress, disabled, accessibilityLabel }: { label: string; onPress: () => void; disabled: boolean; accessibilityLabel: string }) {
+  const P = usePalette();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -373,6 +399,7 @@ function RoundStep({ label, onPress, disabled, accessibilityLabel }: { label: st
 
 /** A small light pill for a time or a date in a row ("3:00 PM"). */
 function ValuePill({ label, onPress }: { label: string; onPress: () => void }) {
+  const P = usePalette();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -398,6 +425,7 @@ export function RepeatDetail({
   now: Date;
   onBack: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const [timeOpen, setTimeOpen] = useState(false);
   const [endCalendarOpen, setEndCalendarOpen] = useState(false);
@@ -565,8 +593,8 @@ export function RepeatDetail({
                   accessibilityState={{ selected: picked }}
                   style={{ flex: 1, borderRadius: 16, paddingVertical: 11, paddingHorizontal: 12, backgroundColor: picked ? P.ink : P.tile, gap: 3 }}
                 >
-                  <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: picked ? "#FFFFFF" : P.ink }}>{option.title}</Text>
-                  <Text style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 12, lineHeight: 15.6, color: picked ? "#BFB2A7" : P.inkMuted }}>{option.hint}</Text>
+                  <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: picked ? P.inverse : P.ink }}>{option.title}</Text>
+                  <Text style={{ fontFamily: "SpaceGrotesk-Regular", fontSize: 12, lineHeight: 15.6, color: picked ? P.inkFaint : P.inkMuted }}>{option.hint}</Text>
                 </AnimatedPressable>
               );
             })}
@@ -586,6 +614,7 @@ const LEVELS: { level: TaskPriorityLevel; diamonds: number }[] = [
 ];
 
 export function PriorityDetail({ value, onChange, onBack }: { value: TaskPriorityLevel; onChange: (level: TaskPriorityLevel) => void; onBack: () => void }) {
+  const P = usePalette();
   const t = useTranslation();
   return (
     <DetailCard>

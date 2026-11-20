@@ -91,10 +91,18 @@ function scaleRemaining(subtasks: Subtask[], target: number): Subtask[] {
   if (open.length === 0 || total === 0 || total === target) return subtasks;
   const factor = target / total;
   const scaled = new Map(open.map((subtask) => [subtask.id, Math.max(MIN_STEP_MINUTES, Math.round(subtask.estimatedMinutes * factor))]));
-  // Rounding leftovers go to the longest step, as long as it stays a real step.
-  const drift = target - [...scaled.values()].reduce((sum, minutes) => sum + minutes, 0);
-  const longest = open.reduce((a, b) => (scaled.get(b.id)! > scaled.get(a.id)! ? b : a));
-  scaled.set(longest.id, Math.max(MIN_STEP_MINUTES, scaled.get(longest.id)! + drift));
+  let drift = target - [...scaled.values()].reduce((sum, minutes) => sum + minutes, 0);
+  if (drift < 0) {
+    for (const subtask of open.slice().sort((a, b) => scaled.get(b.id)! - scaled.get(a.id)!)) {
+      const reduction = Math.min(-drift, scaled.get(subtask.id)! - MIN_STEP_MINUTES);
+      scaled.set(subtask.id, scaled.get(subtask.id)! - reduction);
+      drift += reduction;
+      if (drift === 0) break;
+    }
+  } else if (drift > 0) {
+    const longest = open.reduce((a, b) => (scaled.get(b.id)! > scaled.get(a.id)! ? b : a));
+    scaled.set(longest.id, scaled.get(longest.id)! + drift);
+  }
   return subtasks.map((subtask) => (scaled.has(subtask.id) ? { ...subtask, estimatedMinutes: scaled.get(subtask.id)! } : subtask));
 }
 
@@ -125,8 +133,23 @@ function mergeSubtasks(
   stepsDone: string[],
 ): { subtasks: Subtask[]; stepsChanged: boolean; dropped: boolean } {
   const ordered = (current.subtasks ?? []).slice().sort(byOrder);
-  const baseById = new Map((base.subtasks ?? []).map((subtask) => [subtask.id, subtask]));
+  const baseOrdered = (base.subtasks ?? []).slice().sort(byOrder);
+  const baseById = new Map(baseOrdered.map((subtask) => [subtask.id, subtask]));
   const currentById = new Map(ordered.map((subtask) => [subtask.id, subtask]));
+  const baseOpenOrder = baseOrdered.filter((subtask) => subtask.status !== "completed").map((subtask) => subtask.id);
+  const currentOpenOrder = ordered.filter((subtask) => subtask.status !== "completed").map((subtask) => subtask.id);
+  const baseIndex = new Map(baseOpenOrder.map((id, index) => [id, index]));
+  const currentIndex = new Map(currentOpenOrder.map((id, index) => [id, index]));
+  const relativeOrderChanged = (id: string) => {
+    const beforeIndex = baseIndex.get(id);
+    const nowIndex = currentIndex.get(id);
+    if (beforeIndex === undefined || nowIndex === undefined) return false;
+    return baseOpenOrder.some((other) => {
+      if (other === id || !currentIndex.has(other)) return false;
+      return Math.sign(beforeIndex - baseIndex.get(other)!) !== Math.sign(nowIndex - currentIndex.get(other)!);
+    });
+  };
+  const userReordered = currentOpenOrder.some(relativeOrderChanged);
   let dropped = false;
 
   // Only steps that exist and are still open can be ticked off by the AI.
@@ -136,7 +159,12 @@ function mergeSubtasks(
   /** A step the user added, renamed or re-timed since the AI was asked — theirs, not the AI's, to change. */
   const userTouched = (subtask: Subtask) => {
     const before = baseById.get(subtask.id);
-    return !before || before.label !== subtask.label || before.estimatedMinutes !== subtask.estimatedMinutes;
+    return (
+      !before ||
+      before.label !== subtask.label ||
+      before.estimatedMinutes !== subtask.estimatedMinutes ||
+      relativeOrderChanged(subtask.id)
+    );
   };
 
   if (steps === null) {
@@ -191,6 +219,19 @@ function mergeSubtasks(
       if (baseById.has(subtask.id)) dropped = true;
       remaining.push(subtask);
     }
+  }
+
+  if (userReordered) {
+    const currentOrder = new Map(ordered.map((subtask, index) => [subtask.id, index]));
+    const proposedOrder = new Map(steps.map((step, index) => [step.id, index]));
+    remaining.sort((a, b) => {
+      const aCurrent = currentOrder.get(a.id);
+      const bCurrent = currentOrder.get(b.id);
+      if (aCurrent !== undefined && bCurrent !== undefined) return aCurrent - bCurrent;
+      if (aCurrent !== undefined) return -1;
+      if (bCurrent !== undefined) return 1;
+      return (proposedOrder.get(a.id) ?? 0) - (proposedOrder.get(b.id) ?? 0);
+    });
   }
 
   return { subtasks: withStatuses([...finished, ...remaining]), stepsChanged: true, dropped };
@@ -312,6 +353,9 @@ export function applyReassessment(params: {
     keptUserEdits ||= merged.dropped;
     let subtasks = merged.subtasks;
     const open = subtasks.filter((subtask) => subtask.status !== "completed");
+    const explicitlyCompletedPreviousSteps = (current.subtasks ?? [])
+      .filter((subtask) => subtask.status !== "completed")
+      .every((subtask) => proposal.stepsDone.includes(subtask.id));
 
     // Length and steps have to agree: a task with steps left is as long as
     // they add up to (see remainingMinutes in the store).
@@ -333,6 +377,7 @@ export function applyReassessment(params: {
       current.status === "pending" &&
       subtasks.length > 0 &&
       open.length === 0 &&
+      explicitlyCompletedPreviousSteps &&
       (current.subtasks ?? []).some((subtask) => subtask.status !== "completed");
 
     const advice = proposal.advice?.trim() || current.aiContext.advice;

@@ -20,7 +20,7 @@
 // only) expire on their own within three months, as the policy says.
 import { createClerkClient } from "@clerk/backend";
 
-import { deleteServerRows, emptyServerFolder } from "@/lib/serverRpc";
+import { callServerRpc, deleteServerRows, emptyServerFolder } from "@/lib/serverRpc";
 
 /** The storage buckets laid out one folder per user ("<clerk_user_id>/<file>"). */
 const USER_FOLDER_BUCKETS = ["chat-attachments", "feedback-screenshots"] as const;
@@ -30,6 +30,7 @@ const USER_TABLES = ["feedback", "feedback_account_rate_limits", "chat_messages"
 
 /** The account's data in Supabase: files first, so no message is left pointing at one. */
 export async function deleteAccountData(userId: string): Promise<void> {
+  await callServerRpc<boolean>("begin_account_deletion", { p_user_id: userId });
   for (const bucket of USER_FOLDER_BUCKETS) await emptyServerFolder(bucket, userId);
   for (const table of USER_TABLES) await deleteServerRows(table, { user_id: `eq.${userId}` });
 }

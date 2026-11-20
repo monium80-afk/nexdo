@@ -223,7 +223,7 @@ async function acquirePromptCache(
  * to be had right now — in which case the caller sends the prompt in full, as
  * it always used to. Never throws.
  */
-async function promptCacheName(systemPrompt: string): Promise<string | null> {
+async function promptCacheName(systemPrompt: string, deadline: number): Promise<string | null> {
   const displayName = await cacheDisplayName(systemPrompt);
   const current = promptCaches.get(displayName);
   const remaining = current ? current.expiresAt - Date.now() : 0;
@@ -246,7 +246,8 @@ async function promptCacheName(systemPrompt: string): Promise<string | null> {
   // take a find, a create and a renew, and the call itself needs the time.
   // A slow one carries on for the calls after this one.
   if (current && remaining > CACHE_MIN_REMAINING_MS) return current.name;
-  const giveUp = new Promise<null>((resolve) => setTimeout(() => resolve(null), QUICK_REQUEST_TIMEOUT_MS));
+  const waitMs = Math.max(0, Math.min(QUICK_REQUEST_TIMEOUT_MS, deadline - Date.now()));
+  const giveUp = new Promise<null>((resolve) => setTimeout(() => resolve(null), waitMs));
   return (await Promise.race([pending, giveUp]))?.name ?? null;
 }
 
@@ -345,7 +346,7 @@ export async function generateStructuredJson(params: {
 }): Promise<unknown> {
   const deadline = params.deadline ?? Date.now() + DEFAULT_CALL_BUDGET_MS;
   const call = { label: params.label, parts: [{ text: params.userContent }], responseSchema: params.responseSchema, deadline };
-  const cachedContent = params.cacheSystemPrompt ? await promptCacheName(params.systemPrompt) : null;
+  const cachedContent = params.cacheSystemPrompt ? await promptCacheName(params.systemPrompt, deadline) : null;
 
   let text: string;
   if (cachedContent) {

@@ -31,7 +31,7 @@ import { MOTION } from "@/constants/theme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useSyncPending } from "@/hooks/useSyncPending";
-import { useColors } from "@/hooks/useTheme";
+import { useColors, useIsDark, usePalette } from "@/hooks/useTheme";
 import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useVisibleTasks } from "@/hooks/useVisibleTasks";
@@ -64,8 +64,6 @@ const CONTENT_OUT_MS = 150;
 /** How long after its animation should have ended a closing focus page is removed anyway. */
 const EXIT_BACKUP_MS = 400;
 /** The circle's colour: the middle of the session's own gradient, which takes over once it's open. */
-// The focus page's cream (Final-Focus.html).
-const SESSION_BACKDROP = "#FAF1E4";
 
 function centerOf(bounds: CardBounds) {
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
@@ -122,6 +120,7 @@ function FocusCardTransition({
   onExited: () => void;
   onDetails: (taskId: string) => void;
 }) {
+  const P = usePalette();
   const reduceMotion = useReducedMotion();
   const reveal = useSharedValue(0);
   const content = useSharedValue(1);
@@ -246,12 +245,13 @@ function FocusCardTransition({
               width: radius * 2,
               height: radius * 2,
               borderRadius: radius,
-              backgroundColor: SESSION_BACKDROP,
+              // The focus page's own colour (Final-Focus.html): the page's.
+              backgroundColor: P.paper,
             },
             circleStyle,
           ]}
         />
-        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: SESSION_BACKDROP }, backdropStyle]} />
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: P.paper }, backdropStyle]} />
       </Animated.View>
       {contentMounted ? (
         <Animated.View
@@ -314,6 +314,7 @@ function EmptyStateButton({
   onPress: () => void;
   accent?: boolean;
 }) {
+  const P = usePalette();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -321,14 +322,16 @@ function EmptyStateButton({
       accessibilityRole="button"
       className={`mt-[8px] h-[44px] flex-row items-center justify-center gap-2 rounded-full px-[20px] ${accent ? "bg-accent" : "bg-ink"}`}
     >
-      <AppIcon name={icon} size={16} strokeWidth={2.2} color="#FFFFFF" />
-      <Text className="font-grotesk-bold text-[14px] text-white">{label}</Text>
+      <AppIcon name={icon} size={16} strokeWidth={2.2} color={accent ? "#FFFFFF" : P.inverse} />
+      <Text className={`font-grotesk-bold text-[14px] ${accent ? "text-white" : "text-inverse"}`}>{label}</Text>
     </AnimatedPressable>
   );
 }
 
 /** One side of the quiet Today / All switch. */
 function ViewSwitchOption({ label, count, selected, onPress }: { label: string; count: number; selected: boolean; onPress: () => void }) {
+  const P = usePalette();
+  const dark = useIsDark();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -343,11 +346,11 @@ function ViewSwitchOption({ label, count, selected, onPress }: { label: string; 
         flexDirection: "row",
         alignItems: "center",
         gap: 5,
-        backgroundColor: selected ? "#221C17" : "transparent",
+        backgroundColor: selected ? P.ink : "transparent",
       }}
     >
-      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13, color: selected ? "#FFFFFF" : "#221C17" }}>{label}</Text>
-      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13, color: selected ? "#BFB2A7" : "#7A6E64" }}>· {count}</Text>
+      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13, color: selected ? P.inverse : P.ink }}>{label}</Text>
+      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13, color: selected ? (dark ? "#6E625A" : "#BFB2A7") : P.inkMuted }}>· {count}</Text>
     </AnimatedPressable>
   );
 }
@@ -688,7 +691,7 @@ export default function Next() {
           accessibilityLabel={t.tasks.addTask}
           className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink"
         >
-          <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+          <AppIcon name="plus" size={19} strokeWidth={2.4} color={colors.palette.inverse} />
         </AnimatedPressable>
       </View>
     </View>
@@ -711,7 +714,7 @@ export default function Next() {
             flexDirection: "row",
             padding: 3,
             borderRadius: 17,
-            backgroundColor: "#EFE3D4",
+            backgroundColor: colors.palette.chip,
           }}
         >
           <ViewSwitchOption label={t.next.today} count={todayLeft} selected={!showAll} onPress={() => setView("today")} />

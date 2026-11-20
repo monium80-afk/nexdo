@@ -4,11 +4,10 @@ import { ScrollView, Text, View } from "react-native";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
 import { PaperSheet } from "@/components/PaperSheet";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { AppLanguage } from "@/types/settings";
 
-const P = colors.palette;
 
 /** Each language in its own name (so someone who reads it finds it), and in English beside it. */
 export const LANGUAGE_OPTIONS: { value: AppLanguage; label: string; english: string }[] = [
@@ -36,6 +35,7 @@ export function LanguageSheet({
   onChange: (language: AppLanguage) => void;
   onClose: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   return (
     <PaperSheet visible={visible} onClose={onClose}>
@@ -48,7 +48,7 @@ export function LanguageSheet({
             const picked = option.value === value;
             return (
               <Fragment key={option.value}>
-                {index > 0 ? <View style={{ height: 1, backgroundColor: "#EADFD1" }} /> : null}
+                {index > 0 ? <View style={{ height: 1, backgroundColor: P.rule }} /> : null}
                 <AnimatedPressable
                   onPress={() => {
                     onChange(option.value);

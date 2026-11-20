@@ -53,7 +53,9 @@ export function playSound(name: SoundName): void {
     // From the top, so a quick second one isn't lost in the tail of the first.
     player
       .seekTo(0)
-      .then(() => player.play())
+      .then(() => {
+        if (!isRecording()) player.play();
+      })
       .catch((error) => console.warn(`[sounds] couldn't play ${name}`, error));
   } catch (error) {
     console.warn(`[sounds] couldn't play ${name}`, error);

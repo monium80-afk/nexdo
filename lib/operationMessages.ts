@@ -113,10 +113,14 @@ export function describeOperationResult(
     const parts: string[] = [];
     const completed = count("completed");
     const reopened = count("reopened");
+    const archived = count("archived");
+    const restored = count("restored");
     const updated = count("updated");
     const deleted = count("deleted") + count("skipped");
     if (completed) parts.push(t.ops.completedMany(completed));
     if (reopened) parts.push(t.ops.reopenedMany(reopened));
+    if (archived) parts.push(t.ops.archivedMany(archived));
+    if (restored) parts.push(t.ops.restoredMany(restored));
     if (updated) {
       const shift = operation.kind === "update" ? operation.changes.dueShift : undefined;
       parts.push(shift ? t.ops.shiftedMany(updated, shift.amount, shift.unit) : t.ops.updatedMany(updated));
@@ -192,7 +196,8 @@ export function describeTaskList(tasks: Task[], t: Translations, now: Date): str
   const sorted = [...tasks].sort((a, b) => {
     const aTime = Date.parse(a.completedAt ?? a.dueDate ?? a.createdAt);
     const bTime = Date.parse(b.completedAt ?? b.dueDate ?? b.createdAt);
-    return a.status === "completed" && b.status === "completed" ? bTime - aTime : aTime - bTime;
+    const timeOrder = (Number.isFinite(aTime) ? aTime : 0) - (Number.isFinite(bTime) ? bTime : 0);
+    return timeOrder || a.id.localeCompare(b.id);
   });
   const lines = sorted.slice(0, LIST_LIMIT).map((task) => {
     const detail =

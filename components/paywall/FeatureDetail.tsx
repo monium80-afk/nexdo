@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Modal, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
@@ -46,9 +46,7 @@ function DetailCard({ feature, onClose }: { feature: ProFeatureId; onClose: () =
         popStyle,
       ]}
     >
-      {/* A blocker: a tap on the card itself shouldn't close it. */}
-      <Pressable onPress={() => {}} accessible={false}>
-        {big ? (
+      {big ? (
           <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontFamily: "SpaceMono-Bold", fontSize: 10.5, lineHeight: 14, letterSpacing: 1.2, color: PW.unit, textTransform: "uppercase", textAlign: align, includeFontPadding: false }}>
             {copy.everyMonth}
           </Text>
@@ -81,7 +79,6 @@ function DetailCard({ feature, onClose }: { feature: ProFeatureId; onClose: () =
             {copy.gotIt}
           </Text>
         </AnimatedPressable>
-      </Pressable>
     </Animated.View>
   );
 }
@@ -94,14 +91,17 @@ export function FeatureDetail({ open, feature, onClose }: { open: boolean; featu
   const t = useTranslation();
   return (
     <Modal visible={open && feature !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={t.paywall.close}
-        style={{ flex: 1, backgroundColor: "rgba(10,6,4,0.66)", alignItems: "center", justifyContent: "center", padding: 24 }}
-      >
-        {feature ? <DetailCard feature={feature} onClose={onClose} /> : null}
-      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t.paywall.close}
+          style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,6,4,0.66)" }]}
+        />
+        <View pointerEvents="box-none" style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+          {feature ? <DetailCard feature={feature} onClose={onClose} /> : null}
+        </View>
+      </View>
     </Modal>
   );
 }

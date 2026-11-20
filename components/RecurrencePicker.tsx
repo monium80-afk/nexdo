@@ -260,7 +260,6 @@ export function RecurrencePicker({
                   mode="time"
                   display="compact"
                   accentColor={colors.orange[500]}
-                  themeVariant="light"
                   onChange={(event, selected) => {
                     if (event.type !== "dismissed" && selected) setTime(selected);
                   }}
@@ -310,7 +309,6 @@ export function RecurrencePicker({
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 minimumDate={now}
                 accentColor={colors.orange[500]}
-                themeVariant="light"
                 onChange={handleEndChange}
               />
             ) : null}

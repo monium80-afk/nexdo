@@ -47,14 +47,17 @@ export function composeFileNote(kind: ContextFileKind, fileText: string, userTex
 
 /** A note split back into the user's words and the file block, if it has one. */
 export function parseContextNote(note: string): ParsedContextNote {
+  let match: { kind: ContextFileKind; at: number; marker: string } | undefined;
   for (const kind of Object.keys(MARKERS) as ContextFileKind[]) {
     const marker = MARKERS[kind];
     const at = note.startsWith(`${marker}\n`) ? 0 : note.indexOf(`\n${marker}\n`);
-    if (at < 0) continue;
-    const blockStart = at === 0 ? 0 : at + 1;
+    if (at >= 0 && (!match || at < match.at)) match = { kind, at, marker };
+  }
+  if (match) {
+    const blockStart = match.at === 0 ? 0 : match.at + 1;
     return {
       text: note.slice(0, blockStart).trim(),
-      file: { kind, text: note.slice(blockStart + marker.length + 1).trim() },
+      file: { kind: match.kind, text: note.slice(blockStart + match.marker.length + 1).trim() },
     };
   }
   return { text: note.trim() };

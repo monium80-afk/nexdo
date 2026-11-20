@@ -26,6 +26,8 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "sound
 
 const FADE = 4; // seconds blended across the loop point
 const LOUDNESS = -24; // LUFS, the same for every loop
+const LOUDNESS_RANGE = 50; // preserve the source range while permitting linear normalization
+const TRUE_PEAK = -2;
 const BITRATE = "64k";
 
 // start / loop in seconds. Thunder loops longer, so the claps repeat less often.
@@ -70,16 +72,30 @@ for (const { out, source, start, loop } of LOOPS) {
   // Pass 1: measure the loop's loudness (loudnorm reports on stderr).
   const pass1 = spawnSync(
     "ffmpeg",
-    ["-hide_banner", "-nostats", ...input, "-filter_complex", `${loopFilter()};[looped]loudnorm=I=${LOUDNESS}:TP=-2:print_format=json`, "-f", "null", "-"],
+    ["-hide_banner", "-nostats", ...input, "-filter_complex", `${loopFilter()};[looped]loudnorm=I=${LOUDNESS}:LRA=${LOUDNESS_RANGE}:TP=${TRUE_PEAK}:print_format=json`, "-f", "null", "-"],
     { encoding: "utf8" },
   );
   if (pass1.status !== 0) throw new Error(`Couldn't read ${source}: ${pass1.stderr}`);
   const report = pass1.stderr;
   const measured = JSON.parse(report.slice(report.lastIndexOf("{"), report.lastIndexOf("}") + 1));
+  const inputI = Number(measured.input_i);
+  const inputTP = Number(measured.input_tp);
+  const inputLRA = Number(measured.input_lra);
+  const targetOffset = Number(measured.target_offset);
+  if (![inputI, inputTP, inputLRA, targetOffset].every(Number.isFinite)) {
+    throw new Error(`Couldn't measure ${source}: loudnorm returned incomplete measurements`);
+  }
+  if (inputLRA > LOUDNESS_RANGE) {
+    throw new Error(`${source} has an LRA of ${inputLRA}, above the linear target of ${LOUDNESS_RANGE}`);
+  }
+  const requiredGain = LOUDNESS - inputI + targetOffset;
+  if (inputTP + requiredGain > TRUE_PEAK + 0.1) {
+    throw new Error(`${source} can't reach ${LOUDNESS} LUFS with constant gain and stay at or below ${TRUE_PEAK} dBTP`);
+  }
 
   // Pass 2: level it (linear gain, no pumping) and encode.
   const level = [
-    `loudnorm=I=${LOUDNESS}:TP=-2:linear=true`,
+    `loudnorm=I=${LOUDNESS}:LRA=${LOUDNESS_RANGE}:TP=${TRUE_PEAK}:linear=true`,
     `measured_I=${measured.input_i}:measured_TP=${measured.input_tp}`,
     `measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}`,
     `offset=${measured.target_offset}`,

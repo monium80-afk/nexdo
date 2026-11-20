@@ -1,4 +1,5 @@
 import dayDone from "../assets/sounds/day-done.wav";
+import alarm from "../assets/sounds/nexdo_alarm.wav";
 import focusFireplace from "../assets/sounds/focus-fireplace.m4a";
 import focusForest from "../assets/sounds/focus-forest.m4a";
 import focusRain from "../assets/sounds/focus-rain.m4a";
@@ -18,6 +19,8 @@ import timerComplete from "../assets/sounds/timer-complete.wav";
  */
 export const sounds = {
   timerComplete,
+  // A task's alarm (scripts/make-alarm-sound.mjs) — looped by app/alarm.tsx.
+  alarm,
   taskComplete,
   stepCheck,
   dayDone,

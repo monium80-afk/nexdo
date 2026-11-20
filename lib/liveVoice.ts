@@ -146,7 +146,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
   // Google has accepted the setup (setupComplete): audio can go out.
   let ready = false;
   // Audio from before that, sent the moment it is.
-  let held: string[] = [];
+  let held: { message: string; durationMs: number }[] = [];
   // Google heard speech it hasn't finished acting on yet (ACTIVITY_START
   // without a turnComplete after it) — what Stop has to wait for.
   let turnOpen = false;
@@ -309,22 +309,11 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     const current = session;
     resuming = true;
     try {
-      if (microphoneStart) await microphoneStart;
-      await deps.startMicrophone();
-    } catch (error) {
-      console.warn("[liveVoice] microphone didn't start again", error);
-      deps.stopMicrophone();
-      if (current === session) end("error", "unavailable");
-      return;
+      await beginListening(current);
     } finally {
       resuming = false;
     }
-    if (current !== session || state.status !== "paused") {
-      deps.stopMicrophone();
-      return;
-    }
-    microphoneGeneration = current;
-    streaming = true;
+    if (current !== session || state.status !== "paused" || microphoneGeneration !== current) return;
     listeningSince = Date.now();
     setState({ status: "listening", problem: null, hearing: true });
     waitForSpeech();
@@ -336,7 +325,10 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
     clearTimeout(connectTimer);
     if (socket?.readyState === SOCKET_OPEN) {
       if (held.length > 0) audioSinceTurnComplete = true;
-      held.forEach((message) => socket?.send(message));
+      for (const entry of held) {
+        socket.send(entry.message);
+        listenedMs += entry.durationMs;
+      }
     }
     held = [];
     listeningSince = Date.now();
@@ -350,7 +342,11 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
 
   /** Turns the microphone on — while still connecting, so nobody waits to talk. */
   const beginListening = async (current: number) => {
-    if (microphoneGeneration === current || startingMicrophones.has(current)) return;
+    if (microphoneGeneration === current) return;
+    if (startingMicrophones.has(current)) {
+      if (microphoneStart) await microphoneStart;
+      return;
+    }
     startingMicrophones.add(current);
     const earlierStart = microphoneStart;
     const start = (async () => {
@@ -570,7 +566,7 @@ export function createLiveVoice(deps: LiveVoiceDeps) {
       });
       // Still connecting: held, and sent the moment Google is ready.
       if (state.status === "connecting") {
-        held.push(message);
+        held.push({ message, durationMs: (pcm.length / buffer.sampleRate) * 1000 });
         if (held.length > MAX_HELD_CHUNKS) held.shift();
         return;
       }

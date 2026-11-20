@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 
-type Snapshot = { taskId: string; before: Task | null };
+type Snapshot = { taskId: string; before: Task | null; after: Task | null };
 
 /** How long the "Undo" toast stays up. */
 export const UNDO_TOAST_MS = 5_000;
@@ -74,13 +74,13 @@ export function withUndo(message: string, run: () => void) {
   const snapshots: Snapshot[] = [];
   for (const task of after) {
     const previous = beforeById.get(task.id);
-    if (!previous) snapshots.push({ taskId: task.id, before: null });
+    if (!previous) snapshots.push({ taskId: task.id, before: null, after: task });
     else if (previous.updatedAt !== task.updatedAt || previous.status !== task.status) {
-      snapshots.push({ taskId: task.id, before: previous });
+      snapshots.push({ taskId: task.id, before: previous, after: task });
     }
   }
   for (const task of before) {
-    if (!afterIds.has(task.id)) snapshots.push({ taskId: task.id, before: task });
+    if (!afterIds.has(task.id)) snapshots.push({ taskId: task.id, before: task, after: null });
   }
   useUndoStore.getState().show(message, snapshots);
 }

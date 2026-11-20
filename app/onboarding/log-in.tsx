@@ -23,7 +23,8 @@ export default function OnboardingLogIn() {
   const focused = useIsFocused();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ from?: string }>();
-  useStatusBarStyle("dark");
+  // Onboarding keeps its light design in dark mode too.
+  useStatusBarStyle("dark", { followTheme: false });
   const [emailOpen, setEmailOpen] = useState(false);
   const glowId = useSvgId("loginGlow");
 

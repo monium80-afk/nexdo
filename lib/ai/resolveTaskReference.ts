@@ -5,15 +5,25 @@ export type TaskReferenceResult =
   | { status: "ambiguous"; candidates: Task[] }
   | { status: "none" };
 
+function words(text: string): string[] {
+  return text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+function containsWords(text: string, phrase: string): boolean {
+  const textWords = words(text);
+  const phraseWords = words(phrase);
+  return phraseWords.length > 0 && textWords.some((_, index) =>
+    phraseWords.every((word, offset) => textWords[index + offset] === word),
+  );
+}
+
 function titleMatches(text: string, task: Task): boolean {
-  const lower = text.toLowerCase();
-  return lower.includes(task.title.toLowerCase()) || task.title.toLowerCase().includes(lower.trim());
+  return containsWords(text, task.title) || containsWords(task.title, text);
 }
 
 function findTitleWordOverlap(text: string, task: Task): boolean {
-  const words = task.title.toLowerCase().split(/\s+/).filter((word) => word.length > 3);
-  const lower = text.toLowerCase();
-  return words.some((word) => lower.includes(word));
+  const messageWords = new Set(words(text));
+  return words(task.title).some((word) => word.length > 3 && messageWords.has(word));
 }
 
 /**

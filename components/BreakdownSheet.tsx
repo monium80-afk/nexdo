@@ -9,13 +9,13 @@ import { AppIcon } from "@/components/icons/AppIcons";
 import { PaperSheet } from "@/components/PaperSheet";
 import { ReportAiButton } from "@/components/ReportAiButton";
 import { shadow } from "@/constants/shadow";
-import { colors, listItemEntering, listItemLayout } from "@/constants/theme";
+import { listItemEntering, listItemLayout } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { PlanStep } from "@/lib/ai/types";
 import type { StepDraft, Task } from "@/types/task";
 
-const P = colors.palette;
 const ROW_SHADOW = shadow("0 4px 14px rgba(34, 28, 23, 0.05)", 2);
 const EDIT_SHADOW = shadow("0 8px 20px rgba(242, 106, 46, 0.16)", 4, "#F26A2E");
 const CHECK_SHADOW = shadow("0 4px 10px rgba(242, 106, 46, 0.35)", 4, "#F26A2E");
@@ -45,7 +45,7 @@ function draftOf(task: Task): StepDraft[] {
  * already done stay, first. A step added while it worked (not in `sentIds`)
  * is the user's own and stays too, after the AI's.
  */
-function withNewSteps(draft: StepDraft[], steps: PlanStep[], sentIds: Set<string>): StepDraft[] {
+function withNewSteps(draft: StepDraft[], steps: PlanStep[], sentSteps: Map<string, StepDraft>): StepDraft[] {
   return [
     ...draft.filter((step) => step.completed),
     ...steps.map((step, index) => ({
@@ -54,7 +54,11 @@ function withNewSteps(draft: StepDraft[], steps: PlanStep[], sentIds: Set<string
       estimatedMinutes: step.estimatedMinutes,
       completed: false,
     })),
-    ...draft.filter((step) => !step.completed && !sentIds.has(step.id)),
+    ...draft.filter((step) => {
+      if (step.completed) return false;
+      const sent = sentSteps.get(step.id);
+      return !sent || step.label !== sent.label || step.estimatedMinutes !== sent.estimatedMinutes || step.completed !== sent.completed;
+    }),
   ];
 }
 
@@ -71,6 +75,7 @@ function withEdit(steps: StepDraft[], editing: Editing): StepDraft[] {
 
 /** A step's number in its peach dot — solid orange while it's edited, a tick once done. */
 function StepNumber({ index, done, editing }: { index: number; done: boolean; editing: boolean }) {
+  const P = usePalette();
   return (
     <View
       style={{
@@ -124,6 +129,7 @@ export function BreakdownSheet({
   /** Closed without confirming: nothing is saved. */
   onClose: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   // A new sheet starts from the task as it is (mounted fresh each time it opens).
@@ -138,11 +144,11 @@ export function BreakdownSheet({
     const draft = withEdit(steps, editing);
     setEditing(null);
     setSteps(draft);
-    const sentIds = new Set(draft.map((step) => step.id));
+    const sentSteps = new Map(draft.map((step) => [step.id, step]));
     const next = await onGenerate(draft);
     if (!next) return;
     setAiSteps(next);
-    setSteps((current) => withNewSteps(current, next, sentIds));
+    setSteps((current) => withNewSteps(current, next, sentSteps));
   };
 
   // Once, as the sheet opens.
@@ -222,7 +228,7 @@ export function BreakdownSheet({
                       borderRadius: 22,
                       borderWidth: 2,
                       borderColor: P.accent,
-                      backgroundColor: "#FFFFFF",
+                      backgroundColor: P.raised,
                       paddingLeft: 14,
                       paddingRight: 8,
                       paddingVertical: 6,
@@ -282,7 +288,7 @@ export function BreakdownSheet({
                   ]}
                 >
                   <StepNumber index={index} done={step.completed} editing={false} />
-                  <AnimatedPressable onPress={() => editStep(step.id)} scaleTo={0.99} accessibilityRole="button" style={{ flex: 1 }}>
+                  <AnimatedPressable onPress={() => editStep(step.id)} disabled={isLoading} scaleTo={0.99} accessibilityRole="button" style={{ flex: 1 }}>
                     <Text
                       style={[
                         {
@@ -300,6 +306,7 @@ export function BreakdownSheet({
                   </AnimatedPressable>
                   <AnimatedPressable
                     onPress={() => editStep(step.id)}
+                    disabled={isLoading}
                     scaleTo={0.9}
                     hitSlop={4}
                     accessibilityRole="button"
@@ -327,6 +334,7 @@ export function BreakdownSheet({
         {/* Add a step: a dashed row, the same size as the steps. */}
         <AnimatedPressable
           onPress={handleAdd}
+          disabled={isLoading}
           scaleTo={0.98}
           accessibilityRole="button"
           style={{
@@ -377,7 +385,7 @@ export function BreakdownSheet({
             opacity: isLoading || (!hadStepsAtStart && final.length === 0) ? 0.45 : 1,
           }}
         >
-          <Text numberOfLines={1} style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17, color: "#FFFFFF", includeFontPadding: false }}>
+          <Text numberOfLines={1} style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 17, color: P.inverse, includeFontPadding: false }}>
             {confirmLabel}
           </Text>
         </AnimatedPressable>

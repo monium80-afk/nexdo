@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { DeadlineInput } from "@/lib/deadline";
 import { addDaysToKey, keyToLocalDate, toLocalDateKey } from "@/lib/localDate";
@@ -13,7 +13,6 @@ import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 
 const OPTIONS = [
   { key: "oneDay", days: 1 },
@@ -38,6 +37,7 @@ function postponed(task: Task, days: number, now: Date): DeadlineInput {
  * so it has none — see app/(tabs)/calendar.tsx.)
  */
 export function PostponeSheet({ taskId, onClose }: { taskId: string | null; onClose: () => void }) {
+  const P = usePalette();
   const t = useTranslation();
   const insets = useSafeAreaInsets();
   const task = useTaskStore((state) => (taskId ? state.tasks.find((entry) => entry.id === taskId) : undefined));
@@ -91,8 +91,8 @@ export function PostponeSheet({ taskId, onClose }: { taskId: string | null; onCl
               accessibilityRole="button"
               style={{ height: 46, borderRadius: 23, backgroundColor: P.ink, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
             >
-              <SheetIcon name="calendar" size={16} color="#FFFFFF" />
-              <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: "#FFFFFF" }}>{t.redesign.pickDay}</Text>
+              <SheetIcon name="calendar" size={16} color={P.inverse} />
+              <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 15, color: P.inverse }}>{t.redesign.pickDay}</Text>
             </AnimatedPressable>
             {picking ? (
               <DateTimePicker
@@ -101,7 +101,6 @@ export function PostponeSheet({ taskId, onClose }: { taskId: string | null; onCl
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 accentColor={P.accent}
-                themeVariant="light"
                 onChange={handlePicked}
               />
             ) : null}

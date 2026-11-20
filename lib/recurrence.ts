@@ -23,6 +23,7 @@ import type {
   TaskRecurrence,
   Weekday,
 } from "@/types/task";
+import { normalizeReminder } from "@/lib/taskReminder";
 
 // Repeating tasks. Pure functions only (types, lib/localDate, lib/deadline),
 // so the date math can be tested on its own — see tests/recurrence.test.ts.
@@ -352,7 +353,7 @@ export function templateFromTask(task: Task): SeriesTemplate {
     importance: task.importance,
     notes: task.notes,
     steps,
-    ...(task.reminders?.muted ? { reminders: { muted: true } } : {}),
+    ...(normalizeReminder(task.reminders) ? { reminders: normalizeReminder(task.reminders) } : {}),
   };
 }
 
@@ -424,7 +425,7 @@ export function buildOccurrence(task: Task, date: LocalDate, now: Date): Task | 
     complexity: task.complexity,
     aiContext: { notes: [] },
     recurrence: { seriesId: recurrence.seriesId, occurrenceDate: date, rule, template },
-    ...(template.reminders?.muted ? { reminders: { muted: true } } : {}),
+    ...(normalizeReminder(template.reminders) ? { reminders: normalizeReminder(template.reminders) } : {}),
   };
   return withDeadline(occurrence, slotDeadline(rule, date));
 }
@@ -504,7 +505,7 @@ export function normalizeRecurrence(raw: unknown): TaskRecurrence | undefined {
               !!step && typeof step.label === "string" && typeof step.estimatedMinutes === "number",
           )
         : undefined,
-      ...(template.reminders?.muted === true ? { reminders: { muted: true } } : {}),
+      ...(normalizeReminder(template.reminders) ? { reminders: normalizeReminder(template.reminders) } : {}),
     },
     nextOccurrenceId: typeof value.nextOccurrenceId === "string" ? value.nextOccurrenceId : undefined,
   };

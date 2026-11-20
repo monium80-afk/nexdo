@@ -70,7 +70,8 @@ describe("saving a new task", () => {
         { candidateId: "new-task", title: "New task", estimatedMinutes: 30, priorityLevel: "medium" },
       ],
     });
-    assert.deepEqual(result.undo, [{ taskId: newId, before: null }]);
+    assert.deepEqual(result.undo?.map(({ taskId, before }) => ({ taskId, before })), [{ taskId: newId, before: null }]);
+    assert.equal(result.undo?.[0].after?.id, newId);
 
     useTaskStore.getState().restoreSnapshots(result.undo ?? []);
     assert.ok(tasks().some((task) => task.id === existingId), "undo leaves the pre-existing task in place");

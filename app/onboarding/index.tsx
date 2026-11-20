@@ -282,7 +282,7 @@ export default function OnboardingHook() {
     const timer = setTimeout(() => setCleared(true), at(44, LOOP) * 1000);
     return () => clearTimeout(timer);
   }, [reduceMotion]);
-  useStatusBarStyle(cleared ? "dark" : "light");
+  useStatusBarStyle(cleared ? "dark" : "light", { followTheme: false });
 
   useEffect(() => {
     posthog.capture("onboarding_started");

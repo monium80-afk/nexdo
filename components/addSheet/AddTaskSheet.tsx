@@ -46,7 +46,7 @@ import { setKeyboardAdjustNothing } from "@/modules/soft-input";
 import { formatShortTime, formatTime, longDay } from "@/components/addSheet/sheetFormat";
 import { TaskPreviewCard } from "@/components/addSheet/TaskPreviewCard";
 import { MAX_TASK_TITLE_LENGTH } from "@/components/TaskFormFields";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useAiLocked } from "@/hooks/useAiLocked";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -73,7 +73,6 @@ import { taskIdForCandidate, useTaskStore } from "@/store/useTaskStore";
 import type { TaskPriorityLevel } from "@/types/task";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 
 // The page behind: blurred (the mockups' 7 px) and darkened.
 const BLUR_INTENSITY = 28;
@@ -236,6 +235,7 @@ export function AddTaskSheetHost({ blurTarget }: { blurTarget: RefObject<Compone
  * a time; the + adds tasks from a photo or a file (Pro), read by Nexdo AI.
  */
 function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeof View> | null> }) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const insets = useSafeAreaInsets();
@@ -267,6 +267,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
   // effect too: development mounts everything twice, cleanup included.
   const mounted = useRef(true);
   const readRequest = useRef(0);
+  const pickerRequest = useRef(0);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -299,6 +300,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
     if (closing.current) return;
     closing.current = true;
     readRequest.current += 1;
+    pickerRequest.current += 1;
     Keyboard.dismiss();
     progress.set(
       withTiming(0, { duration: reduceMotion ? 0 : CLOSE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
@@ -433,18 +435,17 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       openPaywall("media");
       return;
     }
-    const request = ++readRequest.current;
-    setAiState("idle");
+    const picker = ++pickerRequest.current;
     let outcome: PickOutcome;
     try {
       outcome = await pick();
     } catch (error) {
-      if (!mounted.current || request !== readRequest.current) return;
+      if (!mounted.current || picker !== pickerRequest.current) return;
       console.warn("[AddTaskSheet] couldn't pick a file", error);
       setProblem(t.taskDetail.attach.pickFailed);
       return;
     }
-    if (!mounted.current || request !== readRequest.current || outcome.status === "cancelled") return;
+    if (!mounted.current || picker !== pickerRequest.current || outcome.status === "cancelled") return;
     if (outcome.status !== "picked") {
       setProblem(
         outcome.status === "tooBig"
@@ -455,6 +456,8 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       );
       return;
     }
+    const request = ++readRequest.current;
+    setAiState("idle");
     const file = outcome.file;
     Keyboard.dismiss();
     setView("type");
@@ -661,7 +664,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
       accessibilityState={{ expanded: menuOpen }}
       style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: menuOpen ? P.ink : P.chip, alignItems: "center", justifyContent: "center" }}
     >
-      <SheetIcon name={menuOpen ? "close" : "plus"} size={21} color={menuOpen ? "#FFFFFF" : P.ink} strokeWidth={2.3} />
+      <SheetIcon name={menuOpen ? "close" : "plus"} size={21} color={menuOpen ? P.inverse : P.ink} strokeWidth={2.3} />
     </AnimatedPressable>
   );
 
@@ -792,11 +795,11 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
         gap: 4,
       }}
     >
-      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: view === "details" ? "#FFFFFF" : P.ink }}>
+      <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: view === "details" ? P.inverse : P.ink }}>
         {view === "details" ? t.addSheet.hideDetails : t.addSheet.details}
       </Text>
       <View style={{ transform: [{ rotate: view === "details" ? "180deg" : "0deg" }] }}>
-        <SheetIcon name="chevronDown" size={15} color={view === "details" ? "#FFFFFF" : P.ink} strokeWidth={2.4} />
+        <SheetIcon name="chevronDown" size={15} color={view === "details" ? P.inverse : P.ink} strokeWidth={2.4} />
       </View>
     </AnimatedPressable>
   );
@@ -891,7 +894,7 @@ function AddTaskSheet({ blurTarget }: { blurTarget: RefObject<ComponentRef<typeo
           fontSize: 11,
           letterSpacing: 1.32,
           textTransform: "uppercase",
-          color: P.paper,
+          color: P.onInk,
           textShadowColor: "rgba(0, 0, 0, 0.35)",
           textShadowRadius: 6,
           textShadowOffset: { width: 0, height: 1 },

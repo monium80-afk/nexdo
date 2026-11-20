@@ -30,17 +30,22 @@ export const usePlanUsageStore = create<PlanUsageStore>()((set) => ({
   used: null,
   refresh: async () => {
     if (!isPurchasesEnabled) return;
+    const generation = ++requestGeneration;
     try {
       const { plan, used } = await apiPost<UsageResponseBody>("/api/usage", {});
-      set({ plan, used });
+      if (generation === requestGeneration) set({ plan, used });
     } catch (error) {
       // Left as it was: an old count beats none, and the next call tries again.
       console.warn("[usePlanUsageStore] couldn't read plan usage", error);
     }
   },
-  clear: () => set({ plan: null, used: null }),
+  clear: () => {
+    requestGeneration += 1;
+    set({ plan: null, used: null });
+  },
 }));
 
+let requestGeneration = 0;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 onMeteredCall(() => {
   clearTimeout(refreshTimer);

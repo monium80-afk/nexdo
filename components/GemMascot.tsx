@@ -162,7 +162,7 @@ export function GemMascot({
       resumedThisRender = true;
     }
   }
-  if (!animate) {
+  if (!animate && !holdLevelUps) {
     if (step) setStep(null);
     if (shown !== level) setShown(level);
     if (resumeAfterHold) setResumeAfterHold(false);

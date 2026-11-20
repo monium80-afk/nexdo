@@ -476,21 +476,30 @@ describe("live voice session", () => {
 
   it("reports how long it listened, once per session, with the session's id", async () => {
     const listened: [number, string | undefined][] = [];
-    const { voice, sockets } = await listening({ onListened: (seconds, sessionId) => listened.push([seconds, sessionId]) });
-    assert.deepEqual(listened, [], "nothing to report while it's still listening");
-    voice.stop();
-    voice.dispose();
-    assert.equal(listened.length, 1);
-    assert.ok(listened[0][0] >= 0);
-    assert.equal(listened[0][1], SESSION.sessionId);
+    const realNow = Date.now;
+    let now = realNow();
+    Date.now = () => now;
+    try {
+      const { voice, sockets } = await listening({ onListened: (seconds, sessionId) => listened.push([seconds, sessionId]) });
+      assert.deepEqual(listened, [], "nothing to report while it's still listening");
+      now += 3_000;
+      voice.stop();
+      voice.dispose();
+      assert.equal(listened.length, 1);
+      assert.equal(listened[0][0], 3);
+      assert.equal(listened[0][1], SESSION.sessionId);
 
-    // A second session on the same screen is reported separately.
-    await voice.start();
-    sockets[1].onopen?.();
-    sockets[1].receive({ setupComplete: {} });
-    await flush();
-    sockets[1].dropConnection();
-    assert.equal(listened.length, 2, "a dropped connection still counts what was used");
+      // A second session on the same screen is reported separately.
+      await voice.start();
+      sockets[1].onopen?.();
+      sockets[1].receive({ setupComplete: {} });
+      await flush();
+      now += 2_000;
+      sockets[1].dropConnection();
+      assert.equal(listened.length, 2, "a dropped connection still counts what was used");
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it("reports 0 for a session that never got to listen, so its time is given back", async () => {

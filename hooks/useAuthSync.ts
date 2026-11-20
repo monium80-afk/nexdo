@@ -1,5 +1,5 @@
 import { useAuth, useClerk, useUser } from "@clerk/expo";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 
 import { showAlert } from "@/lib/alert";
@@ -114,6 +114,10 @@ export function useAuthSync() {
   const clerk = useClerk();
   const { user } = useUser();
   const userId = user?.id;
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  const clerkRef = useRef(clerk);
+  clerkRef.current = clerk;
   const hydrateTasks = useTaskStore((state) => state.hydrateFromSupabase);
   const subscribeTasks = useTaskStore((state) => state.subscribeToRealtime);
   const unsubscribeTasks = useTaskStore((state) => state.unsubscribeFromRealtime);
@@ -121,8 +125,8 @@ export function useAuthSync() {
   useEffect(() => {
     if (!userId) return;
     let isActive = true;
-    setClerkTokenGetter(() => getToken());
-    setApiTokenGetter(() => getToken());
+    setClerkTokenGetter(() => getTokenRef.current());
+    setApiTokenGetter(() => getTokenRef.current());
 
     // When the account's tasks were last read in full, and the retry waiting
     // for a load that failed.
@@ -171,12 +175,13 @@ export function useAuthSync() {
       if (!isActive || useTaskStore.getState().syncUserId !== userId) return;
       // Read before the claim, which clears it.
       const { sawPaywall } = useOnboardingStore.getState();
-      const savedDrafts = claimOnboardingDrafts(isNewAccount(clerk.user?.createdAt, clerk.session?.createdAt));
+      const currentClerk = clerkRef.current;
+      const savedDrafts = claimOnboardingDrafts(isNewAccount(currentClerk.user?.createdAt, currentClerk.session?.createdAt));
       // The end of setup for a new account: the tasks from its brain dump are
       // on the list, and this is the one moment Pro is offered unasked —
       // unless onboarding's own plans step already did, just before sign-up.
       if (savedDrafts && isPurchasesEnabled && !sawPaywall) openPaywall();
-    });
+    }).catch((error: unknown) => console.warn("[useAuthSync] post-sync setup failed", error));
     // Magic mic sessions whose usage couldn't be reported when they ended
     // (lib/liveUsageReports.ts) — until it is, each counts in full.
     void flushLiveUsageReports(userId);
@@ -207,7 +212,7 @@ export function useAuthSync() {
       appState.remove();
       unsubscribeTasks();
     };
-  }, [userId, getToken, clerk, hydrateTasks, subscribeTasks, unsubscribeTasks]);
+  }, [userId, hydrateTasks, subscribeTasks, unsubscribeTasks]);
 
   // The plan's usage belongs to the account: forgotten only when the account
   // changes. Clearing it whenever the effect above re-ran (a new getToken or

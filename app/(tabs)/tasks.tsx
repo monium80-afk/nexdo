@@ -371,7 +371,7 @@ export default function TasksListScreen() {
                     <Feather name={searchOpen ? "x" : "search"} size={17} color={colors.palette.ink} />
                   </AnimatedPressable>
                   <AnimatedPressable onPress={() => openAddSheet()} scaleTo={0.92} accessibilityRole="button" accessibilityLabel={t.tasks.addTask} className="h-[40px] w-[40px] items-center justify-center rounded-full bg-ink">
-                    <AppIcon name="plus" size={19} strokeWidth={2.4} color="#FFFFFF" />
+                    <AppIcon name="plus" size={19} strokeWidth={2.4} color={colors.palette.inverse} />
                   </AnimatedPressable>
                 </View>
               </View>
@@ -388,8 +388,8 @@ export default function TasksListScreen() {
                 return (
                   <AnimatedPressable key={option.value} onPress={() => setStatus(option.value)} scaleTo={0.95} accessibilityRole="radio" accessibilityState={{ selected }} className={`h-[34px] justify-center rounded-full px-[14px] ${selected ? "bg-ink" : "bg-chip"}`}>
                     <View className="flex-row items-center">
-                      <Text className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`}>{`${option.label} \u00b7 `}</Text>
-                      <RollingCount value={option.count} className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-white" : "text-ink"}`} />
+                      <Text className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-inverse" : "text-ink"}`}>{`${option.label} \u00b7 `}</Text>
+                      <RollingCount value={option.count} className={`font-grotesk-semibold text-[12.5px] ${selected ? "text-inverse" : "text-ink"}`} />
                     </View>
                   </AnimatedPressable>
                 );

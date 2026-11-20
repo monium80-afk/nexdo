@@ -12,7 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { resolveInboxMessage, type InboxAction, type InboxRequestBody } from "@/app/api/inbox+api";
 import { toStructuredAction } from "@/lib/ai/classifyIntent";
-import { GeminiTimeoutError } from "@/lib/ai/gemini";
+import { GeminiHttpError, GeminiTimeoutError } from "@/lib/ai/gemini";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore, whenAccountRead } from "@/store/useTaskStore";
 import type { Task } from "@/types/task";
@@ -342,6 +342,96 @@ describe("the inbox route, when the model makes no progress", () => {
     );
     assert.equal(result.actions.length, 10);
     assert.equal(result.remainingFragments, 2);
+  });
+
+  it("counts failed recovery fragments while retaining successful actions", async () => {
+    let calls = 0;
+    const recovering = async ({ userContent }: { userContent: string }) => {
+      if (calls++ < 2) throw new SyntaxError("malformed response");
+      const { message } = JSON.parse(userContent.split("\n").at(-1)!) as { message: string };
+      if (message === "call mom") throw new Error("fragment failed");
+      return {
+        intent: "create_task",
+        action: { type: "CREATE_TASK", fields: { title: message }, confirmationRequired: true },
+        remainingMessage: null,
+        reply: `Added ${message}.`,
+      };
+    };
+    const result = await resolveInboxMessage(body("buy milk, call mom, read report"), recovering as never);
+    assert.equal(result.actions.length, 2);
+    assert.equal(result.remainingFragments, 1);
+  });
+
+  it("keeps a failed later upstream turn outstanding without retrying it", async () => {
+    let calls = 0;
+    const failing = async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          intent: "create_task",
+          action: { type: "CREATE_TASK", fields: { title: "Pay rent" }, confirmationRequired: true },
+          remainingMessage: "email Sam",
+          reply: "Added Pay rent.",
+        };
+      }
+      throw new GeminiHttpError(429, "quota");
+    };
+    const result = await resolveInboxMessage(body("Pay rent, email Sam"), failing as never);
+    assert.equal(calls, 2);
+    assert.equal(result.actions.length, 1);
+    assert.equal(result.remainingFragments, 1);
+  });
+
+  it("keeps calendar-date commas attached during fragment recovery", async () => {
+    let calls = 0;
+    const asked: string[] = [];
+    const recovering = async ({ userContent }: { userContent: string }) => {
+      if (calls++ < 2) throw new SyntaxError("malformed response");
+      const { message } = JSON.parse(userContent.split("\n").at(-1)!) as { message: string };
+      asked.push(message);
+      return {
+        intent: "create_task",
+        action: { type: "CREATE_TASK", fields: { title: message }, confirmationRequired: true },
+        remainingMessage: null,
+        reply: `Added ${message}.`,
+      };
+    };
+    const result = await resolveInboxMessage(body("Send form by March 5, 2028, email Sam"), recovering as never);
+    assert.deepEqual(asked, ["Send form by March 5, 2028", "email Sam"]);
+    assert.equal(result.remainingFragments, 0);
+  });
+
+  it("isolates a first instruction from a case-different remainder before inferring fields", async () => {
+    let calls = 0;
+    const model = async () => {
+      calls += 1;
+      return calls === 1
+        ? {
+            intent: "create_task",
+            action: { type: "CREATE_TASK", fields: { title: "Send form" }, confirmationRequired: true },
+            remainingMessage: "EMAIL SAM NEXT WEEK",
+            reply: "Added Send form.",
+          }
+        : {
+            intent: "create_task",
+            action: { type: "CREATE_TASK", fields: { title: "Email Sam" }, confirmationRequired: true },
+            remainingMessage: null,
+            reply: "Added Email Sam.",
+          };
+    };
+    const result = await resolveInboxMessage(body("Send form by tomorrow, email Sam next week"), model as never);
+    assert.match(result.actions[0].fields.dueDateText ?? "", /Send form by tomorrow/i);
+    assert.doesNotMatch(result.actions[0].fields.dueDateText ?? "", /email Sam/i);
+  });
+
+  it("does not infer fields from the whole message when the remainder cannot be isolated", async () => {
+    const result = await resolveInboxMessage(body("Send form by tomorrow, email Sam next week"), (async () => ({
+      intent: "create_task",
+      action: { type: "CREATE_TASK", fields: { title: "Send form" }, confirmationRequired: true },
+      remainingMessage: "unmatched remainder",
+      reply: "Added Send form.",
+    })) as never);
+    assert.equal(result.actions[0].fields.dueDateText, undefined);
   });
 
   it("shortens a valid long task title and asks when no valid title remains", async () => {

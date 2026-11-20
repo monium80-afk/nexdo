@@ -334,6 +334,13 @@ export function reconcileDeadline<T extends { deadline?: TaskDeadline; dueDate?:
   // moved by it. Either way that's the newer change.
   if (!task.dueDate) return withDeadline(task, undefined);
   const stored = Date.parse(task.dueDate);
+  if (raw && !deadline.time && typeof raw.timeZone === "string" && raw.timeZone && !Number.isNaN(stored)) {
+    const storedDate = wallTime(stored, raw.timeZone).date;
+    const changedByHalfDay = Math.abs(stored - deadlineInstant(deadline).getTime()) >= 12 * 60 * 60 * 1000;
+    if (storedDate !== deadline.date && changedByHalfDay && zoneOffsetMs(stored, raw.timeZone) !== null) {
+      return withDeadline(task, deadlineFromInstant(task.dueDate));
+    }
+  }
   const sameInstantEverywhere =
     !!deadline.time && (isDeviceZone(deadline.timeZone) || zoneOffsetMs(stored, deadline.timeZone!) !== null);
   const tolerance = sameInstantEverywhere ? SAME_ZONE_TOLERANCE_MS : CROSS_ZONE_TOLERANCE_MS;

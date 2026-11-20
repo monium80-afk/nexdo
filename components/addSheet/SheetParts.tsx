@@ -15,11 +15,10 @@ import Animated, {
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { shadow } from "@/constants/shadow";
 
-const P = colors.palette;
 
 // The mockups' line icons (addtask-design/*.html), on a 24 × 24 grid.
 const ICONS = {
@@ -67,6 +66,7 @@ export function SheetIcon({ name, size, color, strokeWidth = 2 }: { name: SheetI
 
 /** The orange on/off switch (48 × 28). */
 export function Toggle({ value, onChange, accessibilityLabel }: { value: boolean; onChange: (next: boolean) => void; accessibilityLabel: string }) {
+  const P = usePalette();
   const reduceMotion = useReducedMotion();
   const on = useSharedValue(value ? 1 : 0);
   useEffect(() => {
@@ -103,6 +103,7 @@ export function Segmented<T extends string>({
   onChange: (next: T) => void;
   width?: number;
 }) {
+  const P = usePalette();
   return (
     <View style={{ flexDirection: "row", padding: 3, borderRadius: 18, backgroundColor: P.chip, width }} accessibilityRole="radiogroup">
       {options.map((option) => {
@@ -127,7 +128,7 @@ export function Segmented<T extends string>({
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
-              style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: selected ? "#FFFFFF" : P.ink }}
+              style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: selected ? P.inverse : P.ink }}
             >
               {option.label}
             </Text>
@@ -140,6 +141,7 @@ export function Segmented<T extends string>({
 
 /** A detail's own screen: "‹ Details" back, its name in the middle, a dark Done. */
 export function DetailHeader({ title, onBack, onDone }: { title: string; onBack: () => void; onDone: () => void }) {
+  const P = usePalette();
   const t = useTranslation();
   return (
     <View style={{ height: 32, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -165,7 +167,7 @@ export function DetailHeader({ title, onBack, onDone }: { title: string; onBack:
         accessibilityRole="button"
         style={{ height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: P.ink, justifyContent: "center", zIndex: 1 }}
       >
-        <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: "#FFFFFF" }}>{t.common.done}</Text>
+        <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 13.5, color: P.inverse }}>{t.common.done}</Text>
       </AnimatedPressable>
     </View>
   );
@@ -173,6 +175,7 @@ export function DetailHeader({ title, onBack, onDone }: { title: string; onBack:
 
 /** Priority as diamonds: `filled` of three orange, the rest light. */
 export function Diamonds({ filled, size = 10, gap = 6 }: { filled: number; size?: number; gap?: number }) {
+  const P = usePalette();
   return (
     <View style={{ flexDirection: "row", gap }}>
       {[0, 1, 2].map((index) => (
@@ -191,6 +194,7 @@ export const WHEEL_ROW = 42;
 export const WHEEL_HEIGHT = WHEEL_ROW * 5;
 
 function WheelRow({ label, index, offset, onPress }: { label: string; index: number; offset: SharedValue<number>; onPress: () => void }) {
+  const P = usePalette();
   // How many rows from the middle: 0 picked, 1 next to it, 2 at the edge.
   const boldStyle = useAnimatedStyle(() => {
     const away = Math.abs(offset.value / WHEEL_ROW - index);
@@ -309,6 +313,7 @@ export function Wheel({
 
 /** The light band behind a wheel's middle row, across the whole card. */
 export function WheelFrame({ children }: { children: ReactNode }) {
+  const P = usePalette();
   return (
     <View style={{ height: WHEEL_HEIGHT, justifyContent: "center", overflow: "hidden" }}>
       <View
@@ -322,5 +327,6 @@ export function WheelFrame({ children }: { children: ReactNode }) {
 
 /** A unit after a wheel ("h", "min"), centred on its height. */
 export function WheelUnit({ label }: { label: string }) {
+  const P = usePalette();
   return <Text style={{ fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: P.inkMuted, marginRight: 10 }}>{label}</Text>;
 }

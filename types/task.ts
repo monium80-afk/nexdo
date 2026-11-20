@@ -24,10 +24,19 @@ export type TaskDeadline = {
   timeZone?: string;
 };
 
-/** Per-task reminder choices on top of the app-wide ones in Settings. */
+/**
+ * Per-task reminder choices on top of the app-wide ones in Settings
+ * (2026-11-18). Stored as jsonb (reminder_settings), so new keys need no
+ * migration. Read and written through lib/taskReminder.ts: an empty object is
+ * never kept, the default (a notification at the Settings lead) is `undefined`.
+ */
 export type TaskReminderSettings = {
-  /** No reminders for this task, whatever Settings say. */
+  /** "Off": no reminder for this task, and it's left out of the morning summary. */
   muted?: boolean;
+  /** Rings as an alarm instead of a plain notification (Pro). */
+  alarm?: boolean;
+  /** Minutes before its time (0 = at the start). Absent = the default from Settings. */
+  lead?: number;
 };
 
 export type TaskPriorityLevel = "high" | "medium" | "low";

@@ -100,15 +100,15 @@ create index if not exists tasks_user_deadline_idx on public.tasks (user_id, dea
 -- A repeating task has at most one row per series and day. Occurrence ids are
 -- already derived from both (so two devices write the same row); this makes
 -- the database refuse a duplicate even if a bug ever made a different id. If
--- existing data already breaks the rule, the index is skipped with a notice
--- rather than failing the whole script.
+-- existing data already breaks the rule, operators must reconcile duplicates
+-- before this schema can be applied.
 do $$
 begin
   create unique index if not exists tasks_series_occurrence_unique
     on public.tasks (user_id, (recurrence ->> 'seriesId'), (recurrence ->> 'occurrenceDate'))
     where recurrence is not null;
 exception when unique_violation then
-  raise notice 'tasks_series_occurrence_unique not created: duplicate occurrences exist';
+  raise exception 'Cannot create tasks_series_occurrence_unique: duplicate task occurrences exist. Reconcile duplicate occurrences without deleting task data, then retry the migration.';
 end
 $$;
 
@@ -238,14 +238,28 @@ create index if not exists ai_trials_ip_hash_created_at_idx on public.ai_trials 
 
 alter table public.ai_trials enable row level security;
 
+create table if not exists public.ai_trial_daily_usage (
+  usage_date date not null,
+  ip_hash text not null,
+  calls int not null default 0,
+  primary key (usage_date, ip_hash)
+);
+
+create index if not exists ai_trial_daily_usage_date_idx on public.ai_trial_daily_usage (usage_date);
+
+alter table public.ai_trial_daily_usage enable row level security;
+revoke all on public.ai_trial_daily_usage from public, anon, authenticated;
+
 -- Spends one call of p_route for this trial id. Returns 'ok', or why not:
 -- 'trial_used' (this id has used its allowance for the route), 'ip_limit'
--- (too many new ids from one IP today) or 'global_limit' (too many new ids
--- today overall). The row lock makes the per-id count exact under parallel
+-- (the IP's daily call budget or new-id admission limit is reached) or
+-- 'global_limit' (the shared daily call budget or new-id admission limit is
+-- reached). The row lock makes the per-id count exact under parallel
 -- requests. New ids are admitted one at a time (the advisory lock below):
 -- otherwise a burst of first requests from different ids could all count
--- today's rows before any of them was inserted, and all get past the two
--- daily ceilings together.
+-- today's rows before any of them was inserted and pass the admission limits
+-- together. Successful calls are counted in the daily usage table below for
+-- existing ids as well as new ones.
 create or replace function public.claim_ai_trial_call(
   p_trial_id text,
   p_ip_hash text,
@@ -261,6 +275,9 @@ as $$
 declare
   v_calls jsonb;
   v_used int;
+  v_ip_calls int;
+  v_daily_calls int;
+  v_day date := (now() at time zone 'utc')::date;
 begin
   -- Rows are only needed while they can still limit someone; the privacy
   -- policy promises they go after 90 days. Cheap on the created_at index.
@@ -296,6 +313,26 @@ begin
     return 'trial_used';
   end if;
 
+  -- Every admitted route call shares the same daily budget. The lock makes
+  -- the global count and per-IP increment atomic across existing and new ids.
+  perform pg_advisory_xact_lock(hashtext('claim_ai_trial_daily'));
+  select calls into v_ip_calls from ai_trial_daily_usage
+  where usage_date = v_day and ip_hash = p_ip_hash
+  for update;
+  if coalesce(v_ip_calls, 0) >= p_ip_daily_limit then
+    return 'ip_limit';
+  end if;
+  select coalesce(sum(calls), 0) into v_daily_calls
+  from ai_trial_daily_usage where usage_date = v_day;
+  if v_daily_calls >= p_global_daily_limit then
+    return 'global_limit';
+  end if;
+
+  insert into ai_trial_daily_usage (usage_date, ip_hash, calls)
+  values (v_day, p_ip_hash, 1)
+  on conflict (usage_date, ip_hash) do update
+    set calls = ai_trial_daily_usage.calls + 1;
+
   update ai_trials
   set calls = jsonb_set(calls, array[p_route], to_jsonb(v_used + 1))
   where trial_id = p_trial_id;
@@ -316,6 +353,16 @@ select cron.schedule(
   'delete-expired-ai-trials',
   '0 3 * * *',
   $$delete from public.ai_trials where created_at < now() - interval '90 days';$$
+);
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'delete-expired-ai-trial-daily-usage';
+
+select cron.schedule(
+  'delete-expired-ai-trial-daily-usage',
+  '0 3 * * *',
+  $$delete from public.ai_trial_daily_usage where usage_date < (now() at time zone 'utc')::date;$$
 );
 
 -- ---------------------------------------------------------------------
@@ -393,20 +440,39 @@ create index if not exists ai_plan_usage_month_idx on public.ai_plan_usage (mont
 
 alter table public.ai_plan_usage enable row level security;
 
+create table if not exists public.ai_plan_usage_claims (
+  claim_id uuid primary key,
+  user_id text not null,
+  meter text not null,
+  month date not null,
+  amount int not null,
+  result int not null,
+  refunded boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_plan_usage_claims_month_idx
+  on public.ai_plan_usage_claims (month);
+
+alter table public.ai_plan_usage_claims enable row level security;
+revoke all on public.ai_plan_usage_claims from public, anon, authenticated;
+
+drop function if exists public.claim_ai_plan_usage(text, text, int, int);
+
 -- Spends p_amount of this account's p_meter for the current month (UTC).
 -- Returns the month's total afterwards, or -1 when p_amount doesn't fit in
 -- what is left of p_limit — nothing is spent then.
 --   p_amount 0     only asks: is there anything left? (returns what's used)
 --   p_limit null   records the use with no limit
---   p_amount < 0   gives back what a failed request had spent (with
---                  p_limit null); the count never goes below zero
--- The upsert locks the row, so parallel requests are counted exactly.
+-- A claim id makes a retry idempotent; refunds use the persisted claim's
+-- month, so a failed request never subtracts from a different month.
 create or replace function public.claim_ai_plan_usage(
   p_user_id text,
   p_meter text,
   p_amount int,
-  p_limit int
-) returns int
+  p_limit int,
+  p_claim_id uuid
+) returns jsonb
 language plpgsql
 security definer
 set search_path = public
@@ -414,32 +480,93 @@ as $$
 declare
   v_month date := date_trunc('month', now() at time zone 'utc')::date;
   v_amount int := coalesce(p_amount, 0);
-  -- What has to fit: the amount, or for an "anything left?" ask, one more.
   v_needed int := greatest(coalesce(p_amount, 0), 1);
   v_used int;
+  v_claim ai_plan_usage_claims%rowtype;
 begin
-  delete from ai_plan_usage where month < (v_month - interval '2 months')::date;
-
-  -- A plan that doesn't include the meter at all (Live voice on Free), or a
-  -- request bigger than the whole month's allowance.
-  if p_limit is not null and v_needed > p_limit then
-    return -1;
+  if p_claim_id is null or p_user_id is null or p_meter is null or v_amount < 0 then
+    raise exception 'Invalid plan usage claim';
   end if;
 
-  insert into ai_plan_usage (user_id, meter, month, used)
-  values (p_user_id, p_meter, v_month, greatest(v_amount, 0))
-  on conflict (user_id, meter, month) do update
-    set used = greatest(ai_plan_usage.used + v_amount, 0)
-    where p_limit is null or ai_plan_usage.used + v_needed <= p_limit
-  returning used into v_used;
+  delete from ai_plan_usage where month < (v_month - interval '2 months')::date;
+  delete from ai_plan_usage_claims where month < (v_month - interval '2 months')::date;
 
-  -- No row comes back when the limit stopped the update.
-  return coalesce(v_used, -1);
+  perform pg_advisory_xact_lock(hashtext('claim_ai_plan_usage:' || p_claim_id::text));
+  select * into v_claim from ai_plan_usage_claims where claim_id = p_claim_id for update;
+  if found then
+    if v_claim.user_id <> p_user_id or v_claim.meter <> p_meter or v_claim.amount <> v_amount then
+      raise exception 'Plan usage claim identifier was reused with different details';
+    end if;
+    return jsonb_build_object('result', v_claim.result, 'month', v_claim.month, 'claim_id', v_claim.claim_id);
+  end if;
+
+  if p_limit is not null and v_needed > p_limit then
+    v_used := -1;
+  else
+    insert into ai_plan_usage (user_id, meter, month, used)
+    values (p_user_id, p_meter, v_month, greatest(v_amount, 0))
+    on conflict (user_id, meter, month) do update
+      set used = ai_plan_usage.used + v_amount
+      where p_limit is null or ai_plan_usage.used + v_needed <= p_limit
+    returning used into v_used;
+    v_used := coalesce(v_used, -1);
+  end if;
+
+  insert into ai_plan_usage_claims (claim_id, user_id, meter, month, amount, result)
+  values (p_claim_id, p_user_id, p_meter, v_month, v_amount, v_used);
+
+  return jsonb_build_object('result', v_used, 'month', v_month, 'claim_id', p_claim_id);
 end;
 $$;
 
-revoke all on function public.claim_ai_plan_usage(text, text, int, int) from public, anon, authenticated;
-grant execute on function public.claim_ai_plan_usage(text, text, int, int) to service_role;
+revoke all on function public.claim_ai_plan_usage(text, text, int, int, uuid) from public, anon, authenticated;
+grant execute on function public.claim_ai_plan_usage(text, text, int, int, uuid) to service_role;
+
+create or replace function public.refund_ai_plan_usage(
+  p_claim_id uuid,
+  p_user_id text,
+  p_meter text,
+  p_amount int
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_claim ai_plan_usage_claims%rowtype;
+begin
+  select * into v_claim
+  from ai_plan_usage_claims
+  where claim_id = p_claim_id
+  for update;
+
+  if not found then
+    return false;
+  end if;
+  if v_claim.user_id <> p_user_id or v_claim.meter <> p_meter or v_claim.amount <> p_amount then
+    raise exception 'Plan usage refund does not match its claim';
+  end if;
+  if v_claim.result < 0 then
+    return false;
+  end if;
+  if v_claim.refunded then
+    return true;
+  end if;
+
+  update ai_plan_usage
+  set used = greatest(used - v_claim.amount, 0)
+  where user_id = v_claim.user_id and meter = v_claim.meter and month = v_claim.month;
+  if not found then
+    return false;
+  end if;
+
+  update ai_plan_usage_claims set refunded = true where claim_id = p_claim_id;
+  return true;
+end;
+$$;
+
+revoke all on function public.refund_ai_plan_usage(uuid, text, text, int) from public, anon, authenticated;
+grant execute on function public.refund_ai_plan_usage(uuid, text, text, int) to service_role;
 
 -- ---------------------------------------------------------------------
 -- ai_live_sessions: Live voice sessions, paid for when they open
@@ -460,8 +587,14 @@ create table if not exists public.ai_live_sessions (
   month date not null,
   seconds int not null,
   settled boolean not null default false,
+  token_issued boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+alter table public.ai_live_sessions
+  add column if not exists token_issued boolean not null default true;
+alter table public.ai_live_sessions
+  alter column token_issued set default false;
 
 create index if not exists ai_live_sessions_month_idx on public.ai_live_sessions (month);
 
@@ -558,6 +691,45 @@ $$;
 revoke all on function public.settle_ai_live_session(text, uuid, int) from public, anon, authenticated;
 grant execute on function public.settle_ai_live_session(text, uuid, int) to service_role;
 
+create or replace function public.mark_ai_live_session_token_issued(
+  p_user_id text,
+  p_session_id uuid
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_issued boolean;
+begin
+  update ai_live_sessions
+  set token_issued = true
+  where id = p_session_id and user_id = p_user_id and not settled;
+  if found then
+    return true;
+  end if;
+
+  select token_issued into v_issued
+  from ai_live_sessions
+  where id = p_session_id and user_id = p_user_id;
+  return coalesce(v_issued, false);
+end;
+$$;
+
+revoke all on function public.mark_ai_live_session_token_issued(text, uuid) from public, anon, authenticated;
+grant execute on function public.mark_ai_live_session_token_issued(text, uuid) to service_role;
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'settle-unissued-ai-live-sessions';
+
+select cron.schedule(
+  'settle-unissued-ai-live-sessions',
+  '*/5 * * * *',
+  $$select public.settle_ai_live_session(user_id, id, 0)
+    from public.ai_live_sessions
+    where not settled and not token_issued and created_at < now() - interval '15 minutes';$$
+);
 -- ---------------------------------------------------------------------
 -- feedback: the app's Send feedback / Report a problem, and the website's
 -- public form. Same statements as
@@ -625,6 +797,81 @@ create index if not exists feedback_account_rate_limits_user_idx
 
 alter table public.feedback_account_rate_limits enable row level security;
 revoke all on public.feedback_account_rate_limits from anon, authenticated;
+
+create table if not exists public.account_deletion_barriers (
+  user_id text primary key,
+  created_at timestamptz not null default now()
+);
+
+alter table public.account_deletion_barriers enable row level security;
+revoke all on public.account_deletion_barriers from public, anon, authenticated;
+
+create or replace function public.account_write_allowed()
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id text := auth.jwt() ->> 'sub';
+begin
+  if v_user_id is null then
+    return false;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('account-deletion:' || v_user_id));
+  return not exists (
+    select 1 from account_deletion_barriers where user_id = v_user_id
+  );
+end;
+$$;
+
+revoke all on function public.account_write_allowed() from public, anon, authenticated;
+grant execute on function public.account_write_allowed() to authenticated;
+
+create or replace function public.begin_account_deletion(p_user_id text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_user_id is null then
+    raise exception 'An account id is required to begin deletion';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('account-deletion:' || p_user_id));
+  insert into account_deletion_barriers (user_id)
+  values (p_user_id)
+  on conflict (user_id) do nothing;
+  return true;
+end;
+$$;
+
+revoke all on function public.begin_account_deletion(text) from public, anon, authenticated;
+grant execute on function public.begin_account_deletion(text) to service_role;
+
+create or replace function public.feedback_account_deletion_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.source = 'mobile_app' and not public.account_write_allowed() then
+    raise exception 'Feedback cannot be added while this account is being deleted';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.feedback_account_deletion_guard() from public, anon, authenticated;
+
+drop trigger if exists feedback_account_deletion_guard on public.feedback;
+create trigger feedback_account_deletion_guard
+  before insert on public.feedback
+  for each row execute function public.feedback_account_deletion_guard();
 
 -- Runs before every insert, ahead of the RLS checks:
 --   * app feedback gets the sender's user id from their Clerk token, so a
@@ -720,6 +967,28 @@ create trigger feedback_before_insert
   before insert on public.feedback
   for each row execute function public.feedback_before_insert();
 
+create extension if not exists pg_cron;
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'delete-expired-feedback-account-rate-limits';
+
+select cron.schedule(
+  'delete-expired-feedback-account-rate-limits',
+  '5 * * * *',
+  $$delete from public.feedback_account_rate_limits where created_at < now() - interval '1 hour';$$
+);
+
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'delete-expired-feedback-rate-limits';
+
+select cron.schedule(
+  'delete-expired-feedback-rate-limits',
+  '0 4 * * *',
+  $$delete from public.feedback_rate_limits where created_at < now() - interval '1 day';$$
+);
+
 -- Insert-only. The trigger has already set user_id when these are checked.
 alter table public.feedback enable row level security;
 
@@ -778,7 +1047,11 @@ on conflict (id) do update set
 drop policy if exists "feedback_screenshots_owner_insert" on storage.objects;
 create policy "feedback_screenshots_owner_insert" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'feedback-screenshots' and (storage.foldername(name))[1] = (auth.jwt() ->> 'sub'));
+  with check (
+    bucket_id = 'feedback-screenshots'
+    and (storage.foldername(name))[1] = (auth.jwt() ->> 'sub')
+    and public.account_write_allowed()
+  );
 
 drop policy if exists "feedback_screenshots_owner_select" on storage.objects;
 create policy "feedback_screenshots_owner_select" on storage.objects

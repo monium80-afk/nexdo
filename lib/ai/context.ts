@@ -4,6 +4,7 @@ import { getDueInfo } from "@/lib/taskMeta";
 import type { ImportanceLevel } from "@/lib/scoring";
 import { importanceLevelOf, isListed, isOverdue } from "@/lib/taskOperations";
 import type { Task } from "@/types/task";
+import { normalizeReminder } from "@/lib/taskReminder";
 
 // Trims a Task down to the fields the AI prompts actually need — keeps the
 // request payload small and gives the model a stable, documented shape
@@ -28,11 +29,22 @@ export type TaskContext = {
   completedLabel?: string;
   /** Set on an occurrence of a repeating task: the rule, in words. */
   repeats?: string;
+  /** The task's own reminder when it isn't the default ("alarm 15 min before", "no reminder") — for Magic mic. */
+  reminder?: string;
   /** The task's steps in order, "✓ " before the finished ones — sent by Magic mic only (hooks/useLiveVoice.ts). */
   steps?: string[];
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A task's own reminder in plain English, or nothing for the default (a notification at the Settings time). */
+function reminderForAi(task: Task): string | undefined {
+  const reminders = normalizeReminder(task.reminders);
+  if (!reminders) return undefined;
+  if (reminders.muted) return "no reminder";
+  const when = reminders.lead === undefined ? "" : reminders.lead === 0 ? " at the start" : ` ${reminders.lead} min before`;
+  return `${reminders.alarm ? "alarm" : "reminder"}${when}`;
+}
 
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
@@ -89,6 +101,7 @@ export function taskToContext(task: Task, now: Date = new Date()): TaskContext {
     repeats: task.recurrence
       ? `${describeRuleForAi(task.recurrence.rule)}, ${isRoutine(task) ? "a routine" : "a recurring task"} (this is one occurrence)`
       : undefined,
+    reminder: reminderForAi(task),
   };
 }
 
@@ -130,16 +143,27 @@ export function selectRelevantTasks(
   };
 
   add(currentTaskId ? byId.get(currentTaskId) : undefined);
-  recentTaskIds.forEach((id) => add(byId.get(id)));
 
   // Named in the message — whole title first, then by how many of its words appear.
   const lower = text.toLowerCase();
-  tasks.filter((task) => lower.includes(task.title.toLowerCase())).forEach(add);
+  const targetsCompleted =
+    /\b(completed|finished|done|reopen|re-open)\b/i.test(text);
+  tasks
+    .filter((task) => lower.includes(task.title.toLowerCase()))
+    .sort((a, b) => {
+      if (targetsCompleted) return Number(b.status === "completed") - Number(a.status === "completed");
+      return Number(a.status === "completed") - Number(b.status === "completed");
+    })
+    .forEach(add);
   tasks
     .map((task) => ({ task, overlap: titleOverlap(lower, task) }))
     .filter((entry) => entry.overlap > 0)
     .sort((a, b) => b.overlap - a.overlap || (a.task.status === "pending" ? -1 : 1))
     .forEach((entry) => add(entry.task));
+
+  // Recent tasks still help pronoun-only requests, but cannot crowd out a
+  // task the user explicitly named.
+  recentTaskIds.forEach((id) => add(byId.get(id)));
 
   // Then the open list by priority, then the most recently finished.
   [...tasks]

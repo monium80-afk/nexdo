@@ -48,6 +48,7 @@ let realtimeChannel: RealtimeChannel | null = null;
 // in flight or done — what whenAccountRead waits on.
 let latestAccountRead: { userId: string; done: Promise<boolean> } | null = null;
 let accountGeneration = 0;
+let requestedAccountUserId: string | null = null;
 // A same-account refresh during sign-out must supersede the pending cleanup.
 let signOutPending = false;
 
@@ -59,7 +60,7 @@ let signOutPending = false;
  * or finished a task since the phone last looked.
  */
 export function whenAccountRead(timeoutMs = 10_000): Promise<boolean> {
-  const userId = useTaskStore.getState().syncUserId;
+  const userId = requestedAccountUserId ?? useTaskStore.getState().syncUserId;
   const initialRead = latestAccountRead;
   if (!userId || !initialRead || initialRead.userId !== userId) return Promise.resolve(false);
   let read: { userId: string; done: Promise<boolean> } = initialRead;
@@ -123,6 +124,13 @@ function rememberTaskMutationVersion(taskId: string, updatedAt: string): void {
   if (!Number.isFinite(timestamp)) return;
   const issuedTime = issuedTaskMutationTimes.get(taskId);
   issuedTaskMutationTimes.set(taskId, issuedTime === undefined ? timestamp : Math.max(issuedTime, timestamp));
+}
+
+function sameTaskVersion(left: string | undefined, right: string | undefined): boolean {
+  if (left === right) return true;
+  const leftTime = left ? Date.parse(left) : Number.NaN;
+  const rightTime = right ? Date.parse(right) : Number.NaN;
+  return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
 }
 
 function inOrder<T>(taskIds: string[], send: () => Promise<T>): Promise<T> {
@@ -242,6 +250,47 @@ async function readStash<T>(key: string): Promise<T[]> {
   }
 }
 
+function createdCleanupKey(userId: string, taskId: string): string {
+  return JSON.stringify([userId, taskId]);
+}
+
+async function cleanupCreatedRows(rows: { id: string; updatedAt: string }[], userId: string): Promise<void> {
+  if (rows.length === 0) return;
+  const entries = rows.map((row) => ({
+    key: createdCleanupKey(userId, row.id),
+    cleanup: { userId, taskId: row.id, expectedUpdatedAt: row.updatedAt },
+  }));
+  useTaskStore.setState((state) => ({
+    pendingCreatedCleanups: {
+      ...state.pendingCreatedCleanups,
+      ...Object.fromEntries(entries.map(({ key, cleanup }) => [key, cleanup])),
+    },
+  }));
+  try {
+    await inOrder(
+      rows.map((row) => row.id),
+      () => deleteTaskRowsIfUnchanged(rows, userId),
+    );
+  } catch (error) {
+    console.warn("[useTaskStore] created-row cleanup failed", error);
+    return;
+  }
+  useTaskStore.setState((state) => {
+    const pendingCreatedCleanups = { ...state.pendingCreatedCleanups };
+    for (const { key, cleanup } of entries) {
+      if (pendingCreatedCleanups[key]?.expectedUpdatedAt === cleanup.expectedUpdatedAt) delete pendingCreatedCleanups[key];
+    }
+    return { pendingCreatedCleanups };
+  });
+}
+
+async function retryCreatedRowCleanups(userId: string): Promise<void> {
+  const pending = Object.values(useTaskStore.getState().pendingCreatedCleanups).filter((entry) => entry.userId === userId);
+  for (const entry of pending) {
+    await cleanupCreatedRows([{ id: entry.taskId, updatedAt: entry.expectedUpdatedAt }], userId);
+  }
+}
+
 // Long enough for a slow connection; short enough that signing out offline
 // doesn't leave the button spinning.
 const SIGN_OUT_SAVE_TIMEOUT_MS = 8_000;
@@ -299,6 +348,8 @@ export type SaveTaskResult =
 // fraction of a second, so a third is already very unlikely.
 const MAX_SAVE_ATTEMPTS = 3;
 
+type PendingCreatedCleanup = { userId: string; taskId: string; expectedUpdatedAt: string };
+
 type TaskStore = {
   tasks: Task[];
   syncUserId: string | null;
@@ -306,6 +357,8 @@ type TaskStore = {
   unsynced: Record<string, string>;
   /** Tasks deleted on this phone whose rows Supabase hasn't confirmed deleted yet: id → when. */
   pendingDeletes: Record<string, string>;
+  /** Rows created by a save but not safely cleaned up yet: owner and version-guarded delete. */
+  pendingCreatedCleanups: Record<string, PendingCreatedCleanup>;
   /** The account the local list belongs to — persisted, so it outlives an app restart. */
   ownerId: string | null;
   /**
@@ -353,7 +406,7 @@ type TaskStore = {
   /** Commits a plan made by planOperation against the current list. */
   applyPlan: (plan: Pick<OperationPlan, "upserts" | "deletes">, now?: Date) => void;
   /** Undo for a whole operation: every task back to the version given, or removed where that's null. */
-  restoreSnapshots: (snapshots: { taskId: string; before: Task | null; micWrite?: MicTaskWrite }[]) => void;
+  restoreSnapshots: (snapshots: { taskId: string; before: Task | null; after?: Task | null; micWrite?: MicTaskWrite }[]) => void;
   toggleTaskStatus: (id: string) => void;
   completeTask: (id: string) => void;
   reopenTask: (id: string) => void;
@@ -395,7 +448,7 @@ type TaskStore = {
     taskId?: string;
     taskIds?: string[];
     /** Every task the action touched as it was before — what undo restores. */
-    undo?: { taskId: string; before: Task | null }[];
+    undo?: { taskId: string; before: Task | null; after?: Task | null }[];
   };
 };
 
@@ -406,6 +459,7 @@ export const useTaskStore = create<TaskStore>()(
       syncUserId: null,
       unsynced: {},
       pendingDeletes: {},
+      pendingCreatedCleanups: {},
       ownerId: null,
 
       // Supabase decides which tasks a signed-in user has, but a task the
@@ -416,13 +470,13 @@ export const useTaskStore = create<TaskStore>()(
       hydrateFromSupabase: (userId) => {
         const previousSyncUserId = get().syncUserId;
         // Same-account refreshes share a generation; account transitions invalidate old reads.
-        if (previousSyncUserId !== userId || signOutPending) {
+        if (requestedAccountUserId !== userId || signOutPending) {
           accountGeneration += 1;
           signOutPending = false;
         }
+        requestedAccountUserId = userId;
         const generation = accountGeneration;
-        const isCurrent = () => generation === accountGeneration && get().syncUserId === userId;
-        set({ syncUserId: userId });
+        const isCurrent = () => generation === accountGeneration && requestedAccountUserId === userId;
         const done = (async () => {
         try {
           await rehydrated;
@@ -435,7 +489,7 @@ export const useTaskStore = create<TaskStore>()(
             const { tasks, unsynced, pendingDeletes } = get();
             await stashUnsynced(previousOwner, tasks, unsynced, Object.keys(pendingDeletes));
             if (!isCurrent()) return false;
-            set({ tasks: [], unsynced: {}, pendingDeletes: {} });
+            set({ tasks: [], syncUserId: null, unsynced: {}, pendingDeletes: {}, ownerId: null });
           }
           // Changes this account had set aside when it last signed out here.
           const stashed = (await readStash<Task>(stashKey(userId))).filter((task) => !isSampleTask(task));
@@ -460,10 +514,12 @@ export const useTaskStore = create<TaskStore>()(
             }));
           }
           if (!isCurrent()) return false;
-          set({ ownerId: userId });
           await AsyncStorage.removeItem(stashKey(userId));
           if (!isCurrent()) return false;
           await AsyncStorage.removeItem(deletesStashKey(userId));
+          if (!isCurrent()) return false;
+          set({ ownerId: userId, syncUserId: userId });
+          await retryCreatedRowCleanups(userId);
           if (!isCurrent()) return false;
 
           const fetchStartedAt = Date.now();
@@ -549,6 +605,7 @@ export const useTaskStore = create<TaskStore>()(
       // aside for this account (see stashUnsynced) rather than thrown away.
       handleSignOut: async (options) => {
         const generation = ++accountGeneration;
+        requestedAccountUserId = null;
         signOutPending = true;
         const isCurrent = () => generation === accountGeneration;
         realtimeChannel?.unsubscribe();
@@ -592,13 +649,18 @@ export const useTaskStore = create<TaskStore>()(
       },
 
       confirmSaved: async (taskIds) => {
-        if (!get().syncUserId) return false;
+        const userId = get().syncUserId;
+        if (!userId) return false;
+        const generation = accountGeneration;
         const saves = taskIds.map((id) => pendingSaves.get(id)).filter((save): save is Promise<boolean> => !!save);
         await Promise.race([
           Promise.all(saves),
           new Promise((resolve) => setTimeout(resolve, CONFIRM_SAVE_TIMEOUT_MS)),
         ]);
-        const { unsynced } = get();
+        const state = get();
+        if (generation !== accountGeneration || state.syncUserId !== userId) return false;
+        if (taskIds.some((id) => !state.tasks.some((task) => task.id === id))) return false;
+        const { unsynced } = state;
         return taskIds.every((id) => !(id in unsynced));
       },
 
@@ -697,6 +759,12 @@ export const useTaskStore = create<TaskStore>()(
         for (const entry of snapshots) {
           const task = current.get(entry.taskId);
           if (!entry.micWrite) {
+            if (
+              entry.after !== undefined &&
+              (entry.after === null ? !!task : !task || !sameTaskSnapshot(task, entry.after))
+            ) {
+              continue;
+            }
             if (entry.before) {
               upserts.push({
                 ...entry.before,
@@ -722,7 +790,7 @@ export const useTaskStore = create<TaskStore>()(
             const patch: Partial<Task> = {};
             for (const [field, change] of write.fields) {
               if (change.conflicted || field === "updatedAt") continue;
-              if (sameTaskField(task[field as keyof Task], change.lastWritten)) {
+              if (sameTaskField(task[field as keyof Task], change.lastWritten, field)) {
                 Object.assign(patch, { [field]: change.before });
               }
             }
@@ -983,10 +1051,7 @@ export const useTaskStore = create<TaskStore>()(
           const gone = new Set(stray.map(({ id }) => id));
           // The realtime echo of the earlier write may already have put it on the phone.
           set((state) => ({ tasks: state.tasks.filter((task) => !gone.has(task.id)) }));
-          void inOrder(
-            stray.map(({ id }) => id),
-            () => deleteTaskRowsIfUnchanged(stray, createdBy!),
-          ).catch((error) => console.warn("[useTaskStore] created-row cleanup failed", error));
+          void cleanupCreatedRows(stray, createdBy);
         };
 
         for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
@@ -1002,10 +1067,10 @@ export const useTaskStore = create<TaskStore>()(
             updatedAt: issueTaskMutationVersion(current.id, current.updatedAt, builtNext.updatedAt),
           };
           const existingTasks = new Map(get().tasks.map((task) => [task.id, task]));
-          const sourceVersions = new Map([[next.id, current.updatedAt]]);
+          const sourceVersions = new Map<string, string | null>([[next.id, current.updatedAt]]);
           const others = builtOthers.map((task) => {
             const existing = existingTasks.get(task.id);
-            if (existing) sourceVersions.set(task.id, existing.updatedAt);
+            sourceVersions.set(task.id, existing?.updatedAt ?? null);
             if (!existing) {
               rememberTaskMutationVersion(task.id, task.updatedAt);
               return task;
@@ -1051,11 +1116,31 @@ export const useTaskStore = create<TaskStore>()(
           }
           // Changed meanwhile — by anything other than this save's own
           // realtime echo: build again on top of that and save again.
-          if (latest.updatedAt !== current.updatedAt && latest.updatedAt !== next.updatedAt) {
+          let conflict = !sameTaskVersion(latest.updatedAt, current.updatedAt) && !sameTaskVersion(latest.updatedAt, next.updatedAt);
+          const changedCompanions: Task[] = [];
+          for (const companion of others) {
+            const expected = sourceVersions.get(companion.id);
+            const currentCompanion = get().tasks.find((task) => task.id === companion.id);
+            const ownEcho =
+              currentCompanion &&
+              createdRows.has(companion.id) &&
+              sameTaskVersion(currentCompanion.updatedAt, companion.updatedAt);
+            const unchanged =
+              expected === null
+                ? !currentCompanion || ownEcho
+                : !!currentCompanion &&
+                  (sameTaskVersion(currentCompanion.updatedAt, expected) ||
+                    sameTaskVersion(currentCompanion.updatedAt, companion.updatedAt));
+            if (unchanged) continue;
+            conflict = true;
+            if (currentCompanion) changedCompanions.push(currentCompanion);
+          }
+          if (conflict) {
             if (attempt === MAX_SAVE_ATTEMPTS - 1 && userId) {
               // Out of retries: put the phone's version back up, so Supabase
               // doesn't keep one the phone never showed.
               syncUpsert(latest, userId);
+              changedCompanions.forEach((task) => syncUpsert(task, userId));
             }
             continue;
           }
@@ -1282,6 +1367,7 @@ export const useTaskStore = create<TaskStore>()(
                   estimatedMinutes: step.estimatedMinutes,
                 })),
                 recurrence: draft.recurrence,
+                reminders: draft.reminders,
               });
               if (!alreadyExists) createdIds.add(id);
               return id;
@@ -1294,7 +1380,11 @@ export const useTaskStore = create<TaskStore>()(
               message,
               taskId: ids[0],
               taskIds: ids,
-              undo: [...createdIds].map((taskId) => ({ taskId, before: null })),
+              undo: [...createdIds].map((taskId) => ({
+                taskId,
+                before: null,
+                after: get().tasks.find((task) => task.id === taskId) ?? null,
+              })),
             };
           }
           case "OPERATE": {
@@ -1306,7 +1396,10 @@ export const useTaskStore = create<TaskStore>()(
               message: describeOperationResult(action.operation, plan, translate(), get().tasks),
               taskId: touched.length === 1 ? (plan.outcomes.find((o) => o.taskId === touched[0])?.next?.id ?? touched[0]) : undefined,
               taskIds: touched,
-              undo: plan.before,
+              undo: plan.before.map((entry) => ({
+                ...entry,
+                after: get().tasks.find((task) => task.id === entry.taskId) ?? null,
+              })),
             };
           }
           case "LIST_TASKS": {
@@ -1351,6 +1444,7 @@ export const useTaskStore = create<TaskStore>()(
         tasks: state.tasks,
         unsynced: state.unsynced,
         pendingDeletes: state.pendingDeletes,
+        pendingCreatedCleanups: state.pendingCreatedCleanups,
         ownerId: state.ownerId,
       }),
       // Version 1 added `unsynced`. An install from before it can't know
@@ -1379,6 +1473,7 @@ export const useTaskStore = create<TaskStore>()(
           tasks: normalizePersistedTasks((persistedState.tasks ?? current.tasks).filter((task) => !isSampleTask(task))),
           unsynced: persistedState.unsynced ?? {},
           pendingDeletes: persistedState.pendingDeletes ?? {},
+          pendingCreatedCleanups: persistedState.pendingCreatedCleanups ?? {},
           ownerId: persistedState.ownerId ?? null,
         };
       },

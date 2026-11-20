@@ -99,8 +99,8 @@ export async function POST(request: Request) {
   if (!task) return badRequest();
 
   // One of the account's breakdowns-and-advice for the month.
-  const claimedAt = new Date();
-  const limitResponse = await claimPlanUsage(request, auth.userId, "assist");
+  const claimId = crypto.randomUUID();
+  const limitResponse = await claimPlanUsage(request, auth.userId, "assist", 1, claimId);
   if (limitResponse) return limitResponse;
 
   const language = oneOf(parsed.language, LANGUAGES);
@@ -120,11 +120,11 @@ export async function POST(request: Request) {
     });
     const steps = normalizeSteps(result);
     // No usable steps: the app offers a retry, and this try isn't counted.
-    if (steps.length === 0) await refundPlanUsage(auth.userId, "assist", claimedAt);
+    if (steps.length === 0) await refundPlanUsage(auth.userId, "assist", claimId);
     return Response.json({ steps } satisfies BreakdownResponseBody);
   } catch (error) {
     console.error("[api/breakdown]", error);
-    await refundPlanUsage(auth.userId, "assist", claimedAt);
+    await refundPlanUsage(auth.userId, "assist", claimId);
     return Response.json({ steps: [] } satisfies BreakdownResponseBody);
   }
 }

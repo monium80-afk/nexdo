@@ -115,7 +115,7 @@ export type InboxResponseBody = {
   reply: string;
   /** Set when the model couldn't be reached and "reply" is the apology — the message isn't counted. */
   unavailable?: true;
-  /** Fragments beyond the per-call recovery cap that still need to be captured. */
+  /** Fragmented instructions still outstanding after failed or capped recovery. */
   remainingFragments?: number;
 };
 
@@ -416,8 +416,11 @@ function madeNoProgress(message: string, remainingMessage: string): boolean {
 // model handed back belongs to a later turn (and its deadline, if any).
 function instructionText(message: string, remainingMessage: string | null): string {
   if (!remainingMessage) return message;
-  const index = message.lastIndexOf(remainingMessage);
-  return index > 0 ? message.slice(0, index) : message;
+  const index = message.toLowerCase().lastIndexOf(remainingMessage.toLowerCase());
+  if (index <= 0) return "";
+  const suffix = message.slice(index + remainingMessage.length);
+  if (!/^[\s,;.!?]*$/.test(suffix)) return "";
+  return message.slice(0, index).trim();
 }
 
 const ATTACHMENT_MARKER_PATTERN = /^\[Attached (?:image|voice note|document)(?: \d+)?\]$/;
@@ -530,7 +533,8 @@ async function classifyOneInstruction(params: {
     typeof raw.remainingMessage === "string" && raw.remainingMessage.trim().length > 0 ? raw.remainingMessage.trim() : null;
 
   if (action.type === "CREATE_TASK") {
-    fillMissingTaskFields(action, instructionText(params.message, remainingMessage), new Date(params.now), language);
+    const isolatedInstruction = instructionText(params.message, remainingMessage);
+    if (isolatedInstruction) fillMissingTaskFields(action, isolatedInstruction, new Date(params.now), language);
   }
   const reply =
     action.type === "CREATE_TASK" && !action.fields.title
@@ -556,9 +560,14 @@ async function classifyOneInstruction(params: {
 // Deliberately simple sentence/keyword splitting, not general NLU — the
 // same approach as lib/ai/extractTasks.ts's offline heuristic.
 function splitIntoFragments(text: string): string[] {
-  return withoutUserInstruction(text)
+  const dateComma = "\uE000";
+  const protectedText = withoutUserInstruction(text).replace(
+    /\b(?:january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept?|october|oct|november|nov|december|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?,\s+\d{4}\b/gi,
+    (date) => date.replace(",", dateComma),
+  );
+  return protectedText
     .split(/\n|,| and then | and |;/i)
-    .map((fragment) => fragment.trim())
+    .map((fragment) => fragment.replaceAll(dateComma, ",").trim())
     .filter((fragment) => fragment.length > 2)
     // "[Attached image]" and friends label the blocks a message with files is
     // built from (lib/ai/attachmentMessage.ts) — they aren't instructions.
@@ -606,13 +615,15 @@ async function classifyFragmentsIndependently(
   const actions: InboxAction[] = [];
   const replies: string[] = [];
   let intent: string | null = null;
+  let successfulFragments = 0;
   for (const outcome of settled) {
     if (outcome.status !== "fulfilled") continue;
+    successfulFragments += 1;
     actions.push(outcome.value.action);
     if (outcome.value.reply) replies.push(outcome.value.reply);
     intent ??= outcome.value.intent;
   }
-  return { actions, replies, intent, remainingFragments: Math.max(0, fragments.length - MAX_RECOVERY_FRAGMENTS) };
+  return { actions, replies, intent, remainingFragments: fragments.length - successfulFragments };
 }
 
 // This route is the most expensive one in the app: a single request can drive
@@ -693,14 +704,14 @@ export async function POST(request: Request) {
   const body = parseBody(raw);
   if (!body) return badRequest();
 
-  const claimedAt = new Date();
+  const claimId = crypto.randomUUID();
   const limitResponse = auth.userId
-    ? await claimPlanUsage(request, auth.userId, "chat")
+    ? await claimPlanUsage(request, auth.userId, "chat", 1, claimId)
     : await claimTrialCall(request, "inbox");
   if (limitResponse) return limitResponse;
 
   const result = await resolveInboxMessage(body);
-  if (result.unavailable && auth.userId) await refundPlanUsage(auth.userId, "chat", claimedAt);
+  if (result.unavailable && auth.userId) await refundPlanUsage(auth.userId, "chat", claimId);
   return Response.json(result);
 }
 
@@ -734,6 +745,7 @@ export async function resolveInboxMessage(
   // already produced all they are going to.
   let ranOutOfTurns = false;
   let remainingFragments = 0;
+  let attemptedRecovery = false;
   // A turn that made no progress on a message holding more than one
   // instruction. Its action is one of them, but which part is left can't be
   // told: looping again would repeat it, and stopping would silently drop
@@ -769,6 +781,7 @@ export async function resolveInboxMessage(
       if (turn === 0) firstTurnFailed = true;
       else laterTurnFailed = true;
       googleRefused = error instanceof GeminiHttpError || error instanceof GeminiTimeoutError;
+      if (laterTurnFailed && googleRefused) remainingFragments = Math.max(1, splitIntoFragments(message).length);
       break; // keep whatever earlier turns already produced
     }
 
@@ -790,6 +803,7 @@ export async function resolveInboxMessage(
   }
 
   if ((ranOutOfTurns || stalled || (laterTurnFailed && !googleRefused)) && message) {
+    attemptedRecovery = true;
     const recovered = await classifyFragmentsIndependently(splitIntoFragments(message), body, askModel, deadline);
     // Every piece failed: the stalled turn's own action beats nothing.
     if (stalled && recovered.actions.length === 0) {
@@ -805,6 +819,7 @@ export async function resolveInboxMessage(
   if (firstTurnFailed && !googleRefused) {
     const fragments = splitIntoFragments(body.message);
     if (fragments.length > 1) {
+      attemptedRecovery = true;
       const recovered = await classifyFragmentsIndependently(fragments, body, askModel, deadline);
       actions.push(...recovered.actions);
       replies.push(...recovered.replies);
@@ -815,13 +830,13 @@ export async function resolveInboxMessage(
 
   if (actions.length === 0) {
     const fallback = fallbackResponse(body.language);
-    return remainingFragments ? { ...fallback, remainingFragments } : fallback;
+    return attemptedRecovery || remainingFragments > 0 ? { ...fallback, remainingFragments } : fallback;
   }
 
   return {
     intent,
     actions,
     reply: replies.join(" ").trim() || aiUnavailableMessage(body.language),
-    remainingFragments: remainingFragments || undefined,
+    remainingFragments: attemptedRecovery || remainingFragments > 0 ? remainingFragments : undefined,
   };
 }

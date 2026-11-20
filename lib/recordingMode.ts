@@ -23,10 +23,16 @@ function notify() {
  */
 export async function beginRecording(recorder: Recorder): Promise<void> {
   const wasRecording = recorders.size > 0;
+  const added = !recorders.has(recorder);
   recorders.add(recorder);
   if (!wasRecording) notify();
   // iOS refuses record mode unless playback ignores the silent switch too.
-  await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+  try {
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+  } catch (error) {
+    if (added && recorders.delete(recorder) && recorders.size === 0) notify();
+    throw error;
+  }
 }
 
 /**

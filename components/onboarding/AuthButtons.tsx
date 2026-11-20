@@ -125,6 +125,7 @@ function OnbField({
   keyboardType = "default",
   autoComplete,
   autoFocus,
+  editable = true,
   onSubmit,
 }: {
   label: string;
@@ -134,6 +135,7 @@ function OnbField({
   keyboardType?: "email-address" | "default";
   autoComplete?: TextInputProps["autoComplete"];
   autoFocus?: boolean;
+  editable?: boolean;
   onSubmit?: () => void;
 }) {
   const t = useTranslation();
@@ -156,6 +158,7 @@ function OnbField({
         keyboardType={keyboardType}
         autoComplete={autoComplete}
         autoFocus={autoFocus}
+        editable={editable}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="go"
@@ -292,22 +295,31 @@ export function EmailSignUpForm({ onCancel }: { onCancel: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [codeOpen, setCodeOpen] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
-    if (!email.trim() || !password) return;
+    if (!email.trim() || !password || submitting) return;
+    const requestEmail = email.trim();
     setFormError(null);
-    const { error } = await signUp.password({ emailAddress: email.trim(), password });
-    if (error) {
-      setFormError(error.longMessage ?? t.auth.somethingWrong);
-      return;
+    setSubmitting(true);
+    try {
+      const { error } = await signUp.password({ emailAddress: requestEmail, password });
+      if (error) {
+        setFormError(error.longMessage ?? t.auth.somethingWrong);
+        return;
+      }
+      const { error: codeError } = await signUp.verifications.sendEmailCode();
+      if (codeError) {
+        setFormError(codeError.longMessage ?? t.auth.sendCodeError);
+        return;
+      }
+      setSubmittedEmail(requestEmail);
+      setCodeOpen(true);
+    } finally {
+      setSubmitting(false);
     }
-    const { error: codeError } = await signUp.verifications.sendEmailCode();
-    if (codeError) {
-      setFormError(codeError.longMessage ?? t.auth.sendCodeError);
-      return;
-    }
-    setCodeOpen(true);
   };
 
   const handleVerify = async (code: string) => {
@@ -324,17 +336,17 @@ export function EmailSignUpForm({ onCancel }: { onCancel: () => void }) {
     }
   };
 
-  if (codeOpen) return <CodeStep email={email.trim()} onVerify={handleVerify} onCancel={() => setCodeOpen(false)} />;
+  if (codeOpen) return <CodeStep email={submittedEmail} onVerify={handleVerify} onCancel={() => setCodeOpen(false)} />;
 
   const fieldError = errors.fields.emailAddress?.message ?? errors.fields.password?.message;
   return (
     <View style={{ gap: 10 }}>
-      <OnbField label={t.auth.email} value={email} onChangeText={setEmail} keyboardType="email-address" autoComplete="email" autoFocus />
-      <OnbField label={t.auth.password} value={password} onChangeText={setPassword} secureEntry autoComplete="new-password" onSubmit={() => void handleSubmit()} />
+      <OnbField label={t.auth.email} value={email} onChangeText={setEmail} editable={!submitting} keyboardType="email-address" autoComplete="email" autoFocus />
+      <OnbField label={t.auth.password} value={password} onChangeText={setPassword} editable={!submitting} secureEntry autoComplete="new-password" onSubmit={() => void handleSubmit()} />
       <View nativeID="clerk-captcha" />
       <FormError message={fieldError ?? formError} />
       <View style={{ marginTop: 4 }}>
-        <PrimaryButton label={t.onboardingFlow.save.createAccount} onPress={() => void handleSubmit()} disabled={fetchStatus === "fetching"} />
+        <PrimaryButton label={t.onboardingFlow.save.createAccount} onPress={() => void handleSubmit()} disabled={fetchStatus === "fetching" || submitting} />
       </View>
       <TextButton label={t.onboardingFlow.back} onPress={onCancel} />
     </View>
@@ -350,6 +362,8 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [codeOpen, setCodeOpen] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   // The sign-in's own code, or the one Clerk asks for after a password on a new phone.
   const [codeStep, setCodeStep] = useState<"signIn" | "newDevice">("signIn");
   const [formError, setFormError] = useState<string | null>(null);
@@ -364,18 +378,22 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
     return error ? (error.longMessage ?? t.auth.somethingWrong) : undefined;
   };
 
-  const sendCode = async () => {
+  const sendCode = async (requestEmail: string) => {
+    if (email.trim() !== requestEmail) return;
     const { error } = await signIn.emailCode.sendCode();
+    if (email.trim() !== requestEmail) return;
     if (error) {
       setFormError(error.longMessage ?? t.auth.sendCodeError);
       return;
     }
+    setSubmittedEmail(requestEmail);
     setCodeStep("signIn");
     setCodeOpen(true);
   };
 
-  const handleContinue = async () => {
-    const { error } = await signIn.create({ identifier: email.trim() });
+  const handleContinue = async (requestEmail: string) => {
+    const { error } = await signIn.create({ identifier: requestEmail });
+    if (email.trim() !== requestEmail) return;
     if (error) {
       setFormError(error.longMessage ?? t.auth.somethingWrong);
       return;
@@ -384,7 +402,7 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
       setStep("password");
       return;
     }
-    await sendCode();
+    await sendCode(requestEmail);
   };
 
   const handlePassword = async () => {
@@ -406,6 +424,7 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
         setFormError(sendError.longMessage ?? t.auth.sendCodeError);
         return;
       }
+      setSubmittedEmail(email.trim());
       setCodeStep("newDevice");
       setCodeOpen(true);
       return;
@@ -414,10 +433,28 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
   };
 
   const handleSubmit = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || submitting) return;
+    const requestEmail = email.trim();
     setFormError(null);
-    if (step === "password") await handlePassword();
-    else await handleContinue();
+    setSubmitting(true);
+    try {
+      if (step === "password") await handlePassword();
+      else await handleContinue(requestEmail);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSendCode = async () => {
+    if (submitting || !email.trim()) return;
+    const requestEmail = email.trim();
+    setFormError(null);
+    setSubmitting(true);
+    try {
+      await sendCode(requestEmail);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleVerify = async (code: string) => {
@@ -427,7 +464,7 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
     return t.auth.somethingWrong;
   };
 
-  if (codeOpen) return <CodeStep email={email.trim()} onVerify={handleVerify} onCancel={() => setCodeOpen(false)} />;
+  if (codeOpen) return <CodeStep email={submittedEmail} onVerify={handleVerify} onCancel={() => setCodeOpen(false)} />;
 
   const fieldError = errors.fields.identifier?.message ?? (step === "password" ? errors.fields.password?.message : undefined);
   return (
@@ -436,6 +473,7 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
         label={t.auth.email}
         value={email}
         onChangeText={(text) => {
+          if (submitting) return;
           setEmail(text);
           // Another address may or may not have a password: back to the first step.
           if (step === "password") {
@@ -444,25 +482,23 @@ export function EmailLogInForm({ onCancel }: { onCancel: () => void }) {
             setFormError(null);
           }
         }}
+        editable={!submitting}
         keyboardType="email-address"
         autoComplete="email"
         autoFocus
         onSubmit={() => void handleSubmit()}
       />
       {step === "password" ? (
-        <OnbField label={t.auth.password} value={password} onChangeText={setPassword} secureEntry autoComplete="current-password" autoFocus onSubmit={() => void handleSubmit()} />
+        <OnbField label={t.auth.password} value={password} onChangeText={setPassword} editable={!submitting} secureEntry autoComplete="current-password" autoFocus onSubmit={() => void handleSubmit()} />
       ) : null}
       <FormError message={fieldError ?? formError} />
       <View style={{ marginTop: 4 }}>
-        <PrimaryButton label={step === "password" ? t.auth.logIn : t.auth.continue} onPress={() => void handleSubmit()} disabled={fetchStatus === "fetching"} />
+        <PrimaryButton label={step === "password" ? t.auth.logIn : t.auth.continue} onPress={() => void handleSubmit()} disabled={fetchStatus === "fetching" || submitting} />
       </View>
       {step === "password" ? (
         <TextButton
           label={t.auth.useCode}
-          onPress={() => {
-            setFormError(null);
-            void sendCode();
-          }}
+          onPress={() => void handleSendCode()}
         />
       ) : (
         <TextButton label={t.onboardingFlow.back} onPress={onCancel} />

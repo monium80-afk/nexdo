@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small widget: the next task on Today's dark card (NexdoWidgetRenderer.kt). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/nexdo_widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/nexdo_widget_card"
+  android:orientation="vertical"
+  android:padding="16dp">
+
+  <TextView
+    android:id="@+id/nexdo_widget_label"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:fontFamily="monospace"
+    android:maxLines="1"
+    android:text="NEXDO"
+    android:textColor="#FFB089"
+    android:textSize="11sp"
+    android:textStyle="bold" />
+
+  <TextView
+    android:id="@+id/nexdo_widget_title"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="6dp"
+    android:ellipsize="end"
+    android:fontFamily="sans-serif-medium"
+    android:maxLines="3"
+    android:text="@string/nexdo_widget_sign_in"
+    android:textColor="#FAF1E4"
+    android:textSize="16sp" />
+
+  <TextView
+    android:id="@+id/nexdo_widget_detail"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="4dp"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:textColor="#A89A8E"
+    android:textSize="13sp"
+    android:visibility="gone" />
+</LinearLayout>

@@ -52,6 +52,6 @@ begin
     on public.tasks (user_id, (recurrence ->> 'seriesId'), (recurrence ->> 'occurrenceDate'))
     where recurrence is not null;
 exception when unique_violation then
-  raise notice 'tasks_series_occurrence_unique not created: duplicate occurrences exist';
+  raise exception 'Cannot create tasks_series_occurrence_unique: duplicate task occurrences exist. Reconcile duplicate occurrences without deleting task data, then retry the migration.';
 end
 $$;

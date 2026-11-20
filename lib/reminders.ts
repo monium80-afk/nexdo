@@ -2,84 +2,76 @@ import { deadlineInstant } from "@/lib/deadline";
 import type { Translations } from "@/lib/i18n";
 import { addDaysToKey, isLocalDateKey, keyParts, toLocalDateKey } from "@/lib/localDate";
 import { recommendTasks } from "@/lib/priority";
-import type { Task } from "@/types/task";
+import { isRoutine, occursOn, slotDeadline } from "@/lib/recurrence";
+import { effectiveLead, reminderModeOf } from "@/lib/taskReminder";
+import type { Task, TaskDeadline } from "@/types/task";
 
 // The reminder engine's policy: which notifications the phone should have
 // scheduled right now, worked out from the task list and the user's
 // preferences alone. Pure (no Expo, no store), so it's tested on its own
 // (tests/reminders.test.ts). lib/notifications.ts makes the phone match the
 // plan — it never decides a time itself — and every path that changes a task
-// (the Add form, Task Details, the AI, live voice, a repeating task's next
+// (the Add form, the edit card, Magic mic, a repeating task's next
 // occurrence, completing, deleting, archiving) reaches it the same way: the
 // task list changes, and the list is planned again.
 //
-// Policy:
-// - No deadline: no task reminder (the optional daily planning note is the
-//   only thing that ever mentions it).
-// - Date-only deadline: one reminder on the day, at the reminder time (9:00
-//   by default). The deadline has no time, so none is invented for it.
-//   With the morning nudge on, it's counted in that day's nudge instead.
-// - Morning nudge (optional): once a day at its own time, "Start with: X"
-//   and how many more are due that day.
-// - Exact deadline: one reminder, at the deadline itself or as long before it
-//   as the user picked in Settings (5/15/30 min, 1 h, 1 day).
-//   It used to be the 9:00 one, so a task due at 18:00 added after 9:00 got
-//   no reminder at all — what made reminders look broken on the phone.
-// - High priority, if the user wants it: one more the day before.
-// - "Overdue alerts": one alert as an exact deadline passes, in place of the
-//   reminder at the deadline (both at once would be one too many). Never for
-//   a date-only one — that would be a midnight notification.
+// Policy (reworked 2026-11-18, the user's notification redesign):
+// - One main switch (Settings → Notifications). Off: nothing at all is
+//   scheduled — but every task keeps its own reminder choice, so turning it
+//   back on brings everything back as it was. The three parts below work the
+//   same way.
+// - Tasks WITHOUT a time never get a notification of their own: five of them
+//   on one day were five pings at 9:00. They're listed in ONE morning summary
+//   instead ("5 things today: start with Pay rent"), with that day's routines.
+// - Tasks WITH a time get their own reminder, "Tasks with a time" switch on:
+//   at the start or so long before — the task's own lead, else the default
+//   from Settings. As a notification, or an alarm (Pro) when the task asks for
+//   one. A task set to "Off" gets nothing, and is left out of the summary.
+// - Reminders that fall on the same minute become one notification
+//   ("3 tasks at 2:00 PM"). Alarms always ring on their own.
+// - A repeating task or routine with a time also gets the reminders of its
+//   next days (a week ahead), so a daily alarm rings even if Nexdo isn't
+//   opened in between. Not for a repeating task that waits for a missed one
+//   ("keep"): its next occurrence doesn't come until the missed one is done.
+// - "Overdue alert": once, when a timed task should have been finished
+//   (its start plus its length, or 15 minutes after a start without one).
 // - Only future times are scheduled: a reminder whose time has passed is
 //   dropped, not sent late, so opening the app never sets off a burst.
-// - Completed, skipped and archived tasks, and tasks with reminders muted,
-//   get none — so completing, deleting or archiving cancels them.
-// - The ids are derived from the task and the kind of reminder, so planning
-//   twice gives the same ids, and the reconciler can tell what's already
-//   scheduled from what has to change.
+// - The ids are derived from the task and the kind, so planning twice gives
+//   the same ids, and the reconciler can tell what's already scheduled from
+//   what has to change.
 
 export type ReminderPreferences = {
-  /** Reminders on the day a task is due (and before exact deadlines). */
-  deadlineReminders: boolean;
-  /** "HH:MM" — when the on-the-day reminder arrives. */
-  dayReminderTime: string;
-  /**
-   * How long before a deadline with a time to remind, in minutes: empty (or
-   * 0) = at the deadline itself. One choice; only the first is used (older
-   * versions allowed several).
-   */
-  beforeOffsets: number[];
-  /** An extra reminder the day before, for high-priority tasks. */
-  importantDayBefore: boolean;
-  /** An alert as an exact deadline passes. */
+  /** The main switch: nothing is scheduled while it's off. */
+  enabled: boolean;
+  /** One notification each morning: the day's tasks and routines. */
+  morningSummary: boolean;
+  /** "HH:MM" — when the morning summary arrives. */
+  morningSummaryTime: string;
+  /** Tasks with a time get a reminder of their own. */
+  timedReminders: boolean;
+  /** How long before a timed task, in minutes (0 = at the start), for tasks without their own. */
+  defaultLead: number;
+  /** An alert when a timed task should have been finished. */
   overdueAlerts: boolean;
-  /** A daily planning note, separate from any deadline. */
-  dailyPlanning: boolean;
-  /** "HH:MM" — when the daily planning note arrives. */
-  dailyPlanningTime: string;
+  /** Alarms are Pro: without it, a task set to "Alarm" gets a plain notification (its choice is kept). */
+  alarmsAllowed: boolean;
 };
 
 export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = {
-  deadlineReminders: true,
-  dayReminderTime: "09:00",
-  beforeOffsets: [],
-  importantDayBefore: false,
+  enabled: true,
+  morningSummary: true,
+  morningSummaryTime: "08:00",
+  timedReminders: true,
+  defaultLead: 0,
   overdueAlerts: false,
-  dailyPlanning: false,
-  dailyPlanningTime: "09:00",
+  alarmsAllowed: true,
 };
 
-/** The choices Settings offers for tasks with a time, in minutes before (0 = at the start). */
-export const REMINDER_LEAD_OPTIONS = [0, 5, 15, 30, 60, 1440] as const;
-
-/** How long before a timed deadline the reminder goes off, in minutes (0 = at the start). */
-export function reminderLead(prefs: Pick<ReminderPreferences, "beforeOffsets">): number {
-  return prefs.beforeOffsets.find((value) => Number.isFinite(value) && value > 0) ?? 0;
-}
-
-export type ReminderKind = "due-day" | "before" | "day-before" | "overdue" | "daily";
+export type ReminderKind = "reminder" | "alarm" | "late" | "summary" | "group";
 
 /** The Android channel each kind is filed under (see lib/notifications.ts). */
-export type ReminderChannel = "reminders" | "overdue" | "planning";
+export type ReminderChannel = "reminders" | "alarms" | "overdue" | "planning";
 
 export type PlannedNotification = {
   /** Stable: the same task and kind always give the same id. */
@@ -98,6 +90,10 @@ export type PlannedNotification = {
     kind: ReminderKind;
     /** The deadline this was planned for — a tap on an older one is checked against the task as it is now. */
     deadline?: string;
+    /** The task's own name — what a group lists, and the alarm screen shows. */
+    taskTitle?: string;
+    /** Alarms: when the task starts, in ms (the alarm screen's "in 15 min"). */
+    startsAt?: number;
     /** Changes whenever anything shown or timed changes: what the reconciler compares. */
     signature: string;
   };
@@ -126,19 +122,20 @@ export function shouldDismissPresentedNotification(
  * (every launch, return to the app and task change runs one).
  */
 export const MAX_SCHEDULED = 60;
-const DAILY_PLANNING_DAYS = 7;
+/** How many days of morning summaries, and of a repeating task's reminders, are scheduled ahead. */
+const DAYS_AHEAD = 7;
 /** Nothing is scheduled closer than this to now — it would arrive as the app opens. */
 const MIN_LEAD_MS = 30_000;
-/** Two reminders for one task closer together than this are one too many. */
-const MIN_GAP_MS = 5 * 60_000;
-/** The importance "High priority" maps to, and anything above it. */
-const HIGH_IMPORTANCE = 63;
+/** The overdue alert for a timed task with no length: this long after its start. */
+const LATE_WITHOUT_LENGTH_MS = 15 * 60_000;
+/** How many names a summary or a group spells out before "+ N". */
+const NAMES_SHOWN = 3;
 
 const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /** The instant `time` ("HH:MM") happens on `date`, on this phone's clock. */
 export function atLocalTime(date: string, time: string): number {
-  const match = CLOCK_PATTERN.exec(time) ?? CLOCK_PATTERN.exec(DEFAULT_REMINDER_PREFERENCES.dayReminderTime)!;
+  const match = CLOCK_PATTERN.exec(time) ?? CLOCK_PATTERN.exec(DEFAULT_REMINDER_PREFERENCES.morningSummaryTime)!;
   const { y, m, d } = keyParts(date);
   return new Date(y, m - 1, d, Number(match[1]), Number(match[2]), 0, 0).getTime();
 }
@@ -147,127 +144,212 @@ function formatTime(ms: number, t: Translations): string {
   return new Date(ms).toLocaleTimeString(t.locale, { hour: "numeric", minute: "2-digit" });
 }
 
-function deadlineKey(task: Task): string | undefined {
-  return task.deadline ? `${task.deadline.date}|${task.deadline.time ?? ""}` : undefined;
+function deadlineKey(deadline: TaskDeadline | undefined): string | undefined {
+  return deadline ? `${deadline.date}|${deadline.time ?? ""}` : undefined;
 }
 
+/** Open, dated, and not set to "Off". */
 function wantsReminders(task: Task): boolean {
-  return task.status === "pending" && !!task.deadline && !task.reminders?.muted;
+  return task.status === "pending" && !!task.deadline && isLocalDateKey(task.deadline.date) && reminderModeOf(task.reminders) !== "off";
 }
 
-type Candidate = { kind: ReminderKind; fireAt: number; suffix?: string; title: string; body: string };
+/**
+ * What a task's list card shows next to its name (2026-11-18): a bell for a
+ * notification of its own, an alarm clock for an alarm, nothing otherwise —
+ * including a task without a time, which is only in the morning summary.
+ */
+export function reminderBadge(task: Task, prefs: ReminderPreferences): "notify" | "alarm" | null {
+  if (!prefs.enabled || !prefs.timedReminders || !wantsReminders(task) || !task.deadline?.time) return null;
+  return reminderModeOf(task.reminders) === "alarm" && prefs.alarmsAllowed ? "alarm" : "notify";
+}
 
-/** The reminders one task should have, before the global cap. */
-export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: Date, t: Translations): PlannedNotification[] {
-  if (!wantsReminders(task) || !isLocalDateKey(task.deadline!.date)) return [];
+/** Whether a repeating task's later days get their reminders ahead of time (see the policy above). */
+function projectsAhead(task: Task): boolean {
+  const recurrence = task.recurrence;
+  if (!recurrence || recurrence.rule.allDay) return false;
+  return isRoutine(task) || recurrence.rule.missed === "skip";
+}
+
+type Occurrence = { deadline: TaskDeadline; date: string; projected: boolean };
+
+/** The task's own deadline, then — for a repeating task with a time — its next days within the week. */
+function occurrencesOf(task: Task, now: Date): Occurrence[] {
   const deadline = task.deadline!;
-  const dueAt = deadlineInstant(deadline).getTime();
+  const list: Occurrence[] = [{ deadline, date: deadline.date, projected: false }];
+  if (!projectsAhead(task)) return list;
+  const rule = task.recurrence!.rule;
+  const from = deadline.date > task.recurrence!.occurrenceDate ? deadline.date : task.recurrence!.occurrenceDate;
+  const last = addDaysToKey(toLocalDateKey(now), DAYS_AHEAD);
+  for (let date = addDaysToKey(from, 1); date <= last; date = addDaysToKey(date, 1)) {
+    if (occursOn(rule, date)) list.push({ deadline: slotDeadline(rule, date), date, projected: true });
+  }
+  return list;
+}
+
+/** "Dentist in 15 minutes", "Dentist starts now", "Dentist tomorrow". */
+function reminderTitle(title: string, lead: number, t: Translations): string {
   const copy = t.notifications;
-  const dueTime = deadline.time ? formatTime(dueAt, t) : undefined;
-  const candidates: Candidate[] = [];
+  if (lead === 0) return copy.startsNowTitle(title);
+  if (lead === 1440) return copy.startsTomorrowTitle(title);
+  return copy.startsInTitle(title, copy.offsetLabel(lead));
+}
 
-  if (prefs.deadlineReminders) {
-    // On the day: at the reminder time when the deadline has no time. With a
-    // time: ONE reminder, as early as Settings say (2026-11-09: one choice,
-    // "at the start" or so long before) — at the start unless the overdue
-    // alert already goes off then.
-    const lead = reminderLead(prefs);
-    if (!deadline.time) {
-      // With the morning nudge on, a date-only task is counted in that
-      // morning's nudge instead ("+ 2 more due today") — two morning
-      // notifications would be one too many (2026-11-12).
-      if (!prefs.dailyPlanning) {
-        candidates.push({
-          kind: "due-day",
-          fireAt: atLocalTime(deadline.date, prefs.dayReminderTime),
-          title: copy.dueTodayTitle(task.title),
-          body: copy.dueTodayBody,
-        });
-      }
-    } else if (lead > 0) {
-      candidates.push({
-        kind: "before",
-        fireAt: dueAt - lead * 60_000,
-        suffix: String(lead),
-        title: task.title,
-        body: copy.dueInBody(copy.offsetLabel(lead), dueTime!),
-      });
-    } else if (!prefs.overdueAlerts) {
-      candidates.push({ kind: "due-day", fireAt: dueAt, title: copy.dueNowTitle(task.title), body: copy.dueNowBody(dueTime!) });
-    }
-    if (prefs.importantDayBefore && task.importance >= HIGH_IMPORTANCE) {
-      candidates.push({
-        kind: "day-before",
-        fireAt: atLocalTime(addDaysToKey(deadline.date, -1), prefs.dayReminderTime),
-        title: copy.dueTomorrowTitle(task.title),
-        body: dueTime ? copy.dueTomorrowAtBody(dueTime) : copy.dueTomorrowBody,
-      });
-    }
-  }
-  if (prefs.overdueAlerts && deadline.time) {
-    candidates.push({ kind: "overdue", fireAt: dueAt, title: copy.overdueTitle(task.title), body: copy.overdueBody });
-  }
-
+/** The reminders (and overdue alert) one task should have, before grouping and the global cap. */
+export function planTaskReminders(task: Task, prefs: ReminderPreferences, now: Date, t: Translations): PlannedNotification[] {
+  if (!prefs.enabled || !wantsReminders(task) || !task.deadline!.time) return [];
+  const copy = t.notifications;
+  const alarm = reminderModeOf(task.reminders) === "alarm" && prefs.alarmsAllowed;
+  const lead = effectiveLead(task.reminders, prefs.defaultLead);
+  const length = task.estimatedMinutes > 0 ? t.format.duration(Math.floor(task.estimatedMinutes / 60), task.estimatedMinutes % 60) : undefined;
   const planned: PlannedNotification[] = [];
-  for (const candidate of candidates
-    .filter((entry) => entry.fireAt > now.getTime() + MIN_LEAD_MS && entry.fireAt <= dueAt)
-    .sort((a, b) => a.fireAt - b.fireAt)) {
-    // The overdue alert always stands; reminders crowding each other don't.
-    const crowded = planned.some((entry) => Math.abs(entry.fireAt - candidate.fireAt) < MIN_GAP_MS);
-    if (crowded && candidate.kind !== "overdue") continue;
-    const id = `${NOTIFICATION_ID_PREFIX}${candidate.kind}-${task.id}${candidate.suffix ? `-${candidate.suffix}` : ""}`;
-    planned.push({
-      id,
-      kind: candidate.kind,
-      channel: candidate.kind === "overdue" ? "overdue" : "reminders",
-      taskId: task.id,
-      fireAt: candidate.fireAt,
-      title: candidate.title,
-      body: candidate.body,
-      completable: true,
-      data: {
-        url: `/task/${task.id}`,
-        taskId: task.id,
-        kind: candidate.kind,
-        deadline: deadlineKey(task),
-        signature: `${candidate.fireAt}|${candidate.title}|${candidate.body}`,
-      },
-    });
+
+  for (const occurrence of occurrencesOf(task, now)) {
+    const dueAt = deadlineInstant(occurrence.deadline).getTime();
+    // A day ahead of a repeating task isn't a task yet: it opens the list,
+    // and offers no "Mark as done".
+    const ref = occurrence.projected ? `${task.recurrence!.seriesId}-${occurrence.date}` : task.id;
+    const url = occurrence.projected ? "/(tabs)/tasks" : `/task/${task.id}`;
+    const taskId = occurrence.projected ? undefined : task.id;
+    const add = (kind: ReminderKind, channel: ReminderChannel, fireAt: number, title: string, body: string) => {
+      if (fireAt <= now.getTime() + MIN_LEAD_MS) return;
+      const extra = kind === "alarm" ? { taskTitle: task.title, startsAt: dueAt } : { taskTitle: task.title };
+      planned.push({
+        id: `${NOTIFICATION_ID_PREFIX}${kind}-${ref}`,
+        kind,
+        channel,
+        taskId,
+        fireAt,
+        title,
+        body,
+        completable: !occurrence.projected,
+        data: {
+          url,
+          taskId,
+          kind,
+          deadline: occurrence.projected ? undefined : deadlineKey(task.deadline),
+          ...extra,
+          signature: `${kind}|${fireAt}|${title}|${body}`,
+        },
+      });
+    };
+
+    if (prefs.timedReminders) {
+      const time = formatTime(dueAt, t);
+      add(
+        alarm ? "alarm" : "reminder",
+        alarm ? "alarms" : "reminders",
+        dueAt - lead * 60_000,
+        reminderTitle(task.title, lead, t),
+        length ? copy.startsAtWithLength(time, length) : copy.startsAt(time),
+      );
+    }
+    if (prefs.overdueAlerts && !occurrence.projected) {
+      const lateAt = dueAt + (task.estimatedMinutes > 0 ? task.estimatedMinutes * 60_000 : LATE_WITHOUT_LENGTH_MS);
+      add("late", "overdue", lateAt, copy.lateTitle(task.title), copy.lateBody(formatTime(task.estimatedMinutes > 0 ? lateAt : dueAt, t)));
+    }
   }
   return planned;
 }
 
+/** "Call mom, Buy groceries" and how many more weren't named. */
+function someNames(titles: string[]): { names: string; more: number } {
+  return { names: titles.slice(0, NAMES_SHOWN).join(", "), more: Math.max(0, titles.length - NAMES_SHOWN) };
+}
+
 /**
- * The morning nudge for the coming week: the task Nexdo would start with as
- * the title, and how many others are due that day. No open tasks, no note —
- * Nexdo doesn't nudge about nothing. Planned again on every task change and
- * app launch, so the task it names stays current.
+ * Plain reminders landing on the same minute become one: "3 tasks at 2:00 PM"
+ * with their names. Alarms and overdue alerts always stay on their own.
  */
-function planDailyNotes(tasks: Task[], prefs: ReminderPreferences, now: Date, t: Translations): PlannedNotification[] {
-  if (!prefs.dailyPlanning) return [];
-  const open = tasks.filter((task) => task.status === "pending");
+function groupSameMinute(entries: PlannedNotification[], t: Translations): PlannedNotification[] {
+  const byMinute = new Map<number, PlannedNotification[]>();
+  const rest: PlannedNotification[] = [];
+  for (const entry of entries) {
+    if (entry.kind !== "reminder") {
+      rest.push(entry);
+      continue;
+    }
+    const minute = Math.floor(entry.fireAt / 60_000);
+    byMinute.set(minute, [...(byMinute.get(minute) ?? []), entry]);
+  }
+  for (const [minute, group] of byMinute) {
+    if (group.length === 1) {
+      rest.push(group[0]);
+      continue;
+    }
+    const fireAt = Math.min(...group.map((entry) => entry.fireAt));
+    // The tasks' own names, not "Dentist starts now" three times over.
+    const names = group.map((entry) => entry.data.taskTitle ?? entry.title);
+    const { names: shown, more } = someNames(names);
+    const title = t.notifications.groupTitle(group.length, formatTime(fireAt, t));
+    const body = more > 0 ? `${shown} +${more}` : shown;
+    rest.push({
+      id: `${NOTIFICATION_ID_PREFIX}group-${minute}`,
+      kind: "group",
+      channel: "reminders",
+      fireAt,
+      title,
+      body,
+      completable: false,
+      data: { url: "/(tabs)/tasks", kind: "group", signature: `group|${fireAt}|${title}|${body}` },
+    });
+  }
+  return rest;
+}
+
+/**
+ * The morning summary for the coming week: that day's tasks (and any still
+ * open from before), the one to start with first, and its routines — one
+ * notification instead of one per task. A day with nothing on it gets none:
+ * Nexdo doesn't nudge about nothing. Planned again on every task change and
+ * app launch, so what it names stays current.
+ */
+function planMorningSummaries(tasks: Task[], prefs: ReminderPreferences, now: Date, t: Translations): PlannedNotification[] {
+  if (!prefs.enabled || !prefs.morningSummary) return [];
+  const open = tasks.filter(wantsReminders);
   if (open.length === 0) return [];
+  const routines = open.filter((task) => isRoutine(task));
+  const others = open.filter((task) => !isRoutine(task));
   const today = toLocalDateKey(now);
+  const copy = t.notifications;
   const notes: PlannedNotification[] = [];
-  for (let offset = 0; offset < DAILY_PLANNING_DAYS; offset += 1) {
+
+  for (let offset = 0; offset < DAYS_AHEAD; offset += 1) {
     const date = addDaysToKey(today, offset);
-    const fireAt = atLocalTime(date, prefs.dailyPlanningTime);
+    const fireAt = atLocalTime(date, prefs.morningSummaryTime);
     if (fireAt <= now.getTime() + MIN_LEAD_MS) continue;
-    const top = recommendTasks(open, { now: new Date(fireAt) })[0]?.task;
-    if (!top) continue;
-    // The others due that day — the date-only ones get no ping of their own while the nudge is on.
-    const moreDue = open.filter((task) => task.id !== top.id && task.deadline?.date === date).length;
-    const title = t.notifications.dailyTitle(top.title);
-    const body = moreDue > 0 ? t.notifications.dailyDueBody(moreDue) : t.notifications.dailyOpenBody;
+    const dayTasks = others.filter((task) => task.deadline!.date <= date);
+    // A routine is on that day when its open occurrence is, or its rule
+    // brings it back that day.
+    const dayRoutines = routines.filter(
+      (task) => task.deadline!.date === date || (task.deadline!.date < date && occursOn(task.recurrence!.rule, date)),
+    );
+    if (dayTasks.length === 0 && dayRoutines.length === 0) continue;
+
+    const ranked = recommendTasks(dayTasks, { now: new Date(fireAt) }).map((entry) => entry.task);
+    const order = ranked.length === dayTasks.length ? ranked : dayTasks;
+    const routineNames = someNames(dayRoutines.map((task) => task.title));
+    const routineLine = dayRoutines.length > 0 ? copy.summaryRoutines(routineNames.more > 0 ? `${routineNames.names} +${routineNames.more}` : routineNames.names) : "";
+
+    let title: string;
+    let body: string;
+    if (order.length === 0) {
+      title = copy.summaryRoutinesTitle(dayRoutines.length);
+      body = routineLine;
+    } else {
+      title = copy.summaryTitle(order.length, order[0].title);
+      const then = someNames(order.slice(1).map((task) => task.title));
+      const thenLine = order.length > 1 ? copy.summaryThen(then.names, then.more) : "";
+      body = [thenLine, routineLine].filter(Boolean).join(" ") || copy.dailyOpenBody;
+    }
     notes.push({
-      id: `${NOTIFICATION_ID_PREFIX}daily-${date}`,
-      kind: "daily",
+      id: `${NOTIFICATION_ID_PREFIX}summary-${date}`,
+      kind: "summary",
       channel: "planning",
       fireAt,
       title,
       body,
       completable: false,
-      data: { url: "/", kind: "daily", signature: `${fireAt}|${title}|${body}` },
+      data: { url: "/", kind: "summary", signature: `summary|${fireAt}|${title}|${body}` },
     });
   }
   return notes;
@@ -281,7 +363,9 @@ export function planNotifications(
   t: Translations,
   max: number = MAX_SCHEDULED,
 ): PlannedNotification[] {
-  const all = [...tasks.flatMap((task) => planTaskReminders(task, prefs, now, t)), ...planDailyNotes(tasks, prefs, now, t)];
+  if (!prefs.enabled) return [];
+  const taskReminders = groupSameMinute(tasks.flatMap((task) => planTaskReminders(task, prefs, now, t)), t);
+  const all = [...taskReminders, ...planMorningSummaries(tasks, prefs, now, t)];
   return all.sort((a, b) => a.fireAt - b.fireAt || (a.id < b.id ? -1 : 1)).slice(0, max);
 }
 
@@ -311,14 +395,17 @@ export function diffNotifications(
   return { cancel, schedule };
 }
 
-/** When the task's next reminder is, for Task Details to show — or null when it has none coming. */
+/**
+ * When the task will next be mentioned, for the edit card and Task Details
+ * to show — its own reminder, or for a task without a time the morning
+ * summary of its day — or null when nothing is coming.
+ */
 export function nextReminderFor(task: Task, prefs: ReminderPreferences, now: Date, t: Translations): number | null {
-  const first = planTaskReminders(task, prefs, now, t).find((entry) => entry.kind !== "overdue");
-  if (first) return first.fireAt;
-  // A date-only task is in that morning's nudge instead of a ping of its own.
-  if (prefs.dailyPlanning && wantsReminders(task) && !task.deadline!.time && isLocalDateKey(task.deadline!.date)) {
-    const nudgeAt = atLocalTime(task.deadline!.date, prefs.dailyPlanningTime);
-    if (nudgeAt > now.getTime() + MIN_LEAD_MS) return nudgeAt;
+  const own = planTaskReminders(task, prefs, now, t).find((entry) => entry.kind !== "late" && entry.taskId === task.id);
+  if (own) return own.fireAt;
+  if (prefs.enabled && prefs.morningSummary && wantsReminders(task) && !task.deadline!.time) {
+    const summaryAt = atLocalTime(task.deadline!.date, prefs.morningSummaryTime);
+    if (summaryAt > now.getTime() + MIN_LEAD_MS) return summaryAt;
   }
   return null;
 }

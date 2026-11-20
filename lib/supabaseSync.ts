@@ -3,6 +3,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { normalizeRecurrence } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase";
 import type { Task } from "@/types/task";
+import { normalizeReminder } from "@/lib/taskReminder";
 
 // Background sync helpers used by useTaskStore. Every function
 // here is fire-and-forget from the caller's perspective — mutations stay
@@ -67,7 +68,7 @@ function toTaskRow(task: Task, userId: string): TaskRow {
     deadline_date: task.deadline?.date ?? null,
     deadline_time: task.deadline?.time ?? null,
     deadline_timezone: task.deadline?.timeZone ?? null,
-    reminder_settings: task.reminders ?? null,
+    reminder_settings: normalizeReminder(task.reminders) ?? null,
     pinned_at: task.pinnedAt ?? null,
     closed_at: task.closedAt ?? null,
   };
@@ -109,7 +110,7 @@ function fromTaskRow(row: TaskRow): Task {
     skip: row.skip ?? undefined,
     completedAt: row.completed_at ?? undefined,
     recurrence: normalizeRecurrence(row.recurrence),
-    reminders: row.reminder_settings?.muted === true ? { muted: true } : undefined,
+    reminders: normalizeReminder(row.reminder_settings),
     pinnedAt: row.pinned_at ?? undefined,
     closedAt: row.closed_at ?? undefined,
   };
@@ -142,16 +143,18 @@ const TASK_PAGE_SIZE = 1000;
 export async function fetchTasks(userId: string): Promise<Task[]> {
   return retryOnJwtTiming(async () => {
     const rows: TaskRow[] = [];
-    for (let from = 0; ; from += TASK_PAGE_SIZE) {
-      const { data, error } = await supabase
+    let lastId: string | undefined;
+    for (;;) {
+      let request = supabase
         .from("tasks")
         .select("*")
-        .eq("user_id", userId)
-        .order("id", { ascending: true })
-        .range(from, from + TASK_PAGE_SIZE - 1);
+        .eq("user_id", userId);
+      if (lastId) request = request.gt("id", lastId);
+      const { data, error } = await request.order("id", { ascending: true }).limit(TASK_PAGE_SIZE);
       if (error) throw error;
       const page = data as TaskRow[];
       rows.push(...page);
+      lastId = page[page.length - 1]?.id;
       if (page.length < TASK_PAGE_SIZE) break;
     }
     return rows.map(fromTaskRow);

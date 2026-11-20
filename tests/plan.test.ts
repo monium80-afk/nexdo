@@ -8,6 +8,7 @@ import { displayLimit, isPlanLimitBody, PLAN_HEADER, PLAN_LIMITS } from "@/lib/p
 import {
   claimPlanUsage,
   hasActiveEntitlement,
+  markLiveSessionTokenIssued,
   readPlanUsage,
   refundPlanUsage,
   resolvePlan,
@@ -230,35 +231,73 @@ describe("spending the month's allowance", () => {
     withSupabaseKeys();
     process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
     const userId = "user_pro_quota";
+    const claimId = "3f2b9c1e-5d4a-4b8e-9a7c-1e2d3f4a5b6c";
     const fetchMock = t.mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
       String(url).startsWith("https://api.revenuecat.com")
         ? Response.json({ request_date_ms: NOW, subscriber: { entitlements: { nexdo_pro: { expires_date: iso(NOW + HOUR) } } } })
-        : Response.json(-1),
+        : Response.json({ result: -1, month: "2026-10-01", claim_id: claimId }),
     );
     const request = new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } });
-    const response = await claimPlanUsage(request, userId, "voice", 95);
+    const response = await claimPlanUsage(request, userId, "voice", 95, claimId);
     assert.equal(response?.status, 429);
     assert.deepEqual(await response?.json(), { error: "plan_limit", meter: "voice", plan: "pro" });
     const rpcCalls = fetchMock.mock.calls.filter((call) => String(call.arguments[0]).includes("/rpc/")).map(rpcCall);
     assert.deepEqual(rpcCalls, [
-      { name: "claim_ai_plan_usage", args: { p_user_id: userId, p_meter: "voice", p_amount: 95, p_limit: PLAN_LIMITS.pro.voice } },
+      {
+        name: "claim_ai_plan_usage",
+        args: { p_user_id: userId, p_meter: "voice", p_amount: 95, p_limit: PLAN_LIMITS.pro.voice, p_claim_id: claimId },
+      },
     ]);
   });
 
-  it("gives back a failed request's use — but not into a month it wasn't taken from", async (t) => {
+  it("reconciles an unknown claim result by retrying with the same id", async (t) => {
     withSupabaseKeys();
-    const fetchMock = t.mock.method(globalThis, "fetch", async () => Response.json(4));
-    await refundPlanUsage("user_free", "voice", new Date(), 30);
-    assert.equal(fetchMock.mock.callCount(), 1);
-    assert.deepEqual(rpcCall(fetchMock.mock.calls[0]), {
-      name: "claim_ai_plan_usage",
-      args: { p_user_id: "user_free", p_meter: "voice", p_amount: -30, p_limit: null },
+    process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_key";
+    const claimId = "3f2b9c1e-5d4a-4b8e-9a7c-1e2d3f4a5b6c";
+    let rpcCalls = 0;
+    const fetchMock = t.mock.method(globalThis, "fetch", async (url: string | URL | Request) => {
+      if (String(url).startsWith("https://api.revenuecat.com")) {
+        return Response.json({ request_date_ms: NOW, subscriber: { entitlements: { nexdo_pro: { expires_date: iso(NOW + HOUR) } } } });
+      }
+      if (rpcCalls++ === 0) throw new Error("response lost after commit");
+      return Response.json({ result: 1, month: "2026-10-01", claim_id: claimId });
     });
+    t.mock.method(console, "warn", () => {});
 
-    const lastMonth = new Date();
-    lastMonth.setUTCDate(0);
-    await refundPlanUsage("user_free", "voice", lastMonth, 30);
-    assert.equal(fetchMock.mock.callCount(), 1, "a claim from last month isn't taken off this one");
+    const response = await claimPlanUsage(
+      new Request("https://nexdo.test/api/inbox", { method: "POST", headers: { [PLAN_HEADER]: "pro" } }),
+      "user_retry",
+      "chat",
+      1,
+      claimId,
+    );
+    assert.equal(response, null);
+    const claims = fetchMock.mock.calls.filter((call) => String(call.arguments[0]).includes("/rpc/")).map(rpcCall);
+    assert.equal(claims.length, 2);
+    assert.deepEqual(claims[0], claims[1]);
+  });
+
+  it("refunds the exact database claim and surfaces an incomplete refund", async (t) => {
+    withSupabaseKeys();
+    const claimId = "3f2b9c1e-5d4a-4b8e-9a7c-1e2d3f4a5b6c";
+    let refundResult = true;
+    let refundCalls = 0;
+    const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+      if (refundCalls++ === 0) throw new Error("refund response lost after commit");
+      return Response.json(refundResult);
+    });
+    t.mock.method(console, "warn", () => {});
+    await refundPlanUsage("user_free", "voice", claimId, 30);
+    assert.equal(fetchMock.mock.callCount(), 2);
+    assert.deepEqual(rpcCall(fetchMock.mock.calls[0]), {
+      name: "refund_ai_plan_usage",
+      args: { p_claim_id: claimId, p_user_id: "user_free", p_meter: "voice", p_amount: 30 },
+    });
+    assert.deepEqual(rpcCall(fetchMock.mock.calls[0]), rpcCall(fetchMock.mock.calls[1]));
+
+    t.mock.method(console, "error", () => {});
+    refundResult = false;
+    await assert.rejects(refundPlanUsage("user_free", "voice", claimId, 30), /could not find the matching claim/);
   });
 });
 
@@ -289,6 +328,15 @@ describe("Live voice sessions", () => {
       { name: "start_ai_live_session", args: { p_user_id: "user_live", p_seconds: 300, p_limit: PLAN_LIMITS.pro.live } },
       { name: "settle_ai_live_session", args: { p_user_id: "user_live", p_session_id: SESSION_ID, p_seconds: 20 } },
     ]);
+  });
+
+  it("records when a minted token is issued", async (t) => {
+    const fetchMock = backend(t, { mark_ai_live_session_token_issued: true });
+    await markLiveSessionTokenIssued("user_live", SESSION_ID);
+    assert.deepEqual(rpcCall(fetchMock.mock.calls.find((call) => String(call.arguments[0]).includes("/rpc/"))!), {
+      name: "mark_ai_live_session_token_issued",
+      args: { p_user_id: "user_live", p_session_id: SESSION_ID },
+    });
   });
 
   it("aren't opened once the month's minutes are used up", async (t) => {

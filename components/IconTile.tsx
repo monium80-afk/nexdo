@@ -4,6 +4,7 @@ import { View } from "react-native";
 
 import type { FeatherIconName } from "@/components/Button";
 import { colors, gradients } from "@/constants/theme";
+import { useIsDark } from "@/hooks/useTheme";
 
 const TONES = {
   orange: { tile: "tile--orange", icon: colors.orange[500], fill: gradients.tileOrange },
@@ -40,8 +41,10 @@ export function IconTile({
 }) {
   const t = TONES[tone];
   const s = SIZES[size];
+  // The light gradients stay off the dark page; the tile's class colours it there.
+  const dark = useIsDark();
   return (
-    <View className={`tile ${t.tile} ${s.box}`} style={t.fill}>
+    <View className={`tile ${t.tile} ${s.box}`} style={dark ? undefined : t.fill}>
       {typeof icon === "string" ? <Feather name={icon as FeatherIconName} size={s.icon} color={t.icon} /> : icon}
     </View>
   );

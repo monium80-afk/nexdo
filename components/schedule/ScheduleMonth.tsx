@@ -2,6 +2,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { CARD_SHADOW, TIGHT_TEXT, taskCount } from "@/components/schedule/scheduleParts";
 import { ScheduleDayLists } from "@/components/schedule/ScheduleWeek";
+import { usePalette } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { daysInMonth, keyToLocalDate, pad, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { weekdayName } from "@/lib/recurrence";
@@ -15,8 +16,8 @@ const WEEK_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 const BUSY_FILL = ["transparent", "#FCE9DC", "#F9C9A9", "#F59A62", "#F26A2E"] as const;
 /** The count under the day's number, on each of those. */
 const BUSY_COUNT = ["#7A6E64", "#7A6E64", "#9A5A35", "#6E3517", "#FFE1D2"] as const;
-/** The key under the month: an empty tile, then the four. */
-const KEY_FILLS = ["#FCF7EF", "#FCE9DC", "#F9C9A9", "#F59A62", "#F26A2E"] as const;
+/** The key under the month: an empty tile (the card's own colour), then the four. */
+const KEY_FILLS = ["card", "#FCE9DC", "#F9C9A9", "#F59A62", "#F26A2E"] as const;
 
 function busyLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
@@ -48,6 +49,7 @@ export function ScheduleMonth({
   onOpenTask: (id: string) => void;
 }) {
   const t = useTranslation();
+  const P = usePalette();
   const first = `${year}-${pad(month)}-01`;
   // Blank tiles before the 1st, so it lands under its own weekday.
   const lead = (weekdayOf(first) + 6) % 7;
@@ -90,7 +92,7 @@ export function ScheduleMonth({
                     style={{ backgroundColor: BUSY_FILL[level] }}
                   >
                     <Text
-                      className={`font-grotesk-bold text-[15px] leading-[20px] tracking-[-0.3px] ${level === 4 ? "text-white" : "text-ink"}`}
+                      className={`font-grotesk-bold text-[15px] leading-[20px] tracking-[-0.3px] ${level === 4 ? "text-white" : level === 0 ? "text-ink" : "text-[#221C17]"}`}
                       style={TIGHT_TEXT}
                     >
                       {Number(date.slice(8))}
@@ -114,7 +116,7 @@ export function ScheduleMonth({
             {t.schedule.fewerTasks}
           </Text>
           {KEY_FILLS.map((fill) => (
-            <View key={fill} className="h-[15.5px] w-[15.5px] rounded-[3.5px] border border-[#EADFD1]" style={{ backgroundColor: fill }} />
+            <View key={fill} className="h-[15.5px] w-[15.5px] rounded-[3.5px] border" style={{ borderColor: P.rule, backgroundColor: fill === "card" ? P.paperCard : fill }} />
           ))}
           <Text className="font-grotesk-regular text-[11.5px] leading-[16px] text-ink-muted" style={TIGHT_TEXT}>
             {t.schedule.moreTasks}

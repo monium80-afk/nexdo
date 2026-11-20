@@ -15,6 +15,7 @@ const Purchases = {
   setLogLevel: async (_level: unknown) => {},
   configure: (_options: { apiKey: string }) => {},
   addCustomerInfoUpdateListener: (_listener: (info: CustomerInfo) => void) => {},
+  removeCustomerInfoUpdateListener: (_listener: (info: CustomerInfo) => void) => {},
   getAppUserID: async () => {
     if (purchasesTestState.identifyFailure) throw purchasesTestState.identifyFailure;
     return purchasesTestState.appUserId;

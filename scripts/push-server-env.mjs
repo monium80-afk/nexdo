@@ -35,6 +35,10 @@ function envValue(raw) {
   return raw;
 }
 
+function unresolvedReference(value) {
+  return value.match(/(?<!\\)\$(?:\{[\w.]+(?::?-([^}]+))?\}|[\w.]+)/)?.[0];
+}
+
 const env = Object.fromEntries(
   readFileSync(join(project, ".env"), "utf8")
     .split(/\r?\n/)
@@ -73,10 +77,12 @@ const wanted = only.length > 0 ? only : serverNames;
 const lines = wanted.map((name) => {
   const value = env[name];
   if (!value) throw new Error(`${name} is missing from .env`);
+  const reference = unresolvedReference(value);
+  if (reference) throw new Error(`${name} contains ${reference}; resolve it to a literal in .env before uploading`);
   // Single quotes keep a value exactly as it is in a .env file; one that
   // holds a quote or a line break can't be written that way.
   if (/['\r\n]/.test(value)) throw new Error(`${name} has characters that can't be written to the upload file`);
-  return `${name}='${value}'`;
+  return `${name}='${value.replace(/\\\$/g, "$")}'`;
 });
 
 // A folder only this user can open (0700, and a per-user TEMP on Windows).

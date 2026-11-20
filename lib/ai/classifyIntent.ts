@@ -47,8 +47,8 @@ const VALID_PRIORITIES: readonly ImportanceLevel[] = IMPORTANCE_LEVELS;
 // that-many tasks it receives. Up to that many go in full (duplicate
 // detection, "what's overdue" and "I'm overwhelmed" — taxonomy 1.1, 4.3, 5.4
 // — want the whole list); past that, the ones this message is most likely
-// about go first: the task in view, the ones just discussed, any named in the
-// message (completed ones included), then the highest priority, then the most
+// about go first: the task in view, any named in the message (completed ones
+// included), the ones just discussed, then the highest priority and most
 // recently finished. Bulk actions reach tasks beyond this through their
 // filters, which the app applies to the whole list.
 const MAX_TASKS_SENT = 30;
@@ -416,6 +416,14 @@ const SAFE_BULK_DELETE_WORDS = new Set([
   "pending", "uncompleted", "incomplete", "unfinished", "open", "active", "remaining",
   "completed", "complete", "done", "finished", "overdue", "past", "due", "late",
 ]);
+const TASK_CREATION_PATTERN =
+  /^\s*(?:(?:please|hey|ok|okay)\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?(?:add|create|make|new task|remind me|remember)\b|^\s*i (?:need|want) to (?:add|create|make|remind me|remember)\b/i;
+const SAFE_BULK_COMPLETE_WORDS = new Set([
+  "please", "can", "could", "would", "you", "i", "have", "already", "mark", "set",
+  "all", "every", "everything", "of", "my", "the", "task", "tasks", "to", "do", "todo", "todos",
+  "thing", "things", "them", "ones", "as", "pending", "open", "active", "remaining", "unfinished",
+  "complete", "completed", "finish", "finished", "done", "overdue", "past", "due", "late",
+]);
 const ALREADY_DID_PATTERN = /\balready (did|finished|completed|done|started)\b/i;
 const REOPEN_PATTERN = /\b(reopen|re-open|unmark|undo (?:the )?completion|not (?:actually )?(?:done|finished))\b/i;
 const DONE_PATTERN = /\b(finished|done|complete[d]?)\b/i;
@@ -446,6 +454,14 @@ function hasUnrepresentableBulkDeleteQualifier(text: string): boolean {
   return (normalized.match(/[a-z]+/gi) ?? []).some((word) => !SAFE_BULK_DELETE_WORDS.has(word.toLowerCase()));
 }
 
+function hasUnrepresentableBulkCompleteQualifier(text: string): boolean {
+  if (/[^\x00-\x7F]/.test(text)) return true;
+  const command = text.replace(/^\s*(?:i\s+)?(?:finished|completed)\s+(?=(?:all|everything|every)\b)/i, "");
+  const qualifier = command.replace(/\b(?:as\s+)?(?:done|complete(?:d)?|finished)\b(?:\s+please)?[.!?]*$/i, "");
+  if (COMPLETED_SCOPE_PATTERN.test(qualifier)) return true;
+  return (qualifier.match(/[a-z]+/gi) ?? []).some((word) => !SAFE_BULK_COMPLETE_WORDS.has(word.toLowerCase()));
+}
+
 // Ordered keyword/regex rules — used as an offline fallback if the real
 // Gemini call below fails (no network, missing API key, malformed output),
 // so the inbox degrades gracefully instead of breaking. They produce the same
@@ -456,6 +472,12 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
   const { text, now, currentTaskId, recentTaskIds, tasks } = input;
   const referenceCtx = { currentTaskId, recentTaskIds, tasks };
   const t = translate();
+
+  if (TASK_CREATION_PATTERN.test(text)) {
+    const creationText = text.replace(/^\s*i (?:need|want) to\s+/i, "");
+    const drafts = extractTasks(creationText, now, getLanguage());
+    if (drafts.length > 0) return { type: "CREATE_TASK", drafts, confirmationTier: "confirm-required" };
+  }
 
   if (DELETE_PATTERN.test(text) && BULK_PATTERN.test(text)) {
     const scopeText = text.replace(/\bnot\s+done\b/gi, "unfinished");
@@ -486,6 +508,7 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
     const ref = resolveTaskReference(text, referenceCtx, { onlyCompleted: true });
     if (ref.status === "resolved") return operate({ kind: "reopen", target: { taskIds: [ref.taskId] } });
     if (ref.status === "ambiguous") return askWhich(ref.candidates);
+    return { type: "UNKNOWN", reply: t.assistant.noTaskFound, confirmationTier: "safe" };
   }
 
   if (ALREADY_DID_PATTERN.test(text) && currentTaskId) {
@@ -494,7 +517,11 @@ function classifyIntentHeuristic(input: ClassifyIntentInput): StructuredAction {
 
   // "mark all my tasks as done" / "I finished everything".
   if (DONE_PATTERN.test(text) && BULK_PATTERN.test(text)) {
-    return operate({ kind: "complete", target: { filter: { status: "pending" } } }, true);
+    if (hasUnrepresentableBulkCompleteQualifier(text)) {
+      return { type: "CLARIFY", question: t.ops.whichTasks, candidates: [], confirmationTier: "safe" };
+    }
+    const status: TaskStatusFilter = OVERDUE_SCOPE_PATTERN.test(text) ? "overdue" : "pending";
+    return operate({ kind: "complete", target: { filter: { status } } }, true);
   }
 
   if (DONE_PATTERN.test(text)) {

@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AppIcon } from "@/components/icons/AppIcons";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatTaskLength } from "@/lib/formatDuration";
@@ -26,6 +26,7 @@ export function MicTaskCard({
   highlighted?: boolean;
   onToggle?: () => void;
 }) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const due = getDueInfo(task);

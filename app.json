@@ -6,12 +6,15 @@
     "orientation": "portrait",
     "icon": "./assets/images/nexdo-app-icon.png",
     "scheme": "nexdo",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nexdo.app",
       "icon": "./assets/images/nexdo-app-icon-ios.png",
       "usesAppleSignIn": true,
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -81,7 +84,22 @@
       [
         "expo-notifications",
         {
-          "color": "#E2622E"
+          "color": "#E2622E",
+          "sounds": ["./assets/sounds/nexdo_alarm.wav"]
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "widgets": [
+            {
+              "name": "NextTask",
+              "displayName": "Next task",
+              "description": "Your next task, with Add and Magic mic.",
+              "ios": { "supportedFamilies": ["systemSmall", "systemMedium"] },
+              "android": null
+            }
+          ]
         }
       ]
     ],

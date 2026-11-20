@@ -30,7 +30,8 @@ export default function OnboardingFounder() {
   const insets = useSafeAreaInsets();
   const rtl = useIsRtl();
   const rtlText = useRtlText();
-  useStatusBarStyle("dark");
+  // Onboarding keeps its light design in dark mode too.
+  useStatusBarStyle("dark", { followTheme: false });
   const [paperHeight, setPaperHeight] = useState(0);
   // Larger system text makes the lines taller too (up to MAX_FONT_SCALE): the
   // rules follow, so the writing stays on them.

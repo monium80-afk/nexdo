@@ -9,7 +9,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { SheetIcon } from "@/components/addSheet/SheetParts";
 import { ImageViewerModal } from "@/components/ImageViewerModal";
-import { colors } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -22,7 +22,6 @@ import {
 } from "@/lib/feedback";
 import { shadow, SOFT_SHADOW } from "@/constants/shadow";
 
-const P = colors.palette;
 // Idea · Bug · Other (the 2026-11 redesign; "general" is no longer offered).
 const FEEDBACK_TYPES = ["suggestion", "bug", "other"] as const satisfies readonly FeedbackType[];
 
@@ -35,6 +34,7 @@ const COUNTER_FROM = FEEDBACK_MESSAGE_MAX - 500;
  * (lib/feedback.ts).
  */
 export default function Feedback() {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const router = useRouter();
@@ -153,7 +153,7 @@ export default function Feedback() {
                       accessibilityState={{ selected: picked }}
                       style={{ flex: 1, borderRadius: 18, backgroundColor: picked ? P.ink : "transparent", alignItems: "center", justifyContent: "center" }}
                     >
-                      <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: picked ? "#FFFFFF" : P.ink }}>{t.redesign.feedbackTypes[value]}</Text>
+                      <Text style={{ fontFamily: "SpaceGrotesk-Bold", fontSize: 14, color: picked ? P.inverse : P.ink }}>{t.redesign.feedbackTypes[value]}</Text>
                     </AnimatedPressable>
                   );
                 })}

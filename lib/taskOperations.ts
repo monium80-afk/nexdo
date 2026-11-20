@@ -28,6 +28,7 @@ import {
 } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, type ImportanceLevel } from "@/lib/scoring";
 import type { SeriesTemplate, Subtask, Task, TaskDeadline, TaskPriorityLevel, TaskRecurrence } from "@/types/task";
+import { applyReminderChange, normalizeReminder, sameReminder, type ReminderChange } from "@/lib/taskReminder";
 
 // The structured task-operation system. Every change the AI asks for — and the
 // store's own complete / reopen / edit / delete — is planned here as pure data
@@ -44,6 +45,13 @@ export function nextTaskUpdatedAt(previous: string | undefined, requestedAt: Dat
   const previousTime = previous ? Date.parse(previous) : Number.NaN;
   const timestamp = Number.isFinite(requestedTime) ? requestedTime : Date.now();
   return new Date(Math.max(timestamp, Number.isFinite(previousTime) ? previousTime + 1 : timestamp)).toISOString();
+}
+
+/** The reminder change an edit asks for: `reminder`, or the older on/off `remindersMuted`. */
+function reminderChangeOf(changes: TaskChanges): ReminderChange | undefined {
+  if (changes.reminder) return changes.reminder;
+  if (changes.remindersMuted === undefined) return undefined;
+  return { mode: changes.remindersMuted ? "off" : "notify" };
 }
 
 export type TaskChanges = {
@@ -68,11 +76,13 @@ export type TaskChanges = {
   recurrence?: RuleInput | null;
   /** Turn this task's reminders off (true) or back on (false). */
   remindersMuted?: boolean;
+  /** How this task reminds (notification / alarm / off) and how long before; see lib/taskReminder.ts. */
+  reminder?: ReminderChange;
   /** Put the task first on the Next page (true) or back into the ranking (false). */
   pinned?: boolean;
 };
 
-export type TaskStatusFilter = "pending" | "completed" | "overdue" | "all";
+export type TaskStatusFilter = "pending" | "completed" | "overdue" | "archived" | "skipped" | "all";
 
 export type TaskFilter = {
   status?: TaskStatusFilter;
@@ -212,16 +222,19 @@ function inRange(iso: string | undefined, from?: string, to?: string): boolean {
 export function defaultStatusFor(kind: TaskOperation["kind"]): TaskStatusFilter {
   if (kind === "reopen") return "completed";
   if (kind === "delete" || kind === "archive") return "all";
+  if (kind === "restore") return "all";
   return "pending";
 }
 
-export function matchesFilter(task: Task, filter: TaskFilter, now: Date): boolean {
+export function matchesFilter(task: Task, filter: TaskFilter, now: Date, includeUnlisted = false): boolean {
   const status = filter.status ?? "all";
   // "Everything" means what the user can see on their list.
-  if (!isListed(task)) return false;
+  if (!includeUnlisted && !isListed(task)) return false;
   if (status === "pending" && task.status !== "pending") return false;
   if (status === "completed" && task.status !== "completed") return false;
   if (status === "overdue" && !isOverdue(task, now)) return false;
+  if (status === "archived" && task.status !== "archived") return false;
+  if (status === "skipped" && task.status !== "skipped") return false;
 
   if (filter.keywords?.length) {
     const title = fold(task.title);
@@ -252,7 +265,9 @@ export function resolveTarget(
 
   const filter = { ...target.filter, status: target.filter?.status ?? defaultStatusFor(kind) };
   const pickedIds = new Set(picked.map((task) => task.id));
-  const matched = tasks.filter((task) => !pickedIds.has(task.id) && matchesFilter(task, filter, now));
+  const matched = tasks.filter(
+    (task) => !pickedIds.has(task.id) && matchesFilter(task, filter, now, kind === "restore"),
+  );
   return { tasks: [...picked, ...matched], missingIds };
 }
 
@@ -579,10 +594,14 @@ export function editTaskDelta(
     }
   }
 
-  if (changes.remindersMuted !== undefined && changes.remindersMuted !== !!task.reminders?.muted) {
-    if (changes.remindersMuted) next.reminders = { ...task.reminders, muted: true };
-    else delete next.reminders;
-    changed = true;
+  const reminderChange = reminderChangeOf(changes);
+  if (reminderChange) {
+    const reminders = applyReminderChange(task.reminders, reminderChange);
+    if (!sameReminder(reminders, task.reminders)) {
+      if (reminders) next.reminders = reminders;
+      else delete next.reminders;
+      changed = true;
+    }
   }
   if (changes.pinned !== undefined && changes.pinned !== !!task.pinnedAt && task.status === "pending") {
     if (changes.pinned) next.pinnedAt = nowIso;
@@ -741,7 +760,7 @@ function pickTemplateChanges(next: Task, before: Task): TemplatePatch {
   if (next.notes !== before.notes) patch.notes = next.notes;
   if (next.importance !== before.importance) patch.importance = next.importance;
   if (next.estimatedMinutes !== before.estimatedMinutes) patch.estimatedMinutes = next.estimatedMinutes;
-  if (!!next.reminders?.muted !== !!before.reminders?.muted) patch.reminders = next.reminders?.muted ? { muted: true } : undefined;
+  if (!sameReminder(next.reminders, before.reminders)) patch.reminders = normalizeReminder(next.reminders);
   return patch;
 }
 
@@ -755,7 +774,7 @@ function requestedTemplateFields(changes: TaskChanges, next: Task): TemplatePatc
   if (changes.title !== undefined && validTitle(changes.title)) patch.title = next.title;
   if (changes.notes !== undefined) patch.notes = next.notes;
   if (changes.priority && PRIORITY_LEVEL_IMPORTANCE[changes.priority] !== undefined) patch.importance = next.importance;
-  if (changes.remindersMuted !== undefined) patch.reminders = next.reminders?.muted ? { muted: true } : undefined;
+  if (reminderChangeOf(changes)) patch.reminders = normalizeReminder(next.reminders);
   return patch;
 }
 
@@ -765,7 +784,7 @@ function sameTemplate(a: SeriesTemplate, b: SeriesTemplate): boolean {
     a.notes === b.notes &&
     a.importance === b.importance &&
     a.estimatedMinutes === b.estimatedMinutes &&
-    !!a.reminders?.muted === !!b.reminders?.muted
+    sameReminder(a.reminders, b.reminders)
   );
 }
 
@@ -783,8 +802,9 @@ function patchOpenOccurrence(task: Task, patch: TemplatePatch): Task | undefined
   if (!task.recurrence) return patchHistory(task, patch);
   const patched: Task = { ...patchHistory(task, patch) ?? task };
   if (patch.estimatedMinutes !== undefined) patched.estimatedMinutes = patch.estimatedMinutes;
-  if ("reminders" in patch && !!patch.reminders?.muted !== !!task.reminders?.muted) {
-    if (patch.reminders?.muted) patched.reminders = { ...task.reminders, muted: true };
+  if ("reminders" in patch && !sameReminder(patch.reminders, task.reminders)) {
+    const reminders = normalizeReminder(patch.reminders);
+    if (reminders) patched.reminders = reminders;
     else delete patched.reminders;
   }
   const template = { ...task.recurrence.template, ...patch };
@@ -983,6 +1003,7 @@ export function effectiveChanges(task: Task, changes: TaskChanges): TaskChanges 
     }
   }
   if (result.remindersMuted !== undefined && result.remindersMuted === !!task.reminders?.muted) delete result.remindersMuted;
+  if (result.reminder !== undefined && sameReminder(applyReminderChange(task.reminders, result.reminder), task.reminders)) delete result.reminder;
   if (result.pinned !== undefined && result.pinned === !!task.pinnedAt) delete result.pinned;
   return result;
 }

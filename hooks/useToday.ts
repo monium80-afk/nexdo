@@ -18,17 +18,9 @@ export function useToday(): LocalDate {
   useFocusEffect(refresh);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") refresh();
-    });
-    return () => subscription.remove();
-  }, [refresh]);
-
-  // A few seconds past midnight, so a clock a little behind is already on
-  // the new day. Re-arm after every callback even when today's value is unchanged.
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
+      if (timer !== undefined) clearTimeout(timer);
       const now = new Date();
       const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
       timer = setTimeout(() => {
@@ -37,7 +29,16 @@ export function useToday(): LocalDate {
       }, nextMidnight.getTime() - now.getTime());
     };
     schedule();
-    return () => clearTimeout(timer);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        refresh();
+        schedule();
+      }
+    });
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      subscription.remove();
+    };
   }, [refresh]);
 
   return today;

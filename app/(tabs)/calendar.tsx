@@ -11,7 +11,7 @@ import { ScheduleWeek } from "@/components/schedule/ScheduleWeek";
 import { ScheduleYear } from "@/components/schedule/ScheduleYear";
 import { TIGHT_TEXT, capitalize, taskCount } from "@/components/schedule/scheduleParts";
 import { useTabBarHeight } from "@/components/TabBar";
-import { colors } from "@/constants/theme";
+import { useColors } from "@/hooks/useTheme";
 import { useStatusBarStyle } from "@/hooks/useStatusBarStyle";
 import { useToday } from "@/hooks/useToday";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -57,7 +57,7 @@ function ModePills({ mode, onChange }: { mode: ScheduleMode; onChange: (mode: Sc
             className={`h-[40px] justify-center rounded-full px-[16.5px] pt-[2px] ${picked ? "bg-ink" : "bg-chip"}`}
           >
             <Text
-              className={`text-[14px] leading-[18px] ${picked ? "font-grotesk-bold tracking-[-0.3px] text-white" : "font-grotesk-medium tracking-[-0.2px] text-ink"}`}
+              className={`text-[14px] leading-[18px] ${picked ? "font-grotesk-bold tracking-[-0.3px] text-inverse" : "font-grotesk-medium tracking-[-0.2px] text-ink"}`}
               style={TIGHT_TEXT}
             >
               {option.label}
@@ -71,6 +71,7 @@ function ModePills({ mode, onChange }: { mode: ScheduleMode; onChange: (mode: Sc
 
 /** A round ‹ or › in the header: the week, month or year before or after. */
 function StepButton({ icon, label, onPress }: { icon: "chevron-left" | "chevron-right"; label: string; onPress: () => void }) {
+  const colors = useColors();
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -99,6 +100,7 @@ function StepButton({ icon, label, onPress }: { icon: "chevron-left" | "chevron-
  * worked out again.
  */
 export default function CalendarTab() {
+  const colors = useColors();
   useStatusBarStyle("dark");
   const t = useTranslation();
   const tabBarHeight = useTabBarHeight();

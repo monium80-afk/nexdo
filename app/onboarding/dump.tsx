@@ -182,17 +182,9 @@ export default function OnboardingDump() {
     opacity: Math.min(1, Math.max(0, (contentHeight.value - boxHeight.value - offset.value) / FADE_BOTTOM)),
   }));
 
-  // Voice: start listening as soon as the screen opens (06 already asked),
-  // also on a second pass through onboarding. The server decides whether this
-  // install has a free session left (lib/anonymousTrial.ts); only when it says
-  // no does the screen switch to typing, and then for good.
+  // Voice restarts whenever this screen regains focus; the server still
+  // decides whether this install has a free session left.
   const startVoice = voice.start;
-  const started = useRef(false);
-  useEffect(() => {
-    if (mode !== "voice" || started.current) return;
-    started.current = true;
-    void startVoice();
-  }, [mode, startVoice]);
   // Refused by the server: typing, with the reason under the headline.
   const voiceRefused = voice.status === "error" && voice.problem === "planLimit";
   const shownMode = voiceRefused ? "type" : mode;
@@ -236,10 +228,16 @@ export default function OnboardingDump() {
     useCallback(() => {
       left.current = false;
       setLeaving(false);
+      if (mode === "voice") {
+        if (hasAiConsent()) void startVoice();
+        else setMode("type");
+      }
       // Leaving this screen (on to 08, or back) ends any session, so the
       // microphone is never left running behind another screen.
-      return () => stopVoice();
-    }, [stopVoice]),
+      return () => {
+        void stopVoice();
+      };
+    }, [mode, startVoice, stopVoice]),
   );
 
   const handleDone = () => {
@@ -250,6 +248,10 @@ export default function OnboardingDump() {
   // Listening couldn't start (a connection problem): the pill says "try again" and is the way to.
   const canRetry = voice.status === "error" && voice.problem !== "planLimit";
   const handleRetry = () => {
+    if (!hasAiConsent()) {
+      setMode("type");
+      return;
+    }
     void startVoice();
   };
 
@@ -263,8 +265,6 @@ export default function OnboardingDump() {
     const granted = (await getRecordingPermissionsAsync()).granted || (await requestRecordingPermissionsAsync()).granted;
     if (!granted) return;
     setMode("voice");
-    started.current = true;
-    void startVoice();
   };
 
   // Typed: the same one free AI run reads it (as the old analyzing step did);

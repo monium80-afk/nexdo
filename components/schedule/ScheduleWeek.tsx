@@ -1,7 +1,8 @@
 import { Text, View } from "react-native";
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
-import { ROW_RULE, TIGHT_TEXT, dayEntries, timeLabel, type DayEntry } from "@/components/schedule/scheduleParts";
+import { ROW_RULE, ROW_RULE_DARK, TIGHT_TEXT, dayEntries, timeLabel, type DayEntry } from "@/components/schedule/scheduleParts";
+import { useIsDark } from "@/hooks/useTheme";
 import { useTranslation } from "@/hooks/useTranslation";
 import { keyToLocalDate, weekdayOf, type LocalDate } from "@/lib/localDate";
 import { weekdayName } from "@/lib/recurrence";
@@ -15,7 +16,7 @@ function ListLabel({ label, tone }: { label: string; tone: "ink" | "peach" }) {
   return (
     <View className={`h-[24px] self-start justify-center rounded-full px-[10px] ${tone === "ink" ? "bg-ink" : "bg-peach"}`}>
       <Text
-        className={`font-mono-bold text-[11px] uppercase leading-[14px] tracking-[1.4px] ${tone === "ink" ? "text-white" : "text-accent-ink"}`}
+        className={`font-mono-bold text-[11px] uppercase leading-[14px] tracking-[1.4px] ${tone === "ink" ? "text-inverse" : "text-accent-ink"}`}
         style={TIGHT_TEXT}
       >
         {label}
@@ -27,6 +28,7 @@ function ListLabel({ label, tone }: { label: string; tone: "ink" | "peach" }) {
 /** One row: the time in a column of its own, then the title. Late times in red; finished ones struck through. */
 function EntryRow({ entry, last, onPress }: { entry: DayEntry; last: boolean; onPress: () => void }) {
   const t = useTranslation();
+  const rule = useIsDark() ? ROW_RULE_DARK : ROW_RULE;
   return (
     <AnimatedPressable
       // A coming repeat isn't a task yet: nothing to open, and drawn lighter.
@@ -35,7 +37,7 @@ function EntryRow({ entry, last, onPress }: { entry: DayEntry; last: boolean; on
       scaleTo={0.98}
       accessibilityRole={entry.planned ? "text" : "button"}
       className="h-[47px] flex-row pt-[11.9px]"
-      style={[last ? undefined : { borderBottomWidth: 0.75, borderBottomColor: ROW_RULE }, entry.planned ? { opacity: PLANNED_OPACITY } : undefined]}
+      style={[last ? undefined : { borderBottomWidth: 0.75, borderBottomColor: rule }, entry.planned ? { opacity: PLANNED_OPACITY } : undefined]}
     >
       <Text
         numberOfLines={1}
@@ -100,7 +102,7 @@ export function ScheduleWeek({
                 {weekdayName(weekdayOf(date), t.locale, "narrow")}
               </Text>
               <Text
-                className={`mt-[3px] font-grotesk-bold text-[17.5px] leading-[22px] tracking-[-0.35px] ${picked ? "text-white" : "text-ink"}`}
+                className={`mt-[3px] font-grotesk-bold text-[17.5px] leading-[22px] tracking-[-0.35px] ${picked ? "text-inverse" : "text-ink"}`}
                 style={TIGHT_TEXT}
               >
                 {day.toLocaleDateString(t.locale, { day: "numeric" })}

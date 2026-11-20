@@ -215,7 +215,8 @@ const CASES: Case[] = [
     language: "fr",
     task: { title: "Dissertation de philosophie", dueDate: at(2, 23, 59), estimatedMinutes: 180 },
     say: "Le professeur nous a donné jusqu'à lundi prochain.",
-    check: (_, after) => {
+    check: (_, after, state) => {
+      if (!done(state)) return `no successful report: ${describe(state)}`;
       const due = after.dueDate ? new Date(after.dueDate) : null;
       return due && due.getDay() === 1 ? null : `due ${due?.toString()}`;
     },

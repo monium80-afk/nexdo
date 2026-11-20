@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRef, useState, type ComponentRef } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, FadeOut, useReducedMotion } from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
 
@@ -12,6 +12,7 @@ import { openPaywall } from "@/lib/paywall";
 import { posthog } from "@/lib/posthog";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type { FocusSound } from "@/types/settings";
+import { usePalette } from "@/hooks/useTheme";
 import { shadow } from "@/constants/shadow";
 
 // The mockup's line icons (Final-Focus.html), 24 × 24.
@@ -48,9 +49,11 @@ function SoundIcon({ sound, size, color }: { sound: FocusSound; size: number; co
  * (useAiLocked is "Pro features locked" — it isn't AI, but it's the same rule.)
  */
 export function FocusSoundPicker() {
+  const P = usePalette();
   const t = useTranslation();
   const reduceMotion = useReducedMotion();
   const locked = useAiLocked();
+  const { height: viewportHeight } = useWindowDimensions();
   const choice = useSettingsStore((state) => state.focusSound);
   const setChoice = useSettingsStore((state) => state.setFocusSound);
   const options: FocusSound[] = ["off", ...FOCUS_SOUNDS];
@@ -58,12 +61,20 @@ export function FocusSoundPicker() {
   const current: FocusSound = locked && isProFocusSound(choice) ? "off" : choice;
 
   const pillRef = useRef<ComponentRef<typeof View>>(null);
-  const [menu, setMenu] = useState<{ top: number; right: number } | null>(null);
+  const [menu, setMenu] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
 
   const open = () => {
     pillRef.current?.measureInWindow((x, y, width, height) => {
-      // 48 under the pill's top, its right edge lined up with the pill's (the mockup's top: 48px).
-      setMenu({ top: y + height + 8, right: x + width });
+      const desiredHeight = options.length * 46 + 12;
+      const below = Math.max(0, viewportHeight - (y + height + 16));
+      const above = Math.max(0, y - 8);
+      const openAbove = below < desiredHeight && above > below;
+      const maxHeight = Math.min(desiredHeight, openAbove ? above : below);
+      setMenu({
+        top: openAbove ? y - 8 - maxHeight : y + height + 8,
+        right: x + width,
+        maxHeight,
+      });
     });
   };
 
@@ -92,13 +103,13 @@ export function FocusSoundPicker() {
             height: 40,
             borderRadius: 20,
             borderWidth: 1.5,
-            borderColor: "#E2D6C8",
-            backgroundColor: "#FCF7EF",
+            borderColor: P.line,
+            backgroundColor: P.paperCard,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <SoundIcon sound={current} size={20} color={current === "off" ? "#7A6E64" : "#F26A2E"} />
+          <SoundIcon sound={current} size={20} color={current === "off" ? P.inkMuted : P.accent} />
         </AnimatedPressable>
       </View>
 
@@ -115,49 +126,51 @@ export function FocusSoundPicker() {
                 top: menu.top,
                 left: menu.right - 210,
                 width: 210,
-                borderRadius: 22,
-                backgroundColor: "#221C17",
-                padding: 6,
-                gap: 2,
-                ...shadow("0 18px 36px rgba(34, 28, 23, 0.3)", 12),
+                height: menu.maxHeight,
               }}
             >
-              {options.map((option) => {
-                const selected = current === option;
-                const padlock = locked && isProFocusSound(option);
-                return (
-                  <Pressable
-                    key={option}
-                    onPress={() => handlePick(option)}
-                    accessibilityRole="menuitem"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={padlock ? `${t.focusSound.names[option]} — ${t.plan.proOnly}` : t.focusSound.names[option]}
-                    style={{
-                      height: 44,
-                      borderRadius: 14,
-                      paddingHorizontal: 12,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                      backgroundColor: selected ? "rgba(242,106,46,0.18)" : "transparent",
-                    }}
-                  >
-                    <View style={{ opacity: selected ? 1 : 0.75 }}>
-                      <SoundIcon sound={option} size={18} color={selected ? "#FFB089" : "#FAF1E4"} />
-                    </View>
-                    <Text style={{ flex: 1, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: selected ? "#FFB089" : "#FAF1E4" }}>
-                      {t.focusSound.names[option]}
-                    </Text>
-                    {selected ? (
-                      <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#FFB089" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
-                        <Path d="M5 12.5l4.5 4.5L19 7.5" />
-                      </Svg>
-                    ) : padlock ? (
-                      <Feather name="lock" size={13} color="#BFB2A7" />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
+              <ScrollView
+                bounces={false}
+                style={{ flex: 1, borderRadius: 22, backgroundColor: P.inkCard, ...shadow("0 18px 36px rgba(34, 28, 23, 0.3)", 12) }}
+                contentContainerStyle={{ padding: 6, gap: 2 }}
+              >
+                {options.map((option) => {
+                  const selected = current === option;
+                  const padlock = locked && isProFocusSound(option);
+                  return (
+                    <Pressable
+                      key={option}
+                      onPress={() => handlePick(option)}
+                      accessibilityRole="menuitem"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={padlock ? `${t.focusSound.names[option]} — ${t.plan.proOnly}` : t.focusSound.names[option]}
+                      style={{
+                        height: 44,
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        backgroundColor: selected ? "rgba(242,106,46,0.18)" : "transparent",
+                      }}
+                    >
+                      <View style={{ opacity: selected ? 1 : 0.75 }}>
+                        <SoundIcon sound={option} size={18} color={selected ? "#FFB089" : "#FAF1E4"} />
+                      </View>
+                      <Text style={{ flex: 1, fontFamily: "SpaceGrotesk-SemiBold", fontSize: 15, color: selected ? "#FFB089" : "#FAF1E4" }}>
+                        {t.focusSound.names[option]}
+                      </Text>
+                      {selected ? (
+                        <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#FFB089" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                          <Path d="M5 12.5l4.5 4.5L19 7.5" />
+                        </Svg>
+                      ) : padlock ? (
+                        <Feather name="lock" size={13} color="#BFB2A7" />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </Animated.View>
           ) : null}
         </Pressable>

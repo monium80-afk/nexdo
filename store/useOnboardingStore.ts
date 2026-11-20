@@ -67,7 +67,7 @@ export const useOnboardingStore = create<OnboardingStore>()(
       setSawPaywall: (sawPaywall) => set({ sawPaywall }),
       claimDrafts: () => {
         const { drafts } = get();
-        if (drafts.length > 0) set({ drafts: [], sawPaywall: false });
+        set({ sawPaywall: false, ...(drafts.length > 0 ? { drafts: [] } : {}) });
         return drafts;
       },
       reset: () => set({ drafts: [], sawPaywall: false, pains: [], load: null }),

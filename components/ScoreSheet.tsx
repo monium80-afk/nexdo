@@ -6,17 +6,16 @@ import Animated, { FadeOut, Keyframe } from "react-native-reanimated";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useTabBarHeight } from "@/components/TabBar";
 import type { ScoreAnchor } from "@/components/TaskCard";
-import { colors } from "@/constants/theme";
+import { useIsDark, usePalette } from "@/hooks/useTheme";
 import { shadow } from "@/constants/shadow";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { PRIORITY_WEIGHTS, priorityBreakdown } from "@/lib/priority";
 import type { Task } from "@/types/task";
 
-const P = colors.palette;
 // The design spec (2026-11-09).
 const DIM = "rgba(34, 28, 23, 0.25)";
-const CARD = "#221C17";
+const INK_CARD = "#221C17";
 const ACCENT = "#F26A2E";
 const MUTED = "#BFB2A7";
 const ICON = "#FFB089";
@@ -60,6 +59,9 @@ export type ScoreTarget = { task: Task; anchor: ScoreAnchor };
  * task's score. Got it, or a tap on the dim, closes it.
  */
 export function ScoreSheet({ target, onClose }: { target: ScoreTarget | null; onClose: () => void }) {
+  const P = usePalette();
+  // Dark in light mode; in dark mode a raised card one step above the page.
+  const CARD = useIsDark() ? P.raised : INK_CARD;
   const t = useTranslation();
   const rtl = useRtlText();
   const tabBarHeight = useTabBarHeight();
@@ -91,8 +93,10 @@ export function ScoreSheet({ target, onClose }: { target: ScoreTarget | null; on
   const anchorBottom = pill ? pill.y + pill.height : (row?.y ?? 120) + (row?.height ?? 0);
   const below = anchorBottom + BELOW_PILL;
   const bottomLimit = screenHeight - tabBarHeight - 8;
-  const fitsBelow = cardHeight === 0 || below + cardHeight <= bottomLimit || !pill;
-  const top = fitsBelow ? below : pill.y - BELOW_PILL - cardHeight;
+  const fitsBelow = cardHeight === 0 || below + cardHeight <= bottomLimit;
+  const aboveAnchor = pill?.y ?? row?.y ?? 120;
+  const maxTop = Math.max(8, bottomLimit - cardHeight);
+  const top = fitsBelow ? below : Math.max(8, Math.min(aboveAnchor - BELOW_PILL - cardHeight, maxTop));
   const arrowCentre = pill ? pill.x + pill.width / 2 - SIDE : null;
 
   return (

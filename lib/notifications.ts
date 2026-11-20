@@ -34,9 +34,15 @@ export const COMPLETE_ACTION_ID = "complete";
 
 const CHANNEL_IDS: Record<ReminderChannel, string> = {
   reminders: "reminders",
+  // Android fixes a channel's sound and importance once it exists, so a
+  // change to the alarm's sound needs a new id.
+  alarms: "alarms-v1",
   overdue: "overdue",
   planning: "planning",
 };
+
+/** The alarm's sound file, bundled by the expo-notifications plugin (app.json). */
+const ALARM_SOUND = "nexdo_alarm.wav";
 
 export type NotificationPermission = "granted" | "denied" | "undetermined" | "unsupported";
 
@@ -49,11 +55,15 @@ export function configureNotifications() {
     handleNotification: async (notification) => {
       // With Nexdo open, the session's own alarm already rings
       // (hooks/useSessionAlarm.ts) — the notification is for when it isn't.
+      // The same for a task's alarm: with Nexdo open the alarm screen comes
+      // up and rings instead (listenForAlarms below).
       const sessionEnd = notification.request.identifier === SESSION_END_ID;
+      const alarm = isAlarmData(notification.request.content.data);
+      const quiet = sessionEnd || alarm;
       return {
-        shouldShowBanner: !sessionEnd,
+        shouldShowBanner: !quiet,
         shouldShowList: !sessionEnd,
-        shouldPlaySound: !sessionEnd,
+        shouldPlaySound: !quiet,
         shouldSetBadge: false,
       };
     },
@@ -80,6 +90,21 @@ async function ensureChannelsAndActions() {
     await Notifications.setNotificationChannelAsync(CHANNEL_IDS.planning, {
       name: t.notifications.planningChannel,
       importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    // Alarms play on the alarm volume (so the ringer's silent mode doesn't
+    // mute them), pop up over everything, show on the lock screen and buzz long.
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.alarms, {
+      name: t.notifications.alarmsChannel,
+      importance: Notifications.AndroidImportance.MAX,
+      sound: ALARM_SOUND,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.ALARM,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      },
+      vibrationPattern: [0, 600, 300, 600, 300, 600, 300, 600],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+      lightColor: colors.orange[500],
     });
   }
   // Opens the app to do it: the completion goes through the task store like
@@ -146,14 +171,19 @@ async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<str
   if (!granted) return;
   await ensureChannelsAndActions();
   for (const entry of schedule) {
+    if (entry.fireAt <= Date.now()) continue;
+    const alarm = entry.kind === "alarm";
     await Notifications.scheduleNotificationAsync({
       identifier: entry.id,
       content: {
         title: entry.title,
         body: entry.body,
-        sound: "default",
+        sound: alarm ? ALARM_SOUND : "default",
         data: entry.data,
         categoryIdentifier: entry.completable ? TASK_CATEGORY_ID : undefined,
+        // An alarm stays in the tray until it's dealt with (Android), and
+        // gets through a Focus mode (iOS, the time-sensitive entitlement in app.json).
+        ...(alarm ? { sticky: true, priority: Notifications.AndroidNotificationPriority.MAX, interruptionLevel: "timeSensitive" as const } : {}),
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -224,9 +254,11 @@ async function writeTrialReminder(reminder: TrialReminder | null): Promise<boole
   try {
     await Notifications.cancelScheduledNotificationAsync(TRIAL_REMINDER_ID);
     if (!reminder) return true;
+    if (reminder.fireAt <= Date.now()) return true;
     const { granted } = await Notifications.getPermissionsAsync();
     if (!granted) return false;
     await ensureChannelsAndActions();
+    if (reminder.fireAt <= Date.now()) return true;
     await Notifications.scheduleNotificationAsync({
       identifier: TRIAL_REMINDER_ID,
       content: {
@@ -280,6 +312,7 @@ async function writeSessionEndReminder(reminder: SessionEndReminder | null) {
     const { granted } = await Notifications.getPermissionsAsync();
     if (!granted) return;
     await ensureChannelsAndActions();
+    if (reminder.fireAt <= Date.now()) return;
     await Notifications.scheduleNotificationAsync({
       identifier: SESSION_END_ID,
       content: {
@@ -300,6 +333,85 @@ async function writeSessionEndReminder(reminder: SessionEndReminder | null) {
   }
 }
 
+/** Whether a notification's data says it's a task's alarm. */
+function isAlarmData(data: Record<string, unknown> | undefined | null): boolean {
+  return data?.kind === "alarm";
+}
+
+/** What the alarm screen needs (app/alarm.tsx), read off an alarm notification. */
+export type AlarmInfo = { taskId?: string; title: string; startsAt?: number };
+
+function alarmInfo(data: Record<string, unknown> | undefined | null): AlarmInfo | null {
+  if (!isAlarmData(data)) return null;
+  return {
+    taskId: typeof data?.taskId === "string" ? data.taskId : undefined,
+    title: typeof data?.taskTitle === "string" ? data.taskTitle : "",
+    startsAt: typeof data?.startsAt === "number" ? data.startsAt : undefined,
+  };
+}
+
+/**
+ * Calls `ring` when an alarm goes off while Nexdo is open (the notification
+ * itself stays silent then — see configureNotifications), so the alarm
+ * screen can come up and ring. Returns a function that stops listening.
+ */
+export function listenForAlarms(ring: (alarm: AlarmInfo) => void): () => void {
+  if (!isSupported) return () => {};
+  const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const alarm = alarmInfo(notification.request.content.data);
+    if (alarm) ring(alarm);
+  });
+  return () => subscription.remove();
+}
+
+/**
+ * "Snooze 5 min" on the alarm screen: the same alarm again in five minutes.
+ * Outside the "nexdo-" prefix, so the reconciler leaves it alone; one per task.
+ */
+export async function snoozeAlarm(alarm: AlarmInfo, title: string, body: string, minutes = 5): Promise<void> {
+  if (!isSupported) return;
+  try {
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await ensureChannelsAndActions();
+    await Notifications.scheduleNotificationAsync({
+      identifier: `alarm-snooze-${alarm.taskId ?? "task"}`,
+      content: {
+        title,
+        body,
+        sound: ALARM_SOUND,
+        data: { kind: "alarm", taskId: alarm.taskId, taskTitle: alarm.title, startsAt: alarm.startsAt, url: "/" },
+        sticky: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        interruptionLevel: "timeSensitive",
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: Date.now() + minutes * 60_000,
+        channelId: CHANNEL_IDS.alarms,
+      },
+    });
+  } catch (error) {
+    console.warn("[notifications] couldn't snooze the alarm", error);
+  }
+}
+
+/** Takes an alarm that rang off the lock screen and the tray once it's been stopped. */
+export async function dismissAlarmNotifications(taskId: string | undefined): Promise<void> {
+  if (!isSupported) return;
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    for (const notification of presented) {
+      const data = notification.request.content.data;
+      if (isAlarmData(data) && (!taskId || data?.taskId === taskId)) {
+        await Notifications.dismissNotificationAsync(notification.request.identifier);
+      }
+    }
+  } catch {
+    // Nothing on screen to take back.
+  }
+}
+
 export type NotificationTap = {
   /** "complete" when the user pressed "Mark as done", otherwise a plain tap. */
   action: "open" | "complete";
@@ -307,6 +419,8 @@ export type NotificationTap = {
   taskId?: string;
   /** The deadline the notification was scheduled for ("YYYY-MM-DD|HH:MM"). */
   deadline?: string;
+  /** Set when the notification was a task's alarm: the alarm screen opens. */
+  alarm?: AlarmInfo;
 };
 
 /**
@@ -323,6 +437,7 @@ export function listenForNotificationTaps(handle: (tap: NotificationTap) => void
       url: typeof data.url === "string" ? data.url : undefined,
       taskId: typeof data.taskId === "string" ? data.taskId : undefined,
       deadline: typeof data.deadline === "string" ? data.deadline : undefined,
+      alarm: alarmInfo(data) ?? undefined,
     });
     // The notification that was acted on goes from the tray.
     Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});

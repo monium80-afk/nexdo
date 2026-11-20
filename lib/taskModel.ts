@@ -3,7 +3,8 @@ import { isUntouchedTemplatePlan } from "@/lib/ai/generatePlan";
 import { deadlineFromDate, makeDeadline, reconcileDeadline, withDeadline, type DeadlineInput } from "@/lib/deadline";
 import { buildRule, startSeries, type RuleInput } from "@/lib/recurrence";
 import { PRIORITY_LEVEL_IMPORTANCE, recalcTask, type ImportanceLevel } from "@/lib/scoring";
-import type { Subtask, Task, TaskDeadline, TaskStep } from "@/types/task";
+import type { Subtask, Task, TaskDeadline, TaskReminderSettings, TaskStep } from "@/types/task";
+import { normalizeReminder } from "@/lib/taskReminder";
 
 // The task model, apart from the store that holds the list (split out of
 // store/useTaskStore.ts, review 2026-11-13): making a new task from what the
@@ -31,6 +32,8 @@ export type NewTaskInput = {
   steps?: TaskStep[];
   /** Makes the new task the first occurrence of a repeating series. */
   recurrence?: RuleInput;
+  /** Its own reminder choice (lib/taskReminder.ts); absent = the Settings default. */
+  reminders?: TaskReminderSettings;
 };
 
 function createTaskId(): string {
@@ -98,6 +101,8 @@ export function buildTask(input: NewTaskInput, now: Date): Task {
     complexity,
     aiContext: { notes: [] },
   };
+  const reminders = normalizeReminder(input.reminders);
+  if (reminders) base.reminders = reminders;
   const task = withDeadline(base, initialDeadline(input));
   // A repeating task's first occurrence sits on the rule's first day (a task
   // due Wednesday that repeats on Mondays is due next Monday).

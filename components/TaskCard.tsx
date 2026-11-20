@@ -19,13 +19,16 @@ import Animated, {
 
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { AppIcon } from "@/components/icons/AppIcons";
-import { colors } from "@/constants/theme";
+import { useColors, usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatTaskLength } from "@/lib/formatDuration";
 import { measureView } from "@/lib/measureView";
 import type { ScreenRect } from "@/store/useMagicMicStore";
 import { describeRule } from "@/lib/recurrence";
+import { reminderBadge } from "@/lib/reminders";
+import { ReminderIcon } from "@/components/ReminderParts";
+import { useReminderPreferences } from "@/hooks/useReminderPreferences";
 import { playSound } from "@/lib/sounds";
 import { getDueInfo } from "@/lib/taskMeta";
 import type { Task } from "@/types/task";
@@ -37,9 +40,7 @@ export type ScoreAnchor = { pill: ScreenRect | null; row: ScreenRect | null };
 const CARD_SHADOW = SOFT_SHADOW;
 const DIAMOND = { transform: [{ rotate: "45deg" }] };
 /** What a ticked task's title, strike and details fade to (Anim-TaskDone.html). */
-const DONE_GREY = "#A79C92";
 /** The score and Overdue pills, greyed. */
-const DONE_PILL = "#EFE3D4";
 
 // The title's text-[15px], and where Android draws its line-through on it: centred
 // 6/21 em above the baseline, 1/18 em thick. The animated strike is drawn there.
@@ -87,7 +88,8 @@ type TitleLine = TextLayoutEvent["nativeEvent"]["lines"][number];
 
 /** A text colour going from `from` to the done grey as the task is ticked (or already done: `floor` 1). */
 function useGreyText(grey: SharedValue<number>, floor: number, from: string) {
-  return useAnimatedStyle(() => ({ color: interpolateColor(Math.max(grey.value, floor), [0, 1], [from, DONE_GREY]) }));
+  const doneGrey = usePalette().doneGrey;
+  return useAnimatedStyle(() => ({ color: interpolateColor(Math.max(grey.value, floor), [0, 1], [from, doneGrey]) }));
 }
 
 /** One line of the title's strike, drawn across in its turn as the task is ticked. */
@@ -106,6 +108,7 @@ function StrikeLine({
   fontSize: number;
   fromRight: boolean;
 }) {
+  const P = usePalette();
   const thickness = Math.max(1.5, fontSize * STRIKE_THICKNESS_EM);
   const top = line.y + line.ascender - fontSize * STRIKE_CENTER_EM - thickness / 2;
 
@@ -119,7 +122,7 @@ function StrikeLine({
     };
   });
 
-  return <Animated.View className="absolute rounded-full" style={[{ top, height: thickness, backgroundColor: DONE_GREY }, style]} />;
+  return <Animated.View className="absolute rounded-full" style={[{ top, height: thickness, backgroundColor: P.doneGrey }, style]} />;
 }
 
 /** One of the eight sparks thrown out of the box as it's ticked (aSp). */
@@ -151,6 +154,7 @@ type TaskCardProps = {
 };
 
 export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProps) {
+  const colors = useColors();
   const t = useTranslation();
   const rtl = useRtlText();
   const { fontScale } = useWindowDimensions();
@@ -158,6 +162,9 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
   const isOverdue = due.tone === "overdue";
   const isCompleted = task.status === "completed";
   const reduceMotion = useReducedMotion();
+  // Whether this task will ring on its own, and how (lib/reminders.ts).
+  const reminderPrefs = useReminderPreferences();
+  const badge = reminderBadge(task, reminderPrefs);
 
   // Ticked but not yet completed: the card plays its tick first, and only then
   // is the task completed, which is what moves it out of the list.
@@ -293,7 +300,7 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
     };
   });
   const titleStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(grey.value, [0, 1], [colors.palette.ink, DONE_GREY]),
+    color: interpolateColor(grey.value, [0, 1], [colors.palette.ink, colors.palette.doneGrey]),
   }));
   // Everything but the check turns light grey as the task is ticked — a
   // colour change, not a fade (the user's call, 2026-11-04). A completed card
@@ -311,13 +318,13 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
   const mutedTextStyle = useGreyText(grey, greyFloor, greyStart.muted);
   const pillTextStyle = useGreyText(grey, greyFloor, greyStart.pillText);
   const overduePillStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.overdueBg, DONE_PILL]),
+    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.overdueBg, colors.palette.donePill]),
   }));
   const pillStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.pillBg, DONE_PILL]),
+    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.pillBg, colors.palette.donePill]),
   }));
   const diamondStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.diamond, DONE_GREY]),
+    backgroundColor: interpolateColor(Math.max(grey.value, greyFloor), [0, 1], [greyStart.diamond, colors.palette.doneGrey]),
   }));
   // Icons are SVG: the grey copy fades in over the coloured one.
   const iconOutStyle = useAnimatedStyle(() => ({ opacity: 1 - Math.max(grey.value, greyFloor) }));
@@ -408,7 +415,7 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
                     ? "font-grotesk-semibold text-[15px] leading-[19px] line-through"
                     : "font-grotesk-semibold text-[15px] leading-[19px] text-ink"
                 }
-                style={[rtl, isCompleted ? { color: DONE_GREY } : titleStyle]}
+                style={[rtl, isCompleted ? { color: colors.palette.doneGrey } : titleStyle]}
                 onTextLayout={(event) => {
                   titleLines.current = event.nativeEvent.lines;
                 }}
@@ -429,12 +436,22 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
                   ))
                 : null}
             </View>
+            {/* Its own reminder (2026-11-18): a bell for a notification, an
+                alarm clock for an alarm; nothing means it won't ring. */}
+            {badge ? (
+              <View className="ml-[6px] mt-[3px]" accessibilityLabel={badge === "alarm" ? t.reminderUi.alarm : t.reminderUi.notification}>
+                {greyIcon(
+                  <ReminderIcon kind={badge} size={13} color={colors.palette.accent} />,
+                  <ReminderIcon kind={badge} size={13} color={colors.palette.doneGrey} />,
+                )}
+              </View>
+            ) : null}
             {/* A repeating task (a routine or a recurring task): arrows after its name. */}
             {task.recurrence ? (
               <View className="ml-[6px] mt-[3px]" accessibilityLabel={describeRule(task.recurrence.rule, t)}>
                 {greyIcon(
                   <Feather name="repeat" size={13} color={colors.palette.accent} />,
-                  <Feather name="repeat" size={13} color={DONE_GREY} />,
+                  <Feather name="repeat" size={13} color={colors.palette.doneGrey} />,
                 )}
               </View>
             ) : null}
@@ -451,7 +468,7 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
               >
                 {greyIcon(
                   <AppIcon name="calendar" size={13} strokeWidth={2} color={dueColor} />,
-                  <AppIcon name="calendar" size={13} strokeWidth={2} color={DONE_GREY} />,
+                  <AppIcon name="calendar" size={13} strokeWidth={2} color={colors.palette.doneGrey} />,
                 )}
                 <Animated.Text
                   numberOfLines={1}
@@ -466,7 +483,7 @@ export function TaskCard({ task, onPress, onToggle, onScorePress }: TaskCardProp
               <View className="flex-row items-center gap-[4px]">
                 {greyIcon(
                   <AppIcon name="clock" size={13} strokeWidth={2} color={colors.palette.inkMuted} />,
-                  <AppIcon name="clock" size={13} strokeWidth={2} color={DONE_GREY} />,
+                  <AppIcon name="clock" size={13} strokeWidth={2} color={colors.palette.doneGrey} />,
                 )}
                 <Animated.Text className="font-grotesk-regular text-[12.5px]" style={mutedTextStyle}>
                   {formatTaskLength(task.estimatedMinutes)}

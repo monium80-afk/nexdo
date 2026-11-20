@@ -8,7 +8,8 @@ import { BreakdownSheetHeader } from "@/components/BreakdownSheetHeader";
 import type { FeatherIconName } from "@/components/Button";
 import { PaperSheet } from "@/components/PaperSheet";
 import { shadow } from "@/constants/shadow";
-import { MOTION, colors } from "@/constants/theme";
+import { MOTION } from "@/constants/theme";
+import { usePalette } from "@/hooks/useTheme";
 import { useRtlText } from "@/hooks/useRtlText";
 import { useTranslation } from "@/hooks/useTranslation";
 import { extractAttachmentText } from "@/lib/ai/media";
@@ -29,7 +30,6 @@ type Phase =
   | { kind: "reading"; what: "photo" | "document" | "voice" }
   | { kind: "error"; message: string };
 
-const P = colors.palette;
 const CARD_SHADOW = shadow("0 6px 20px rgba(34, 28, 23, 0.07)", 3);
 const SEND_SHADOW = shadow("0 6px 14px rgba(242, 106, 46, 0.35)", 5, "#F26A2E");
 
@@ -57,6 +57,7 @@ export function BreakdownContextSheet({
   onClose: () => void;
   onContinue: () => void;
 }) {
+  const P = usePalette();
   const t = useTranslation();
   const rtl = useRtlText();
   const setContextNotes = useTaskStore((state) => state.setContextNotes);
@@ -128,7 +129,7 @@ export function BreakdownContextSheet({
         });
         return;
       }
-      keepAndContinue(composeFileNote(file.kind, text));
+      keepAndContinue([composeFileNote(file.kind, text), note.trim()].filter(Boolean).join("\n\n"));
     } catch (error) {
       if (id === run.current) failed(error, t.taskDetail.attach.readFailed);
     }
@@ -339,6 +340,7 @@ function RoundTool({
   /** The mic while it listens. */
   active?: boolean;
 }) {
+  const P = usePalette();
   return (
     <AnimatedPressable
       onPress={onPress}

@@ -4,31 +4,33 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { DEFAULT_REMINDER_PREFERENCES, type ReminderPreferences } from "@/lib/reminders";
-import { FOCUS_SOUND_CHOICES, type AppLanguage, type FocusSound } from "@/types/settings";
+import { FOCUS_SOUND_CHOICES, type AppLanguage, type AppTheme, type FocusSound } from "@/types/settings";
 
 // "language" drives the interface copy (see lib/i18n.ts) and the language the
-// AI replies in. The app is light-only ("theme" was saved but never applied,
-// and was removed 2026-11-13). "analyticsEnabled" turns PostHog off and on
+// AI replies in. "theme" is Settings → Dark mode (2026-11-17): "system"
+// follows the phone, applied in app/_layout.tsx (an older, never-applied
+// "theme" was removed 2026-11-13). "analyticsEnabled" turns PostHog off and on
 // (Settings → Preferences, applied in app/_layout.tsx).
 type SettingsStore = {
   language: AppLanguage;
+  theme: AppTheme;
   analyticsEnabled: boolean;
-  // Notification preferences — lib/reminders.ts turns them (and the task
-  // list) into what the phone schedules; hooks/useNotifications.ts applies it.
-  /** The daily planning note — separate from any deadline. */
+  // Notification preferences (reworked 2026-11-18) — lib/reminders.ts turns
+  // them (and the task list) into what the phone schedules;
+  // hooks/useNotifications.ts applies it. None of these switches ever touches
+  // a task's own reminder choice: off only pauses, on brings it all back.
+  /** The main switch (Settings → Notifications): off, Nexdo sends nothing. */
+  notificationsEnabled: boolean;
+  /** The morning summary: the day's tasks and routines in one notification. */
   dailyNudgeEnabled: boolean;
-  /** 24-hour "HH:MM" — the time of day the daily planning note arrives. */
+  /** 24-hour "HH:MM" — when the morning summary arrives. */
   dailyNudgeTime: string;
-  /** An alert the moment a task's exact deadline passes. */
+  /** An alert when a timed task should have been finished. */
   overdueAlertsEnabled: boolean;
-  /** A reminder on the day a task is due — on by default. */
+  /** Tasks with a time get a reminder of their own — on by default. */
   deadlineRemindersEnabled: boolean;
-  /** 24-hour "HH:MM" — when that on-the-day reminder arrives. 9:00 by default. */
-  dayReminderTime: string;
-  /** How long before a deadline with a time to remind: [] = at the start, or [minutes]. */
+  /** The default "how long before" for tasks with a time: [] = at the start, or [minutes]. */
   reminderOffsets: number[];
-  /** One more reminder the day before, for high-priority tasks. */
-  importantExtraReminder: boolean;
   /** Whether Nexdo has already asked for notification permission on its own (it asks once, when a first deadline needs a reminder). */
   notificationPromptShown: boolean;
   /** Whether the first-run tour (components/AppTour.tsx) has been finished or skipped on this phone. */
@@ -45,14 +47,14 @@ type SettingsStore = {
   focusSound: FocusSound;
   setAnalyticsEnabled: (analyticsEnabled: boolean) => void;
   setLanguage: (language: AppLanguage) => void;
+  setTheme: (theme: AppTheme) => void;
   setDailyNudgeEnabled: (dailyNudgeEnabled: boolean) => void;
   setDailyNudgeTime: (dailyNudgeTime: string) => void;
   setOverdueAlertsEnabled: (overdueAlertsEnabled: boolean) => void;
   setDeadlineRemindersEnabled: (deadlineRemindersEnabled: boolean) => void;
-  setDayReminderTime: (dayReminderTime: string) => void;
-  /** How long before a task with a time to remind (0 = at the start). One choice. */
+  setNotificationsEnabled: (notificationsEnabled: boolean) => void;
+  /** The default "how long before" for a task with a time (0 = at the start). */
   setReminderLead: (minutes: number) => void;
-  setImportantExtraReminder: (importantExtraReminder: boolean) => void;
   setNotificationPromptShown: (notificationPromptShown: boolean) => void;
   setTourSeen: (tourSeen: boolean) => void;
   setGemStageSeen: (gemStageSeen: number) => void;
@@ -60,18 +62,24 @@ type SettingsStore = {
   setFocusSound: (focusSound: FocusSound) => void;
 };
 
-/** The settings the reminder engine reads, in its own shape. */
-export function reminderPreferences(state: SettingsStore): ReminderPreferences {
+/** The default lead for tasks with a time, in minutes (0 = at the start). */
+export function defaultReminderLead(state: Pick<SettingsStore, "reminderOffsets">): number {
+  return state.reminderOffsets.find((value) => Number.isFinite(value) && value > 0) ?? 0;
+}
+
+/**
+ * The settings the reminder engine reads, in its own shape. `alarmsAllowed`
+ * comes from the plan (alarms are Pro) — see hooks/useNotifications.ts.
+ */
+export function reminderPreferences(state: SettingsStore, alarmsAllowed = true): ReminderPreferences {
   return {
-    deadlineReminders: state.deadlineRemindersEnabled,
-    dayReminderTime: state.dayReminderTime,
-    beforeOffsets: state.reminderOffsets,
-    importantDayBefore: state.importantExtraReminder,
+    enabled: state.notificationsEnabled,
+    morningSummary: state.dailyNudgeEnabled,
+    morningSummaryTime: state.dailyNudgeTime,
+    timedReminders: state.deadlineRemindersEnabled,
+    defaultLead: defaultReminderLead(state),
     overdueAlerts: state.overdueAlertsEnabled,
-    // The morning nudge (back in Settings 2026-11-12, merged with the
-    // date-only morning ping).
-    dailyPlanning: state.dailyNudgeEnabled,
-    dailyPlanningTime: state.dailyNudgeTime,
+    alarmsAllowed,
   };
 }
 
@@ -122,18 +130,31 @@ export function deviceLanguage(): AppLanguage {
   }
 }
 
+/**
+ * Settings saved before the 2026-11-18 rework (no main switch yet): a task
+ * with only a date used to get its own 9:00 ping, which is now the morning
+ * summary's job — so whoever had those pings gets the summary instead, at
+ * that same time, and nothing they had goes quiet. Leaves newer settings alone.
+ */
+function migrateNotifications(saved: Partial<SettingsStore> & { dayReminderTime?: string }): Partial<SettingsStore> {
+  if (saved.notificationsEnabled !== undefined || Object.keys(saved).length === 0) return {};
+  const hadDayPings = saved.deadlineRemindersEnabled !== false;
+  if (saved.dailyNudgeEnabled || !hadDayPings) return { notificationsEnabled: true };
+  return { notificationsEnabled: true, dailyNudgeEnabled: true, dailyNudgeTime: saved.dayReminderTime ?? DEFAULT_REMINDER_PREFERENCES.morningSummaryTime };
+}
+
 export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
       analyticsEnabled: true,
       language: deviceLanguage(),
-      dailyNudgeEnabled: false,
-      dailyNudgeTime: "09:00",
-      overdueAlertsEnabled: false,
-      deadlineRemindersEnabled: DEFAULT_REMINDER_PREFERENCES.deadlineReminders,
-      dayReminderTime: DEFAULT_REMINDER_PREFERENCES.dayReminderTime,
-      reminderOffsets: DEFAULT_REMINDER_PREFERENCES.beforeOffsets,
-      importantExtraReminder: DEFAULT_REMINDER_PREFERENCES.importantDayBefore,
+      theme: "system",
+      notificationsEnabled: DEFAULT_REMINDER_PREFERENCES.enabled,
+      dailyNudgeEnabled: DEFAULT_REMINDER_PREFERENCES.morningSummary,
+      dailyNudgeTime: DEFAULT_REMINDER_PREFERENCES.morningSummaryTime,
+      overdueAlertsEnabled: DEFAULT_REMINDER_PREFERENCES.overdueAlerts,
+      deadlineRemindersEnabled: DEFAULT_REMINDER_PREFERENCES.timedReminders,
+      reminderOffsets: [],
       notificationPromptShown: false,
       tourSeen: false,
       gemStageSeen: 0,
@@ -141,16 +162,16 @@ export const useSettingsStore = create<SettingsStore>()(
       focusSound: "off",
       setAnalyticsEnabled: (analyticsEnabled) => set({ analyticsEnabled }),
       setLanguage: (language) => set({ language }),
+      setTheme: (theme) => set({ theme }),
       setDailyNudgeEnabled: (dailyNudgeEnabled) => set({ dailyNudgeEnabled }),
       setDailyNudgeTime: (dailyNudgeTime) => set({ dailyNudgeTime }),
       setOverdueAlertsEnabled: (overdueAlertsEnabled) => set({ overdueAlertsEnabled }),
       setDeadlineRemindersEnabled: (deadlineRemindersEnabled) => set({ deadlineRemindersEnabled }),
-      setDayReminderTime: (dayReminderTime) => set({ dayReminderTime }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setReminderLead: (minutes) =>
         set(() => ({
           reminderOffsets: minutes > 0 ? [minutes] : [],
         })),
-      setImportantExtraReminder: (importantExtraReminder) => set({ importantExtraReminder }),
       setNotificationPromptShown: (notificationPromptShown) => set({ notificationPromptShown }),
       setTourSeen: (tourSeen) => set({ tourSeen }),
       setGemStageSeen: (gemStageSeen) => set({ gemStageSeen }),
@@ -167,7 +188,10 @@ export const useSettingsStore = create<SettingsStore>()(
           saved.focusSound && (FOCUS_SOUND_CHOICES as readonly string[]).includes(saved.focusSound)
             ? saved.focusSound
             : current.focusSound;
-        return { ...current, ...saved, focusSound };
+        // Only the three appearance choices; anything else (an older build's
+        // value) follows the phone.
+        const theme = saved.theme === "light" || saved.theme === "dark" ? saved.theme : "system";
+        return { ...current, ...saved, focusSound, theme, ...migrateNotifications(saved) };
       },
       // Listing the keys also drops retired values older installs still have
       // saved ("planningStyle", "aiAutoMode" / "voiceAddButton" from before
@@ -176,13 +200,13 @@ export const useSettingsStore = create<SettingsStore>()(
       partialize: (state) => ({
         analyticsEnabled: state.analyticsEnabled,
         language: state.language,
+        theme: state.theme,
         dailyNudgeEnabled: state.dailyNudgeEnabled,
         dailyNudgeTime: state.dailyNudgeTime,
         overdueAlertsEnabled: state.overdueAlertsEnabled,
         deadlineRemindersEnabled: state.deadlineRemindersEnabled,
-        dayReminderTime: state.dayReminderTime,
         reminderOffsets: state.reminderOffsets,
-        importantExtraReminder: state.importantExtraReminder,
+        notificationsEnabled: state.notificationsEnabled,
         notificationPromptShown: state.notificationPromptShown,
         tourSeen: state.tourSeen,
         gemStageSeen: state.gemStageSeen,

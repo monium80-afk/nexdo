@@ -16,6 +16,7 @@
   "dependencies": {
     "@clerk/backend": "^3.18.1",
     "@clerk/expo": "^4.14.2",
+    "@expo/ui": "~58.0.29",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.2.1",
@@ -47,6 +48,7 @@
     "expo-symbols": "~58.0.5",
     "expo-system-ui": "~58.0.7",
     "expo-web-browser": "~58.0.8",
+    "expo-widgets": "~58.0.29",
     "nativewind": "5.0.0-preview.4",
     "posthog-react-native": "^4.77.0",
     "react": "19.3.0",
@@ -83,5 +85,15 @@
       "FORCE_REACT_RENDER_FOR_SETTLED_ANIMATIONS": false
     }
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "expo-widgets",
+          "@expo/ui"
+        ]
+      }
+    }
+  }
 }
