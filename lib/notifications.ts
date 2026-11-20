@@ -1,0 +1,454 @@
+import { isRunningInExpoGo } from "expo";
+import type { NotificationResponse } from "expo-notifications";
+import { Platform } from "react-native";
+
+import { colors } from "@/constants/theme";
+import { translate } from "@/lib/i18n";
+import {
+  diffNotifications,
+  shouldDismissPresentedNotification,
+  type PlannedNotification,
+  type ReminderChannel,
+} from "@/lib/reminders";
+
+// Local notifications only: the phone schedules each one itself, so it
+// arrives on time even when Nexdo is closed — no server, no push tokens. What
+// to schedule is decided by lib/reminders.ts; this file only makes the phone
+// match that plan. The web build has no scheduler, so everything here is a
+// no-op there. Expo Go on Android is a no-op too: since SDK 53, merely
+// importing expo-notifications there throws (it wires up push tokens on
+// load), so the module is only loaded where it works. Test reminders on
+// Android in a development build.
+const isSupported = Platform.OS !== "web" && !(Platform.OS === "android" && isRunningInExpoGo());
+
+// Only ever read after an isSupported check, so it's never actually null then.
+const Notifications: typeof import("expo-notifications") = isSupported
+  ? // An import statement would always load it — only require() can skip it.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("expo-notifications")
+  : (null as never);
+
+/** The "Mark as done" button a task reminder carries. */
+const TASK_CATEGORY_ID = "nexdo-task";
+export const COMPLETE_ACTION_ID = "complete";
+
+const CHANNEL_IDS: Record<ReminderChannel, string> = {
+  reminders: "reminders",
+  // Android fixes a channel's sound and importance once it exists, so a
+  // change to the alarm's sound needs a new id.
+  alarms: "alarms-v1",
+  overdue: "overdue",
+  planning: "planning",
+};
+
+/** The alarm's sound file, bundled by the expo-notifications plugin (app.json). */
+const ALARM_SOUND = "nexdo_alarm.wav";
+
+export type NotificationPermission = "granted" | "denied" | "undetermined" | "unsupported";
+
+/** Call once at startup, before any notification can arrive. */
+export function configureNotifications() {
+  if (!isSupported) return;
+  // Without a handler, a notification that fires while Nexdo is open is
+  // dropped instead of shown.
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      // With Nexdo open, the session's own alarm already rings
+      // (hooks/useSessionAlarm.ts) — the notification is for when it isn't.
+      // The same for a task's alarm: with Nexdo open the alarm screen comes
+      // up and rings instead (listenForAlarms below).
+      const sessionEnd = notification.request.identifier === SESSION_END_ID;
+      const alarm = isAlarmData(notification.request.content.data);
+      const quiet = sessionEnd || alarm;
+      return {
+        shouldShowBanner: !quiet,
+        shouldShowList: !sessionEnd,
+        shouldPlaySound: !quiet,
+        shouldSetBadge: false,
+      };
+    },
+  });
+}
+
+// Android 8+ files every notification under a channel the user can mute in
+// the phone's settings, where these names are shown. Setting one again just
+// renames it — that's how they follow a language change. The action button's
+// label is set the same way.
+async function ensureChannelsAndActions() {
+  const t = translate();
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.reminders, {
+      name: t.notifications.remindersChannel,
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: colors.orange[500],
+    });
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.overdue, {
+      name: t.notifications.overdueChannel,
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: colors.orange[500],
+    });
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.planning, {
+      name: t.notifications.planningChannel,
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    // Alarms play on the alarm volume (so the ringer's silent mode doesn't
+    // mute them), pop up over everything, show on the lock screen and buzz long.
+    await Notifications.setNotificationChannelAsync(CHANNEL_IDS.alarms, {
+      name: t.notifications.alarmsChannel,
+      importance: Notifications.AndroidImportance.MAX,
+      sound: ALARM_SOUND,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.ALARM,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      },
+      vibrationPattern: [0, 600, 300, 600, 300, 600, 300, 600],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+      lightColor: colors.orange[500],
+    });
+  }
+  // Opens the app to do it: the completion goes through the task store like
+  // any other, is saved to the account, and is checked against the task as
+  // it is now (see hooks/useNotifications.ts) — not handled blind in the background.
+  await Notifications.setNotificationCategoryAsync(TASK_CATEGORY_ID, [
+    { identifier: COMPLETE_ACTION_ID, buttonTitle: t.notifications.completeAction, options: { opensAppToForeground: true } },
+  ]);
+}
+
+export async function getNotificationPermission(): Promise<NotificationPermission> {
+  if (!isSupported) return "unsupported";
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted) return "granted";
+    return current.canAskAgain ? "undetermined" : "denied";
+  } catch {
+    return "unsupported";
+  }
+}
+
+/** Shows the system prompt if the user hasn't answered it yet. Resolves true when Nexdo may notify. */
+export async function requestNotificationPermission(): Promise<boolean> {
+  if (!isSupported) return false;
+  try {
+    // Android 13+ only shows the prompt once the app has a channel.
+    await ensureChannelsAndActions();
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted) return true;
+    // Denied before: the phone won't ask again, only its settings can change it.
+    if (!current.canAskAgain) return false;
+    const requested = await Notifications.requestPermissionsAsync();
+    return requested.granted;
+  } catch (error) {
+    console.warn("[notifications] couldn't request permission", error);
+    return false;
+  }
+}
+
+async function runReconcile(desired: PlannedNotification[], openTaskIds: Set<string>, clearAll: boolean) {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const { cancel, schedule } = diffNotifications(
+    desired,
+    scheduled.map((request) => ({
+      id: request.identifier,
+      signature: typeof request.content.data?.signature === "string" ? request.content.data.signature : undefined,
+    })),
+  );
+  for (const id of cancel) await Notifications.cancelScheduledNotificationAsync(id);
+
+  // Take back reminders already on screen about tasks that no longer need
+  // them (finished, deleted, archived, or no longer due).
+  const presented = await Notifications.getPresentedNotificationsAsync();
+  for (const notification of presented) {
+    const id = notification.request.identifier;
+    const taskId = notification.request.content.data?.taskId;
+    if (shouldDismissPresentedNotification(id, taskId, openTaskIds, clearAll)) {
+      await Notifications.dismissNotificationAsync(id);
+    }
+  }
+
+  if (schedule.length === 0) return;
+  const { granted } = await Notifications.getPermissionsAsync();
+  if (!granted) return;
+  await ensureChannelsAndActions();
+  for (const entry of schedule) {
+    if (entry.fireAt <= Date.now()) continue;
+    const alarm = entry.kind === "alarm";
+    await Notifications.scheduleNotificationAsync({
+      identifier: entry.id,
+      content: {
+        title: entry.title,
+        body: entry.body,
+        sound: alarm ? ALARM_SOUND : "default",
+        data: entry.data,
+        categoryIdentifier: entry.completable ? TASK_CATEGORY_ID : undefined,
+        // An alarm stays in the tray until it's dealt with (Android), and
+        // gets through a Focus mode (iOS, the time-sensitive entitlement in app.json).
+        ...(alarm ? { sticky: true, priority: Notifications.AndroidNotificationPriority.MAX, interruptionLevel: "timeSensitive" as const } : {}),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: entry.fireAt,
+        channelId: CHANNEL_IDS[entry.channel],
+      },
+    });
+  }
+}
+
+// Runs one at a time, in order: two overlapping runs could interleave their
+// cancels and schedules and leave a reminder behind that no longer applies.
+let reconcileQueue: Promise<void> = Promise.resolve();
+
+function enqueueReconcile(
+  desired: PlannedNotification[],
+  openTaskIds: Set<string>,
+  clearAll: boolean,
+  propagateFailure = false,
+): Promise<void> {
+  if (!isSupported) return Promise.resolve();
+  const operation = reconcileQueue.then(() => runReconcile(desired, openTaskIds, clearAll));
+  reconcileQueue = operation
+    .catch((error) => console.warn("[notifications] couldn't update scheduled reminders", error));
+  return propagateFailure ? operation : reconcileQueue;
+}
+
+/**
+ * Makes the phone's scheduled notifications exactly `desired` (from
+ * lib/reminders.ts planNotifications). Pass an empty list to clear them all.
+ * `openTaskIds`: tasks still open, whose reminders on screen may stay.
+ */
+export function reconcileNotifications(desired: PlannedNotification[], openTaskIds: Set<string> = new Set()): Promise<void> {
+  return enqueueReconcile(desired, openTaskIds, false);
+}
+
+/** Clears every reminder this app scheduled — signing out. */
+export function clearAllNotifications(): Promise<void> {
+  return enqueueReconcile([], new Set(), true, true);
+}
+
+/**
+ * The one notification that isn't about a task: the heads-up before a free
+ * trial turns into a paid plan (lib/trialReminder.ts). Outside the "nexdo-"
+ * prefix, so the task reconciler above leaves it alone.
+ */
+const TRIAL_REMINDER_ID = "trial-end";
+
+type TrialReminder = { fireAt: number; title: string; body: string };
+
+// One change at a time, in the order they were asked for: an update that
+// pauses on the permission check mustn't schedule after a later cancel.
+let trialReminderQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Schedules the trial reminder for `fireAt`, replacing any earlier one — or
+ * just cancels it, given null. Resolves false when the phone isn't left as
+ * asked (no permission to notify, or it failed), so the caller can try again.
+ */
+export function setTrialReminder(reminder: TrialReminder | null): Promise<boolean> {
+  const write = trialReminderQueue.then(() => writeTrialReminder(reminder));
+  trialReminderQueue = write.catch(() => undefined);
+  return write;
+}
+
+async function writeTrialReminder(reminder: TrialReminder | null): Promise<boolean> {
+  if (!isSupported) return true;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(TRIAL_REMINDER_ID);
+    if (!reminder) return true;
+    if (reminder.fireAt <= Date.now()) return true;
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return false;
+    await ensureChannelsAndActions();
+    if (reminder.fireAt <= Date.now()) return true;
+    await Notifications.scheduleNotificationAsync({
+      identifier: TRIAL_REMINDER_ID,
+      content: {
+        title: reminder.title,
+        body: reminder.body,
+        sound: "default",
+        // Where the subscription can be managed or cancelled.
+        data: { url: "/(tabs)/settings" },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: reminder.fireAt,
+        channelId: CHANNEL_IDS.reminders,
+      },
+    });
+    return true;
+  } catch (error) {
+    console.warn("[notifications] couldn't update the trial reminder", error);
+    return false;
+  }
+}
+
+/**
+ * The end of a running focus session. The in-app alarm (hooks/useSessionAlarm.ts)
+ * is a timer in the app, so it can't ring while the phone is locked or Nexdo
+ * is in the background — this is what does then. Outside the "nexdo-" prefix,
+ * like the trial reminder, so the task reconciler leaves it alone.
+ */
+const SESSION_END_ID = "session-end";
+
+type SessionEndReminder = { fireAt: number; title: string; body: string };
+
+let sessionEndQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Schedules the session-end notification for `fireAt`, replacing any earlier
+ * one — or just cancels it, given null (paused, finished, cancelled). Changes
+ * apply in the order they were asked for.
+ */
+export function setSessionEndReminder(reminder: SessionEndReminder | null): Promise<void> {
+  if (!isSupported) return Promise.resolve();
+  const write = sessionEndQueue.then(() => writeSessionEndReminder(reminder));
+  sessionEndQueue = write.catch(() => undefined);
+  return write;
+}
+
+async function writeSessionEndReminder(reminder: SessionEndReminder | null) {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(SESSION_END_ID);
+    if (!reminder || reminder.fireAt <= Date.now()) return;
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await ensureChannelsAndActions();
+    if (reminder.fireAt <= Date.now()) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: SESSION_END_ID,
+      content: {
+        title: reminder.title,
+        body: reminder.body,
+        sound: "default",
+        // Back to the Today page, where the session runs.
+        data: { url: "/" },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: reminder.fireAt,
+        channelId: CHANNEL_IDS.reminders,
+      },
+    });
+  } catch (error) {
+    console.warn("[notifications] couldn't update the session-end notification", error);
+  }
+}
+
+/** Whether a notification's data says it's a task's alarm. */
+function isAlarmData(data: Record<string, unknown> | undefined | null): boolean {
+  return data?.kind === "alarm";
+}
+
+/** What the alarm screen needs (app/alarm.tsx), read off an alarm notification. */
+export type AlarmInfo = { taskId?: string; title: string; startsAt?: number };
+
+function alarmInfo(data: Record<string, unknown> | undefined | null): AlarmInfo | null {
+  if (!isAlarmData(data)) return null;
+  return {
+    taskId: typeof data?.taskId === "string" ? data.taskId : undefined,
+    title: typeof data?.taskTitle === "string" ? data.taskTitle : "",
+    startsAt: typeof data?.startsAt === "number" ? data.startsAt : undefined,
+  };
+}
+
+/**
+ * Calls `ring` when an alarm goes off while Nexdo is open (the notification
+ * itself stays silent then — see configureNotifications), so the alarm
+ * screen can come up and ring. Returns a function that stops listening.
+ */
+export function listenForAlarms(ring: (alarm: AlarmInfo) => void): () => void {
+  if (!isSupported) return () => {};
+  const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const alarm = alarmInfo(notification.request.content.data);
+    if (alarm) ring(alarm);
+  });
+  return () => subscription.remove();
+}
+
+/**
+ * "Snooze 5 min" on the alarm screen: the same alarm again in five minutes.
+ * Outside the "nexdo-" prefix, so the reconciler leaves it alone; one per task.
+ */
+export async function snoozeAlarm(alarm: AlarmInfo, title: string, body: string, minutes = 5): Promise<void> {
+  if (!isSupported) return;
+  try {
+    const { granted } = await Notifications.getPermissionsAsync();
+    if (!granted) return;
+    await ensureChannelsAndActions();
+    await Notifications.scheduleNotificationAsync({
+      identifier: `alarm-snooze-${alarm.taskId ?? "task"}`,
+      content: {
+        title,
+        body,
+        sound: ALARM_SOUND,
+        data: { kind: "alarm", taskId: alarm.taskId, taskTitle: alarm.title, startsAt: alarm.startsAt, url: "/" },
+        sticky: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        interruptionLevel: "timeSensitive",
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: Date.now() + minutes * 60_000,
+        channelId: CHANNEL_IDS.alarms,
+      },
+    });
+  } catch (error) {
+    console.warn("[notifications] couldn't snooze the alarm", error);
+  }
+}
+
+/** Takes an alarm that rang off the lock screen and the tray once it's been stopped. */
+export async function dismissAlarmNotifications(taskId: string | undefined): Promise<void> {
+  if (!isSupported) return;
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    for (const notification of presented) {
+      const data = notification.request.content.data;
+      if (isAlarmData(data) && (!taskId || data?.taskId === taskId)) {
+        await Notifications.dismissNotificationAsync(notification.request.identifier);
+      }
+    }
+  } catch {
+    // Nothing on screen to take back.
+  }
+}
+
+export type NotificationTap = {
+  /** "complete" when the user pressed "Mark as done", otherwise a plain tap. */
+  action: "open" | "complete";
+  url?: string;
+  taskId?: string;
+  /** The deadline the notification was scheduled for ("YYYY-MM-DD|HH:MM"). */
+  deadline?: string;
+  /** Set when the notification was a task's alarm: the alarm screen opens. */
+  alarm?: AlarmInfo;
+};
+
+/**
+ * Calls `handle` for each notification the user acts on, starting with the
+ * one that launched Nexdo if there was one. Returns a function that stops listening.
+ */
+export function listenForNotificationTaps(handle: (tap: NotificationTap) => void): () => void {
+  if (!isSupported) return () => {};
+
+  const onResponse = (response: NotificationResponse) => {
+    const data = response.notification.request.content.data ?? {};
+    handle({
+      action: response.actionIdentifier === COMPLETE_ACTION_ID ? "complete" : "open",
+      url: typeof data.url === "string" ? data.url : undefined,
+      taskId: typeof data.taskId === "string" ? data.taskId : undefined,
+      deadline: typeof data.deadline === "string" ? data.deadline : undefined,
+      alarm: alarmInfo(data) ?? undefined,
+    });
+    // The notification that was acted on goes from the tray.
+    Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});
+    // Handled — otherwise the next listener would act on it again.
+    Notifications.clearLastNotificationResponse();
+  };
+
+  // A tap that launched the app happened before this listener existed.
+  const launchResponse = Notifications.getLastNotificationResponse();
+  if (launchResponse) onResponse(launchResponse);
+
+  const subscription = Notifications.addNotificationResponseReceivedListener(onResponse);
+  return () => subscription.remove();
+}
